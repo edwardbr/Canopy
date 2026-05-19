@@ -288,6 +288,20 @@ namespace rpc
 
             return transport->get_adjacent_zone_id();
         }
+
+        // A route-handshake claim owns exactly one in-flight transcript. The
+        // state publishes next_transcript_id after reservation, so transcript N
+        // is current only while the route is still handshaking and the next id
+        // is N + 1. This lets delayed coroutine completions detect that another
+        // path has already replaced the route state.
+        [[nodiscard]] auto route_attestation_claim_is_current(
+            const canopy::security::attestation::route_attestation_state& state,
+            uint64_t transcript_id) -> bool
+        {
+            return transcript_id != 0 && transcript_id != std::numeric_limits<uint64_t>::max()
+                   && state.status == canopy::security::attestation::route_attestation_status::handshaking
+                   && state.next_transcript_id == transcript_id + 1;
+        }
     }
 
     // Stops enclave-owned coroutine infrastructure before service state is
@@ -587,6 +601,118 @@ namespace rpc
         return claim;
     }
 
+    // Records failure for a route handshake only if this coroutine still owns
+    // the active transcript claim.
+    auto enclave_service::fail_claimed_attestation_route(
+        rpc::destination_zone route_zone_id,
+        uint64_t transcript_id,
+        uint64_t previous_failure_epoch,
+        std::string reason) -> bool
+    {
+        if (!route_zone_id.is_set())
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item == attestation_route_states_.end() || !route_attestation_claim_is_current(item->second, transcript_id))
+        {
+            return false;
+        }
+
+        canopy::security::attestation::route_attestation_state failed_state;
+        failed_state.status = canopy::security::attestation::route_attestation_status::failed;
+        failed_state.failure_epoch
+            = (item->second.failure_epoch > previous_failure_epoch ? item->second.failure_epoch : previous_failure_epoch)
+              + 1;
+        failed_state.failure_reason = std::move(reason);
+        failed_state.next_transcript_id = item->second.next_transcript_id;
+        attestation_route_states_[route_zone_id] = std::move(failed_state);
+        return true;
+    }
+
+    // Publishes an established protected-RPC context for the transcript that
+    // this coroutine claimed. If another path already changed the route state,
+    // the caller must not overwrite it with stale key material.
+    auto enclave_service::complete_claimed_attestation_route(
+        rpc::destination_zone route_zone_id,
+        uint64_t transcript_id,
+        canopy::security::attestation::security_context context) -> bool
+    {
+        if (!route_zone_id.is_set() || !context.established)
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item == attestation_route_states_.end() || !route_attestation_claim_is_current(item->second, transcript_id))
+        {
+            return false;
+        }
+
+        canopy::security::attestation::route_attestation_state completed_state;
+        completed_state.status = canopy::security::attestation::route_attestation_status::attested;
+        completed_state.context = std::move(context);
+        completed_state.next_transcript_id = item->second.next_transcript_id;
+        attestation_route_states_[route_zone_id] = std::move(completed_state);
+        return true;
+    }
+
+    // Completes a no-Evidence route admission only for the transcript that was
+    // actually claimed by this coroutine.
+    auto enclave_service::complete_claimed_unattested_route(
+        rpc::destination_zone route_zone_id,
+        uint64_t transcript_id) -> bool
+    {
+        if (!route_zone_id.is_set())
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item == attestation_route_states_.end() || !route_attestation_claim_is_current(item->second, transcript_id))
+        {
+            return false;
+        }
+
+        canopy::security::attestation::route_attestation_state completed_state;
+        completed_state.status = canopy::security::attestation::route_attestation_status::unattested_allowed;
+        completed_state.next_transcript_id = item->second.next_transcript_id;
+        attestation_route_states_[route_zone_id] = std::move(completed_state);
+        return true;
+    }
+
+    // Converts a superseded handshake completion into the result that add_ref
+    // should observe. If the route is now admitted by another path, the original
+    // add_ref may continue; otherwise return the original failure code without
+    // mutating route state.
+    auto enclave_service::result_for_superseded_add_ref_claim(
+        rpc::destination_zone route_zone_id,
+        const char* operation,
+        int fallback_error_code) const -> rpc::standard_result
+    {
+        auto zone_policy = get_zone_security_policy();
+        auto state = get_attestation_route_state(route_zone_id);
+        canopy::security::attestation::reference_route_policy_input policy_input;
+        policy_input.route_is_local = route_zone_id == get_zone_id();
+        policy_input.may_start_handshake = false;
+        policy_input.state = state;
+        const auto decision = zone_policy->evaluate_reference_route(std::move(policy_input));
+        if (decision.action == canopy::security::attestation::route_attestation_action::allow)
+        {
+            RPC_DEBUG(
+                "route attestation claim for route {} during {} was superseded by an admitted route",
+                std::to_string(route_zone_id),
+                operation);
+            return standard_result{rpc::error::OK(), {}};
+        }
+
+        RPC_WARNING(
+            "route attestation claim for route {} during {} was superseded; current status={}, reason {}",
+            std::to_string(route_zone_id),
+            operation,
+            static_cast<int>(state.status),
+            decision.reason);
+        return standard_result{fallback_error_code, {}};
+    }
+
     // Ensures the route referenced by add_ref is already allowed or completes
     // the route-level attestation handshake needed to allow it.
     CORO_TASK(standard_result)
@@ -605,7 +731,6 @@ namespace rpc
         const auto route_is_local = route_zone_id == get_zone_id();
         const auto attestation_required = zone_policy->reference_routes_require_attestation();
         auto claim = claim_add_ref_route_attestation(route_zone_id, route_is_local, attestation_required);
-        const auto& state = claim.state;
         const auto& decision = claim.decision;
         if (decision.action == canopy::security::attestation::route_attestation_action::allow)
         {
@@ -657,6 +782,32 @@ namespace rpc
                 claim.error_code != rpc::error::OK() ? claim.error_code : rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
+        auto fail_claim = [&](std::string reason, int error_code) -> standard_result
+        {
+            if (!fail_claimed_attestation_route(
+                    route_zone_id, claim.transcript_id, claim.state.failure_epoch, std::move(reason)))
+                return result_for_superseded_add_ref_claim(route_zone_id, operation, error_code);
+            return standard_result{error_code, {}};
+        };
+
+        auto complete_unattested_claim = [&]() -> standard_result
+        {
+            if (!complete_claimed_unattested_route(route_zone_id, claim.transcript_id))
+            {
+                return result_for_superseded_add_ref_claim(route_zone_id, operation, rpc::error::ZONE_NOT_SUPPORTED());
+            }
+            return standard_result{rpc::error::OK(), {}};
+        };
+
+        auto complete_attested_claim = [&](canopy::security::attestation::security_context context) -> standard_result
+        {
+            if (!complete_claimed_attestation_route(route_zone_id, claim.transcript_id, std::move(context)))
+            {
+                return result_for_superseded_add_ref_claim(route_zone_id, operation, rpc::error::ZONE_NOT_SUPPORTED());
+            }
+            return standard_result{rpc::error::OK(), {}};
+        };
+
         auto service = get_attestation_service();
 
         rpc::route_attestation_handshake_request request;
@@ -674,9 +825,7 @@ namespace rpc
                 auto nonce = canopy::security::attestation::make_attestation_nonce();
                 if (!nonce.has_value())
                 {
-                    set_failed_attestation_route(
-                        *this, route_zone_id, state.failure_epoch, "failed to generate route attestation nonce");
-                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                    CO_RETURN fail_claim("failed to generate route attestation nonce", rpc::error::SECURITY_ERROR());
                 }
                 request.nonce = std::move(nonce.value());
             }
@@ -690,8 +839,7 @@ namespace rpc
                 auto challenge = service->make_verifier_challenge(request.transcript_id, request.nonce);
                 if (!challenge.accepted)
                 {
-                    set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, challenge.reason);
-                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                    CO_RETURN fail_claim(std::move(challenge.reason), rpc::error::SECURITY_ERROR());
                 }
                 request.verifier_challenge = to_wire_cmw(challenge.evidence);
             }
@@ -701,8 +849,7 @@ namespace rpc
                 auto evidence = service->produce_evidence(request.transcript_id, request.nonce);
                 if (!evidence.accepted)
                 {
-                    set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, evidence.reason);
-                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                    CO_RETURN fail_claim(std::move(evidence.reason), rpc::error::SECURITY_ERROR());
                 }
                 request.evidence = to_wire_cmw(evidence.evidence);
             }
@@ -716,9 +863,7 @@ namespace rpc
         auto request_payload = serialise_route_attestation_payload(request, payload_encoding);
         if (!request_payload.has_value())
         {
-            set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "failed to serialise route attestation request");
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN fail_claim("failed to serialise route attestation request", rpc::error::INVALID_DATA());
         }
 
         handshake_params params;
@@ -735,21 +880,18 @@ namespace rpc
 
         if (handshake.error_code != rpc::error::OK())
         {
-            set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "route attestation handshake transport failed");
             RPC_WARNING(
                 "add_ref attestation failed for route {} during {}, handshake error {}",
                 route_zone_id.get_subnet(),
                 operation,
                 handshake.error_code);
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN fail_claim("route attestation handshake transport failed", rpc::error::ZONE_NOT_SUPPORTED());
         }
 
         if (handshake.type_id != route_attestation_response_type_id(rpc::HIGHEST_SUPPORTED_VERSION))
         {
-            set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "route attestation handshake returned an unexpected payload type");
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN fail_claim(
+                "route attestation handshake returned an unexpected payload type", rpc::error::INVALID_DATA());
         }
 
         // The response is the second typed IDL blob in this protocol file. The
@@ -759,15 +901,12 @@ namespace rpc
         if (!parse_route_attestation_payload(handshake.payload, payload_encoding, response)
             || response.transcript_id != request.transcript_id || !flag_is_valid(response.accepted))
         {
-            set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "route attestation handshake returned malformed payload");
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN fail_claim("route attestation handshake returned malformed payload", rpc::error::INVALID_DATA());
         }
 
         if (!response.accepted)
         {
-            set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, response.reason);
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN fail_claim(std::move(response.reason), rpc::error::ZONE_NOT_SUPPORTED());
         }
 
         if (!service)
@@ -775,8 +914,9 @@ namespace rpc
             // No local attestation service means no key material can be
             // established. The only possible successful state is an explicit
             // unattested route, which is still tracked separately from "attested".
-            set_route_unattested_allowed(route_zone_id, true);
-            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+            auto result = complete_unattested_claim();
+            result.out_back_channel = std::move(handshake.out_back_channel);
+            CO_RETURN result;
         }
 
         if (response.evidence.has_value())
@@ -803,9 +943,7 @@ namespace rpc
             {
                 if (!nonce_is_valid(response.nonce))
                 {
-                    set_failed_attestation_route(
-                        *this, route_zone_id, state.failure_epoch, "route attestation response nonce was invalid");
-                    CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+                    CO_RETURN fail_claim("route attestation response nonce was invalid", rpc::error::INVALID_DATA());
                 }
 
                 canopy::security::attestation::evidence_binding expected_binding;
@@ -818,18 +956,14 @@ namespace rpc
 
             if (!verdict.accepted)
             {
-                set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, verdict.reason);
-                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+                CO_RETURN fail_claim(std::move(verdict.reason), rpc::error::ZONE_NOT_SUPPORTED());
             }
             if (response.backend_id != verdict.backend_id
                 || from_wire_security_level(response.security_level) != verdict.level)
             {
-                set_failed_attestation_route(
-                    *this,
-                    route_zone_id,
-                    state.failure_epoch,
-                    "route attestation response metadata did not match verified evidence");
-                CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+                CO_RETURN fail_claim(
+                    "route attestation response metadata did not match verified evidence",
+                    rpc::error::ZONE_NOT_SUPPORTED());
             }
 
             canopy::security::attestation::establish_session_params session_params;
@@ -843,13 +977,12 @@ namespace rpc
             auto context = service->establish_session(session_params);
             if (!context.established)
             {
-                set_failed_attestation_route(
-                    *this, route_zone_id, state.failure_epoch, "route attestation session establishment failed");
-                CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                CO_RETURN fail_claim("route attestation session establishment failed", rpc::error::SECURITY_ERROR());
             }
 
-            set_security_context(route_zone_id, std::move(context));
-            CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+            auto result = complete_attested_claim(std::move(context));
+            result.out_back_channel = std::move(handshake.out_back_channel);
+            CO_RETURN result;
         }
 
         // If the peer did not provide evidence, fall back to the local policy.
@@ -857,12 +990,12 @@ namespace rpc
         const auto no_evidence_decision = get_zone_security_policy()->evaluate_missing_peer_evidence();
         if (!no_evidence_decision.accepted)
         {
-            set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, no_evidence_decision.reason);
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN fail_claim(std::move(no_evidence_decision.reason), rpc::error::ZONE_NOT_SUPPORTED());
         }
 
-        set_route_unattested_allowed(route_zone_id, true);
-        CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
+        auto result = complete_unattested_claim();
+        result.out_back_channel = std::move(handshake.out_back_channel);
+        CO_RETURN result;
     }
 
     // Checks normal-mode reference/control routes without starting or waiting

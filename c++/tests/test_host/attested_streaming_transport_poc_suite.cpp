@@ -571,6 +571,37 @@ namespace
         {
         }
     };
+
+    class gated_handshake_transport final : public recording_reference_control_transport
+    {
+    public:
+        gated_handshake_transport(
+            rpc::zone zone_id,
+            rpc::zone adjacent_zone_id,
+            std::shared_ptr<coro::scheduler> scheduler)
+            : recording_reference_control_transport(
+                  zone_id,
+                  adjacent_zone_id)
+            , scheduler_(std::move(scheduler))
+        {
+        }
+
+        CORO_TASK(rpc::handshake_result) outbound_handshake(rpc::handshake_params) override
+        {
+            ++handshake_count;
+            handshake_started.store(true);
+            while (!release_handshake.load())
+                CO_AWAIT scheduler_->schedule_after(std::chrono::milliseconds{1});
+
+            CO_RETURN rpc::handshake_result{handshake_error_code, 0, {}, {}};
+        }
+
+        std::shared_ptr<coro::scheduler> scheduler_;
+        std::atomic_bool handshake_started{false};
+        std::atomic_bool release_handshake{false};
+        size_t handshake_count{0};
+        int handshake_error_code{rpc::error::TRANSPORT_ERROR()};
+    };
 #    endif
 
     class positive_zone_allocator_service final : public rpc::root_service
@@ -1356,6 +1387,85 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_stale_route_handshake_failure_does_not_overwrite_admitted_route(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto local_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto peer_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto service
+            = std::make_shared<rpc::enclave_service>("stale-route-handshake-initiator", local_zone, peer_zone, scheduler);
+        auto backend = std::make_shared<fake_backend>();
+        auto attestation_service
+            = make_test_attestation_service(backend, "stale-route-local-enclave", "stale-route-local-zone", true, true);
+        service->set_attestation_service(attestation_service);
+        service->set_add_ref_attestation_required(true);
+
+        auto transport = std::make_shared<gated_handshake_transport>(local_zone, peer_zone, scheduler);
+        service->add_transport(peer_zone, transport);
+
+        auto remote_object = peer_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(remote_object.has_value(), true);
+
+        int add_ref_error_code = rpc::error::TRANSPORT_ERROR();
+        std::atomic_bool add_ref_done{false};
+        auto add_ref_task = [&]() -> coro::task<void>
+        {
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = *remote_object;
+            params.caller_zone_id = local_zone;
+            params.requesting_zone_id = local_zone;
+            params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+
+            auto result = CO_AWAIT service->add_ref(std::move(params));
+            add_ref_error_code = result.error_code;
+            add_ref_done.store(true);
+            CO_RETURN;
+        };
+
+        CORO_ASSERT_EQ(service->spawn(add_ref_task()), true);
+
+        const auto handshaking_deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        auto route_state = service->get_attestation_route_state(peer_zone);
+        while ((!transport->handshake_started.load() || route_state.status != route_attestation_status::handshaking)
+               && std::chrono::steady_clock::now() < handshaking_deadline)
+        {
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+            route_state = service->get_attestation_route_state(peer_zone);
+        }
+
+        CORO_ASSERT_EQ(transport->handshake_started.load(), true);
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::handshaking);
+        CORO_ASSERT_EQ(route_state.next_transcript_id, 2U);
+
+        auto superseding_context = make_attested_security_context(
+            *attestation_service, identity{"superseding-peer-enclave", "superseding-peer-zone"}, 77);
+        CORO_ASSERT_EQ(superseding_context.established, true);
+        service->set_security_context(peer_zone, superseding_context);
+
+        transport->release_handshake.store(true);
+        const auto completion_deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!add_ref_done.load() && std::chrono::steady_clock::now() < completion_deadline)
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+
+        CORO_ASSERT_EQ(add_ref_done.load(), true);
+        CORO_ASSERT_EQ(add_ref_error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(transport->handshake_count, 1U);
+
+        route_state = service->get_attestation_route_state(peer_zone);
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::attested);
+        CORO_ASSERT_EQ(route_state.next_transcript_id, 2U);
+        CORO_ASSERT_EQ(route_state.context.has_value(), true);
+        CORO_ASSERT_EQ(route_state.context->established, true);
+        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"superseding-peer-enclave"});
+        CORO_ASSERT_EQ(route_state.context->transcript_id, 77U);
+
+        service->remove_transport(peer_zone);
+        std::static_pointer_cast<rpc::transport>(transport)->set_status(rpc::transport_status::DISCONNECTED);
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_stream_route_control_messages_remain_public_control(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -2056,6 +2166,31 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_stale_route_handshake_completion_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_stale_route_handshake_failure_does_not_overwrite_admitted_route(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_transport_final_control_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -2380,6 +2515,13 @@ TEST(
     ConcurrentAddRefsShareOneRouteHandshake)
 {
     run_concurrent_add_ref_route_handshake_test();
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    StaleRouteHandshakeFailureDoesNotOverwriteAdmittedRoute)
+{
+    run_stale_route_handshake_completion_test();
 }
 
 TEST(

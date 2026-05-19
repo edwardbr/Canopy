@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <unordered_map>
 
 namespace streaming
@@ -133,6 +134,22 @@ namespace rpc
             rpc::destination_zone route_zone_id,
             bool route_is_local,
             bool attestation_required) -> route_attestation_claim;
+        [[nodiscard]] auto fail_claimed_attestation_route(
+            rpc::destination_zone route_zone_id,
+            uint64_t transcript_id,
+            uint64_t previous_failure_epoch,
+            std::string reason) -> bool;
+        [[nodiscard]] auto complete_claimed_attestation_route(
+            rpc::destination_zone route_zone_id,
+            uint64_t transcript_id,
+            canopy::security::attestation::security_context context) -> bool;
+        [[nodiscard]] auto complete_claimed_unattested_route(
+            rpc::destination_zone route_zone_id,
+            uint64_t transcript_id) -> bool;
+        [[nodiscard]] auto result_for_superseded_add_ref_claim(
+            rpc::destination_zone route_zone_id,
+            const char* operation,
+            int fallback_error_code) const -> rpc::standard_result;
         [[nodiscard]] auto find_security_context_for_protected_call(
             rpc::caller_zone caller_zone_id,
             rpc::destination_zone destination_zone_id) const
