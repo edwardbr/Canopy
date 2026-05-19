@@ -95,6 +95,11 @@ namespace canopy::security::attestation
         return nonce;
     }
 
+    auto policy_allows_unattested_peer(const attestation_policy& policy) noexcept -> bool
+    {
+        return !policy.require_peer_evidence && policy.allow_unattested_peer;
+    }
+
     auto evaluate_route_attestation_state(const route_attestation_state& state) noexcept -> route_attestation_action
     {
         switch (state.status)
@@ -112,6 +117,69 @@ namespace canopy::security::attestation
             return route_attestation_action::reject;
         }
         return route_attestation_action::reject;
+    }
+
+    auto evaluate_reference_route_policy(const reference_route_policy_input& input) -> route_policy_decision
+    {
+        route_policy_decision decision;
+
+        if (!input.attestation_required)
+        {
+            decision.action = route_attestation_action::allow;
+            decision.reason = "route attestation is not required by policy";
+            return decision;
+        }
+
+        if (input.route_is_local)
+        {
+            decision.action = route_attestation_action::allow;
+            decision.reason = "route is local to this zone";
+            return decision;
+        }
+
+        decision.action = evaluate_route_attestation_state(input.state);
+        switch (decision.action)
+        {
+        case route_attestation_action::allow:
+            decision.reason = input.state.status == route_attestation_status::unattested_allowed
+                                  ? "route is explicitly allowed without attestation"
+                                  : "route has an established attestation context";
+            return decision;
+        case route_attestation_action::start_handshake:
+            if (!input.may_start_handshake)
+            {
+                // release, try_cast, and object_released are valid only after an
+                // add_ref established or explicitly allowed the route. Starting a
+                // new handshake from those operations would let a forged lifetime
+                // message create trust state out of order.
+                decision.action = route_attestation_action::reject;
+                decision.reason = "route has no completed add_ref attestation";
+                return decision;
+            }
+            decision.reason = "route requires attestation handshake";
+            return decision;
+        case route_attestation_action::wait_for_handshake:
+            decision.reason = "route attestation handshake is already in progress";
+            return decision;
+        case route_attestation_action::reject:
+            decision.reason = input.state.failure_reason.empty() ? "route attestation previously failed"
+                                                                 : input.state.failure_reason;
+            return decision;
+        }
+
+        decision.action = route_attestation_action::reject;
+        decision.reason = "route attestation state is invalid";
+        return decision;
+    }
+
+    auto evaluate_missing_peer_evidence_policy(const attestation_policy& policy) -> peer_evidence_policy_decision
+    {
+        peer_evidence_policy_decision decision;
+        decision.accepted = policy_allows_unattested_peer(policy);
+        decision.reason = decision.accepted
+                              ? "unattested route accepted by explicit policy"
+                              : "route attestation did not include peer evidence and policy requires evidence";
+        return decision;
     }
 
     attestation_service::attestation_service(attestation_service_options options)
@@ -151,7 +219,7 @@ namespace canopy::security::attestation
 
     auto attestation_service::allows_unattested_peer() const -> bool
     {
-        return options_.policy.allow_unattested_peer;
+        return policy_allows_unattested_peer(options_.policy);
     }
 
     auto attestation_service::supports_verifier_challenge() const -> bool

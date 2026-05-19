@@ -427,27 +427,31 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::OK(), {}};
         if (!route_zone_id.is_set())
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
-        if (route_zone_id == get_zone_id())
-            CO_RETURN standard_result{rpc::error::OK(), {}};
 
         auto state = get_attestation_route_state(route_zone_id);
-        const auto action = canopy::security::attestation::evaluate_route_attestation_state(state);
-        if (action == canopy::security::attestation::route_attestation_action::allow)
+        canopy::security::attestation::reference_route_policy_input policy_input;
+        policy_input.attestation_required = true;
+        policy_input.route_is_local = route_zone_id == get_zone_id();
+        policy_input.may_start_handshake = true;
+        policy_input.state = state;
+        const auto decision = canopy::security::attestation::evaluate_reference_route_policy(policy_input);
+        if (decision.action == canopy::security::attestation::route_attestation_action::allow)
         {
             // "allow" covers already-attested routes and routes explicitly marked
-            // unattested_allowed by local policy.
+            // unattested_allowed by local policy. It also covers local routes,
+            // where remote attestation is not the isolation boundary.
             CO_RETURN standard_result{rpc::error::OK(), {}};
         }
-        if (action == canopy::security::attestation::route_attestation_action::reject)
+        if (decision.action == canopy::security::attestation::route_attestation_action::reject)
         {
             RPC_WARNING(
                 "add_ref attestation rejected for route {} during {}: previous failure {}",
                 route_zone_id.get_subnet(),
                 operation,
-                state.failure_reason);
+                decision.reason);
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
-        if (action == canopy::security::attestation::route_attestation_action::wait_for_handshake)
+        if (decision.action == canopy::security::attestation::route_attestation_action::wait_for_handshake)
         {
             // A concurrent coroutine is already performing the handshake. For now
             // the conservative behaviour is to reject this add_ref rather than
@@ -667,13 +671,11 @@ namespace rpc
 
         // If the peer did not provide evidence, fall back to the local policy.
         // This is not treated as attested and will not produce a security_context.
-        if (service->requires_peer_evidence() || !service->allows_unattested_peer())
+        const auto no_evidence_decision
+            = canopy::security::attestation::evaluate_missing_peer_evidence_policy(service->policy());
+        if (!no_evidence_decision.accepted)
         {
-            set_failed_attestation_route(
-                *this,
-                route_zone_id,
-                state.failure_epoch,
-                "route attestation response did not include evidence and local policy does not allow unattested peers");
+            set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, no_evidence_decision.reason);
             CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
 
@@ -693,20 +695,23 @@ namespace rpc
             return standard_result{rpc::error::OK(), {}};
         if (!route_zone_id.is_set())
             return standard_result{rpc::error::INVALID_DATA(), {}};
-        if (route_zone_id == get_zone_id())
-            return standard_result{rpc::error::OK(), {}};
 
         auto state = get_attestation_route_state(route_zone_id);
-        const auto action = canopy::security::attestation::evaluate_route_attestation_state(state);
-        if (action == canopy::security::attestation::route_attestation_action::allow)
+        canopy::security::attestation::reference_route_policy_input policy_input;
+        policy_input.attestation_required = true;
+        policy_input.route_is_local = route_zone_id == get_zone_id();
+        policy_input.may_start_handshake = false;
+        policy_input.state = state;
+        const auto decision = canopy::security::attestation::evaluate_reference_route_policy(policy_input);
+        if (decision.action == canopy::security::attestation::route_attestation_action::allow)
             return standard_result{rpc::error::OK(), {}};
 
         RPC_WARNING(
-            "reference route attestation rejected for route {} during {}: status={}, previous failure {}",
+            "reference route attestation rejected for route {} during {}: status={}, reason {}",
             route_zone_id.get_subnet(),
             operation,
             static_cast<int>(state.status),
-            state.failure_reason);
+            decision.reason);
         return standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
     }
 
@@ -1000,9 +1005,18 @@ namespace rpc
             }
             peer_attested = true;
         }
-        else if (service->requires_peer_evidence() || !service->allows_unattested_peer())
+        else
         {
-            CO_RETURN fail("route attestation request did not include peer evidence and local policy does not allow unattested peers");
+            // A no-Evidence handshake is an explicit policy decision. It is
+            // useful for gateways and development clients, but it never creates
+            // a protected security_context and must not be confused with
+            // attested identity.
+            const auto no_evidence_decision
+                = canopy::security::attestation::evaluate_missing_peer_evidence_policy(service->policy());
+            if (!no_evidence_decision.accepted)
+            {
+                CO_RETURN fail(no_evidence_decision.reason);
+            }
         }
 
         if (service->should_send_local_evidence())

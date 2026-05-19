@@ -35,6 +35,8 @@ namespace
     using canopy::security::attestation::encrypt_aes_256_gcm;
     using canopy::security::attestation::encrypted_payload_type_id;
     using canopy::security::attestation::establish_session_params;
+    using canopy::security::attestation::evaluate_missing_peer_evidence_policy;
+    using canopy::security::attestation::evaluate_reference_route_policy;
     using canopy::security::attestation::evaluate_route_attestation_state;
     using canopy::security::attestation::evidence_binding;
     using canopy::security::attestation::fake_backend;
@@ -57,6 +59,7 @@ namespace
     using canopy::security::attestation::protect_try_cast_request;
     using canopy::security::attestation::protected_key_scope;
     using canopy::security::attestation::protected_rpc_direction;
+    using canopy::security::attestation::reference_route_policy_input;
     using canopy::security::attestation::route_attestation_action;
     using canopy::security::attestation::route_attestation_state;
     using canopy::security::attestation::route_attestation_status;
@@ -412,6 +415,58 @@ TEST(
 
     state.context->established = false;
     EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+}
+
+TEST(
+    AttestationService,
+    ReferenceRoutePolicySeparatesAddRefHandshakeFromExistingReferenceControl)
+{
+    reference_route_policy_input input;
+    input.attestation_required = false;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.attestation_required = true;
+    input.route_is_local = true;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.route_is_local = false;
+    input.may_start_handshake = true;
+    input.state.status = route_attestation_status::unknown;
+    auto add_ref_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(add_ref_decision.action, route_attestation_action::start_handshake);
+
+    input.may_start_handshake = false;
+    auto existing_control_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(existing_control_decision.action, route_attestation_action::reject);
+    EXPECT_NE(existing_control_decision.reason.find("completed add_ref"), std::string::npos)
+        << existing_control_decision.reason;
+
+    input.state.status = route_attestation_status::unattested_allowed;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.state.status = route_attestation_status::failed;
+    input.state.failure_reason = "policy rejected route";
+    auto failed_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(failed_decision.action, route_attestation_action::reject);
+    EXPECT_EQ(failed_decision.reason, input.state.failure_reason);
+}
+
+TEST(
+    AttestationService,
+    MissingPeerEvidenceRequiresExplicitTwoPartPolicy)
+{
+    attestation_policy policy;
+
+    auto default_decision = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_FALSE(default_decision.accepted);
+
+    policy.allow_unattested_peer = true;
+    auto still_rejected = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_FALSE(still_rejected.accepted);
+
+    policy.require_peer_evidence = false;
+    auto accepted = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_TRUE(accepted.accepted);
 }
 
 TEST(
