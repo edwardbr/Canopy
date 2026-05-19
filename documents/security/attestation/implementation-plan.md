@@ -334,6 +334,14 @@ policy-hardening work described in the remaining phases.
   completion leaves the newer state intact. Runtime coverage blocks an
   `add_ref` handshake, publishes a superseding attested context, then releases
   the stale handshake to fail and verifies the route remains admitted.
+- Inbound route-handshake state updates are now fail-closed without being
+  destructive to better state. A failed inbound handshake may mark an unknown
+  route failed, but it cannot overwrite an already admitted route or an
+  in-progress outbound transcript. A later no-Evidence inbound handshake also
+  cannot downgrade an attested route to `unattested_allowed`; re-attestation or
+  downgrade needs an explicit future protocol. Runtime coverage verifies both
+  a failed inbound handshake and an allowed no-Evidence inbound handshake
+  preserve the existing attested context.
 - Connection setup now carries an explicit `connection_settings::encoding_type`
   from the caller's service default into `transport::connect()`,
   `inner_connect()`, stream `init_client_channel_send`, `attach_remote_zone()`,
@@ -1402,6 +1410,14 @@ audit, and operational tooling.
 - Audit logging path that emits `security_failure_context` back-channel
   entries on policy failure, with field redaction applied per
   `failure-policy.md`.
+- Route-state DDoS hardening: `attestation_route_states_` must not grow
+  without bound from unauthenticated handshakes or forged `add_ref` route
+  subjects. Add per-service caps for total route states, handshaking states,
+  and failed unauthenticated states; add TTL/LRU eviction for failed unknown
+  routes; limit concurrent route handshakes; and return
+  `RESOURCE_EXHAUSTED()` or another public control error without storing new
+  state once policy limits are reached. Established attested contexts should
+  not be evicted by unauthenticated traffic.
 - TCB collateral freshness: a scheduled task inside the enclave that
   asks the host to refresh PCCS collateral on a known cadence; refusal
   to accept stale collateral past the policy window.

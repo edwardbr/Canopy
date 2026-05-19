@@ -314,6 +314,22 @@ namespace
         return payload.has_value() && is_valid_encrypted_payload(payload->get_payload(), payload->get_encoding());
     }
 
+    auto make_route_handshake_params(
+        rpc::caller_zone caller_zone_id,
+        rpc::destination_zone destination_zone_id,
+        const rpc::route_attestation_handshake_request& request,
+        rpc::encoding payload_encoding = rpc::encoding::yas_binary) -> rpc::handshake_params
+    {
+        rpc::handshake_params params;
+        params.protocol_version = rpc::get_version();
+        params.caller_zone_id = caller_zone_id;
+        params.destination_zone_id = destination_zone_id;
+        params.type_id = rpc::id<rpc::route_attestation_handshake_request>::get(params.protocol_version);
+        params.payload_encoding = payload_encoding;
+        params.payload = rpc::serialise<std::vector<char>>(request, payload_encoding);
+        return params;
+    }
+
     auto is_valid_public_control_status(int error_code) -> bool
     {
         return error_code == rpc::error::OK() || rpc::error::is_error(error_code);
@@ -1466,6 +1482,83 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_inbound_failed_handshake_does_not_overwrite_admitted_route(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto local_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto peer_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto service = std::make_shared<rpc::enclave_service>(
+            "inbound-failed-handshake-preserves-route", local_zone, peer_zone, scheduler);
+        auto backend = std::make_shared<fake_backend>();
+        auto attestation_service = make_test_attestation_service(
+            backend, "inbound-failed-local-enclave", "inbound-failed-local-zone", true, true);
+        auto established_context = make_attested_security_context(
+            *attestation_service, identity{"existing-peer-enclave", "existing-peer-zone"}, 91);
+        CORO_ASSERT_EQ(established_context.established, true);
+        service->set_security_context(peer_zone, established_context);
+
+        rpc::route_attestation_handshake_request request;
+        request.transcript_id = 1;
+        request.claimant = rpc::attestation_identity{"rejected-peer-enclave", "rejected-peer-zone"};
+
+        auto response = CO_AWAIT service->handshake(make_route_handshake_params(peer_zone, local_zone, request));
+        CORO_ASSERT_EQ(response.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(response.type_id, rpc::id<rpc::route_attestation_handshake_response>::get(rpc::get_version()));
+
+        rpc::route_attestation_handshake_response decoded_response;
+        CORO_ASSERT_EQ(
+            rpc::deserialise(rpc::encoding::yas_binary, rpc::byte_span(response.payload), decoded_response).empty(), true);
+        CORO_ASSERT_EQ(decoded_response.accepted, 0U);
+
+        auto route_state = service->get_attestation_route_state(peer_zone);
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::attested);
+        CORO_ASSERT_EQ(route_state.context.has_value(), true);
+        CORO_ASSERT_EQ(route_state.context->established, true);
+        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"existing-peer-enclave"});
+        CORO_ASSERT_EQ(route_state.context->transcript_id, 91U);
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_inbound_no_evidence_handshake_does_not_downgrade_attested_route(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto local_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto peer_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto service = std::make_shared<rpc::enclave_service>(
+            "inbound-no-evidence-handshake-preserves-route", local_zone, peer_zone, scheduler);
+        auto backend = std::make_shared<fake_backend>();
+        auto attestation_service = make_test_attestation_service(
+            backend, "inbound-no-evidence-local-enclave", "inbound-no-evidence-local-zone", false, false, true);
+        service->set_attestation_service(attestation_service);
+
+        auto established_context = make_attested_security_context(
+            *attestation_service, identity{"existing-attested-peer-enclave", "existing-attested-peer-zone"}, 92);
+        CORO_ASSERT_EQ(established_context.established, true);
+        service->set_security_context(peer_zone, established_context);
+
+        rpc::route_attestation_handshake_request request;
+        request.transcript_id = 2;
+        request.claimant = rpc::attestation_identity{"unattested-peer-enclave", "unattested-peer-zone"};
+
+        auto response = CO_AWAIT service->handshake(make_route_handshake_params(peer_zone, local_zone, request));
+        CORO_ASSERT_EQ(response.error_code, rpc::error::OK());
+
+        rpc::route_attestation_handshake_response decoded_response;
+        CORO_ASSERT_EQ(
+            rpc::deserialise(rpc::encoding::yas_binary, rpc::byte_span(response.payload), decoded_response).empty(), true);
+        CORO_ASSERT_EQ(decoded_response.accepted, 1U);
+
+        auto route_state = service->get_attestation_route_state(peer_zone);
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::attested);
+        CORO_ASSERT_EQ(route_state.context.has_value(), true);
+        CORO_ASSERT_EQ(route_state.context->established, true);
+        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"existing-attested-peer-enclave"});
+        CORO_ASSERT_EQ(route_state.context->transcript_id, 92U);
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_stream_route_control_messages_remain_public_control(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -2191,6 +2284,56 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_inbound_failed_handshake_preserves_admitted_route_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_inbound_failed_handshake_does_not_overwrite_admitted_route(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
+    void run_inbound_no_evidence_handshake_preserves_attested_route_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_inbound_no_evidence_handshake_does_not_downgrade_attested_route(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_transport_final_control_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -2522,6 +2665,20 @@ TEST(
     StaleRouteHandshakeFailureDoesNotOverwriteAdmittedRoute)
 {
     run_stale_route_handshake_completion_test();
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    InboundFailedHandshakeDoesNotOverwriteAdmittedRoute)
+{
+    run_inbound_failed_handshake_preserves_admitted_route_test();
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    InboundNoEvidenceHandshakeDoesNotDowngradeAttestedRoute)
+{
+    run_inbound_no_evidence_handshake_preserves_attested_route_test();
 }
 
 TEST(

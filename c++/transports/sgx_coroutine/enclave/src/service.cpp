@@ -228,30 +228,6 @@ namespace rpc
                 rpc::error::OK(), route_attestation_response_type_id(protocol_version), std::move(payload.value()), {}};
         }
 
-        // Marks a route as failed after an unsuccessful handshake step.
-        void set_failed_attestation_route(
-            rpc::enclave_service& service,
-            rpc::destination_zone route_zone_id,
-            uint64_t previous_failure_epoch,
-            std::string reason)
-        {
-            // Failed routes are remembered. That prevents a caller from forcing
-            // this service to re-run expensive evidence parsing or key setup on
-            // every add_ref attempt unless policy explicitly resets the state.
-            if (!route_zone_id.is_set())
-                return;
-
-            const auto current_state = service.get_attestation_route_state(route_zone_id);
-            canopy::security::attestation::route_attestation_state failed_state;
-            failed_state.status = canopy::security::attestation::route_attestation_status::failed;
-            failed_state.failure_epoch = (current_state.failure_epoch > previous_failure_epoch ? current_state.failure_epoch
-                                                                                               : previous_failure_epoch)
-                                         + 1;
-            failed_state.failure_reason = std::move(reason);
-            failed_state.next_transcript_id = current_state.next_transcript_id;
-            service.set_attestation_route_state(route_zone_id, std::move(failed_state));
-        }
-
         // Removes application-private success/failure codes from public control
         // responses that may be visible to route intermediates.
         [[nodiscard]] auto sanitise_public_control_result(
@@ -301,6 +277,14 @@ namespace rpc
             return transcript_id != 0 && transcript_id != std::numeric_limits<uint64_t>::max()
                    && state.status == canopy::security::attestation::route_attestation_status::handshaking
                    && state.next_transcript_id == transcript_id + 1;
+        }
+
+        [[nodiscard]] auto route_attestation_state_is_admitted(
+            const canopy::security::attestation::route_attestation_state& state) -> bool
+        {
+            using canopy::security::attestation::route_attestation_status;
+            return (state.status == route_attestation_status::attested && state.context && state.context->established)
+                   || state.status == route_attestation_status::unattested_allowed;
         }
     }
 
@@ -675,6 +659,99 @@ namespace rpc
         canopy::security::attestation::route_attestation_state completed_state;
         completed_state.status = canopy::security::attestation::route_attestation_status::unattested_allowed;
         completed_state.next_transcript_id = item->second.next_transcript_id;
+        attestation_route_states_[route_zone_id] = std::move(completed_state);
+        return true;
+    }
+
+    // Records an inbound handshake failure only when doing so cannot destroy a
+    // better route state. Inbound handshakes are unauthenticated until their
+    // evidence verifies, so a stale or malicious failure must not downgrade an
+    // already admitted route or an outbound transcript that is still running.
+    auto enclave_service::record_inbound_attestation_failure(
+        rpc::destination_zone route_zone_id,
+        std::string reason) -> bool
+    {
+        if (!route_zone_id.is_set())
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item != attestation_route_states_.end())
+        {
+            const auto& current = item->second;
+            if (route_attestation_state_is_admitted(current)
+                || current.status == canopy::security::attestation::route_attestation_status::handshaking)
+            {
+                return false;
+            }
+        }
+
+        canopy::security::attestation::route_attestation_state failed_state;
+        if (item != attestation_route_states_.end())
+        {
+            failed_state.failure_epoch = item->second.failure_epoch + 1;
+            failed_state.next_transcript_id = item->second.next_transcript_id;
+        }
+        else
+        {
+            failed_state.failure_epoch = 1;
+        }
+        failed_state.status = canopy::security::attestation::route_attestation_status::failed;
+        failed_state.failure_reason = std::move(reason);
+        attestation_route_states_[route_zone_id] = std::move(failed_state);
+        return true;
+    }
+
+    // Stores an inbound attested context unless the route is already admitted or
+    // has been explicitly failed. Existing admitted routes are preserved until a
+    // future re-attestation protocol intentionally claims replacement.
+    auto enclave_service::complete_inbound_attestation_route(
+        rpc::destination_zone route_zone_id,
+        canopy::security::attestation::security_context context) -> bool
+    {
+        if (!route_zone_id.is_set() || !context.established)
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item != attestation_route_states_.end())
+        {
+            if (route_attestation_state_is_admitted(item->second))
+                return true;
+            if (item->second.status == canopy::security::attestation::route_attestation_status::failed)
+                return false;
+        }
+
+        canopy::security::attestation::route_attestation_state completed_state;
+        if (item != attestation_route_states_.end())
+            completed_state.next_transcript_id = item->second.next_transcript_id;
+        completed_state.status = canopy::security::attestation::route_attestation_status::attested;
+        completed_state.context = std::move(context);
+        attestation_route_states_[route_zone_id] = std::move(completed_state);
+        return true;
+    }
+
+    // Stores an explicit no-Evidence admission without downgrading an already
+    // attested route. No-Evidence admission never creates key material.
+    auto enclave_service::complete_inbound_unattested_route(rpc::destination_zone route_zone_id) -> bool
+    {
+        if (!route_zone_id.is_set())
+            return false;
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        auto item = attestation_route_states_.find(route_zone_id);
+        if (item != attestation_route_states_.end())
+        {
+            if (route_attestation_state_is_admitted(item->second))
+                return true;
+            if (item->second.status == canopy::security::attestation::route_attestation_status::failed)
+                return false;
+        }
+
+        canopy::security::attestation::route_attestation_state completed_state;
+        if (item != attestation_route_states_.end())
+            completed_state.next_transcript_id = item->second.next_transcript_id;
+        completed_state.status = canopy::security::attestation::route_attestation_status::unattested_allowed;
         attestation_route_states_[route_zone_id] = std::move(completed_state);
         return true;
     }
@@ -1301,10 +1378,16 @@ namespace rpc
 
         auto fail = [&](std::string reason) -> handshake_result
         {
-            // A failed inbound handshake is recorded against the caller route.
-            // That prevents repeated unauthenticated handshakes from being
-            // silently retried through later reference-control messages.
-            set_failed_attestation_route(*this, params.caller_zone_id, 0, reason);
+            // A failed inbound handshake can only mark an unknown/failed route.
+            // It must not poison a route that was already admitted by a stream
+            // context, a previous route handshake, or an outbound handshake that
+            // is still in progress.
+            if (!record_inbound_attestation_failure(params.caller_zone_id, reason))
+            {
+                RPC_DEBUG(
+                    "ignored inbound route attestation failure for already-active route {}",
+                    std::to_string(params.caller_zone_id));
+            }
             auto response = make_failed_handshake_response(
                 params.protocol_version, request.transcript_id, std::move(reason), responder_identity);
             return make_route_attestation_handshake_result(
@@ -1416,13 +1499,15 @@ namespace rpc
             {
                 CO_RETURN fail("route attestation session establishment failed");
             }
-            set_security_context(params.caller_zone_id, std::move(context));
+            if (!complete_inbound_attestation_route(params.caller_zone_id, std::move(context)))
+                CO_RETURN fail("route attestation route state rejected inbound context");
         }
         else
         {
             // Policy accepted this caller without evidence. Track that explicit
             // decision, but do not manufacture protected-RPC key material.
-            set_route_unattested_allowed(params.caller_zone_id, true);
+            if (!complete_inbound_unattested_route(params.caller_zone_id))
+                CO_RETURN fail("route attestation route state rejected inbound no-evidence admission");
         }
 
         response.accepted = route_attestation_flag_true;

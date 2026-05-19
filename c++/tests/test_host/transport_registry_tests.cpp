@@ -156,7 +156,11 @@ namespace
 
         CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
         {
-            std::ignore = params;
+            ++outbound_add_ref_count;
+            last_add_ref_remote_object = params.remote_object_id;
+            last_add_ref_caller_zone = params.caller_zone_id;
+            last_add_ref_requesting_zone = params.requesting_zone_id;
+            last_add_ref_options = params.build_out_param_channel;
             CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
         }
 
@@ -179,11 +183,41 @@ namespace
         }
 
         uint64_t outbound_send_count{0};
+        uint64_t outbound_add_ref_count{0};
         rpc::remote_object last_send_remote_object;
         rpc::caller_zone last_send_caller_zone;
+        rpc::remote_object last_add_ref_remote_object;
+        rpc::caller_zone last_add_ref_caller_zone;
+        rpc::requesting_zone last_add_ref_requesting_zone;
+        rpc::add_ref_options last_add_ref_options{rpc::add_ref_options::normal};
     };
 
 #ifdef CANOPY_BUILD_COROUTINE
+    bool run_inbound_add_ref_for_test(
+        const std::shared_ptr<rpc::transport>& transport,
+        rpc::add_ref_params params,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        int error_code = rpc::error::CALL_TIMEOUT();
+        auto task = [&]() -> coro::task<void>
+        {
+            auto result = CO_AWAIT transport->inbound_add_ref(std::move(params));
+            error_code = result.error_code;
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return false;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return done.load() && error_code == rpc::error::OK();
+    }
+
     bool run_notify_transport_down_for_test(
         const std::shared_ptr<rpc::service>& service,
         const std::shared_ptr<rpc::transport>& transport,
@@ -208,6 +242,14 @@ namespace
         return done.load();
     }
 #else
+    bool run_inbound_add_ref_for_test(
+        const std::shared_ptr<rpc::transport>& transport,
+        rpc::add_ref_params params)
+    {
+        auto result = transport->inbound_add_ref(std::move(params));
+        return result.error_code == rpc::error::OK();
+    }
+
     bool run_notify_transport_down_for_test(
         const std::shared_ptr<rpc::service>& service,
         const std::shared_ptr<rpc::transport>& transport,
@@ -267,6 +309,56 @@ namespace
     }
 #endif
 } // namespace
+
+TEST(
+    transport_registry_tests,
+    third_direction_add_ref_uses_requesting_route_without_adjacent_identity_assumption)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-third-direction-add-ref", scheduler);
+#else
+    auto service = make_test_service("transport-registry-third-direction-add-ref");
+#endif
+    auto intermediate_zone = rpc::destination_zone{make_local_zone_address(50)};
+    auto caller_zone = rpc::caller_zone{make_local_zone_address(51)};
+    auto destination_zone = rpc::destination_zone{make_local_zone_address(52)};
+
+    auto incoming_transport = std::make_shared<registry_test_transport>("incoming-from-intermediate", service);
+    incoming_transport->set_adjacent_zone_id(intermediate_zone);
+    EXPECT_EQ(service->add_transport(intermediate_zone, incoming_transport).get(), incoming_transport.get());
+
+    auto remote_object = destination_zone.with_object(rpc::dummy_object_id);
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = *remote_object;
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = intermediate_zone;
+    params.build_out_param_channel
+        = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_TRUE(run_inbound_add_ref_for_test(incoming_transport, std::move(params), scheduler));
+#else
+    EXPECT_TRUE(run_inbound_add_ref_for_test(incoming_transport, std::move(params)));
+#endif
+
+    EXPECT_EQ(service->get_transport(destination_zone).get(), incoming_transport.get());
+    EXPECT_EQ(service->get_transport(caller_zone).get(), incoming_transport.get());
+    EXPECT_EQ(incoming_transport->outbound_add_ref_count, 1U);
+    EXPECT_EQ(incoming_transport->last_add_ref_remote_object, *remote_object);
+    EXPECT_EQ(incoming_transport->last_add_ref_caller_zone, caller_zone);
+    EXPECT_EQ(incoming_transport->last_add_ref_requesting_zone, intermediate_zone);
+    EXPECT_EQ(
+        incoming_transport->last_add_ref_options,
+        rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route);
+
+    service->remove_transport(destination_zone);
+    service->remove_transport(caller_zone);
+    service->remove_transport(intermediate_zone);
+}
 
 TEST(
     transport_registry_tests,

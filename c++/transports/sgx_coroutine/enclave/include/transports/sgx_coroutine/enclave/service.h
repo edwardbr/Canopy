@@ -146,6 +146,13 @@ namespace rpc
         [[nodiscard]] auto complete_claimed_unattested_route(
             rpc::destination_zone route_zone_id,
             uint64_t transcript_id) -> bool;
+        [[nodiscard]] auto record_inbound_attestation_failure(
+            rpc::destination_zone route_zone_id,
+            std::string reason) -> bool;
+        [[nodiscard]] auto complete_inbound_attestation_route(
+            rpc::destination_zone route_zone_id,
+            canopy::security::attestation::security_context context) -> bool;
+        [[nodiscard]] auto complete_inbound_unattested_route(rpc::destination_zone route_zone_id) -> bool;
         [[nodiscard]] auto result_for_superseded_add_ref_claim(
             rpc::destination_zone route_zone_id,
             const char* operation,
