@@ -11,12 +11,19 @@
 #include <security/attestation/simulation_backend.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
+
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
+#  include <sgx_utils.h>
+#endif
 
 namespace
 {
@@ -26,6 +33,7 @@ namespace
     // evidence inside an enclave.
     constexpr uint64_t test_transcript_id = 0x51584753494dULL;
     constexpr uint64_t expected_sha256_digest_size = 32;
+    constexpr size_t sgx_report_data_size = 64;
 
     [[nodiscard]] auto make_binding() -> canopy::security::attestation::evidence_binding
     {
@@ -52,6 +60,36 @@ namespace
         policy.minimum_security_level = canopy::security::attestation::security_level::simulation;
         policy.allow_development_evidence = true;
         return policy;
+    }
+
+    template<typename T> [[nodiscard]] auto bytes_from_trivial_object(const T& value) -> std::vector<uint8_t>
+    {
+        static_assert(std::is_trivially_copyable_v<T>, "SGX report carrier must be trivially copyable");
+        const auto* begin = reinterpret_cast<const uint8_t*>(&value);
+        return std::vector<uint8_t>(begin, begin + sizeof(T));
+    }
+
+    template<typename T>
+    [[nodiscard]] auto trivial_object_from_bytes(
+        const std::vector<uint8_t>& bytes,
+        T& value) -> bool
+    {
+        static_assert(std::is_trivially_copyable_v<T>, "SGX report carrier must be trivially copyable");
+        if (bytes.size() != sizeof(T))
+            return false;
+        std::memcpy(&value, bytes.data(), sizeof(T));
+        return true;
+    }
+
+    [[nodiscard]] auto make_report_data(uint8_t challenge_seed) -> std::vector<uint8_t>
+    {
+        // SGX report_data is the application-controlled transcript binding in
+        // SGX local attestation. The host test asks the verifier enclave to
+        // create this challenge so the prover cannot pick a convenient value.
+        std::vector<uint8_t> report_data(sgx_report_data_size);
+        for (size_t index = 0; index < report_data.size(); ++index)
+            report_data[index] = static_cast<uint8_t>(challenge_seed + index);
+        return report_data;
     }
 
     class attestation_enclave_test final
@@ -101,11 +139,10 @@ namespace
             details.development_signature_size = parsed.development_signature.size();
             details.producer_verified_report = parsed.report_verified_by_producer != 0;
 
-            // Run the normal verifier path as well. In the current SIM
-            // implementation the report is self-targeted, so the same enclave
-            // can locally verify it with sgx_verify_report. Future peer-targeted
-            // local-attestation tests should replace this with target-info
-            // exchange between two enclaves.
+            // Run the normal verifier path as well. This method is a backend
+            // self-check, so the report is self-targeted and verified inside
+            // the same enclave. The peer-targeted test methods below exercise
+            // the SGX local-attestation target-info exchange between enclaves.
             auto verdict = backend.verify_evidence(evidence, binding, make_policy());
             details.verifier_accepted_report = verdict.accepted;
             details.verifier_reason = std::move(verdict.reason);
@@ -125,6 +162,105 @@ namespace
             // The dedicated host test skips unless CANOPY_ATTESTATION_BACKEND
             // selects SGX_SIM. Keep the enclave method available in other test
             // builds so the generated interface remains buildable everywhere.
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+#endif
+        }
+
+        CORO_TASK(int)
+        sgx_sim_make_local_attestation_challenge(
+            uint8_t challenge_seed,
+            attestation_test::sgx_sim_local_attestation_challenge& challenge) override
+        {
+            challenge = {};
+
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
+            // sgx_target_info_t identifies the verifier enclave for SGX local
+            // attestation. The host is allowed to relay these public bytes; it
+            // cannot use them to forge a valid report for this enclave.
+            sgx_target_info_t target_info{};
+            if (sgx_self_target(&target_info) != SGX_SUCCESS)
+                CO_RETURN rpc::error::TRANSPORT_ERROR();
+            challenge.target_info = bytes_from_trivial_object(target_info);
+            challenge.report_data = make_report_data(challenge_seed);
+            CO_RETURN rpc::error::OK();
+#else
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+#endif
+        }
+
+        CORO_TASK(int)
+        sgx_sim_make_local_attestation_report(
+            const attestation_test::sgx_sim_local_attestation_challenge& challenge,
+            attestation_test::sgx_sim_local_attestation_report& report_message) override
+        {
+            report_message = {};
+
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
+            // The verifier supplies target_info; this prover creates a report
+            // that only the verifier enclave should be able to validate with
+            // sgx_verify_report. Keep report_data exact-size to avoid silent
+            // truncation or accidental zero-extension in the test.
+            if (challenge.report_data.size() != sgx_report_data_size)
+                CO_RETURN rpc::error::INVALID_DATA();
+
+            sgx_target_info_t target_info{};
+            if (!trivial_object_from_bytes(challenge.target_info, target_info))
+                CO_RETURN rpc::error::INVALID_DATA();
+
+            sgx_report_data_t sgx_report_data{};
+            std::copy(challenge.report_data.begin(), challenge.report_data.end(), sgx_report_data.d);
+
+            sgx_report_t report{};
+            if (sgx_create_report(&target_info, &sgx_report_data, &report) != SGX_SUCCESS)
+                CO_RETURN rpc::error::TRANSPORT_ERROR();
+
+            report_message.report = bytes_from_trivial_object(report);
+            CO_RETURN rpc::error::OK();
+#else
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+#endif
+        }
+
+        CORO_TASK(int)
+        sgx_sim_verify_local_attestation_report(
+            const attestation_test::sgx_sim_local_attestation_report& report_message,
+            const attestation_test::sgx_sim_local_attestation_challenge& challenge,
+            attestation_test::sgx_sim_local_attestation_verification& verification) override
+        {
+            verification = {};
+            verification.report_size = report_message.report.size();
+            verification.expected_report_data_size = challenge.report_data.size();
+
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
+            if (challenge.report_data.size() != sgx_report_data_size)
+            {
+                verification.failure_reason = "expected report_data must be exactly 64 bytes";
+                CO_RETURN rpc::error::INVALID_DATA();
+            }
+
+            sgx_report_t report{};
+            if (!trivial_object_from_bytes(report_message.report, report))
+            {
+                verification.failure_reason = "report blob is not an sgx_report_t";
+                CO_RETURN rpc::error::INVALID_DATA();
+            }
+
+            // SGX authenticates the report, but the application still has to
+            // check that report_data contains the transcript/hash it expected.
+            verification.report_data_matched
+                = std::equal(challenge.report_data.begin(), challenge.report_data.end(), report.body.report_data.d);
+
+            verification.sgx_verify_report_succeeded = sgx_verify_report(&report) == SGX_SUCCESS;
+            verification.accepted = verification.report_data_matched && verification.sgx_verify_report_succeeded;
+            if (!verification.accepted)
+            {
+                verification.failure_reason = verification.report_data_matched
+                                                  ? "sgx_verify_report rejected the peer report"
+                                                  : "report_data did not match the expected transcript binding";
+            }
+            CO_RETURN rpc::error::OK();
+#else
+            verification.failure_reason = "SGX SIM local attestation is not available in this build";
             CO_RETURN rpc::error::NOT_IMPLEMENTED();
 #endif
         }
