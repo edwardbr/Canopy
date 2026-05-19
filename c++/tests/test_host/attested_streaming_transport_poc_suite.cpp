@@ -60,6 +60,8 @@ namespace
     constexpr uint64_t enclave_local_subject_zone_subnet = 8192;
     constexpr uint64_t enclave_local_adjacent_zone_subnet = 8193;
     constexpr uint64_t enclave_local_referenced_zone_subnet = 8194;
+    constexpr uint64_t concurrent_route_first_object_id = 201;
+    constexpr uint64_t concurrent_route_second_object_id = 202;
     constexpr int enclave_local_post_message_value = 77;
 
     auto make_test_attestation_service(
@@ -1219,6 +1221,141 @@ namespace
     }
 
     CORO_TASK(bool)
+    coro_concurrent_add_refs_share_service_level_route_handshake(const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto responder_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto initiator_service = std::make_shared<rpc::enclave_service>(
+            "concurrent-route-initiator", initiator_zone, responder_zone, scheduler);
+        auto responder_service = std::make_shared<rpc::enclave_service>(
+            "concurrent-route-responder", responder_zone, initiator_zone, scheduler);
+
+        auto backend = std::make_shared<fake_backend>();
+        initiator_service->set_attestation_service(make_test_attestation_service(
+            backend, "concurrent-initiator-enclave", "concurrent-initiator-zone", true, true));
+        responder_service->set_attestation_service(make_test_attestation_service(
+            backend, "concurrent-responder-enclave", "concurrent-responder-zone", true, true));
+        initiator_service->set_add_ref_attestation_required(true);
+        responder_service->set_add_ref_attestation_required(true);
+
+        auto send_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto receive_queue = std::make_shared<streaming::spsc_queue::queue_type>();
+        auto initiator_stream = std::make_shared<streaming::spsc_queue::stream>(send_queue, receive_queue, scheduler);
+        auto responder_stream = std::make_shared<streaming::spsc_queue::stream>(receive_queue, send_queue, scheduler);
+
+        rpc::stream_transport::stream_transport_options options{
+            .call_timeout = service_level_route_call_timeout,
+            .call_timeout_sweep = service_level_route_call_timeout_sweep,
+        };
+        auto initiator_transport = rpc::stream_transport::make_client(
+            "concurrent-route-initiator-transport", initiator_service, std::move(initiator_stream), options);
+        auto responder_transport = rpc::stream_transport::make_client(
+            "concurrent-route-responder-transport", responder_service, std::move(responder_stream), options);
+        initiator_transport->set_adjacent_zone_id(responder_zone);
+        responder_transport->set_adjacent_zone_id(initiator_zone);
+        initiator_service->add_transport(responder_zone, initiator_transport);
+        responder_service->add_transport(initiator_zone, responder_transport);
+
+        // Delay the first route-handshake request before builtin dispatch. This
+        // gives the test a deterministic window where the first add_ref owns the
+        // handshake and the second add_ref must wait on the same route state
+        // instead of starting a duplicate transcript.
+        std::atomic_bool delayed_first_handshake{false};
+        responder_transport->add_typed_message_handler<rpc::stream_transport::handshake_send>(
+            [&scheduler, &delayed_first_handshake](
+                auto, const auto&, const auto&, const rpc::stream_transport::handshake_send&)
+                -> CORO_TASK(rpc::stream_transport::transport::message_hook_result)
+            {
+                if (!delayed_first_handshake.exchange(true))
+                    CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{5});
+                CO_RETURN rpc::stream_transport::transport::message_hook_result::unhandled;
+            });
+
+        protected_rpc_runtime_observer observer;
+        install_protected_rpc_runtime_observers(initiator_transport, responder_transport, observer);
+
+        CORO_ASSERT_EQ(initiator_service->spawn(initiator_transport->pump_send_and_receive()), true);
+        CORO_ASSERT_EQ(responder_service->spawn(responder_transport->pump_send_and_receive()), true);
+
+        auto first_remote_object = responder_zone.with_object(concurrent_route_first_object_id);
+        auto second_remote_object = responder_zone.with_object(concurrent_route_second_object_id);
+        CORO_ASSERT_EQ(first_remote_object.has_value(), true);
+        CORO_ASSERT_EQ(second_remote_object.has_value(), true);
+
+        auto make_add_ref_params = [&](rpc::remote_object remote_object_id) -> rpc::add_ref_params
+        {
+            rpc::add_ref_params params;
+            params.protocol_version = rpc::get_version();
+            params.remote_object_id = remote_object_id;
+            params.caller_zone_id = initiator_zone;
+            params.requesting_zone_id = initiator_zone;
+            params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+            return params;
+        };
+
+        int first_error_code = rpc::error::TRANSPORT_ERROR();
+        std::atomic_bool first_done{false};
+        auto first_add_ref_task = [&]() -> coro::task<void>
+        {
+            auto result = CO_AWAIT initiator_service->add_ref(make_add_ref_params(*first_remote_object));
+            first_error_code = result.error_code;
+            first_done.store(true);
+            CO_RETURN;
+        };
+
+        CORO_ASSERT_EQ(initiator_service->spawn(first_add_ref_task()), true);
+
+        const auto handshaking_deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        auto route_state = initiator_service->get_attestation_route_state(responder_zone);
+        while (route_state.status != route_attestation_status::handshaking
+               && std::chrono::steady_clock::now() < handshaking_deadline)
+        {
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+            route_state = initiator_service->get_attestation_route_state(responder_zone);
+        }
+
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::handshaking);
+        CORO_ASSERT_EQ(route_state.next_transcript_id, 2U);
+        CORO_ASSERT_EQ(route_state.context.has_value(), false);
+        CORO_ASSERT_EQ(first_done.load(), false);
+
+        auto second_result = CO_AWAIT initiator_service->add_ref(make_add_ref_params(*second_remote_object));
+        CORO_ASSERT_EQ(second_result.error_code, rpc::error::OK());
+
+        const auto first_done_deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!first_done.load() && std::chrono::steady_clock::now() < first_done_deadline)
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+
+        CORO_ASSERT_EQ(first_done.load(), true);
+        CORO_ASSERT_EQ(first_error_code, rpc::error::OK());
+
+        auto initiator_state = initiator_service->get_attestation_route_state(responder_zone);
+        auto responder_state = responder_service->get_attestation_route_state(initiator_zone);
+        CORO_ASSERT_EQ(initiator_state.status, route_attestation_status::attested);
+        CORO_ASSERT_EQ(responder_state.status, route_attestation_status::attested);
+        CORO_ASSERT_EQ(initiator_state.next_transcript_id, 2U);
+        CORO_ASSERT_EQ(responder_state.next_transcript_id, 1U);
+        CORO_ASSERT_EQ(initiator_state.context && initiator_state.context->established, true);
+        CORO_ASSERT_EQ(responder_state.context && responder_state.context->established, true);
+        CORO_ASSERT_EQ(initiator_state.context->transcript_id, 1U);
+        CORO_ASSERT_EQ(responder_state.context->transcript_id, 1U);
+        CORO_ASSERT_EQ(observer.route_handshake_send_count, 1U);
+        CORO_ASSERT_EQ(observer.route_handshake_response_count, 1U);
+        CORO_ASSERT_EQ(observer.unexpected_route_handshake_type_visible, false);
+        CORO_ASSERT_EQ(observer.non_rpc_public_control_status_visible, false);
+        // The security property under test is that both add_refs completed
+        // through one route handshake and one transcript reservation.
+
+        std::static_pointer_cast<rpc::transport>(initiator_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        std::static_pointer_cast<rpc::transport>(responder_transport)->set_status(rpc::transport_status::DISCONNECTED);
+        for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
+            CO_AWAIT initiator_service->schedule();
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
     coro_stream_route_control_messages_remain_public_control(const std::shared_ptr<coro::scheduler>& scheduler)
     {
         auto initiator_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
@@ -1894,6 +2031,31 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_concurrent_add_ref_route_handshake_test()
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_concurrent_add_refs_share_service_level_route_handshake(scheduler);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_transport_final_control_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -2211,6 +2373,13 @@ TEST(
     AddRefWaitsWhenRouteHandshakeIsAlreadyClaimed)
 {
     run_claimed_route_control_admission_test(claimed_route_control_operation::add_ref);
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    ConcurrentAddRefsShareOneRouteHandshake)
+{
+    run_concurrent_add_ref_route_handshake_test();
 }
 
 TEST(
