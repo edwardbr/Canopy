@@ -1121,7 +1121,7 @@ TEST(
     protected_request.value.params.in_data.back() ^= 0x01;
     auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
     EXPECT_FALSE(unprotected_request.accepted);
-    EXPECT_EQ(unprotected_request.error.error_code, rpc::error::SECURITY_ERROR());
+    EXPECT_EQ(unprotected_request.error.error_code, rpc::error::FRAUDULANT_REQUEST());
 }
 
 TEST(
@@ -1162,13 +1162,13 @@ TEST(
     tampered_options.build_out_param_channel = rpc::add_ref_options::build_caller_route;
     auto tampered_options_result = unprotect_add_ref_request(*service_b, tampered_options);
     EXPECT_FALSE(tampered_options_result.accepted);
-    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::SECURITY_ERROR());
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
 
     auto tampered_requesting_zone = protected_request.value.params;
     tampered_requesting_zone.requesting_zone_id = make_zone(52);
     auto tampered_requesting_zone_result = unprotect_add_ref_request(*service_b, tampered_requesting_zone);
     EXPECT_FALSE(tampered_requesting_zone_result.accepted);
-    EXPECT_EQ(tampered_requesting_zone_result.error.error_code, rpc::error::SECURITY_ERROR());
+    EXPECT_EQ(tampered_requesting_zone_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
 
     auto unprotected_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
@@ -1222,7 +1222,7 @@ TEST(
     tampered_options.options = rpc::release_options::normal;
     auto tampered_options_result = unprotect_release_request(*service_b, tampered_options);
     EXPECT_FALSE(tampered_options_result.accepted);
-    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::SECURITY_ERROR());
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
 
     auto unprotected_request = unprotect_release_request(*service_b, protected_request.value.params);
     ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;

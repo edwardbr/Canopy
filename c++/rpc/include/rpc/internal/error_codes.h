@@ -61,7 +61,7 @@ namespace rpc
         int OBJECT_GONE();                   // optimistic pointer target was released by the owning service
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
         int NOT_IMPLEMENTED(); // operation exists in the interface surface but is not implemented on this platform/path yet
-        int FRAUDULANT_REQUEST();  // request-scoped out-param handoff was used with an invalid request id
+        int FRAUDULANT_REQUEST();  // request violates protocol/security sequencing and may be malicious
         int RESOURCE_CLOSED();     // local resource was closed or is no longer accepting work
         int OPERATION_CANCELLED(); // local asynchronous operation was cancelled before completion
         int RESOURCE_EXHAUSTED();  // local resource capacity was exhausted after retry/backpressure handling

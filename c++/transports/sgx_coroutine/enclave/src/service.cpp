@@ -11,6 +11,7 @@
 #include <streaming/stream.h>
 #include <transports/sgx_coroutine/enclave/local_route_transport.h>
 
+#include <chrono>
 #include <limits>
 #include <optional>
 #include <string>
@@ -42,22 +43,32 @@ namespace rpc
         constexpr uint8_t route_attestation_flag_false = 0;
         constexpr uint8_t route_attestation_flag_true = 1;
         constexpr size_t max_route_attestation_handshake_payload_size = 1024 * 1024;
+        constexpr std::chrono::milliseconds route_attestation_wait_poll_interval{1};
+        constexpr std::chrono::milliseconds route_attestation_wait_timeout{2000};
 
+        // Returns the IDL fingerprint for the route-attestation request schema
+        // used by this RPC protocol version.
         [[nodiscard]] auto route_attestation_request_type_id(uint64_t protocol_version) -> uint64_t
         {
             return rpc::id<rpc::route_attestation_handshake_request>::get(protocol_version);
         }
 
+        // Returns the IDL fingerprint for the matching route-attestation
+        // response schema.
         [[nodiscard]] auto route_attestation_response_type_id(uint64_t protocol_version) -> uint64_t
         {
             return rpc::id<rpc::route_attestation_handshake_response>::get(protocol_version);
         }
 
+        // Converts a zone id to a stable fallback identity string for test/fake
+        // backends that do not provide a richer enclave identity.
         [[nodiscard]] auto route_identity_string(rpc::zone zone_id) -> std::string
         {
             return std::to_string(zone_id);
         }
 
+        // Copies the in-memory security-library identity into the generated IDL
+        // carrier used on the RPC wire.
         [[nodiscard]] auto to_wire_identity(const canopy::security::attestation::identity& value) -> rpc::attestation_identity
         {
             // Keep the IDL boundary explicit. The security library deliberately
@@ -69,6 +80,8 @@ namespace rpc
             return out;
         }
 
+        // Copies a generated IDL identity back into the in-memory security
+        // library representation.
         [[nodiscard]] auto from_wire_identity(const rpc::attestation_identity& value)
             -> canopy::security::attestation::identity
         {
@@ -78,6 +91,8 @@ namespace rpc
             return out;
         }
 
+        // Copies an attestation CMW blob into the generated RPC carrier without
+        // interpreting backend-specific evidence bytes.
         [[nodiscard]] auto to_wire_cmw(const canopy::security::attestation::cmw& value) -> rpc::attestation_cmw
         {
             rpc::attestation_cmw out;
@@ -87,6 +102,8 @@ namespace rpc
             return out;
         }
 
+        // Copies a generated RPC CMW carrier back into the security library
+        // representation, still leaving backend evidence opaque at this layer.
         [[nodiscard]] auto from_wire_cmw(const rpc::attestation_cmw& value) -> canopy::security::attestation::cmw
         {
             canopy::security::attestation::cmw out;
@@ -96,11 +113,15 @@ namespace rpc
             return out;
         }
 
+        // Stores security_level as a protocol integer in the generated IDL
+        // schema.
         [[nodiscard]] auto wire_security_level(canopy::security::attestation::security_level level) -> uint64_t
         {
             return static_cast<uint64_t>(level);
         }
 
+        // Parses a wire security_level defensively; unknown future values are
+        // treated as no verified hardware/software assurance.
         [[nodiscard]] auto from_wire_security_level(uint64_t level) -> canopy::security::attestation::security_level
         {
             using canopy::security::attestation::security_level;
@@ -109,6 +130,8 @@ namespace rpc
             return static_cast<security_level>(level);
         }
 
+        // Selects the local identity that should be bound into a route
+        // transcript for this service zone.
         [[nodiscard]] auto local_identity_for_route(
             const std::shared_ptr<canopy::security::attestation::attestation_service>& service,
             rpc::zone zone_id) -> canopy::security::attestation::identity
@@ -124,6 +147,8 @@ namespace rpc
             return identity;
         }
 
+        // Serialises a typed route-handshake IDL payload in the caller-selected
+        // encoding and reports serializer failures as invalid protocol data.
         template<class Payload>
         [[nodiscard]] auto serialise_route_attestation_payload(
             const Payload& payload,
@@ -144,6 +169,8 @@ namespace rpc
             return std::nullopt;
         }
 
+        // Parses a typed route-handshake payload after applying a fixed size
+        // bound to unauthenticated input.
         template<class Payload>
         [[nodiscard]] auto parse_route_attestation_payload(
             const std::vector<char>& payload,
@@ -157,16 +184,22 @@ namespace rpc
             return rpc::deserialise(payload_encoding, rpc::byte_span(payload), out).empty();
         }
 
+        // Checks that a peer-supplied nonce has the exact width required by the
+        // attestation backend binding code.
         [[nodiscard]] auto nonce_is_valid(const std::vector<uint8_t>& nonce) -> bool
         {
             return nonce.size() == canopy::security::attestation::attestation_nonce_size;
         }
 
+        // Route-handshake booleans are encoded as explicit protocol bytes so
+        // malformed values can be rejected before policy is evaluated.
         [[nodiscard]] auto flag_is_valid(uint8_t value) -> bool
         {
             return value == route_attestation_flag_false || value == route_attestation_flag_true;
         }
 
+        // Builds a typed negative response for malformed or policy-rejected
+        // handshakes while keeping the response schema stable.
         [[nodiscard]] auto make_failed_handshake_response(
             uint64_t protocol_version,
             uint64_t transcript_id,
@@ -181,6 +214,8 @@ namespace rpc
             return response;
         }
 
+        // Serialises a handshake response into the generic marshaller
+        // handshake_result wrapper.
         [[nodiscard]] auto make_route_attestation_handshake_result(
             uint64_t protocol_version,
             rpc::encoding payload_encoding,
@@ -193,6 +228,7 @@ namespace rpc
                 rpc::error::OK(), route_attestation_response_type_id(protocol_version), std::move(payload.value()), {}};
         }
 
+        // Marks a route as failed after an unsuccessful handshake step.
         void set_failed_attestation_route(
             rpc::enclave_service& service,
             rpc::destination_zone route_zone_id,
@@ -216,6 +252,8 @@ namespace rpc
             service.set_attestation_route_state(route_zone_id, std::move(failed_state));
         }
 
+        // Removes application-private success/failure codes from public control
+        // responses that may be visible to route intermediates.
         [[nodiscard]] auto sanitise_public_control_result(
             rpc::standard_result result,
             const char* operation) -> rpc::standard_result
@@ -233,6 +271,8 @@ namespace rpc
             return result;
         }
 
+        // Chooses the route whose reference-control policy applies to an
+        // outbound add_ref/release for a given transport.
         [[nodiscard]] auto outbound_reference_route_zone(
             const rpc::remote_object& remote_object_id,
             const std::shared_ptr<rpc::transport>& transport) -> std::optional<rpc::destination_zone>
@@ -250,6 +290,8 @@ namespace rpc
         }
     }
 
+    // Stops enclave-owned coroutine infrastructure before service state is
+    // destroyed.
     enclave_service::~enclave_service()
     {
         // The enclave service owns the coroutine-side io_uring controller. Ask it
@@ -259,6 +301,7 @@ namespace rpc
             controller->request_shutdown();
     }
 
+    // Stores an established protected-RPC security context for a route.
     void enclave_service::set_security_context(
         rpc::destination_zone attested_zone_id,
         canopy::security::attestation::security_context context)
@@ -276,6 +319,8 @@ namespace rpc
         attestation_route_states_[attested_zone_id] = std::move(state);
     }
 
+    // Imports a security context that was already negotiated by an attested
+    // stream before normal RPC traffic starts.
     bool enclave_service::publish_security_context_from_stream(
         rpc::destination_zone attested_zone_id,
         const std::shared_ptr<streaming::stream>& stream)
@@ -298,6 +343,8 @@ namespace rpc
         return true;
     }
 
+    // Removes all route-attestation state for a route when the context is no
+    // longer valid.
     void enclave_service::remove_security_context(rpc::destination_zone attested_zone_id)
     {
         RPC_ASSERT(attested_zone_id.get_subnet());
@@ -305,6 +352,8 @@ namespace rpc
         attestation_route_states_.erase(attested_zone_id);
     }
 
+    // Returns only established security contexts; policy-only and failed routes
+    // are intentionally invisible to protected-RPC encryption.
     auto enclave_service::get_security_context(rpc::destination_zone attested_zone_id) const
         -> std::optional<canopy::security::attestation::security_context>
     {
@@ -322,6 +371,8 @@ namespace rpc
         return item->second.context;
     }
 
+    // Replaces a route's attestation state while preventing non-attested states
+    // from retaining key material.
     void enclave_service::set_attestation_route_state(
         rpc::destination_zone attested_zone_id,
         canopy::security::attestation::route_attestation_state state)
@@ -343,6 +394,8 @@ namespace rpc
         attestation_route_states_[attested_zone_id] = std::move(state);
     }
 
+    // Returns a copy of the current route state; callers must re-store updates
+    // through set_attestation_route_state or another locked helper.
     auto enclave_service::get_attestation_route_state(rpc::destination_zone attested_zone_id) const
         -> canopy::security::attestation::route_attestation_state
     {
@@ -356,6 +409,8 @@ namespace rpc
         return item->second;
     }
 
+    // Attaches the enclave-wide attestation backend and snapshots its default
+    // peer policy into this service's zone policy.
     void enclave_service::set_attestation_service(std::shared_ptr<canopy::security::attestation::attestation_service> service)
     {
         std::optional<canopy::security::attestation::attestation_policy> peer_policy;
@@ -379,6 +434,8 @@ namespace rpc
         }
     }
 
+    // Returns the shared attestation backend used for Evidence verification and
+    // protected-RPC key derivation.
     auto enclave_service::get_attestation_service() const
         -> std::shared_ptr<canopy::security::attestation::attestation_service>
     {
@@ -386,6 +443,8 @@ namespace rpc
         return attestation_service_;
     }
 
+    // Installs this zone's route-admission policy; a null input restores the
+    // default fail-closed policy object.
     void enclave_service::set_zone_security_policy(
         std::shared_ptr<canopy::security::attestation::zone_security_policy> policy)
     {
@@ -396,6 +455,8 @@ namespace rpc
         zone_security_policy_ = std::move(policy);
     }
 
+    // Returns the policy object used to decide whether a route must attest,
+    // may remain explicitly unattested, or must be rejected.
     auto enclave_service::get_zone_security_policy() const
         -> std::shared_ptr<canopy::security::attestation::zone_security_policy>
     {
@@ -403,28 +464,36 @@ namespace rpc
         return zone_security_policy_;
     }
 
+    // Enables or disables encrypted protected-RPC wrapping for application and
+    // reference-control messages.
     void enclave_service::set_protected_rpc_enabled(bool enabled)
     {
         std::lock_guard<std::mutex> lock(attestation_service_mutex_);
         protected_rpc_enabled_ = enabled;
     }
 
+    // Reports whether protected-RPC wrapping is currently required by this
+    // enclave service.
     bool enclave_service::protected_rpc_enabled() const
     {
         std::lock_guard<std::mutex> lock(attestation_service_mutex_);
         return protected_rpc_enabled_;
     }
 
+    // Compatibility setter for older call sites; the setting now lives on the
+    // zone security policy.
     void enclave_service::set_add_ref_attestation_required(bool required)
     {
         get_zone_security_policy()->set_reference_routes_require_attestation(required);
     }
 
+    // Compatibility getter for older call sites; reads the zone security policy.
     bool enclave_service::add_ref_attestation_required() const
     {
         return get_zone_security_policy()->reference_routes_require_attestation();
     }
 
+    // Marks or unmarks a route as explicitly allowed without attestation.
     void enclave_service::set_route_unattested_allowed(
         rpc::destination_zone route_zone_id,
         bool allowed)
@@ -454,6 +523,72 @@ namespace rpc
         }
     }
 
+    // Atomically decides whether add_ref may start a route handshake and, if so,
+    // reserves the next transcript id before any coroutine suspension point.
+    auto enclave_service::claim_add_ref_route_attestation(
+        rpc::destination_zone route_zone_id,
+        bool route_is_local,
+        bool attestation_required) -> route_attestation_claim
+    {
+        route_attestation_claim claim;
+        if (!route_zone_id.is_set())
+        {
+            claim.decision.action = canopy::security::attestation::route_attestation_action::reject;
+            claim.decision.reason = "route zone id is not set";
+            claim.error_code = rpc::error::INVALID_DATA();
+            return claim;
+        }
+
+        std::lock_guard<std::mutex> lock(security_context_mutex_);
+        if (auto item = attestation_route_states_.find(route_zone_id); item != attestation_route_states_.end())
+            claim.state = item->second;
+
+        canopy::security::attestation::reference_route_policy_input policy_input;
+        policy_input.attestation_required = attestation_required;
+        policy_input.route_is_local = route_is_local;
+        policy_input.may_start_handshake = true;
+        policy_input.state = claim.state;
+        claim.decision = canopy::security::attestation::evaluate_reference_route_policy(policy_input);
+        if (claim.decision.action != canopy::security::attestation::route_attestation_action::start_handshake)
+            return claim;
+
+        auto handshaking_state = claim.state;
+        const auto transcript_id = handshaking_state.next_transcript_id;
+        if (transcript_id == 0 || transcript_id == std::numeric_limits<uint64_t>::max())
+        {
+            // Record exhaustion while still under the route-state lock. Otherwise
+            // another coroutine could observe "unknown" and try to start the same
+            // impossible handshake before the failure state is visible.
+            canopy::security::attestation::route_attestation_state failed_state;
+            failed_state.status = canopy::security::attestation::route_attestation_status::failed;
+            failed_state.failure_epoch = claim.state.failure_epoch + 1;
+            failed_state.failure_reason = "route attestation transcript id exhausted";
+            failed_state.next_transcript_id = claim.state.next_transcript_id;
+            attestation_route_states_[route_zone_id] = std::move(failed_state);
+
+            claim.decision.action = canopy::security::attestation::route_attestation_action::reject;
+            claim.decision.reason = "route attestation transcript id exhausted";
+            claim.error_code = rpc::error::RESOURCE_EXHAUSTED();
+            return claim;
+        }
+
+        // This is the only transition from "may start" to "handshaking" for
+        // add_ref. It reserves the transcript id and publishes handshaking while
+        // still holding the route-state mutex; all expensive work happens after
+        // returning to avoid holding a mutex across CO_AWAIT.
+        handshaking_state.status = canopy::security::attestation::route_attestation_status::handshaking;
+        handshaking_state.context.reset();
+        handshaking_state.failure_reason.clear();
+        ++handshaking_state.next_transcript_id;
+        attestation_route_states_[route_zone_id] = handshaking_state;
+
+        claim.state = std::move(handshaking_state);
+        claim.transcript_id = transcript_id;
+        return claim;
+    }
+
+    // Ensures the route referenced by add_ref is already allowed or completes
+    // the route-level attestation handshake needed to allow it.
     CORO_TASK(standard_result)
     enclave_service::ensure_add_ref_route_allowed(
         rpc::destination_zone route_zone_id,
@@ -467,12 +602,11 @@ namespace rpc
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
 
         auto zone_policy = get_zone_security_policy();
-        auto state = get_attestation_route_state(route_zone_id);
-        canopy::security::attestation::reference_route_policy_input policy_input;
-        policy_input.route_is_local = route_zone_id == get_zone_id();
-        policy_input.may_start_handshake = true;
-        policy_input.state = state;
-        const auto decision = zone_policy->evaluate_reference_route(std::move(policy_input));
+        const auto route_is_local = route_zone_id == get_zone_id();
+        const auto attestation_required = zone_policy->reference_routes_require_attestation();
+        auto claim = claim_add_ref_route_attestation(route_zone_id, route_is_local, attestation_required);
+        const auto& state = claim.state;
+        const auto& decision = claim.decision;
         if (decision.action == canopy::security::attestation::route_attestation_action::allow)
         {
             // "allow" covers already-attested routes and routes explicitly marked
@@ -487,39 +621,46 @@ namespace rpc
                 route_zone_id.get_subnet(),
                 operation,
                 decision.reason);
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN standard_result{
+                claim.error_code != rpc::error::OK() ? claim.error_code : rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
-        if (decision.action == canopy::security::attestation::route_attestation_action::wait_for_handshake)
+        const auto wait_deadline = std::chrono::steady_clock::now() + route_attestation_wait_timeout;
+        while (decision.action == canopy::security::attestation::route_attestation_action::wait_for_handshake)
         {
-            // A concurrent coroutine is already performing the handshake. For now
-            // the conservative behaviour is to reject this add_ref rather than
-            // attach reference state before attestation completes.
-            RPC_WARNING("add_ref attestation pending for route {} during {}", route_zone_id.get_subnet(), operation);
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            // Another coroutine already owns the handshake. Wait outside
+            // security_context_mutex_ so the owner can complete and publish the
+            // route state. This preserves normal add_ref ordering without
+            // allowing duplicate handshakes for the same route.
+            if (std::chrono::steady_clock::now() >= wait_deadline)
+            {
+                RPC_WARNING("add_ref attestation timed out for route {} during {}", route_zone_id.get_subnet(), operation);
+                CO_RETURN standard_result{rpc::error::CALL_TIMEOUT(), {}};
+            }
+
+            auto scheduler = get_scheduler();
+            if (!scheduler)
+                CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
+
+            CO_AWAIT scheduler->schedule_after(route_attestation_wait_poll_interval);
+            claim = claim_add_ref_route_attestation(route_zone_id, route_is_local, attestation_required);
         }
-
-        // No usable route state exists, so this coroutine becomes the handshake
-        // owner. Store "handshaking" before creating evidence to avoid multiple
-        // unbounded concurrent evidence-generation attempts for the same route.
-        canopy::security::attestation::route_attestation_state handshaking_state = state;
-        handshaking_state.status = canopy::security::attestation::route_attestation_status::handshaking;
-        handshaking_state.context.reset();
-        handshaking_state.failure_reason.clear();
-
-        const auto transcript_id = handshaking_state.next_transcript_id;
-        if (transcript_id == 0 || transcript_id == std::numeric_limits<uint64_t>::max())
+        if (decision.action == canopy::security::attestation::route_attestation_action::allow)
+            CO_RETURN standard_result{rpc::error::OK(), {}};
+        if (decision.action == canopy::security::attestation::route_attestation_action::reject)
         {
-            set_failed_attestation_route(
-                *this, route_zone_id, state.failure_epoch, "route attestation transcript id exhausted");
-            CO_RETURN standard_result{rpc::error::RESOURCE_EXHAUSTED(), {}};
+            RPC_WARNING(
+                "add_ref attestation rejected for route {} during {} after wait: previous failure {}",
+                route_zone_id.get_subnet(),
+                operation,
+                decision.reason);
+            CO_RETURN standard_result{
+                claim.error_code != rpc::error::OK() ? claim.error_code : rpc::error::ZONE_NOT_SUPPORTED(), {}};
         }
-        ++handshaking_state.next_transcript_id;
-        set_attestation_route_state(route_zone_id, handshaking_state);
 
         auto service = get_attestation_service();
 
         rpc::route_attestation_handshake_request request;
-        request.transcript_id = transcript_id;
+        request.transcript_id = claim.transcript_id;
         request.claimant = to_wire_identity(local_identity_for_route(service, get_zone_id()));
         if (service)
         {
@@ -724,16 +865,20 @@ namespace rpc
         CO_RETURN standard_result{rpc::error::OK(), std::move(handshake.out_back_channel)};
     }
 
-    auto enclave_service::ensure_existing_reference_route_allowed(
+    // Checks normal-mode reference/control routes without starting or waiting
+    // for attestation. These calls must follow an earlier admitted add_ref.
+    CORO_TASK(standard_result)
+    enclave_service::ensure_existing_reference_route_allowed(
         rpc::destination_zone route_zone_id,
-        const char* operation) const -> standard_result
+        const char* operation) const
     {
-        // release/try_cast/object_released must not initiate a new attestation
-        // handshake. They are only valid after the route was already allowed by
-        // an earlier add_ref or by explicit policy. Unknown status therefore
-        // means reject rather than "try to recover".
+        // add_ref is the boundary between the handshake/admission phase and
+        // normal RPC mode. Non-add_ref operations that arrive while the route is
+        // unknown or handshaking are suspicious: they must not start a handshake,
+        // and they must not wait for one to complete as if they were valid early
+        // traffic.
         if (!route_zone_id.is_set())
-            return standard_result{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
 
         auto zone_policy = get_zone_security_policy();
         auto state = get_attestation_route_state(route_zone_id);
@@ -743,17 +888,19 @@ namespace rpc
         policy_input.state = state;
         const auto decision = zone_policy->evaluate_reference_route(std::move(policy_input));
         if (decision.action == canopy::security::attestation::route_attestation_action::allow)
-            return standard_result{rpc::error::OK(), {}};
+            CO_RETURN standard_result{rpc::error::OK(), {}};
 
         RPC_WARNING(
-            "reference route attestation rejected for route {} during {}: status={}, reason {}",
+            "normal-mode RPC rejected before route admission for route {} during {}: status={}, reason {}",
             route_zone_id.get_subnet(),
             operation,
             static_cast<int>(state.status),
             decision.reason);
-        return standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+        CO_RETURN standard_result{rpc::error::FRAUDULANT_REQUEST(), {}};
     }
 
+    // Finds the destination context for a protected outbound call that
+    // originates in this service's own zone.
     auto enclave_service::find_security_context_for_protected_call(
         rpc::caller_zone caller_zone_id,
         rpc::destination_zone destination_zone_id) const -> std::optional<canopy::security::attestation::security_context>
@@ -768,6 +915,8 @@ namespace rpc
         return get_security_context(destination_zone_id);
     }
 
+    // Handles inbound add_ref, including optional protected payload unwrap and
+    // first-use route admission.
     CORO_TASK(standard_result)
     enclave_service::add_ref(add_ref_params params)
     {
@@ -800,7 +949,10 @@ namespace rpc
         }
         else if (protected_rpc_enabled() && params.payload)
         {
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            // A non-empty typed payload with an unknown fingerprint may simply
+            // be a newer peer using a schema this build does not understand. It
+            // is rejected, but not classified as fraud/blacklist material.
+            CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
 
         const auto route_zone_id = params.remote_object_id.as_zone();
@@ -816,13 +968,15 @@ namespace rpc
             // plaintext add_ref is rejected. That prevents an intermediate from
             // stripping the protected wrapper while keeping routable fields.
             RPC_WARNING("plaintext add_ref rejected for protected route {}", rpc::to_string(route_zone_id));
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN standard_result{rpc::error::FRAUDULANT_REQUEST(), {}};
         }
 
         auto result = CO_AWAIT child_service::add_ref(std::move(params));
         CO_RETURN sanitise_public_control_result(std::move(result), "add_ref");
     }
 
+    // Handles inbound release after verifying the caller route was previously
+    // admitted by add_ref.
     CORO_TASK(standard_result)
     enclave_service::release(release_params params)
     {
@@ -851,23 +1005,27 @@ namespace rpc
         }
         else if (protected_rpc_enabled() && params.payload)
         {
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            // Unknown typed payloads are version/compatibility failures rather
+            // than evidence of malicious behaviour.
+            CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
 
-        auto route_result = ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound release caller");
+        auto route_result
+            = CO_AWAIT ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound release caller");
         if (route_result.error_code != rpc::error::OK())
             CO_RETURN route_result;
 
         if (!protected_payload && protected_rpc_enabled() && get_security_context(params.caller_zone_id))
         {
             RPC_WARNING("plaintext release rejected for protected route {}", rpc::to_string(params.caller_zone_id));
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN standard_result{rpc::error::FRAUDULANT_REQUEST(), {}};
         }
 
         auto result = CO_AWAIT child_service::release(std::move(params));
         CO_RETURN sanitise_public_control_result(std::move(result), "release");
     }
 
+    // Handles inbound object lifetime notifications from an owner route.
     CORO_TASK(void)
     enclave_service::object_released(object_released_params params)
     {
@@ -901,7 +1059,8 @@ namespace rpc
         }
 
         const auto route_zone_id = params.remote_object_id.as_zone();
-        auto route_result = ensure_existing_reference_route_allowed(route_zone_id, "inbound object_released owner");
+        auto route_result
+            = CO_AWAIT ensure_existing_reference_route_allowed(route_zone_id, "inbound object_released owner");
         if (route_result.error_code != rpc::error::OK())
             CO_RETURN;
 
@@ -914,6 +1073,9 @@ namespace rpc
         CO_AWAIT child_service::object_released(std::move(params));
     }
 
+    // Handles inbound transport-down notifications, accepting route-layer
+    // plaintext liveness reports while still supporting protected endpoint
+    // reports.
     CORO_TASK(void)
     enclave_service::transport_down(transport_down_params params)
     {
@@ -946,12 +1108,19 @@ namespace rpc
             CO_RETURN;
         }
 
+        auto route_result
+            = CO_AWAIT ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound transport_down caller");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN;
+
         // Intermediates may synthesize route-layer transport_down messages and
         // usually cannot attest on behalf of the failed endpoint. Empty
         // plaintext transport_down remains valid for that liveness path.
         CO_AWAIT child_service::transport_down(std::move(params));
     }
 
+    // Handles the route-attestation handshake RPC used to admit new referenced
+    // routes after the initial stream connection exists.
     CORO_TASK(handshake_result)
     enclave_service::handshake(handshake_params params)
     {
@@ -1129,6 +1298,8 @@ namespace rpc
             params.protocol_version, params.payload_encoding, std::move(response));
     }
 
+    // Handles inbound send by decrypting protected requests and encrypting the
+    // send response so application error codes and payloads stay private.
     CORO_TASK(send_result)
     enclave_service::send(send_params params)
     {
@@ -1179,6 +1350,8 @@ namespace rpc
         CO_RETURN std::move(protected_response.value);
     }
 
+    // Handles inbound one-way post by decrypting protected requests before
+    // dispatch and dropping unauthenticated protected traffic.
     CORO_TASK(void)
     enclave_service::post(post_params params)
     {
@@ -1211,6 +1384,8 @@ namespace rpc
         CO_RETURN;
     }
 
+    // Handles inbound try_cast metadata requests with the same protected
+    // payload and route-admission checks as other control messages.
     CORO_TASK(standard_result)
     enclave_service::try_cast(try_cast_params params)
     {
@@ -1239,23 +1414,28 @@ namespace rpc
         }
         else if (protected_rpc_enabled() && params.payload)
         {
-            CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+            // try_cast can legitimately expose newer interface/schema metadata.
+            // Do not turn an unknown fingerprint into a blacklist signal.
+            CO_RETURN standard_result{rpc::error::INVALID_VERSION(), {}};
         }
 
-        auto route_result = ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound try_cast caller");
+        auto route_result
+            = CO_AWAIT ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound try_cast caller");
         if (route_result.error_code != rpc::error::OK())
             CO_RETURN route_result;
 
         if (!protected_payload && protected_rpc_enabled() && get_security_context(params.caller_zone_id))
         {
             RPC_WARNING("plaintext try_cast rejected for protected route {}", rpc::to_string(params.caller_zone_id));
-            CO_RETURN standard_result{rpc::error::ZONE_NOT_SUPPORTED(), {}};
+            CO_RETURN standard_result{rpc::error::FRAUDULANT_REQUEST(), {}};
         }
 
         auto result = CO_AWAIT child_service::try_cast(std::move(params));
         CO_RETURN sanitise_public_control_result(std::move(result), "try_cast");
     }
 
+    // Protects outbound send traffic at the service/transport boundary and
+    // unwraps the protected send response on return.
     CORO_TASK(send_result)
     enclave_service::outbound_send(
         send_params params,
@@ -1313,6 +1493,8 @@ namespace rpc
         CO_RETURN std::move(response.value);
     }
 
+    // Protects outbound one-way post traffic before it reaches the next
+    // transport hop.
     CORO_TASK(void)
     enclave_service::outbound_post(
         post_params params,
@@ -1348,6 +1530,8 @@ namespace rpc
         CO_RETURN;
     }
 
+    // Protects outbound try_cast metadata when an attested context exists for
+    // the destination route.
     CORO_TASK(standard_result)
     enclave_service::outbound_try_cast(
         try_cast_params params,
@@ -1387,22 +1571,18 @@ namespace rpc
         CO_RETURN sanitise_public_control_result(std::move(result), "outbound_try_cast");
     }
 
+    // Admits and optionally protects outbound add_ref before a remote interface
+    // reference is made visible outside this service.
     CORO_TASK(standard_result)
     enclave_service::outbound_add_ref(
         add_ref_params params,
         std::shared_ptr<transport> transport)
     {
-        // For outbound references, choose the route that needs trust before the
-        // reference is published. For local-route transports this is the owner of
-        // the remote_object. For external transports it is the adjacent peer that
-        // will receive the reference today.
+        // Outbound add_ref is not the trust synchronization point. The receiver
+        // decides whether the referenced route is admitted before it exposes the
+        // reference locally. This side only protects the control payload if keys
+        // already exist, then sends it onward.
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
-        if (route_zone_id)
-        {
-            auto route_result = CO_AWAIT ensure_add_ref_route_allowed(*route_zone_id, "outbound add_ref reference route");
-            if (route_result.error_code != rpc::error::OK())
-                CO_RETURN route_result;
-        }
 
         auto service = get_attestation_service();
         if (protected_rpc_enabled() && service && route_zone_id)
@@ -1431,21 +1611,17 @@ namespace rpc
         CO_RETURN sanitise_public_control_result(std::move(result), "outbound_add_ref");
     }
 
+    // Protects outbound release for an already-admitted reference route.
     CORO_TASK(standard_result)
     enclave_service::outbound_release(
         release_params params,
         std::shared_ptr<transport> transport)
     {
-        // release follows an existing reference. It requires an already-allowed
-        // route but does not initiate a new handshake.
+        // Release is sent to the peer that owns the corresponding reference
+        // state. The receiver validates/adopts route state before mutating its
+        // local counts; this side only protects the payload when keys already
+        // exist.
         auto route_zone_id = outbound_reference_route_zone(params.remote_object_id, transport);
-        if (route_zone_id)
-        {
-            auto route_result
-                = ensure_existing_reference_route_allowed(*route_zone_id, "outbound release reference route");
-            if (route_result.error_code != rpc::error::OK())
-                CO_RETURN route_result;
-        }
 
         auto service = get_attestation_service();
         if (protected_rpc_enabled() && service && route_zone_id)
@@ -1474,6 +1650,8 @@ namespace rpc
         CO_RETURN sanitise_public_control_result(std::move(result), "outbound_release");
     }
 
+    // Protects outbound object_released notifications for the caller route that
+    // owns the corresponding remote reference.
     CORO_TASK(void)
     enclave_service::outbound_object_released(
         object_released_params params,
@@ -1485,10 +1663,6 @@ namespace rpc
         if (transport)
         {
             caller_zone_id = params.caller_zone_id;
-            auto route_result
-                = ensure_existing_reference_route_allowed(*caller_zone_id, "outbound object_released caller");
-            if (route_result.error_code != rpc::error::OK())
-                CO_RETURN;
         }
 
         auto service = get_attestation_service();

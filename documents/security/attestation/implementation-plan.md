@@ -211,6 +211,11 @@ policy-hardening work described in the remaining phases.
   `route_attestation_state`, not from a service-global counter. This keeps
   transcript uniqueness, replay reasoning, and audit state scoped to the
   route/session domain that owns the handshake.
+- Outbound and inbound `add_ref` route admission now claims the route
+  handshake atomically under the route-state mutex: it evaluates the current
+  state, reserves the next transcript id, and publishes `handshaking` before
+  any Evidence generation, serialization, or transport `handshake()` coroutine
+  work begins. No route-state mutex is held across `CO_AWAIT`.
 - `route_attestation_state` now has a pure
   `evaluate_route_attestation_state(...)` decision helper. It maps route state
   to `allow`, `start_handshake`, `wait_for_handshake`, or `reject`; host tests
@@ -654,6 +659,16 @@ policy-hardening work described in the remaining phases.
   marshaller outbound methods without using `rpc::stream_transport::transport`.
   C ABI is intentionally excluded from this slice because that implementation
   is expected to be rewritten for Rust.
+- Future route/transport lifetime audit. `rpc::service` already has intricate
+  transport registration and lifetime rules around `transports_`,
+  service-proxy ownership, passthroughs, parent/child transports, and teardown.
+  Do not merge `attestation_route_states_` into that structure as part of the
+  current attestation work. Later, after reviewing the lifetime invariants in
+  `documents/architecture/cpp/reference-ownership-invariants.md` and related
+  transport documents, consider whether a generic per-route registry entry can
+  simplify lifetime management. If that refactor happens, the base entry should
+  remain attestation-neutral and allow transport liveness to be independent
+  from route-security/audit state.
 - Transport naming cleanup. `c++/transports/sgx_coroutine` is increasingly a
   stream-backed enclave transport with SGX as the first runtime, while
   `c++/transports/sgx` remains the ECALL/OCALL-specific blocking transport.
@@ -1559,6 +1574,12 @@ phase.
   direction, nonce material, and backend/security-level context where
   applicable. Implementations must not parse and reserialise a non-canonical
   message and then sign or verify the reserialised bytes.
+- Unknown generated fingerprints are compatibility failures, not fraud by
+  themselves. They should fail closed as `INVALID_VERSION` or an equivalent
+  unsupported-schema result because a newer peer may be using a newer IDL file
+  or inline namespace. Fraud classification is reserved for authenticated
+  tamper, replay, downgrade, and impossible protocol sequencing, since fraud
+  handling may feed blacklists.
 - YAS and protobuf remain valid negotiated RPC/application encodings, and may
   be valid handshake payload encodings when both endpoints explicitly support
   them. They are not automatically canonical cryptographic encodings. Any

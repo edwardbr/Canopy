@@ -910,7 +910,7 @@ namespace canopy::security::attestation
                 rpc::error::ZONE_NOT_SUPPORTED(), "protected request session is unknown");
         if (!validate_envelope_context(*envelope, *context))
             return rejected<protected_send_request>(
-                rpc::error::SECURITY_ERROR(), "protected request session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected request session metadata mismatch");
 
         // The receiver derives the same caller -> destination key using the
         // remote identity as caller and the local identity as destination.
@@ -929,7 +929,7 @@ namespace canopy::security::attestation
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_send_request>(
-                rpc::error::SECURITY_ERROR(), "protected request authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected request authentication failed");
 
         auto decoded = decode_request_plaintext(*plaintext, protected_rpc_kind::send);
         if (!decoded)
@@ -939,7 +939,7 @@ namespace canopy::security::attestation
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_send_fields(outer, decoded->send))
         {
-            return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), "protected request binding mismatch");
+            return rejected<protected_send_request>(rpc::error::FRAUDULANT_REQUEST(), "protected request binding mismatch");
         }
         decoded->send.request_id = outer.request_id;
         decoded->send.encoding_type = outer.encoding_type;
@@ -949,7 +949,7 @@ namespace canopy::security::attestation
         // validation have both succeeded.
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_send_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_send_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_send_request value;
         value.params = std::move(decoded->send);
@@ -1028,7 +1028,8 @@ namespace canopy::security::attestation
         if (!envelope)
             return rejected<rpc::send_result>(rpc::error::INVALID_DATA(), "protected response envelope is malformed");
         if (!validate_envelope_context(*envelope, context))
-            return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response session metadata mismatch");
+            return rejected<rpc::send_result>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected response session metadata mismatch");
 
         auto scope = make_response_scope(context, true);
         auto key = service.derive_aead_key(scope);
@@ -1044,7 +1045,7 @@ namespace canopy::security::attestation
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
-            return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response authentication failed");
+            return rejected<rpc::send_result>(rpc::error::FRAUDULANT_REQUEST(), "protected response authentication failed");
 
         auto decoded = decode_response_plaintext(*plaintext);
         if (!decoded)
@@ -1054,12 +1055,12 @@ namespace canopy::security::attestation
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->response_counter != envelope->e2e_counter)
         {
-            return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), "protected response binding mismatch");
+            return rejected<rpc::send_result>(rpc::error::FRAUDULANT_REQUEST(), "protected response binding mismatch");
         }
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<rpc::send_result>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<rpc::send_result>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         decoded->response.out_back_channel = std::move(outer_response.out_back_channel);
         return accepted(std::move(decoded->response));
@@ -1133,7 +1134,7 @@ namespace canopy::security::attestation
             return rejected<protected_post_request>(rpc::error::ZONE_NOT_SUPPORTED(), "protected post session is unknown");
         if (!validate_envelope_context(*envelope, *context))
             return rejected<protected_post_request>(
-                rpc::error::SECURITY_ERROR(), "protected post session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected post session metadata mismatch");
 
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1147,7 +1148,8 @@ namespace canopy::security::attestation
         auto nonce = make_nonce(service, *key, envelope->e2e_counter);
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
-            return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), "protected post authentication failed");
+            return rejected<protected_post_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected post authentication failed");
 
         auto decoded = decode_request_plaintext(*plaintext, protected_rpc_kind::post);
         if (!decoded)
@@ -1157,14 +1159,14 @@ namespace canopy::security::attestation
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_post_fields(outer, decoded->post))
         {
-            return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), "protected post binding mismatch");
+            return rejected<protected_post_request>(rpc::error::FRAUDULANT_REQUEST(), "protected post binding mismatch");
         }
         decoded->post.encoding_type = outer.encoding_type;
         decoded->post.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_post_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_post_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_post_request value;
         value.params = std::move(decoded->post);
@@ -1255,7 +1257,7 @@ namespace canopy::security::attestation
                 rpc::error::ZONE_NOT_SUPPORTED(), "protected add_ref session is unknown");
         if (!validate_envelope_context(*envelope, *context))
             return rejected<protected_add_ref_request>(
-                rpc::error::SECURITY_ERROR(), "protected add_ref session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected add_ref session metadata mismatch");
 
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1272,7 +1274,7 @@ namespace canopy::security::attestation
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_add_ref_request>(
-                rpc::error::SECURITY_ERROR(), "protected add_ref authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected add_ref authentication failed");
 
         auto decoded = decode_add_ref_request_plaintext(*plaintext);
         if (!decoded)
@@ -1283,14 +1285,15 @@ namespace canopy::security::attestation
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_add_ref_fields(outer, decoded->add_ref))
         {
-            return rejected<protected_add_ref_request>(rpc::error::SECURITY_ERROR(), "protected add_ref binding mismatch");
+            return rejected<protected_add_ref_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected add_ref binding mismatch");
         }
         decoded->add_ref.request_id = outer.request_id;
         decoded->add_ref.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_add_ref_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_add_ref_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_add_ref_request value;
         value.params = std::move(decoded->add_ref);
@@ -1381,7 +1384,7 @@ namespace canopy::security::attestation
                 rpc::error::ZONE_NOT_SUPPORTED(), "protected release session is unknown");
         if (!validate_envelope_context(*envelope, *context))
             return rejected<protected_release_request>(
-                rpc::error::SECURITY_ERROR(), "protected release session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected release session metadata mismatch");
 
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1398,7 +1401,7 @@ namespace canopy::security::attestation
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_release_request>(
-                rpc::error::SECURITY_ERROR(), "protected release authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected release authentication failed");
 
         auto decoded = decode_release_request_plaintext(*plaintext);
         if (!decoded)
@@ -1409,13 +1412,14 @@ namespace canopy::security::attestation
         if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
             || decoded->e2e_counter != envelope->e2e_counter || !validate_visible_release_fields(outer, decoded->release))
         {
-            return rejected<protected_release_request>(rpc::error::SECURITY_ERROR(), "protected release binding mismatch");
+            return rejected<protected_release_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected release binding mismatch");
         }
         decoded->release.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_release_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_release_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_release_request value;
         value.params = std::move(decoded->release);
@@ -1513,7 +1517,7 @@ namespace canopy::security::attestation
                 rpc::error::ZONE_NOT_SUPPORTED(), "protected try_cast session is unknown");
         if (!validate_envelope_context(*envelope, *context))
             return rejected<protected_try_cast_request>(
-                rpc::error::SECURITY_ERROR(), "protected try_cast session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected try_cast session metadata mismatch");
 
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
         auto key = service.derive_aead_key(scope);
@@ -1530,7 +1534,7 @@ namespace canopy::security::attestation
         auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
         if (!plaintext)
             return rejected<protected_try_cast_request>(
-                rpc::error::SECURITY_ERROR(), "protected try_cast authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected try_cast authentication failed");
 
         auto decoded = decode_try_cast_request_plaintext(*plaintext);
         if (!decoded)
@@ -1543,13 +1547,13 @@ namespace canopy::security::attestation
             || !validate_visible_try_cast_fields(outer, decoded->try_cast))
         {
             return rejected<protected_try_cast_request>(
-                rpc::error::SECURITY_ERROR(), "protected try_cast binding mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected try_cast binding mismatch");
         }
         decoded->try_cast.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_try_cast_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_try_cast_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_try_cast_request value;
         value.params = std::move(decoded->try_cast);
@@ -1665,7 +1669,7 @@ namespace canopy::security::attestation
         if (!validate_envelope_context(*envelope, *context))
         {
             return rejected<protected_object_released_request>(
-                rpc::error::SECURITY_ERROR(), "protected object_released session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected object_released session metadata mismatch");
         }
 
         auto scope = make_response_scope(*context, true);
@@ -1688,7 +1692,7 @@ namespace canopy::security::attestation
         if (!plaintext)
         {
             return rejected<protected_object_released_request>(
-                rpc::error::SECURITY_ERROR(), "protected object_released authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected object_released authentication failed");
         }
 
         auto decoded = decode_object_released_request_plaintext(*plaintext);
@@ -1704,13 +1708,13 @@ namespace canopy::security::attestation
             || !validate_visible_object_released_fields(outer, decoded->object_released))
         {
             return rejected<protected_object_released_request>(
-                rpc::error::SECURITY_ERROR(), "protected object_released binding mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected object_released binding mismatch");
         }
         decoded->object_released.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_object_released_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_object_released_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_object_released_request value;
         value.params = std::move(decoded->object_released);
@@ -1827,7 +1831,7 @@ namespace canopy::security::attestation
         if (!validate_envelope_context(*envelope, *context))
         {
             return rejected<protected_transport_down_request>(
-                rpc::error::SECURITY_ERROR(), "protected transport_down session metadata mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected transport_down session metadata mismatch");
         }
 
         auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
@@ -1850,7 +1854,7 @@ namespace canopy::security::attestation
         if (!plaintext)
         {
             return rejected<protected_transport_down_request>(
-                rpc::error::SECURITY_ERROR(), "protected transport_down authentication failed");
+                rpc::error::FRAUDULANT_REQUEST(), "protected transport_down authentication failed");
         }
 
         auto decoded = decode_transport_down_request_plaintext(*plaintext);
@@ -1866,13 +1870,13 @@ namespace canopy::security::attestation
             || !validate_visible_transport_down_fields(outer, decoded->transport_down))
         {
             return rejected<protected_transport_down_request>(
-                rpc::error::SECURITY_ERROR(), "protected transport_down binding mismatch");
+                rpc::error::FRAUDULANT_REQUEST(), "protected transport_down binding mismatch");
         }
         decoded->transport_down.in_back_channel = outer.in_back_channel;
 
         auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
         if (!counter.accepted)
-            return rejected<protected_transport_down_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+            return rejected<protected_transport_down_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
 
         protected_transport_down_request value;
         value.params = std::move(decoded->transport_down);

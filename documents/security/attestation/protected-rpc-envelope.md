@@ -383,8 +383,12 @@ After decrypting a protected request, the destination checks:
 - service policy allows the remote enclave/zone to call the requested
   interface and method.
 
-If validation fails, the message is fraudulent or malformed. Handling is policy
-driven; see [Failure Policy](failure-policy.md).
+If validation fails, handling is policy driven; see
+[Failure Policy](failure-policy.md). Authentication failures, replay, binding
+mismatches, and plaintext downgrade attempts are fraud candidates. Unknown
+generated IDL fingerprints or unsupported protected-control payload types are
+compatibility failures and should use a version/unsupported-schema error rather
+than a blacklist-triggering fraud error.
 
 ## Control Messages
 
@@ -412,3 +416,10 @@ fields is still deferred.
 If policy requires protected envelopes and a peer does not support them, return
 `ZONE_NOT_SUPPORTED` for now. Fallback to plaintext is allowed only when policy
 explicitly permits it.
+
+If the peer sends a typed payload with an unrecognised fingerprint, reject it as
+`INVALID_VERSION` or an equivalent compatibility error. A future Canopy build,
+Rust implementation, or browser-facing gateway may legitimately speak a newer
+IDL schema before the receiver has been updated. This differs from stripping a
+protected wrapper from a route that already has an established protected
+context; that downgrade attempt should be treated as `FRAUDULANT_REQUEST`.

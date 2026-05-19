@@ -470,11 +470,22 @@ namespace
         }
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
-        CORO_TASK(rpc::send_result) outbound_send(rpc::send_params) override
+        CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override
         {
+            ++send_count;
+            send_was_protected = canopy::security::attestation::is_protected_rpc_envelope(
+                params.interface_id, params.method_id, params.protocol_version);
+            last_send_remote_object = params.remote_object_id;
             CO_RETURN rpc::send_result{rpc::error::NOT_IMPLEMENTED(), {}, {}};
         }
-        CORO_TASK(void) outbound_post(rpc::post_params) override { CO_RETURN; }
+        CORO_TASK(void) outbound_post(rpc::post_params params) override
+        {
+            ++post_count;
+            post_was_protected = canopy::security::attestation::is_protected_rpc_envelope(
+                params.interface_id, params.method_id, params.protocol_version);
+            last_post_remote_object = params.remote_object_id;
+            CO_RETURN;
+        }
         CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override
         {
             ++try_cast_count;
@@ -522,14 +533,20 @@ namespace
             CO_RETURN;
         }
 
+        size_t send_count{0};
+        size_t post_count{0};
         size_t try_cast_count{0};
         size_t add_ref_count{0};
         size_t release_count{0};
         size_t object_released_count{0};
         size_t transport_down_count{0};
+        bool send_was_protected{false};
+        bool post_was_protected{false};
         bool try_cast_was_protected{false};
         bool object_released_was_protected{false};
         bool transport_down_was_protected{false};
+        rpc::remote_object last_send_remote_object;
+        rpc::remote_object last_post_remote_object;
         rpc::remote_object last_try_cast_remote_object;
         rpc::remote_object last_add_ref_remote_object;
         rpc::remote_object last_release_remote_object;
@@ -922,6 +939,15 @@ namespace
         uint64_t responder_next_transcript_id{1};
     };
 
+    enum class claimed_route_control_operation
+    {
+        add_ref,
+        release,
+        try_cast,
+        object_released,
+        transport_down
+    };
+
     CORO_TASK(bool)
     coro_add_ref_drives_service_level_route_handshake(
         const std::shared_ptr<coro::scheduler>& scheduler,
@@ -998,9 +1024,9 @@ namespace
         params.remote_object_id = *remote_object;
         params.caller_zone_id = initiator_zone;
         params.requesting_zone_id = initiator_zone;
-        params.build_out_param_channel = rpc::add_ref_options::normal;
+        params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
 
-        auto result = CO_AWAIT initiator_service->outbound_add_ref(std::move(params), initiator_transport);
+        auto result = CO_AWAIT initiator_service->add_ref(std::move(params));
         CORO_ASSERT_EQ(result.error_code, expected.add_ref_error_code);
 
         auto initiator_state = initiator_service->get_attestation_route_state(responder_zone);
@@ -1033,6 +1059,161 @@ namespace
         std::static_pointer_cast<rpc::transport>(responder_transport)->set_status(rpc::transport_status::DISCONNECTED);
         for (size_t i = 0; i < service_level_route_cleanup_drain_iterations; ++i)
             CO_AWAIT initiator_service->schedule();
+
+        CO_RETURN true;
+    }
+
+    CORO_TASK(bool)
+    coro_reference_control_handles_handshaking_route(
+        const std::shared_ptr<coro::scheduler>& scheduler,
+        claimed_route_control_operation operation)
+    {
+        auto local_zone = make_service_level_route_zone(service_level_route_initiator_subnet);
+        auto peer_zone = make_service_level_route_zone(service_level_route_responder_subnet);
+
+        auto service = std::make_shared<rpc::enclave_service>("claimed-route-add-ref", local_zone, peer_zone, scheduler);
+        service->set_add_ref_attestation_required(true);
+
+        canopy::security::attestation::route_attestation_state handshaking_state;
+        handshaking_state.status = route_attestation_status::handshaking;
+        handshaking_state.next_transcript_id = 7;
+        service->set_attestation_route_state(peer_zone, handshaking_state);
+
+        auto remote_object = peer_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(remote_object.has_value(), true);
+        auto local_object = local_zone.with_object(rpc::dummy_object_id);
+        CORO_ASSERT_EQ(local_object.has_value(), true);
+
+        auto transport = std::make_shared<recording_reference_control_transport>(local_zone, peer_zone);
+        service->add_transport(peer_zone, transport);
+
+        int result_code = rpc::error::OK();
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            switch (operation)
+            {
+            case claimed_route_control_operation::add_ref:
+            {
+                rpc::add_ref_params params;
+                params.protocol_version = rpc::get_version();
+                params.remote_object_id = *remote_object;
+                params.caller_zone_id = local_zone;
+                params.requesting_zone_id = local_zone;
+                params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+                auto result = CO_AWAIT service->add_ref(std::move(params));
+                result_code = result.error_code;
+                break;
+            }
+            case claimed_route_control_operation::release:
+            {
+                rpc::release_params params;
+                params.protocol_version = rpc::get_version();
+                params.remote_object_id = *local_object;
+                params.caller_zone_id = peer_zone;
+                params.options = rpc::release_options::normal;
+                auto result = CO_AWAIT service->release(std::move(params));
+                result_code = result.error_code;
+                break;
+            }
+            case claimed_route_control_operation::try_cast:
+            {
+                rpc::try_cast_params params;
+                params.protocol_version = rpc::get_version();
+                params.remote_object_id = *local_object;
+                params.caller_zone_id = peer_zone;
+                params.interface_id = rpc::interface_ordinal(0x1234);
+                auto result = CO_AWAIT service->try_cast(std::move(params));
+                result_code = result.error_code;
+                break;
+            }
+            case claimed_route_control_operation::object_released:
+            {
+                rpc::object_released_params params;
+                params.protocol_version = rpc::get_version();
+                params.remote_object_id = *remote_object;
+                params.caller_zone_id = local_zone;
+                CO_AWAIT service->object_released(std::move(params));
+                result_code = rpc::error::OK();
+                break;
+            }
+            case claimed_route_control_operation::transport_down:
+            {
+                rpc::transport_down_params params;
+                params.protocol_version = rpc::get_version();
+                params.destination_zone_id = local_zone;
+                params.caller_zone_id = peer_zone;
+                CO_AWAIT service->transport_down(std::move(params));
+                result_code = rpc::error::OK();
+                break;
+            }
+            }
+            done.store(true);
+            CO_RETURN;
+        };
+
+        CORO_ASSERT_EQ(service->spawn(task()), true);
+        for (size_t i = 0; i < 4; ++i)
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+
+        if (operation != claimed_route_control_operation::add_ref)
+        {
+            CORO_ASSERT_EQ(done.load(), true);
+
+            auto route_state = service->get_attestation_route_state(peer_zone);
+            CORO_ASSERT_EQ(route_state.status, route_attestation_status::handshaking);
+            CORO_ASSERT_EQ(route_state.next_transcript_id, 7U);
+            CORO_ASSERT_EQ(route_state.context.has_value(), false);
+
+            switch (operation)
+            {
+            case claimed_route_control_operation::add_ref:
+                break;
+            case claimed_route_control_operation::release:
+                CORO_ASSERT_EQ(result_code, rpc::error::FRAUDULANT_REQUEST());
+                break;
+            case claimed_route_control_operation::try_cast:
+                CORO_ASSERT_EQ(result_code, rpc::error::FRAUDULANT_REQUEST());
+                break;
+            case claimed_route_control_operation::object_released:
+            case claimed_route_control_operation::transport_down:
+                CORO_ASSERT_EQ(result_code, rpc::error::OK());
+                break;
+            }
+
+            service->remove_transport(peer_zone);
+            std::static_pointer_cast<rpc::transport>(transport)->set_status(rpc::transport_status::DISCONNECTED);
+            CO_RETURN true;
+        }
+
+        CORO_ASSERT_EQ(done.load(), false);
+        service->set_route_unattested_allowed(peer_zone, true);
+
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            CO_AWAIT scheduler->schedule_after(std::chrono::milliseconds{1});
+
+        CORO_ASSERT_EQ(done.load(), true);
+
+        auto route_state = service->get_attestation_route_state(peer_zone);
+        CORO_ASSERT_EQ(route_state.status, route_attestation_status::unattested_allowed);
+        CORO_ASSERT_EQ(route_state.next_transcript_id, 7U);
+
+        switch (operation)
+        {
+        case claimed_route_control_operation::add_ref:
+            CORO_ASSERT_EQ(route_state.context.has_value(), false);
+            CORO_ASSERT_EQ(result_code, rpc::error::OK());
+            break;
+        case claimed_route_control_operation::release:
+        case claimed_route_control_operation::try_cast:
+        case claimed_route_control_operation::object_released:
+        case claimed_route_control_operation::transport_down:
+            break;
+        }
+
+        service->remove_transport(peer_zone);
+        std::static_pointer_cast<rpc::transport>(transport)->set_status(rpc::transport_status::DISCONNECTED);
 
         CO_RETURN true;
     }
@@ -1230,8 +1411,8 @@ namespace
 
         auto generic_transport = std::make_shared<recording_reference_control_transport>(local_zone, adjacent_zone);
         auto generic_add_ref_result = CO_AWAIT service->outbound_add_ref(add_ref_params, generic_transport);
-        CORO_ASSERT_EQ(generic_add_ref_result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
-        CORO_ASSERT_EQ(generic_transport->add_ref_count, 0U);
+        CORO_ASSERT_EQ(generic_add_ref_result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(generic_transport->add_ref_count, 1U);
 
         auto enclave_local_transport
             = std::make_shared<recording_enclave_local_reference_control_transport>(local_zone, adjacent_zone);
@@ -1247,8 +1428,8 @@ namespace
         release_params.options = rpc::release_options::normal;
 
         auto generic_release_result = CO_AWAIT service->outbound_release(release_params, generic_transport);
-        CORO_ASSERT_EQ(generic_release_result.error_code, rpc::error::ZONE_NOT_SUPPORTED());
-        CORO_ASSERT_EQ(generic_transport->release_count, 0U);
+        CORO_ASSERT_EQ(generic_release_result.error_code, rpc::error::OK());
+        CORO_ASSERT_EQ(generic_transport->release_count, 1U);
 
         auto local_release_result = CO_AWAIT service->outbound_release(release_params, enclave_local_transport);
         CORO_ASSERT_EQ(local_release_result.error_code, rpc::error::OK());
@@ -1688,6 +1869,31 @@ namespace
         scheduler->shutdown();
     }
 
+    void run_claimed_route_control_admission_test(claimed_route_control_operation operation)
+    {
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+        bool result = false;
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT coro_reference_control_handles_handshaking_route(scheduler, operation);
+            done.store(true);
+            CO_RETURN;
+        };
+
+        RPC_ASSERT(scheduler->spawn_detached(task()));
+        const auto deadline = std::chrono::steady_clock::now() + service_level_route_test_timeout;
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        ASSERT_TRUE(done.load());
+        EXPECT_TRUE(result);
+        scheduler->shutdown();
+    }
+
     void run_transport_final_control_status_sanitiser_test()
     {
         auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -1998,6 +2204,41 @@ TEST(
             .responder_route_status = route_attestation_status::failed,
             .initiator_context_established = false,
             .responder_context_established = false});
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    AddRefWaitsWhenRouteHandshakeIsAlreadyClaimed)
+{
+    run_claimed_route_control_admission_test(claimed_route_control_operation::add_ref);
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    ReleaseRejectsBeforeRouteAdmission)
+{
+    run_claimed_route_control_admission_test(claimed_route_control_operation::release);
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    TryCastRejectsBeforeRouteAdmission)
+{
+    run_claimed_route_control_admission_test(claimed_route_control_operation::try_cast);
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    ObjectReleasedReturnsBeforeRouteAdmission)
+{
+    run_claimed_route_control_admission_test(claimed_route_control_operation::object_released);
+}
+
+TEST(
+    ServiceLevelRouteAttestation,
+    TransportDownReturnsBeforeRouteAdmission)
+{
+    run_claimed_route_control_admission_test(claimed_route_control_operation::transport_down);
 }
 
 TEST(

@@ -340,6 +340,12 @@ rpc::error::INVALID_VERSION()
 rpc::error::INCOMPATIBLE_SERIALISATION()
 ```
 
+`INVALID_VERSION` covers unsupported RPC versions, generated IDL fingerprints,
+and message schemas. `FRAUDULANT_REQUEST` is reserved for security/protocol
+violations such as authenticated tamper, replay, downgrade attempts, impossible
+sequencing, or invalid request-scoped capability handoff; do not use it for an
+unknown fingerprint by itself.
+
 ### Error Helper
 
 ```cpp

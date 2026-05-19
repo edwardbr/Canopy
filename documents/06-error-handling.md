@@ -105,7 +105,7 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | `CALL_CANCELLED` | ±22 | Remote call cancelled |
 | `CALL_TIMEOUT` | ±24 | Outbound call timed out waiting for a response |
 | `NOT_IMPLEMENTED` | ±25 | Interface path exists but is not implemented |
-| `FRAUDULANT_REQUEST` | ±26 | Request-scoped out-param handoff used an invalid request id |
+| `FRAUDULANT_REQUEST` | ±26 | Request violates protocol/security sequencing and may be malicious |
 | `RESOURCE_CLOSED` | ±27 | Local resource was closed or is no longer accepting work |
 | `OPERATION_CANCELLED` | ±28 | Local asynchronous operation was cancelled before completion |
 | `RESOURCE_EXHAUSTED` | ±29 | Local capacity was exhausted after retry/backpressure handling |
@@ -336,6 +336,12 @@ if (error == rpc::error::OBJECT_NOT_FOUND())
 ```
 
 ## 8. Version Mismatch
+
+Use `INVALID_VERSION` for unsupported RPC versions, generated IDL
+fingerprints, or message schemas. An unknown fingerprint alone is not fraud;
+the peer may simply be newer. Reserve `FRAUDULANT_REQUEST` for impossible
+sequencing, authenticated tamper, replay, downgrade attempts, or invalid
+request-scoped capability handoff.
 
 ```cpp
 auto error = CO_AWAIT proxy_->call(method_id, input, output);

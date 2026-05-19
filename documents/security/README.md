@@ -27,7 +27,9 @@ security review aid and a checklist for hardening work.
 
 - Treat host-controlled memory as hostile, even when it is required for normal
   operation.
-- Treat malformed protocol input as an attack, not merely a transport error.
+- Treat malformed protocol input as an attack, not merely a transport error,
+  while keeping unsupported versions or unknown generated fingerprints in the
+  compatibility-failure category unless another security invariant is violated.
 - Distinguish confidentiality and integrity failures from denial of service.
 - Fail closed when protocol state is impossible.
 - Do not continue executing with sensitive state after fraudulent input.

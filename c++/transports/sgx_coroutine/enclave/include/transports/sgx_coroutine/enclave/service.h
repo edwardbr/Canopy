@@ -118,6 +118,18 @@ namespace rpc
             std::shared_ptr<transport> transport) override;
 
     private:
+        struct route_attestation_claim
+        {
+            canopy::security::attestation::route_policy_decision decision;
+            canopy::security::attestation::route_attestation_state state;
+            uint64_t transcript_id{0};
+            int error_code{rpc::error::OK()};
+        };
+
+        [[nodiscard]] auto claim_add_ref_route_attestation(
+            rpc::destination_zone route_zone_id,
+            bool route_is_local,
+            bool attestation_required) -> route_attestation_claim;
         [[nodiscard]] auto find_security_context_for_protected_call(
             rpc::caller_zone caller_zone_id,
             rpc::destination_zone destination_zone_id) const
@@ -126,9 +138,10 @@ namespace rpc
         ensure_add_ref_route_allowed(
             rpc::destination_zone route_zone_id,
             const char* operation);
-        [[nodiscard]] auto ensure_existing_reference_route_allowed(
+        CORO_TASK(standard_result)
+        ensure_existing_reference_route_allowed(
             rpc::destination_zone route_zone_id,
-            const char* operation) const -> standard_result;
+            const char* operation) const;
 
         mutable std::mutex controller_mutex_;
         std::shared_ptr<rpc::io_uring::controller> io_uring_controller_;

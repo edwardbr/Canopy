@@ -8,8 +8,15 @@ All rights reserved.
 ## Principle
 
 Attestation failures, protected-envelope authentication failures, replay
-detections, and inner/outer identity mismatches are security events. Treat them
-as fraudulent or hostile until proven otherwise.
+detections, and inner/outer identity mismatches are security events. Treat
+authenticated tamper, replay, downgrade, and impossible protocol sequencing as
+fraudulent or hostile until proven otherwise.
+
+Do not classify every rejected message as fraud. In particular, an unknown IDL
+fingerprint or unsupported protected-control payload can simply mean the peer
+was built from a newer schema. That should fail closed as a version or
+compatibility error, not as `FRAUDULANT_REQUEST`, because fraud handling may
+feed temporary or permanent blacklists.
 
 A backend downgrade is also a security event. For example, fake or simulation
 evidence presented to a policy that requires hardware attestation must fail
@@ -29,6 +36,20 @@ Application policy decides whether a specific failure causes:
 The remote caller should receive only the minimal result needed for protocol
 progress. `ZONE_NOT_SUPPORTED` is the current compatibility error for peers
 that do not support required protected envelopes or attestation features.
+`INVALID_VERSION` is appropriate for unsupported protocol versions, message
+types, or generated IDL fingerprints.
+
+Use `FRAUDULANT_REQUEST` only for failures that indicate a security violation
+or impossible protocol sequence, such as:
+
+- normal-mode RPC/control traffic before the route has been admitted by
+  `add_ref` or an attestation handshake;
+- plaintext downgrade attempts on a route that already has a protected
+  context;
+- protected-envelope authentication failure;
+- protected-envelope replay or out-of-order receive counters;
+- authenticated inner/outer binding mismatch;
+- invalid request-scoped capability handoff.
 
 More specific public error codes are deferred until a full security audit
 defines which details can be disclosed safely.
