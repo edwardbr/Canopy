@@ -754,12 +754,12 @@ policy defaults, fail-closed default behavior, quote-provider/verifier seams,
 defensive payload/field caps, and adapter-owned `sgx_report_data_t` binding for
 host DCAP verification. Host-only tests now cover oversized DCAP inner
 quote/supplemental-data fields before the verifier seam, provider rejection of
-oversized target-info/report buffers, and rejection before verifier callback
-when raw quote report_data is missing or bound to the wrong transcript. Next,
-on the best available SGX hardware, wire either the EPID provider/verifier path
-for legacy demos or the DCAP provider/verifier path for SGX-FLC machines, and
-bind that evidence to an agreed shared secret before establishing protected-RPC
-AEAD keys.
+oversized target-info/report buffers, quote3 parser bounds checks, rejection
+before verifier callback when raw quote report_data is missing or bound to the
+wrong transcript, and explicit delegated-result policy. Next, on the best
+available SGX hardware, wire either the EPID provider/verifier path for legacy
+demos or the DCAP provider/verifier path for SGX-FLC machines, and bind that
+evidence to an agreed shared secret before establishing protected-RPC AEAD keys.
 
 ## Architectural Layers
 
@@ -1271,9 +1271,15 @@ transcript-bound key exchange.
     quote-verification results and expired collateral, after its configured
     `extract_report_data` callback proves the raw quote report_data is bound
     to the Canopy transcript hash;
-  - remaining: provide a tested reference `sgx_quote3_t` report-data extractor
-    and a production verifier callback wrapper, so deployers are not forced to
-    hand-roll quote-layout parsing or QvL/QvE result handling;
+  - complete: `sgx_dcap_quote3_parser` provides a tested, bounds-checked
+    extractor for the fixed SGX quote3 `report_data` field. Normal builds use
+    audited offsets; builds that define
+    `CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT` additionally validate
+    those offsets against Intel's `sgx_quote_3.h`;
+  - complete: producer-supplied delegated `verification_result` material has
+    explicit host-verifier modes. It is rejected by default, can be ignored
+    only by explicit configuration, and can be required only with a configured
+    QvE delegated-result checker;
   - remaining: wire the provider function table to `sgx_qe_get_target_info`,
     enclave `sgx_create_report`, and `sgx_qe_get_quote`;
   - remaining: wire the verifier callback to `sgx_qv_verify_quote` (or
@@ -1281,10 +1287,12 @@ transcript-bound key exchange.
     `qve_report_info`, then inside the enclave call
     `sgx_tvl_verify_qve_report_and_identity`, then enforce application policy
     over the embedded report;
-  - remaining: define the only supported delegated-result path for the optional
-    DCAP `verification_result` field. It must verify the QvE report,
-    signature, accepted QvE identity, collateral freshness, and policy before
-    consuming a producer-supplied quote-verification result;
+  - remaining: provide a production QvL/QvE callback wrapper, so deployers are
+    not forced to hand-roll `sgx_qv_verify_quote`/`tee_verify_quote` result
+    handling;
+  - remaining: implement the QvE delegated-result checker. It must verify the
+    QvE report, signature, accepted QvE identity, collateral freshness, and
+    policy before consuming a producer-supplied quote-verification result;
   - remaining: map the full `sgx_ql_qv_result_t` catalog to backend verdicts
     per the failure-mode catalog in `dcap-operations.md`.
 - Build wiring:

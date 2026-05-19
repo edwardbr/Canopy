@@ -12,6 +12,7 @@
 #include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
 #include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_provider.h>
 #include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_verifier.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_quote3_parser.h>
 #include <security/attestation/backends/sgx_epid/sgx_epid_backend.h>
 #include <security/attestation/backends/sgx_epid/sgx_epid_host_quote_provider.h>
 #include <security/attestation/backends/sgx_epid/sgx_epid_ias_report_verifier.h>
@@ -51,6 +52,7 @@ namespace
     using canopy::security::attestation::evaluate_reference_route_policy;
     using canopy::security::attestation::evaluate_route_attestation_state;
     using canopy::security::attestation::evidence_binding;
+    using canopy::security::attestation::extract_sgx_quote3_report_data;
     using canopy::security::attestation::fake_backend;
     using canopy::security::attestation::fake_backend_id;
     using canopy::security::attestation::fake_evidence_content_format;
@@ -81,6 +83,8 @@ namespace
     using canopy::security::attestation::security_level;
     using canopy::security::attestation::sgx_dcap_backend;
     using canopy::security::attestation::sgx_dcap_backend_id;
+    using canopy::security::attestation::sgx_dcap_delegated_verification_result_check;
+    using canopy::security::attestation::sgx_dcap_delegated_verification_result_mode;
     using canopy::security::attestation::sgx_dcap_evidence_media_type;
     using canopy::security::attestation::sgx_dcap_get_quote_request;
     using canopy::security::attestation::sgx_dcap_host_quote_provider;
@@ -89,6 +93,10 @@ namespace
     using canopy::security::attestation::sgx_dcap_host_quote_verification;
     using canopy::security::attestation::sgx_dcap_host_quote_verifier;
     using canopy::security::attestation::sgx_dcap_host_quote_verifier_options;
+    using canopy::security::attestation::sgx_dcap_quote3_report_data_offset;
+    using canopy::security::attestation::sgx_dcap_quote3_report_data_size;
+    using canopy::security::attestation::sgx_dcap_quote3_signature_data_len_offset;
+    using canopy::security::attestation::sgx_dcap_quote3_signature_data_offset;
     using canopy::security::attestation::sgx_dcap_quote_evidence_content_format;
     using canopy::security::attestation::sgx_dcap_quote_material;
     using canopy::security::attestation::sgx_dcap_quote_provider;
@@ -282,6 +290,20 @@ namespace
         auto out = report_data_sha256;
         out.resize(64U, 0);
         return out;
+    }
+
+    auto make_sgx_quote3_quote(
+        const std::vector<uint8_t>& report_data,
+        uint32_t signature_data_size = 0U) -> std::vector<uint8_t>
+    {
+        auto quote = std::vector<uint8_t>(sgx_dcap_quote3_signature_data_offset + signature_data_size, 0);
+        EXPECT_EQ(report_data.size(), sgx_dcap_quote3_report_data_size);
+        std::copy(report_data.begin(), report_data.end(), quote.begin() + sgx_dcap_quote3_report_data_offset);
+        quote[sgx_dcap_quote3_signature_data_len_offset] = static_cast<uint8_t>(signature_data_size & 0xffU);
+        quote[sgx_dcap_quote3_signature_data_len_offset + 1U] = static_cast<uint8_t>((signature_data_size >> 8U) & 0xffU);
+        quote[sgx_dcap_quote3_signature_data_len_offset + 2U] = static_cast<uint8_t>((signature_data_size >> 16U) & 0xffU);
+        quote[sgx_dcap_quote3_signature_data_len_offset + 3U] = static_cast<uint8_t>((signature_data_size >> 24U) & 0xffU);
+        return quote;
     }
 
     auto extract_sgx_report_data_prefix(const std::vector<uint8_t>& quote) -> std::optional<std::vector<uint8_t>>
@@ -1242,17 +1264,38 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxDcapQuote3ParserExtractsReportDataAndRejectsMalformedQuotes)
+{
+    const auto report_data = make_sgx_report_data(std::vector<uint8_t>(32U, 0x5c));
+    auto quote = make_sgx_quote3_quote(report_data, 4U);
+    quote[sgx_dcap_quote3_signature_data_offset] = 0xaa;
+
+    auto extracted = extract_sgx_quote3_report_data(quote);
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_EQ(extracted.value(), report_data);
+
+    auto truncated_fixed_prefix = quote;
+    truncated_fixed_prefix.resize(sgx_dcap_quote3_signature_data_offset - 1U);
+    EXPECT_FALSE(extract_sgx_quote3_report_data(truncated_fixed_prefix).has_value());
+
+    auto truncated_signature_data = quote;
+    truncated_signature_data.resize(sgx_dcap_quote3_signature_data_offset + 1U);
+    EXPECT_FALSE(extract_sgx_quote3_report_data(truncated_signature_data).has_value());
+}
+
+TEST(
+    AttestationService,
     SgxDcapHostVerifierAcceptsConfiguredQvResult)
 {
     sgx_dcap_host_quote_verifier_options options;
     bool verified = false;
-    options.extract_report_data = extract_sgx_report_data_prefix;
     options.verify_quote
         = [&](const sgx_dcap_verifier_input& input, const attestation_policy& policy) -> sgx_dcap_host_quote_verification
     {
         verified = true;
         EXPECT_EQ(policy.required_backend_id, sgx_dcap_backend_id);
-        EXPECT_EQ(input.quote.quote, make_sgx_report_data(input.report_data_sha256));
+        EXPECT_EQ(
+            extract_sgx_quote3_report_data(input.quote.quote).value(), make_sgx_report_data(input.report_data_sha256));
 
         sgx_dcap_host_quote_verification result;
         result.call_succeeded = true;
@@ -1266,7 +1309,7 @@ TEST(
     sgx_dcap_verifier_input input;
     input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
     input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
-    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
+    input.quote.quote = make_sgx_quote3_quote(make_sgx_report_data(input.report_data_sha256));
 
     attestation_policy policy;
     policy.required_backend_id = sgx_dcap_backend_id;
@@ -1285,8 +1328,8 @@ TEST(
     SgxDcapHostVerifierRequiresReportDataBoundQuote)
 {
     bool verify_quote_called = false;
-    sgx_dcap_host_quote_verifier_options missing_extractor_options;
-    missing_extractor_options.verify_quote
+    sgx_dcap_host_quote_verifier_options malformed_quote_options;
+    malformed_quote_options.verify_quote
         = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {
         verify_quote_called = true;
@@ -1302,13 +1345,12 @@ TEST(
     policy.required_backend_id = sgx_dcap_backend_id;
     policy.minimum_security_level = security_level::hardware;
 
-    sgx_dcap_host_quote_verifier missing_extractor_verifier(std::move(missing_extractor_options));
-    auto missing_extractor = missing_extractor_verifier.verify_quote(input, policy);
-    EXPECT_FALSE(missing_extractor.accepted);
+    sgx_dcap_host_quote_verifier malformed_quote_verifier(std::move(malformed_quote_options));
+    auto malformed_quote = malformed_quote_verifier.verify_quote(input, policy);
+    EXPECT_FALSE(malformed_quote.accepted);
     EXPECT_FALSE(verify_quote_called);
 
     sgx_dcap_host_quote_verifier_options mismatched_report_data_options;
-    mismatched_report_data_options.extract_report_data = extract_sgx_report_data_prefix;
     mismatched_report_data_options.verify_quote
         = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {
@@ -1316,7 +1358,7 @@ TEST(
         return sgx_dcap_host_quote_verification{true, {}, "unexpected verifier call"};
     };
 
-    input.quote.quote = make_sgx_report_data(std::vector<uint8_t>(32U, 0x34));
+    input.quote.quote = make_sgx_quote3_quote(make_sgx_report_data(std::vector<uint8_t>(32U, 0x34)));
     sgx_dcap_host_quote_verifier mismatched_report_data_verifier(std::move(mismatched_report_data_options));
     auto mismatched_report_data = mismatched_report_data_verifier.verify_quote(input, policy);
     EXPECT_FALSE(mismatched_report_data.accepted);
@@ -1325,10 +1367,68 @@ TEST(
 
 TEST(
     AttestationService,
+    SgxDcapHostVerifierMakesDelegatedVerificationResultExplicit)
+{
+    sgx_dcap_verifier_input input;
+    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
+    input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
+    input.quote.quote = make_sgx_quote3_quote(make_sgx_report_data(input.report_data_sha256));
+    input.quote.verification_result = sgx_dcap_verification_result_material{};
+    input.quote.verification_result->quote_verification_result = canopy::security::attestation::sgx_dcap_qv_result_ok;
+
+    attestation_policy policy;
+    policy.required_backend_id = sgx_dcap_backend_id;
+    policy.minimum_security_level = security_level::hardware;
+
+    bool verify_quote_called = false;
+    sgx_dcap_host_quote_verifier_options default_options;
+    default_options.verify_quote
+        = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        verify_quote_called = true;
+        return sgx_dcap_host_quote_verification{true, {}, "unexpected verifier call"};
+    };
+
+    sgx_dcap_host_quote_verifier default_verifier(std::move(default_options));
+    auto default_rejection = default_verifier.verify_quote(input, policy);
+    EXPECT_FALSE(default_rejection.accepted);
+    EXPECT_FALSE(verify_quote_called);
+
+    bool delegated_checked = false;
+    sgx_dcap_host_quote_verifier_options verified_options;
+    verified_options.delegated_result_mode = sgx_dcap_delegated_verification_result_mode::require_verified;
+    verified_options.verify_delegated_verification_result
+        = [&](const sgx_dcap_verifier_input& delegated_input,
+              const attestation_policy& delegated_policy) -> sgx_dcap_delegated_verification_result_check
+    {
+        delegated_checked = true;
+        EXPECT_TRUE(delegated_input.quote.verification_result.has_value());
+        EXPECT_EQ(delegated_policy.required_backend_id, sgx_dcap_backend_id);
+        return sgx_dcap_delegated_verification_result_check{true, ""};
+    };
+    verified_options.verify_quote
+        = [&](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
+    {
+        verify_quote_called = true;
+        sgx_dcap_host_quote_verification result;
+        result.call_succeeded = true;
+        result.result.quote_verification_result = canopy::security::attestation::sgx_dcap_qv_result_ok;
+        result.result.quote_verification_result_name = "OK";
+        return result;
+    };
+
+    sgx_dcap_host_quote_verifier verified_verifier(std::move(verified_options));
+    auto accepted = verified_verifier.verify_quote(input, policy);
+    EXPECT_TRUE(accepted.accepted) << accepted.reason;
+    EXPECT_TRUE(delegated_checked);
+    EXPECT_TRUE(verify_quote_called);
+}
+
+TEST(
+    AttestationService,
     SgxDcapHostVerifierRejectsUnacceptedQvResultAndExpiredCollateral)
 {
     sgx_dcap_host_quote_verifier_options options;
-    options.extract_report_data = extract_sgx_report_data_prefix;
     options.verify_quote = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {
         sgx_dcap_host_quote_verification result;
@@ -1342,7 +1442,7 @@ TEST(
     sgx_dcap_verifier_input input;
     input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
     input.report_data_sha256 = std::vector<uint8_t>(32U, 0x12);
-    input.quote.quote = make_sgx_report_data(input.report_data_sha256);
+    input.quote.quote = make_sgx_quote3_quote(make_sgx_report_data(input.report_data_sha256));
 
     attestation_policy policy;
     policy.required_backend_id = sgx_dcap_backend_id;
@@ -1352,7 +1452,6 @@ TEST(
     EXPECT_FALSE(bad_qv_result.accepted);
 
     sgx_dcap_host_quote_verifier_options expired_options;
-    expired_options.extract_report_data = extract_sgx_report_data_prefix;
     expired_options.verify_quote
         = [](const sgx_dcap_verifier_input&, const attestation_policy&) -> sgx_dcap_host_quote_verification
     {

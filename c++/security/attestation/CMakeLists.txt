@@ -7,6 +7,11 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
+option(
+  CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT
+  "Validate the DCAP quote3 parser offsets against Intel sgx_quote_3.h. Requires that header on the include path."
+  OFF)
+
 set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/aead.cpp
     src/backend_factory.cpp
@@ -17,6 +22,7 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/backends/sgx_dcap/sgx_dcap_backend.cpp
     src/backends/sgx_dcap/sgx_dcap_host_quote_provider.cpp
     src/backends/sgx_dcap/sgx_dcap_host_quote_verifier.cpp
+    src/backends/sgx_dcap/sgx_dcap_quote3_parser.cpp
     src/backends/sgx_epid/sgx_epid_backend.cpp
     src/backends/sgx_epid/sgx_epid_host_quote_provider.cpp
     src/backends/sgx_epid/sgx_epid_ias_report_verifier.cpp
@@ -37,6 +43,9 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${CANOPY_INCLUDES})
 target_compile_definitions(security_attestation PRIVATE ${CANOPY_DEFINES})
+if(CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT)
+  target_compile_definitions(security_attestation PRIVATE CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT)
+endif()
 target_compile_options(security_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(security_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
@@ -64,6 +73,9 @@ if(CANOPY_BUILD_ENCLAVE)
       PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
       PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
     target_compile_definitions(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
+    if(CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT)
+      target_compile_definitions(security_attestation_enclave PRIVATE CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT)
+    endif()
     target_compile_options(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                                ${CANOPY_WARN_OK_ENCLAVE})
     if(NOT CANOPY_SGX_BACKEND STREQUAL "Fake")

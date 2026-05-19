@@ -181,13 +181,13 @@ Canopy now has the first DCAP backend slice:
   `sgx_qv_verify_quote` or `tee_verify_quote`, and QvE/TVL appraisal must be
   wired on a DCAP-capable machine;
 - `sgx_dcap_host_quote_provider` and `sgx_dcap_host_quote_verifier` provide
-  function-table adapters for that host wiring. The verifier adapter requires
-  a quote `report_data` extractor and enforces
+  function-table adapters for that host wiring. The verifier adapter defaults
+  to a bounds-checked SGX quote3 `report_data` parser and enforces
   `sgx_report_data_t == report_data_sha256 || zero(32)` before mapping any
   QvL/QvE result to a Canopy verdict. The tests exercise the QE
-  target-info/report/quote sequence, quote-size caps, transcript binding, QvL
-  result mapping, and expired-collateral rejection without linking Intel
-  runtime libraries.
+  target-info/report/quote sequence, quote-size caps, quote3 parsing,
+  transcript binding, QvL result mapping, delegated-result guardrails, and
+  expired-collateral rejection without linking Intel runtime libraries.
 
 This current DCAP backend is now more than a wire skeleton, but it still does
 not directly call Intel DCAP quote-generation or quote-verification libraries.
@@ -196,10 +196,11 @@ adapters to the real Intel APIs plus the transcript-bound key exchange
 described in the implementation plan.
 
 The optional DCAP `verification_result` field is an appraisal summary, not a
-trust anchor. A verifier may use it only after verifying the QvE report,
-signature, accepted QvE identity, collateral freshness, and local policy. The
-current host verifier adapter safely ignores any producer-supplied result until
-its configured verification callback returns a trusted QvL/QvE outcome.
+trust anchor. The host verifier rejects producer-supplied delegated results by
+default. A deployment may switch that mode only after wiring a checker that
+verifies the QvE report, signature, accepted QvE identity, collateral
+freshness, and local policy before any supplied quote-verification result is
+accepted as meaningful.
 
 ## Future TEE Backends
 
