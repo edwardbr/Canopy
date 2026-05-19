@@ -5,9 +5,13 @@
 
 #include "sgx_coroutine_test_host.h"
 
+#include <attestation/sgx_sim_protocol.h>
 #include <attestation_test/attestation_test.h>
 #include <gtest/gtest.h>
+#include <rpc/internal/serialiser.h>
 #include <rpc/rpc.h>
+#include <security/attestation/service.h>
+#include <security/attestation/simulation_backend.h>
 #include <transports/sgx_coroutine/host/connect.h>
 #include <transports/sgx_coroutine/host/transport.h>
 
@@ -47,6 +51,41 @@ namespace
 
         RPC_ASSERT(done.load(std::memory_order_acquire));
         return result;
+    }
+
+    [[nodiscard]] bool parse_local_challenge(
+        const attestation_test::sgx_sim_test_cmw& challenge,
+        rpc::attestation::sgx_sim_local_attestation_challenge& out)
+    {
+        if (challenge.media_type != canopy::security::attestation::simulation_evidence_media_type)
+            return false;
+        if (challenge.content_format != canopy::security::attestation::simulation_local_challenge_content_format)
+            return false;
+        return rpc::from_canonical_crypto(rpc::byte_span(challenge.payload), out).empty();
+    }
+
+    [[nodiscard]] bool parse_local_report(
+        const attestation_test::sgx_sim_test_cmw& report,
+        rpc::attestation::sgx_sim_local_attestation_report& out)
+    {
+        if (report.media_type != canopy::security::attestation::simulation_evidence_media_type)
+            return false;
+        if (report.content_format != canopy::security::attestation::simulation_local_report_evidence_content_format)
+            return false;
+        return rpc::from_canonical_crypto(rpc::byte_span(report.payload), out).empty();
+    }
+
+    [[nodiscard]] attestation_test::sgx_sim_test_cmw make_tampered_challenge(
+        const attestation_test::sgx_sim_test_cmw& challenge,
+        rpc::attestation::sgx_sim_local_attestation_challenge parsed_challenge)
+    {
+        if (!parsed_challenge.nonce.empty())
+            parsed_challenge.nonce[0] ^= 0xff;
+
+        auto tampered = challenge;
+        auto payload = rpc::to_canonical_crypto<std::vector<uint8_t>>(parsed_challenge);
+        tampered.payload = std::move(payload);
+        return tampered;
     }
 
     class root_service_owner final
@@ -233,14 +272,21 @@ TEST_F(
     sgx_sim_peer_targeted_reports_are_verified_between_two_enclaves)
 {
 #if defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
-    attestation_test::sgx_sim_local_attestation_challenge challenge_b;
+    attestation_test::sgx_sim_test_cmw challenge_b;
     ASSERT_EQ(SYNC_WAIT(test_b_->sgx_sim_make_local_attestation_challenge(0x21, challenge_b)), rpc::error::OK());
-    ASSERT_GT(challenge_b.target_info.size(), 0U);
-    ASSERT_EQ(challenge_b.report_data.size(), 64U);
 
-    attestation_test::sgx_sim_local_attestation_report report_a_to_b;
+    rpc::attestation::sgx_sim_local_attestation_challenge parsed_challenge_b;
+    ASSERT_TRUE(parse_local_challenge(challenge_b, parsed_challenge_b));
+    ASSERT_GT(parsed_challenge_b.target_info.size(), 0U);
+    ASSERT_EQ(parsed_challenge_b.nonce.size(), canopy::security::attestation::attestation_nonce_size);
+
+    attestation_test::sgx_sim_test_cmw report_a_to_b;
     ASSERT_EQ(SYNC_WAIT(test_a_->sgx_sim_make_local_attestation_report(challenge_b, report_a_to_b)), rpc::error::OK());
-    ASSERT_GT(report_a_to_b.report.size(), 0U);
+
+    rpc::attestation::sgx_sim_local_attestation_report parsed_report_a_to_b;
+    ASSERT_TRUE(parse_local_report(report_a_to_b, parsed_report_a_to_b));
+    ASSERT_GT(parsed_report_a_to_b.report.size(), 0U);
+    ASSERT_EQ(parsed_report_a_to_b.report_data_sha256.size(), 32U);
 
     attestation_test::sgx_sim_local_attestation_verification verification_a_to_b;
     ASSERT_EQ(
@@ -251,8 +297,7 @@ TEST_F(
     EXPECT_TRUE(verification_a_to_b.report_data_matched);
     EXPECT_TRUE(verification_a_to_b.sgx_verify_report_succeeded);
 
-    auto tampered_challenge = challenge_b;
-    tampered_challenge.report_data[0] ^= 0xff;
+    auto tampered_challenge = make_tampered_challenge(challenge_b, parsed_challenge_b);
     attestation_test::sgx_sim_local_attestation_verification tampered_verification;
     ASSERT_EQ(
         SYNC_WAIT(
@@ -261,16 +306,23 @@ TEST_F(
         << tampered_verification.failure_reason;
     EXPECT_FALSE(tampered_verification.accepted);
     EXPECT_FALSE(tampered_verification.report_data_matched);
-    EXPECT_TRUE(tampered_verification.sgx_verify_report_succeeded);
+    EXPECT_FALSE(tampered_verification.sgx_verify_report_succeeded);
 
-    attestation_test::sgx_sim_local_attestation_challenge challenge_a;
+    attestation_test::sgx_sim_test_cmw challenge_a;
     ASSERT_EQ(SYNC_WAIT(test_a_->sgx_sim_make_local_attestation_challenge(0x63, challenge_a)), rpc::error::OK());
-    ASSERT_GT(challenge_a.target_info.size(), 0U);
-    ASSERT_EQ(challenge_a.report_data.size(), 64U);
 
-    attestation_test::sgx_sim_local_attestation_report report_b_to_a;
+    rpc::attestation::sgx_sim_local_attestation_challenge parsed_challenge_a;
+    ASSERT_TRUE(parse_local_challenge(challenge_a, parsed_challenge_a));
+    ASSERT_GT(parsed_challenge_a.target_info.size(), 0U);
+    ASSERT_EQ(parsed_challenge_a.nonce.size(), canopy::security::attestation::attestation_nonce_size);
+
+    attestation_test::sgx_sim_test_cmw report_b_to_a;
     ASSERT_EQ(SYNC_WAIT(test_b_->sgx_sim_make_local_attestation_report(challenge_a, report_b_to_a)), rpc::error::OK());
-    ASSERT_GT(report_b_to_a.report.size(), 0U);
+
+    rpc::attestation::sgx_sim_local_attestation_report parsed_report_b_to_a;
+    ASSERT_TRUE(parse_local_report(report_b_to_a, parsed_report_b_to_a));
+    ASSERT_GT(parsed_report_b_to_a.report.size(), 0U);
+    ASSERT_EQ(parsed_report_b_to_a.report_data_sha256.size(), 32U);
 
     attestation_test::sgx_sim_local_attestation_verification verification_b_to_a;
     ASSERT_EQ(

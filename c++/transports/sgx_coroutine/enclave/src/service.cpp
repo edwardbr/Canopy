@@ -482,7 +482,7 @@ namespace rpc
             // send evidence, the nonce and transcript id bind the evidence to
             // this specific handshake and prevent replay across transcripts.
             request.backend_id = service->backend_id();
-            if (service->should_send_local_evidence())
+            if (service->should_send_local_evidence() || service->supports_verifier_challenge())
             {
                 auto nonce = canopy::security::attestation::make_attestation_nonce();
                 if (!nonce.has_value())
@@ -492,7 +492,25 @@ namespace rpc
                     CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
                 }
                 request.nonce = std::move(nonce.value());
+            }
 
+            if (service->supports_verifier_challenge())
+            {
+                // SGX local attestation needs the verifier to send target_info
+                // before the peer can create a report targeted at this enclave.
+                // The challenge remains backend-neutral at this layer: a CMW
+                // blob whose type is defined by the backend-specific IDL file.
+                auto challenge = service->make_verifier_challenge(request.transcript_id, request.nonce);
+                if (!challenge.accepted)
+                {
+                    set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, challenge.reason);
+                    CO_RETURN standard_result{rpc::error::SECURITY_ERROR(), {}};
+                }
+                request.verifier_challenge = to_wire_cmw(challenge.evidence);
+            }
+
+            if (service->should_send_local_evidence())
+            {
                 auto evidence = service->produce_evidence(request.transcript_id, request.nonce);
                 if (!evidence.accepted)
                 {
@@ -579,19 +597,38 @@ namespace rpc
             // The peer supplied evidence in the response. Verify it before
             // accepting any identity, backend id, security level, or session keys
             // derived from the peer's claims.
-            if (!nonce_is_valid(response.nonce))
+            canopy::security::attestation::attestation_verdict verdict;
+            if (request.verifier_challenge.has_value())
             {
-                set_failed_attestation_route(
-                    *this, route_zone_id, state.failure_epoch, "route attestation response nonce was invalid");
-                CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+                // Challenge-bound evidence is verified against the challenge
+                // nonce and target_info we sent in the request. The response
+                // does not need a second nonce for this evidence shape.
+                canopy::security::attestation::evidence_binding expected_binding;
+                expected_binding.subject = from_wire_identity(response.responder);
+                expected_binding.transcript_id = response.transcript_id;
+                expected_binding.nonce = request.nonce;
+                verdict = service->verify_peer_evidence_for_challenge(
+                    from_wire_cmw(response.evidence.value()),
+                    from_wire_cmw(request.verifier_challenge.value()),
+                    std::move(expected_binding));
+            }
+            else
+            {
+                if (!nonce_is_valid(response.nonce))
+                {
+                    set_failed_attestation_route(
+                        *this, route_zone_id, state.failure_epoch, "route attestation response nonce was invalid");
+                    CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
+                }
+
+                canopy::security::attestation::evidence_binding expected_binding;
+                expected_binding.subject = from_wire_identity(response.responder);
+                expected_binding.transcript_id = response.transcript_id;
+                expected_binding.nonce = response.nonce;
+                verdict = service->verify_peer_evidence(
+                    from_wire_cmw(response.evidence.value()), std::move(expected_binding));
             }
 
-            canopy::security::attestation::evidence_binding expected_binding;
-            expected_binding.subject = from_wire_identity(response.responder);
-            expected_binding.transcript_id = response.transcript_id;
-            expected_binding.nonce = response.nonce;
-            auto verdict
-                = service->verify_peer_evidence(from_wire_cmw(response.evidence.value()), std::move(expected_binding));
             if (!verdict.accepted)
             {
                 set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, verdict.reason);
@@ -970,23 +1007,41 @@ namespace rpc
 
         if (service->should_send_local_evidence())
         {
-            // If local policy says to send evidence, generate a fresh response
-            // nonce. The evidence is bound to the same transcript id so both
-            // sides derive keys for the same logical handshake.
-            auto nonce = canopy::security::attestation::make_attestation_nonce();
-            if (!nonce.has_value())
+            if (request.verifier_challenge.has_value())
             {
-                CO_RETURN fail("failed to generate route attestation response nonce");
-            }
-            response.nonce = std::move(nonce.value());
+                // Prefer verifier-challenge evidence when the requester supplied
+                // one. For SGX local attestation this means the response carries
+                // a report targeted at the requester enclave instead of another
+                // self-targeted report.
+                auto evidence = service->produce_evidence_for_challenge(
+                    from_wire_cmw(request.verifier_challenge.value()), response.transcript_id, request.nonce);
+                if (!evidence.accepted)
+                {
+                    CO_RETURN fail(evidence.reason);
+                }
 
-            auto evidence = service->produce_evidence(response.transcript_id, response.nonce);
-            if (!evidence.accepted)
+                response.evidence = to_wire_cmw(evidence.evidence);
+            }
+            else
             {
-                CO_RETURN fail(evidence.reason);
-            }
+                // Backends that do not use verifier challenges continue to use
+                // the original two-blob evidence exchange with a fresh response
+                // nonce chosen by this responder.
+                auto nonce = canopy::security::attestation::make_attestation_nonce();
+                if (!nonce.has_value())
+                {
+                    CO_RETURN fail("failed to generate route attestation response nonce");
+                }
+                response.nonce = std::move(nonce.value());
 
-            response.evidence = to_wire_cmw(evidence.evidence);
+                auto evidence = service->produce_evidence(response.transcript_id, response.nonce);
+                if (!evidence.accepted)
+                {
+                    CO_RETURN fail(evidence.reason);
+                }
+
+                response.evidence = to_wire_cmw(evidence.evidence);
+            }
         }
 
         if (peer_attested)

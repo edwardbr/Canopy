@@ -67,6 +67,68 @@ namespace rpc
             [description="HMAC-SHA256 over this structure with this field empty. This remains a development key, not a production root of trust."]
             std::vector<uint8_t> development_signature;
         };
+
+        // Verifier challenge for SGX local attestation in simulation builds.
+        //
+        // The verifier creates this payload with sgx_self_target(). A peer uses
+        // target_info to create an sgx_report_t that only this verifier enclave
+        // can validate with sgx_verify_report().
+        struct sgx_sim_local_attestation_challenge
+        {
+            [description="Backend identity expected to be sgx-sim for this simulation challenge profile."]
+            std::string backend_id;
+
+            [description="Identity of the enclave that created target_info and will verify the peer report."]
+            attestation_identity verifier;
+
+            [description="Caller-generated transcript id for the route-attestation handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Verifier nonce bound into the peer report_data hash. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> nonce;
+
+            [description="Raw sgx_target_info_t bytes produced by sgx_self_target in the verifier enclave."]
+            std::vector<uint8_t> target_info;
+        };
+
+        // Transcript fields hashed into report_data for peer-targeted SGX SIM
+        // local-attestation reports.
+        struct sgx_sim_local_report_binding
+        {
+            [description="Backend identity expected to be sgx-sim for this simulation report profile."]
+            std::string backend_id;
+
+            [description="Identity claimed by the enclave that produced the report."]
+            attestation_identity claimant;
+
+            [description="Identity of the enclave that supplied the target_info challenge."]
+            attestation_identity verifier;
+
+            [description="Caller-generated transcript id for the route-attestation handshake."]
+            uint64_t transcript_id = 0;
+
+            [description="Verifier nonce copied from sgx_sim_local_attestation_challenge. JSON serializers must expose this as base64."]
+            std::vector<uint8_t> challenge_nonce;
+        };
+
+        // SGX SIM local-attestation report targeted at a verifier challenge.
+        //
+        // This remains simulation evidence. It proves the SGX SDK local report
+        // mechanics and Canopy transcript binding were exercised, but it does
+        // not claim hardware isolation or production TCB verification.
+        struct sgx_sim_local_attestation_report
+        {
+            sgx_sim_local_report_binding binding;
+
+            [description="SHA-256 digest copied into the first 32 bytes of sgx_report_data_t."]
+            std::vector<uint8_t> report_data_sha256;
+
+            [description="Raw sgx_report_t bytes produced by sgx_create_report for the verifier target_info."]
+            std::vector<uint8_t> report;
+
+            [description="HMAC-SHA256 over this structure with this field empty. This remains a development key, not a production root of trust."]
+            std::vector<uint8_t> development_signature;
+        };
         }
     }
 }

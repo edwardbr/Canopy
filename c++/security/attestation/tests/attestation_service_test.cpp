@@ -436,6 +436,10 @@ TEST(
     request.evidence->media_type = fake_evidence_media_type;
     request.evidence->content_format = fake_evidence_content_format;
     request.evidence->payload = {1, 2, 3};
+    request.verifier_challenge = rpc::attestation_cmw{};
+    request.verifier_challenge->media_type = simulation_evidence_media_type;
+    request.verifier_challenge->content_format = canopy::security::attestation::simulation_local_challenge_content_format;
+    request.verifier_challenge->payload = {9, 9, 9};
     request.nonce = {4, 5, 6};
 
     auto request_type_id = rpc::id<rpc::route_attestation_handshake_request>::get(rpc::get_version());
@@ -476,6 +480,13 @@ TEST(
         rpc::route_attestation_handshake_request decoded_no_evidence_request;
         EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(no_evidence_bytes), decoded_no_evidence_request).empty());
         EXPECT_EQ(decoded_no_evidence_request, request_without_evidence);
+
+        auto request_without_challenge = request;
+        request_without_challenge.verifier_challenge.reset();
+        auto no_challenge_bytes = rpc::serialise<std::vector<char>>(request_without_challenge, encoding);
+        rpc::route_attestation_handshake_request decoded_no_challenge_request;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(no_challenge_bytes), decoded_no_challenge_request).empty());
+        EXPECT_EQ(decoded_no_challenge_request, request_without_challenge);
     }
 }
 

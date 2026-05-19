@@ -22,6 +22,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
       canopy_coroutine_edl_enclave
       common_enclave
       attestation_test_idl_enclave
+      sgx_sim_protocol_idl_enclave
       example_idl_enclave
       canopy::security_attestation_enclave
       yas_common

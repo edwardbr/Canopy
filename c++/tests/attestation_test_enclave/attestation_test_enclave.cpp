@@ -11,19 +11,12 @@
 #include <security/attestation/simulation_backend.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
-#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <new>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
-
-#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
-#  include <sgx_utils.h>
-#endif
 
 namespace
 {
@@ -32,8 +25,8 @@ namespace
     // bind that report to Canopy transcript fields, and then verify the same
     // evidence inside an enclave.
     constexpr uint64_t test_transcript_id = 0x51584753494dULL;
+    constexpr uint64_t test_local_attestation_transcript_base = 0x4c4f43414cULL;
     constexpr uint64_t expected_sha256_digest_size = 32;
-    constexpr size_t sgx_report_data_size = 64;
 
     [[nodiscard]] auto make_binding() -> canopy::security::attestation::evidence_binding
     {
@@ -62,34 +55,65 @@ namespace
         return policy;
     }
 
-    template<typename T> [[nodiscard]] auto bytes_from_trivial_object(const T& value) -> std::vector<uint8_t>
+    [[nodiscard]] auto make_local_attestation_nonce(uint8_t challenge_seed) -> std::vector<uint8_t>
     {
-        static_assert(std::is_trivially_copyable_v<T>, "SGX report carrier must be trivially copyable");
-        const auto* begin = reinterpret_cast<const uint8_t*>(&value);
-        return std::vector<uint8_t>(begin, begin + sizeof(T));
+        std::vector<uint8_t> nonce(canopy::security::attestation::attestation_nonce_size);
+        for (size_t index = 0; index < nonce.size(); ++index)
+            nonce[index] = static_cast<uint8_t>(challenge_seed + index);
+        return nonce;
     }
 
-    template<typename T>
-    [[nodiscard]] auto trivial_object_from_bytes(
-        const std::vector<uint8_t>& bytes,
-        T& value) -> bool
+    [[nodiscard]] auto make_local_binding(
+        uint64_t transcript_id,
+        std::vector<uint8_t> nonce) -> canopy::security::attestation::evidence_binding
     {
-        static_assert(std::is_trivially_copyable_v<T>, "SGX report carrier must be trivially copyable");
-        if (bytes.size() != sizeof(T))
+        canopy::security::attestation::evidence_binding binding;
+        binding.subject = canopy::security::attestation::identity{
+            "sgx-sim-attestation-test-enclave", "sgx-sim-attestation-test-zone"};
+        binding.transcript_id = transcript_id;
+        binding.nonce = std::move(nonce);
+        return binding;
+    }
+
+    [[nodiscard]] auto to_wire_cmw(const canopy::security::attestation::cmw& value) -> attestation_test::sgx_sim_test_cmw
+    {
+        attestation_test::sgx_sim_test_cmw out;
+        out.media_type = value.media_type;
+        out.content_format = value.content_format;
+        out.payload = value.payload;
+        return out;
+    }
+
+    [[nodiscard]] auto from_wire_cmw(const attestation_test::sgx_sim_test_cmw& value) -> canopy::security::attestation::cmw
+    {
+        canopy::security::attestation::cmw out;
+        out.media_type = value.media_type;
+        out.content_format = value.content_format;
+        out.payload = value.payload;
+        return out;
+    }
+
+    [[nodiscard]] auto make_identity(const rpc::attestation_identity& value) -> canopy::security::attestation::identity
+    {
+        return canopy::security::attestation::identity{value.enclave_id, value.zone_id};
+    }
+
+    [[nodiscard]] auto parse_local_challenge(
+        const attestation_test::sgx_sim_test_cmw& challenge,
+        rpc::attestation::sgx_sim_local_attestation_challenge& out) -> bool
+    {
+        if (challenge.content_format != canopy::security::attestation::simulation_local_challenge_content_format)
             return false;
-        std::memcpy(&value, bytes.data(), sizeof(T));
-        return true;
+        return rpc::from_canonical_crypto(rpc::byte_span(challenge.payload), out).empty();
     }
 
-    [[nodiscard]] auto make_report_data(uint8_t challenge_seed) -> std::vector<uint8_t>
+    [[nodiscard]] auto parse_local_report(
+        const attestation_test::sgx_sim_test_cmw& report,
+        rpc::attestation::sgx_sim_local_attestation_report& out) -> bool
     {
-        // SGX report_data is the application-controlled transcript binding in
-        // SGX local attestation. The host test asks the verifier enclave to
-        // create this challenge so the prover cannot pick a convenient value.
-        std::vector<uint8_t> report_data(sgx_report_data_size);
-        for (size_t index = 0; index < report_data.size(); ++index)
-            report_data[index] = static_cast<uint8_t>(challenge_seed + index);
-        return report_data;
+        if (report.content_format != canopy::security::attestation::simulation_local_report_evidence_content_format)
+            return false;
+        return rpc::from_canonical_crypto(rpc::byte_span(report.payload), out).empty();
     }
 
     class attestation_enclave_test final
@@ -169,19 +193,19 @@ namespace
         CORO_TASK(int)
         sgx_sim_make_local_attestation_challenge(
             uint8_t challenge_seed,
-            attestation_test::sgx_sim_local_attestation_challenge& challenge) override
+            attestation_test::sgx_sim_test_cmw& challenge) override
         {
             challenge = {};
 
-#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
-            // sgx_target_info_t identifies the verifier enclave for SGX local
-            // attestation. The host is allowed to relay these public bytes; it
-            // cannot use them to forge a valid report for this enclave.
-            sgx_target_info_t target_info{};
-            if (sgx_self_target(&target_info) != SGX_SUCCESS)
-                CO_RETURN rpc::error::TRANSPORT_ERROR();
-            challenge.target_info = bytes_from_trivial_object(target_info);
-            challenge.report_data = make_report_data(challenge_seed);
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX) && defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)                       \
+    && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+            canopy::security::attestation::simulation_backend backend;
+            const auto transcript_id = test_local_attestation_transcript_base + challenge_seed;
+            auto cmw = backend.make_verifier_challenge(
+                make_local_binding(transcript_id, make_local_attestation_nonce(challenge_seed)));
+            if (!cmw.has_value())
+                CO_RETURN rpc::error::ZONE_NOT_SUPPORTED();
+            challenge = to_wire_cmw(cmw.value());
             CO_RETURN rpc::error::OK();
 #else
             CO_RETURN rpc::error::NOT_IMPLEMENTED();
@@ -190,31 +214,23 @@ namespace
 
         CORO_TASK(int)
         sgx_sim_make_local_attestation_report(
-            const attestation_test::sgx_sim_local_attestation_challenge& challenge,
-            attestation_test::sgx_sim_local_attestation_report& report_message) override
+            const attestation_test::sgx_sim_test_cmw& challenge,
+            attestation_test::sgx_sim_test_cmw& report_message) override
         {
             report_message = {};
 
-#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
-            // The verifier supplies target_info; this prover creates a report
-            // that only the verifier enclave should be able to validate with
-            // sgx_verify_report. Keep report_data exact-size to avoid silent
-            // truncation or accidental zero-extension in the test.
-            if (challenge.report_data.size() != sgx_report_data_size)
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX) && defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)                       \
+    && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+            rpc::attestation::sgx_sim_local_attestation_challenge parsed_challenge;
+            if (!parse_local_challenge(challenge, parsed_challenge))
                 CO_RETURN rpc::error::INVALID_DATA();
 
-            sgx_target_info_t target_info{};
-            if (!trivial_object_from_bytes(challenge.target_info, target_info))
-                CO_RETURN rpc::error::INVALID_DATA();
-
-            sgx_report_data_t sgx_report_data{};
-            std::copy(challenge.report_data.begin(), challenge.report_data.end(), sgx_report_data.d);
-
-            sgx_report_t report{};
-            if (sgx_create_report(&target_info, &sgx_report_data, &report) != SGX_SUCCESS)
-                CO_RETURN rpc::error::TRANSPORT_ERROR();
-
-            report_message.report = bytes_from_trivial_object(report);
+            canopy::security::attestation::simulation_backend backend;
+            auto cmw = backend.produce_evidence_for_challenge(
+                from_wire_cmw(challenge), make_local_binding(parsed_challenge.transcript_id, parsed_challenge.nonce));
+            if (!cmw.has_value())
+                CO_RETURN rpc::error::ZONE_NOT_SUPPORTED();
+            report_message = to_wire_cmw(cmw.value());
             CO_RETURN rpc::error::OK();
 #else
             CO_RETURN rpc::error::NOT_IMPLEMENTED();
@@ -223,40 +239,37 @@ namespace
 
         CORO_TASK(int)
         sgx_sim_verify_local_attestation_report(
-            const attestation_test::sgx_sim_local_attestation_report& report_message,
-            const attestation_test::sgx_sim_local_attestation_challenge& challenge,
+            const attestation_test::sgx_sim_test_cmw& report_message,
+            const attestation_test::sgx_sim_test_cmw& challenge,
             attestation_test::sgx_sim_local_attestation_verification& verification) override
         {
             verification = {};
-            verification.report_size = report_message.report.size();
-            verification.expected_report_data_size = challenge.report_data.size();
 
-#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX)
-            if (challenge.report_data.size() != sgx_report_data_size)
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX) && defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)                       \
+    && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+            rpc::attestation::sgx_sim_local_attestation_challenge parsed_challenge;
+            rpc::attestation::sgx_sim_local_attestation_report parsed_report;
+            if (!parse_local_challenge(challenge, parsed_challenge) || !parse_local_report(report_message, parsed_report))
             {
-                verification.failure_reason = "expected report_data must be exactly 64 bytes";
+                verification.failure_reason = "malformed SGX SIM local-attestation CMW";
                 CO_RETURN rpc::error::INVALID_DATA();
             }
+            verification.report_size = parsed_report.report.size();
+            verification.expected_report_data_size = parsed_report.report_data_sha256.size();
 
-            sgx_report_t report{};
-            if (!trivial_object_from_bytes(report_message.report, report))
-            {
-                verification.failure_reason = "report blob is not an sgx_report_t";
-                CO_RETURN rpc::error::INVALID_DATA();
-            }
+            canopy::security::attestation::simulation_backend backend;
+            auto binding = make_local_binding(parsed_report.binding.transcript_id, parsed_challenge.nonce);
+            binding.subject = make_identity(parsed_report.binding.claimant);
 
-            // SGX authenticates the report, but the application still has to
-            // check that report_data contains the transcript/hash it expected.
-            verification.report_data_matched
-                = std::equal(challenge.report_data.begin(), challenge.report_data.end(), report.body.report_data.d);
-
-            verification.sgx_verify_report_succeeded = sgx_verify_report(&report) == SGX_SUCCESS;
-            verification.accepted = verification.report_data_matched && verification.sgx_verify_report_succeeded;
+            auto verdict = backend.verify_evidence_for_challenge(
+                from_wire_cmw(report_message), from_wire_cmw(challenge), binding, make_policy());
+            verification.accepted = verdict.accepted;
+            verification.report_data_matched = verdict.accepted;
+            verification.sgx_verify_report_succeeded = verdict.accepted;
+            verification.failure_reason = std::move(verdict.reason);
             if (!verification.accepted)
             {
-                verification.failure_reason = verification.report_data_matched
-                                                  ? "sgx_verify_report rejected the peer report"
-                                                  : "report_data did not match the expected transcript binding";
+                CO_RETURN rpc::error::OK();
             }
             CO_RETURN rpc::error::OK();
 #else

@@ -155,6 +155,38 @@ namespace canopy::security::attestation
             const cmw& evidence,
             const evidence_binding& expected_binding,
             const attestation_policy& policy) const -> attestation_verdict = 0;
+
+        [[nodiscard]] virtual auto supports_verifier_challenge() const -> bool { return false; }
+
+        [[nodiscard]] virtual auto make_verifier_challenge(const evidence_binding& binding) const -> std::optional<cmw>
+        {
+            (void)binding;
+            return std::nullopt;
+        }
+
+        [[nodiscard]] virtual auto produce_evidence_for_challenge(
+            const cmw& verifier_challenge,
+            const evidence_binding& binding) const -> std::optional<cmw>
+        {
+            (void)verifier_challenge;
+            (void)binding;
+            return std::nullopt;
+        }
+
+        [[nodiscard]] virtual auto verify_evidence_for_challenge(
+            const cmw& evidence,
+            const cmw& verifier_challenge,
+            const evidence_binding& expected_binding,
+            const attestation_policy& policy) const -> attestation_verdict
+        {
+            (void)evidence;
+            (void)verifier_challenge;
+            (void)expected_binding;
+            (void)policy;
+            attestation_verdict verdict;
+            verdict.reason = "attestation backend does not support verifier challenges";
+            return verdict;
+        }
     };
 
     [[nodiscard]] auto security_level_rank(security_level level) noexcept -> int;

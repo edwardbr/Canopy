@@ -154,6 +154,11 @@ namespace canopy::security::attestation
         return options_.policy.allow_unattested_peer;
     }
 
+    auto attestation_service::supports_verifier_challenge() const -> bool
+    {
+        return options_.backend && options_.backend->supports_verifier_challenge();
+    }
+
     auto attestation_service::produce_evidence(
         uint64_t transcript_id,
         std::vector<uint8_t> nonce) const -> evidence_result
@@ -188,6 +193,72 @@ namespace canopy::security::attestation
         return result;
     }
 
+    auto attestation_service::make_verifier_challenge(
+        uint64_t transcript_id,
+        std::vector<uint8_t> nonce) const -> evidence_result
+    {
+        evidence_result result;
+        if (!options_.backend || !options_.backend->supports_verifier_challenge())
+        {
+            result.reason = "configured backend cannot produce a verifier challenge";
+            return result;
+        }
+
+        evidence_binding binding;
+        binding.subject = options_.local_identity;
+        binding.transcript_id = transcript_id;
+        binding.nonce = std::move(nonce);
+
+        auto challenge = options_.backend->make_verifier_challenge(binding);
+        if (!challenge.has_value())
+        {
+            result.reason = "failed to produce verifier challenge";
+            return result;
+        }
+
+        result.accepted = true;
+        result.reason = "verifier challenge produced";
+        result.evidence = std::move(challenge.value());
+        return result;
+    }
+
+    auto attestation_service::produce_evidence_for_challenge(
+        const cmw& verifier_challenge,
+        uint64_t transcript_id,
+        std::vector<uint8_t> nonce) const -> evidence_result
+    {
+        evidence_result result;
+        if (!options_.policy.send_local_evidence)
+        {
+            result.accepted = true;
+            result.reason = "local evidence not required by policy";
+            return result;
+        }
+
+        if (!options_.backend)
+        {
+            result.reason = "no attestation backend configured";
+            return result;
+        }
+
+        evidence_binding binding;
+        binding.subject = options_.local_identity;
+        binding.transcript_id = transcript_id;
+        binding.nonce = std::move(nonce);
+
+        auto evidence = options_.backend->produce_evidence_for_challenge(verifier_challenge, binding);
+        if (!evidence.has_value())
+        {
+            result.reason = "configured backend cannot produce evidence for verifier challenge";
+            return result;
+        }
+
+        result.accepted = true;
+        result.reason = "challenge-bound local evidence produced";
+        result.evidence = std::move(evidence.value());
+        return result;
+    }
+
     auto attestation_service::verify_peer_evidence(
         const cmw& evidence,
         evidence_binding expected_binding) const -> attestation_verdict
@@ -201,6 +272,23 @@ namespace canopy::security::attestation
         }
 
         return options_.backend->verify_evidence(evidence, expected_binding, options_.policy);
+    }
+
+    auto attestation_service::verify_peer_evidence_for_challenge(
+        const cmw& evidence,
+        const cmw& verifier_challenge,
+        evidence_binding expected_binding) const -> attestation_verdict
+    {
+        if (!options_.backend)
+        {
+            attestation_verdict verdict;
+            verdict.accepted = false;
+            verdict.reason = "no attestation backend configured";
+            return verdict;
+        }
+
+        return options_.backend->verify_evidence_for_challenge(
+            evidence, verifier_challenge, expected_binding, options_.policy);
     }
 
     auto attestation_service::establish_session(const establish_session_params& params) -> security_context

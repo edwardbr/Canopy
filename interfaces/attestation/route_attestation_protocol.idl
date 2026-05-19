@@ -72,6 +72,9 @@ namespace rpc
             [description="Evidence produced by the claimant for this route-attestation request. An empty optional allows policy-controlled unattested or one-way-attested handshakes."]
             std::optional<attestation_cmw> evidence;
 
+            [description="Optional verifier challenge produced by the requester. Backends such as SGX local attestation use this to let the responder return evidence targeted at the requester."]
+            std::optional<attestation_cmw> verifier_challenge;
+
             [description="Fresh anti-replay bytes chosen by the requester. JSON serializers must expose this as a base64 string."]
             std::vector<uint8_t> nonce;
         };

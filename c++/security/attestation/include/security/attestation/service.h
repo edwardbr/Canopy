@@ -62,13 +62,25 @@ namespace canopy::security::attestation
         [[nodiscard]] auto should_send_local_evidence() const -> bool;
         [[nodiscard]] auto requires_peer_evidence() const -> bool;
         [[nodiscard]] auto allows_unattested_peer() const -> bool;
+        [[nodiscard]] auto supports_verifier_challenge() const -> bool;
 
         [[nodiscard]] auto produce_evidence(
+            uint64_t transcript_id,
+            std::vector<uint8_t> nonce) const -> evidence_result;
+        [[nodiscard]] auto make_verifier_challenge(
+            uint64_t transcript_id,
+            std::vector<uint8_t> nonce) const -> evidence_result;
+        [[nodiscard]] auto produce_evidence_for_challenge(
+            const cmw& verifier_challenge,
             uint64_t transcript_id,
             std::vector<uint8_t> nonce) const -> evidence_result;
 
         [[nodiscard]] auto verify_peer_evidence(
             const cmw& evidence,
+            evidence_binding expected_binding) const -> attestation_verdict;
+        [[nodiscard]] auto verify_peer_evidence_for_challenge(
+            const cmw& evidence,
+            const cmw& verifier_challenge,
             evidence_binding expected_binding) const -> attestation_verdict;
 
         [[nodiscard]] auto establish_session(const establish_session_params& params) -> security_context;

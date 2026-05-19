@@ -29,7 +29,9 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     sgx_attestation_test_host
     PUBLIC attestation_test_idl
+           sgx_sim_protocol_idl
            example_idl
+           canopy::security_attestation
            rpc::rpc
            transport_sgx_coroutine
            transport_sgx_coroutine_test

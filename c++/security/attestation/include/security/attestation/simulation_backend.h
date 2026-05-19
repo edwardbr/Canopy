@@ -13,6 +13,8 @@ namespace canopy::security::attestation
     inline constexpr const char* simulation_evidence_media_type = "application/canopy-sim-evidence";
     inline constexpr const char* simulation_evidence_content_format = "canopy.sgx-sim.v1";
     inline constexpr const char* simulation_report_evidence_content_format = "canopy.sgx-sim-report.v1";
+    inline constexpr const char* simulation_local_challenge_content_format = "canopy.sgx-sim-local-challenge.v1";
+    inline constexpr const char* simulation_local_report_evidence_content_format = "canopy.sgx-sim-local-report.v1";
 
     /*
      * Development SGX-simulation profile.
@@ -38,6 +40,16 @@ namespace canopy::security::attestation
         [[nodiscard]] auto produce_evidence(const evidence_binding& binding) const -> cmw override;
         [[nodiscard]] auto verify_evidence(
             const cmw& evidence,
+            const evidence_binding& expected_binding,
+            const attestation_policy& policy) const -> attestation_verdict override;
+        [[nodiscard]] auto supports_verifier_challenge() const -> bool override;
+        [[nodiscard]] auto make_verifier_challenge(const evidence_binding& binding) const -> std::optional<cmw> override;
+        [[nodiscard]] auto produce_evidence_for_challenge(
+            const cmw& verifier_challenge,
+            const evidence_binding& binding) const -> std::optional<cmw> override;
+        [[nodiscard]] auto verify_evidence_for_challenge(
+            const cmw& evidence,
+            const cmw& verifier_challenge,
             const evidence_binding& expected_binding,
             const attestation_policy& policy) const -> attestation_verdict override;
 

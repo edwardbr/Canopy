@@ -172,6 +172,12 @@ policy-hardening work described in the remaining phases.
   remain diagnostic labels only.
   MCP and A2A are consumers of generated IDL descriptions, fingerprints, and
   schema metadata; they are not attestation protocol families.
+- `route_attestation_handshake_request` can now carry an optional
+  backend-neutral `verifier_challenge` CMW blob. SGX SIM local attestation uses
+  this to send `sgx_target_info_t` from the verifier to the peer, while keeping
+  the SGX-specific payload schema in `interfaces/attestation/sgx_sim_protocol.idl`.
+  The state transition and sequence diagrams for these blobs are in
+  [overview.md](overview.md#route-sign-on-state).
 - `attestation_service` now exposes OpenSSL/SGXSSL-backed nonce generation for
   route-attestation Evidence bindings. The POC uses 32-byte nonces and rejects
   malformed service-level request/response nonces before Evidence
@@ -666,11 +672,12 @@ select the current `FAKE` or `NULL` development backends with `NULL` as the
 fail-closed build default for fresh CMake configurations. The current
 route-control fields documented in `intermediate-visibility-audit.md` should
 stay visible while passthroughs depend on them, and protected RPC should keep
-authenticating them. The next SGX-sim backend slice should exchange peer
-`sgx_target_info_t` so reports are targeted to the verifier instead of being
-self-targeted probes. After that, continue real SGX/DCAP backend work and apply
-the same checklist to non-C-ABI coroutine dynamic-library transports that are
-allowed at an enclave boundary.
+authenticating them. The current SGX-sim backend slice is moving from
+self-targeted report probes to verifier-challenge CMW blobs carrying peer
+`sgx_target_info_t`, so reports can be targeted to the verifier where the
+two-message route handshake allows it. After that, continue real SGX/DCAP
+backend work and apply the same checklist to non-C-ABI coroutine
+dynamic-library transports that are allowed at an enclave boundary.
 
 ## Architectural Layers
 
@@ -703,8 +710,10 @@ flowchart TD
 
 - **L1 Policy / Security Context / Zone Classifier.**
   - *Does*: hold compile-time policy values (`MRSIGNER` allow-lists,
-    `ISVSVN` minima, TCB acceptance), define the passive
-    `security_context` record, expose
+    `ISVSVN` minima, TCB acceptance), define enclave-wide defaults plus
+    per-zone, per-service, per-interface, and per-method policy overlays,
+    define accepted peer backend ids and security levels for each destination,
+    define the passive `security_context` record, expose
     `attestation_kind required_for(local, peer)` as a pure function of
     two `zone_address` values.
   - *Does not*: hold runtime state, perform I/O, know about any
@@ -722,29 +731,36 @@ flowchart TD
     SGX EPID, simulation, future TDX, future SEV-SNP, future
     TrustZone/PSA). Produce CMW Evidence binding a given key,
     transcript, or native report-data field. Verify CMW Evidence and
-    return a typed verdict plus attested identity. Refuse production
-    policy when the backend is development-grade.
+    return a typed verdict plus attested identity. Advertise which CMW
+    content formats it can produce and which it can verify, so a local SGX
+    enclave can verify peer SEV-SNP Evidence when the verifier is available.
+    Refuse production policy when the backend is development-grade.
   - *Does not*: own sessions, derive session keys, manage counters,
     decide local-versus-remote, touch TLS, touch RPC, log to
     application telemetry.
 
 - **L4 Attestation Service.**
   - *Does*: one per enclave. Establish and cache enclave-pair
-    sessions. Choose a backend per session using L1's classifier.
+    sessions. Choose a local Evidence backend per session using L1's
+    classifier, and choose a peer verifier backend from the received CMW type
+    plus destination policy.
     Derive per-session AEAD keys (per caller-zone, destination-zone,
     direction). Own the monotonic counter store. Publish a
     `security_context` to the enclave service. Expose a typed handle for
     L7 to encrypt and decrypt with.
   - *Does not*: know which TEE produced the Evidence (delegated to
     L3). Know how Evidence travels on the wire (delegated to L5).
-    Know what RPC payload looks like (delegated to L7).
+    Know what RPC payload looks like (delegated to L7). Grant a peer
+    permission to call every zone in the enclave just because the peer
+    enclave identity was cryptographically established.
 
 - **L5 Wire Format.**
   - *Does*: serialise and deserialise the CMW Evidence onto a
     specific carrier. Phase 2: in-tunnel development exchange.
     Phase 3: `sgx_ttls` X.509 certificate extension. Phase 8:
     IETF TLS extensions. Negotiate carrier-level features such as
-    attestation capability advertisement.
+    attestation capability advertisement, including supported Evidence content
+    formats and verifier capabilities for cross-TEE handshakes.
   - *Does not*: produce or verify Evidence itself (delegated to L3 via
     L4). Make policy decisions. Touch RPC payloads.
 
@@ -769,7 +785,9 @@ flowchart TD
 - **L8 Application / `rpc::enclave_service`.**
   - *Does*: read `security_context` and apply application-level
     authorisation policy. Decide whether a peer enclave is allowed to
-    call a specific interface or object.
+    call a specific interface or object. Apply the destination zone's
+    stricter policy even when the caller is a local gateway zone that
+    admitted an unattested browser or websocket client.
   - *Does not*: cryptographic work. Session management.
     Wire-format decisions.
 
@@ -1337,7 +1355,24 @@ audit, and operational tooling.
   - QvE ISVSVN threshold sourced from the QvE identity collateral as of
     build time;
   - allowed backend list (must reject `fake`/`simulation` in
-    production builds).
+    production builds);
+  - enclave-wide default policy plus destination-zone overrides, so a
+    public gateway zone can explicitly allow unattested clients while a
+    treasury or control zone requires bidirectional attestation and stricter
+    caller authorization;
+  - cross-TEE peer backend allow-lists, so a destination can accept SGX DCAP,
+    SEV-SNP, TDX, TrustZone/PSA, EPID compatibility, certificate-authenticated,
+    or verify-only routes under distinct rules.
+- Policy evaluation API that takes the local destination zone/service,
+  caller identity, route-security status, interface id, method id, and
+  delegated gateway context when present. A local gateway call must not
+  launder an unattested browser client into a fully attested caller unless the
+  destination zone explicitly accepts that delegation.
+- Backend registry hardening: separate `can_produce_evidence` from
+  `can_verify_evidence`, record supported CMW content formats, and ensure
+  mutual attestation may use different producer and verifier backends on each
+  side. A route is bidirectionally attested only when both sides appraise the
+  other side's native Evidence or trusted Attestation Result under policy.
 - Audit logging path that emits `security_failure_context` back-channel
   entries on policy failure, with field redaction applied per
   `failure-policy.md`.
@@ -1414,6 +1449,14 @@ Tracked here so the design is not forgotten.
   narrow, introduce versioned neutral names such as
   `route_security_handshake_request` while keeping compatibility shims for the
   existing `route_attestation_handshake_*` types during migration.
+- **Cross-TEE interoperability tests.** Once at least two production-grade
+  backends exist, add tests where the two sides do not use the same TEE. The
+  first useful pairs are SGX DCAP to SEV-SNP, SGX DCAP to TDX, and a
+  verify-only host/browser client to SGX DCAP. These tests should prove that
+  the route handshake can carry different request and response Evidence
+  formats, that each side chooses the correct verifier backend from CMW
+  metadata, and that destination-zone policy can accept or reject each peer
+  backend independently.
 - **TDX backend.** When TDX support is required, add a backend that
   emits TDX quotes via the same DCAP host APIs (`tee_verify_quote` is
   already TDX-aware). CMW media types extend with

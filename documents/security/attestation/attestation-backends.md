@@ -16,6 +16,25 @@ The attestation service therefore exposes a backend-neutral interface with
 explicit backend identity and policy checks. Development machines that do not
 provide SGX remote attestation use fake evidence behind the same interface.
 
+Backend-neutral does not mean both peers run the same TEE. The handshake should
+allow each side to produce Evidence in its native format and appraise the
+peer's Evidence with a different verifier backend. A route between SGX and
+SEV-SNP is therefore valid when:
+
+- the SGX side can produce SGX Evidence accepted by the SEV-SNP side, or by a
+  verifier service the SEV-SNP side trusts;
+- the SEV-SNP side can produce SEV-SNP Evidence accepted by the SGX side, or by
+  a verifier service the SGX side trusts;
+- both Evidence blobs are bound to the same Canopy transcript or derived key
+  exchange;
+- each destination zone policy explicitly accepts the peer backend, security
+  level, measurement, signer/author identity, debug state, and TCB or firmware
+  status.
+
+If only one side can appraise the other's native Evidence, the route may still
+be useful as one-way attested or certificate-authenticated, but it must not be
+recorded as bidirectionally attested.
+
 ## Backend Matrix
 
 | Backend | Purpose | Production trust |
@@ -158,6 +177,47 @@ The SGX implementation should avoid hard-coding SGX names into shared types
 unless the type is explicitly SGX-specific. Shared records should use neutral
 terms such as workload measurement, signer or author identity, product id,
 security version, debug state, and TCB status.
+
+## Cross-TEE Attestation
+
+Cross-TEE attestation is a first-class design goal. The route handshake carries
+typed CMW Evidence, not a hard-coded SGX quote field, so the producer backend
+and verifier backend can differ. The attestation service should select the
+verifier from the peer Evidence type and local policy, not from the local
+enclave's own TEE type.
+
+Examples:
+
+- SGX DCAP service to SEV-SNP service: request Evidence may be SGX DCAP and
+  response Evidence may be SEV-SNP.
+- TDX service to SGX EPID compatibility service: policy may accept EPID only
+  for specific legacy peers and require TDX or DCAP for all others.
+- Host or browser verifier to enclave service: the host/browser side is
+  verify-only and cannot produce enclave Evidence, but it can still verify the
+  server and participate in protected key exchange under explicit policy.
+
+This requires a backend registry with separate production and verification
+capabilities:
+
+```text
+local_evidence_backend       = backend used to describe this enclave or zone
+peer_evidence_content_format = CMW content format received from the peer
+peer_verifier_backend        = backend selected to appraise that content format
+accepted_peer_backend_ids    = policy allow-list for the destination zone
+accepted_peer_security_level = minimum required peer security level
+```
+
+The route `security_context` must preserve the peer's appraised backend id,
+security level, workload identity, platform identity, and verifier path. Policy
+can then distinguish "this peer is SGX DCAP production", "this peer is SEV-SNP
+production", "this peer is EPID legacy compatibility", and "this peer is only
+certificate-authenticated".
+
+Verifier delegation is allowed but must be explicit. If an enclave cannot
+embed a SEV-SNP, TDX, or PSA verifier directly, it may use the RATS passport
+model or a background-check verifier service. In that case the trusted
+Attestation Result, not the raw verifier's word alone, must be bound to the
+Canopy transcript and accepted by destination-zone policy.
 
 ## SGX EPID/IAS Backend
 

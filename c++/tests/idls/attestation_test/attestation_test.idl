@@ -34,21 +34,11 @@ namespace attestation_test
             std::string failure_reason;
         };
 
-        struct sgx_sim_local_attestation_challenge
+        struct sgx_sim_test_cmw
         {
-            // Public SGX verifier identity for local attestation. The host may
-            // relay this to the prover, but cannot use it to forge a report.
-            std::vector<uint8_t> target_info;
-            // Verifier-chosen transcript binding that must be copied exactly
-            // into sgx_report_t::body.report_data by the prover.
-            std::vector<uint8_t> report_data;
-        };
-
-        struct sgx_sim_local_attestation_report
-        {
-            // Raw sgx_report_t bytes. This is test-only; production protocol
-            // IDLs should carry backend-specific evidence structures.
-            std::vector<uint8_t> report;
+            std::string media_type;
+            std::string content_format;
+            std::vector<uint8_t> payload;
         };
 
         interface i_attestation_enclave_test
@@ -57,17 +47,17 @@ namespace attestation_test
             // Verifier enclave creates a challenge for a peer enclave.
             int sgx_sim_make_local_attestation_challenge(
                 [in] uint8_t challenge_seed,
-                [out] sgx_sim_local_attestation_challenge& challenge);
+                [out] sgx_sim_test_cmw& challenge);
             // Prover enclave consumes the verifier challenge and creates a
             // report targeted at that verifier enclave.
             int sgx_sim_make_local_attestation_report(
-                [in] const sgx_sim_local_attestation_challenge& challenge,
-                [out] sgx_sim_local_attestation_report& report);
+                [in] const sgx_sim_test_cmw& challenge,
+                [out] sgx_sim_test_cmw& report);
             // Verifier enclave checks both SGX report authenticity and the
             // application-level report_data transcript binding.
             int sgx_sim_verify_local_attestation_report(
-                [in] const sgx_sim_local_attestation_report& report,
-                [in] const sgx_sim_local_attestation_challenge& challenge,
+                [in] const sgx_sim_test_cmw& report,
+                [in] const sgx_sim_test_cmw& challenge,
                 [out] sgx_sim_local_attestation_verification& verification);
         };
     }

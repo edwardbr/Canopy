@@ -88,6 +88,11 @@ on.
   and wire records should not encode SGX-only assumptions. Intel TDX, AMD
   SEV-SNP, Arm TrustZone/PSA, and future TEE backends should plug in as
   backend implementations behind the same high-level interface.
+- Mutual attestation does not require both sides to use the same TEE backend.
+  An SGX enclave may appraise SEV-SNP Evidence, a SEV-SNP guest may appraise
+  SGX Evidence, and a host/browser verifier may appraise either, if the
+  required backend verifier and collateral are available and local policy
+  accepts that peer type.
 - Fake attestation is a first-class development backend for machines without
   SGX hardware. It exercises protocol, envelope, key exchange, and policy code,
   but it is never production evidence.
@@ -97,8 +102,14 @@ on.
   first attempt may use local attestation. If their routing prefixes differ,
   use remote attestation. If the local guess is wrong, the implementation may
   fall back to remote attestation.
-- Each enclave owns an attestation/security service. Multiple Canopy services
-  and zones inside the enclave share it.
+- Each enclave owns one attestation/security service for cryptographic facts:
+  backend selection, Evidence production and verification, session keys,
+  counters, epochs, and cached route state. Multiple Canopy services and zones
+  inside the enclave share that service.
+- Attestation policy is not necessarily uniform across all zones in an
+  enclave. The enclave can have safe defaults, but the final allow/reject
+  decision is made against the destination zone, service, interface, method,
+  caller identity, and route-security status.
 - Non-enclave services cannot produce enclave attestation, but they can validate
   enclave evidence and can participate in protected key exchange if their policy
   allows it.
@@ -106,8 +117,12 @@ on.
   attestation when evidence is exposed, but they usually cannot provide SGX
   client attestation. FIDO or mobile identity can be a separate client-auth
   path.
-- Once an enclave identity is established, trust initially applies to all zones
-  in that enclave. Per-subnet or per-zone attestation may be added later.
+- Once an enclave identity is established, the cryptographic attestation fact
+  applies to every zone in that enclave. That does not grant every zone the
+  same authority. A permissive gateway zone can admit explicitly unattested
+  clients while a treasury zone in the same enclave requires bidirectional
+  attestation for direct remote callers and applies separate authorization to
+  calls delegated through the gateway.
 - Direct intermediate zones do not decrypt ordinary `send` or `post` payloads.
   They lack the end-to-end keys and are not trusted for application
   confidentiality.
@@ -122,8 +137,38 @@ on.
 ## Service And Transport Roles
 
 The `rpc::service` class is the natural enforcement point. The service can
-implement reserved control interfaces itself, while the key material and
-attestation policy live in a separate enclave-wide attestation service object.
+implement reserved control interfaces itself, while key material, backend
+mechanics, Evidence appraisal, and cached attestation facts live in a separate
+enclave-wide attestation service object.
+
+The attestation service represents the whole enclave, not one RPC zone. It can
+say that peer zone X belongs to an enclave that proved identity Y at security
+level Z, and it can supply the protected-route keys for that peer. It should
+not be the only place that decides whether X may call a particular local
+object. That decision belongs to a policy layer applied by the destination
+zone or service.
+
+The service may use different backend roles in the same handshake. The local
+producer backend creates this enclave's Evidence, while the peer-verifier
+backend appraises the peer's Evidence based on its CMW media type and content
+format. For example, an SGX enclave can produce SGX DCAP Evidence for a
+SEV-SNP peer and verify the peer's SEV-SNP Evidence with an SEV-SNP verifier,
+provided that verifier is linked into the enclave or delegated through an
+accepted passport/background-check verifier path. The resulting
+`security_context` must record the peer backend and security level so
+destination-zone policy can distinguish SGX, SEV-SNP, TDX, TrustZone/PSA,
+legacy EPID, simulation, fake, certificate-authenticated, and unattested
+routes.
+
+This permits a single enclave to host zones with different exposure levels. A
+web gateway zone can explicitly allow public browser or websocket clients as
+`unattested_allowed`, or allow one-way server attestation where the client
+verifies the enclave. A treasury zone can require bidirectional attestation
+for direct remote enclave callers. If the gateway later calls the treasury, the
+treasury should treat that as a local gateway-zone caller with explicit
+delegation policy, not as proof that the original browser client was attested.
+For zones inside the same enclave, remote attestation is not the isolation
+boundary; local authorization and capability policy are.
 
 The current service has outbound hooks for these marshaller calls, so an
 enclave-derived service should protect them before they leave the enclave:
@@ -205,6 +250,132 @@ structured accept/reject verdict. A route becomes `attested` only after peer
 Evidence verifies and a `security_context` is established. A route becomes
 `unattested_allowed` only when Evidence is absent, peer Evidence is not
 required, and policy explicitly allows an unattested peer.
+
+### Route Sign-On State
+
+The route-attestation state machine is entered by reference/control traffic,
+not merely by a TCP, stream, websocket, or local transport becoming connected.
+The first important trigger is usually an `add_ref` for a newly arrived
+`rpc::shared_ptr`, because that is when a zone is about to expose a remote
+object reference to application code.
+
+```mermaid
+flowchart TD
+    Start["Transport connection exists"]
+    RouteUnknown["Route state is unknown"]
+    LocalRoute["Local route inside the same enclave"]
+    PolicyAllowed["Destination policy allows an unattested route"]
+    NoCarrier["Policy requires attestation but no carrier exists"]
+    Handshaking["Route attestation handshake is running"]
+    RequestBlob["Request blob<br/>route_attestation_handshake_request<br/>claimant identity<br/>optional claimant Evidence<br/>optional verifier_challenge<br/>transcript_id and nonce"]
+    PeerPolicy["Peer verifies request Evidence if destination policy requires it"]
+    ResponseBlob["Response blob<br/>route_attestation_handshake_response<br/>accepted or rejected verdict<br/>responder identity<br/>optional responder Evidence<br/>security level and session epoch"]
+    Attested["Route state is attested<br/>security_context is stored"]
+    Unattested["Route state is unattested_allowed<br/>no protected route keys"]
+    Failed["Route state is failed"]
+    Protected["Protected RPC may run<br/>send, post, try_cast, add_ref, release, object_released"]
+    Limited["Only policy-limited plaintext control may run"]
+    WebClient["HTTP or WebSocket style client"]
+    GatewayPolicy["Gateway zone applies explicit public-client policy"]
+    NewSharedPtr["Gateway later receives a new rpc::shared_ptr"]
+
+    Start --> RouteUnknown
+    RouteUnknown --> LocalRoute
+    RouteUnknown --> PolicyAllowed
+    RouteUnknown --> NoCarrier
+    RouteUnknown --> Handshaking
+    Handshaking --> RequestBlob
+    RequestBlob --> PeerPolicy
+    PeerPolicy --> ResponseBlob
+    ResponseBlob --> Attested
+    ResponseBlob --> Unattested
+    ResponseBlob --> Failed
+    Attested --> Protected
+    Protected --> Protected
+    PolicyAllowed --> Unattested
+    Unattested --> Limited
+    NoCarrier --> Failed
+    Failed --> Failed
+    Start --> WebClient
+    WebClient --> GatewayPolicy
+    GatewayPolicy --> Unattested
+    GatewayPolicy --> Failed
+    GatewayPolicy --> NewSharedPtr
+    NewSharedPtr --> RouteUnknown
+```
+
+For SGX SIM local attestation, `verifier_challenge` is a CMW blob whose payload
+is `sgx_sim_local_attestation_challenge` from
+`interfaces/attestation/sgx_sim_protocol.idl`. It carries the verifier
+identity, transcript id, verifier nonce, and raw `sgx_target_info_t`. When the
+peer supports that challenge, its response Evidence can be an
+`sgx_sim_local_attestation_report` CMW blob targeted at the verifier rather
+than a self-targeted simulation report.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Zone A / requester
+    participant T as Transports / intermediates
+    participant B as Zone B / responder
+
+    A->>T: connect / attach route
+    T->>B: transport connection established
+    Note over A,B: No route is trusted just because the transport is connected.
+
+    A->>A: new rpc::shared_ptr or add_ref needs route B
+    A->>A: route_state(B) == unknown
+    A->>T: handshake(request)
+    Note over A,T: route_attestation_handshake_request carries Evidence, verifier_challenge, nonce
+    T->>B: route request by destination_zone_id
+    B->>B: verify request Evidence if B policy requires A
+
+    alt B accepts A and sends Evidence
+        B->>T: handshake(response accepted)
+        Note over B,T: route_attestation_handshake_response carries responder Evidence, security level, epoch
+        T->>A: response
+        A->>A: verify B Evidence
+        A->>A: store security_context(B)
+        B->>B: store security_context(A) if A Evidence verified
+    else one-way allowed by policy
+        B->>T: response accepted without peer Evidence
+        T->>A: response
+        A->>A: mark route unattested_allowed only if local policy permits
+    else policy rejects
+        B->>T: response rejected
+        T->>A: response
+        A->>A: mark route failed
+    end
+
+    A->>T: protected RPC or policy-limited plaintext control
+    T->>B: route only; intermediates do not decrypt protected payloads
+```
+
+When both zones demand attestation, the request must contain claimant Evidence
+that B can verify, and the response must contain responder Evidence that A can
+verify. With SGX local-attestation challenges, the responder Evidence can be
+targeted at A's `sgx_target_info_t`; a full mutual SGX-local exchange may need
+an additional protocol message so A can later produce a report targeted at B's
+`sgx_target_info_t`. Until that third leg exists, B can still require and
+verify A's normal Evidence profile, while A verifies B's challenge-targeted
+local report.
+
+When only one side demands attestation, the demanding side must verify peer
+Evidence before storing a `security_context`. The non-demanding side may accept
+an unattested peer only through explicit policy, and that route is marked
+`unattested_allowed`, not `attested`.
+
+Browser/websocket-style clients should usually connect to a gateway service
+rather than receive the full distributed object-reference protocol directly.
+The gateway can explicitly allow a public client route as `unattested_allowed`
+or perform one-way server attestation that the client verifies. The gateway
+then owns real Canopy `rpc::shared_ptr` references internally. If a new
+`rpc::shared_ptr` later arrives over the already established connection, the
+same `add_ref` route gate runs for the referenced owner zone; the prior
+websocket connection does not by itself prove that newly referenced route.
+If that referenced owner is a stricter local zone, the stricter zone policy
+still applies even though the cryptographic attestation service is shared by
+the whole enclave.
 
 For the current transport implementation, `build_out_param_channel` remains a
 visible add-ref route-control field because `rpc::transport::inbound_add_ref`
