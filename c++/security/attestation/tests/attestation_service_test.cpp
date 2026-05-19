@@ -13,6 +13,7 @@
 #include <attestation/route_attestation_protocol.h>
 #include <security/attestation/service.h>
 #include <security/attestation/simulation_backend.h>
+#include <security/attestation/zone_security_policy.h>
 
 #include <array>
 #include <limits>
@@ -78,6 +79,8 @@ namespace
     using canopy::security::attestation::unprotect_send_response;
     using canopy::security::attestation::unprotect_transport_down_request;
     using canopy::security::attestation::unprotect_try_cast_request;
+    using canopy::security::attestation::zone_security_policy;
+    using canopy::security::attestation::zone_security_policy_options;
 
     auto make_service(
         std::string enclave_id,
@@ -467,6 +470,31 @@ TEST(
     policy.require_peer_evidence = false;
     auto accepted = evaluate_missing_peer_evidence_policy(policy);
     EXPECT_TRUE(accepted.accepted);
+}
+
+TEST(
+    AttestationService,
+    ZoneSecurityPolicyOwnsServiceSpecificRouteAdmission)
+{
+    zone_security_policy_options options;
+    options.reference_routes_require_attestation = true;
+    options.peer_attestation_policy.require_peer_evidence = false;
+    options.peer_attestation_policy.allow_unattested_peer = true;
+
+    zone_security_policy policy(std::move(options));
+
+    reference_route_policy_input input;
+    input.state.status = route_attestation_status::unknown;
+    input.may_start_handshake = true;
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::start_handshake);
+
+    input.may_start_handshake = false;
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::reject);
+
+    EXPECT_TRUE(policy.evaluate_missing_peer_evidence().accepted);
+
+    policy.set_reference_routes_require_attestation(false);
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::allow);
 }
 
 TEST(

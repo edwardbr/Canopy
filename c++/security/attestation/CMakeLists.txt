@@ -15,6 +15,7 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/kdf.cpp
     src/null_backend.cpp
     src/protected_rpc.cpp
+    src/zone_security_policy.cpp
     src/simulation_backend.cpp
     src/service.cpp)
 

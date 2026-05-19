@@ -8,6 +8,7 @@
 #include <rpc/rpc.h>
 #include <security/attestation/service.h>
 #include <security/attestation/types.h>
+#include <security/attestation/zone_security_policy.h>
 
 #include <atomic>
 #include <memory>
@@ -35,6 +36,7 @@ namespace rpc
                   zone_id,
                   parent_zone_id,
                   scheduler)
+            , zone_security_policy_(std::make_shared<canopy::security::attestation::zone_security_policy>())
         {
         }
 
@@ -70,6 +72,9 @@ namespace rpc
         void set_attestation_service(std::shared_ptr<canopy::security::attestation::attestation_service> service);
         [[nodiscard]] auto get_attestation_service() const
             -> std::shared_ptr<canopy::security::attestation::attestation_service>;
+        void set_zone_security_policy(std::shared_ptr<canopy::security::attestation::zone_security_policy> policy);
+        [[nodiscard]] auto get_zone_security_policy() const
+            -> std::shared_ptr<canopy::security::attestation::zone_security_policy>;
         void set_protected_rpc_enabled(bool enabled);
         [[nodiscard]] bool protected_rpc_enabled() const;
         void set_add_ref_attestation_required(bool required);
@@ -131,11 +136,12 @@ namespace rpc
 
         mutable std::mutex security_context_mutex_;
         std::unordered_map<rpc::destination_zone, canopy::security::attestation::route_attestation_state> attestation_route_states_;
-        bool add_ref_attestation_required_{false};
         std::atomic<uint64_t> next_route_attestation_transcript_id_{1};
 
         mutable std::mutex attestation_service_mutex_;
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service_;
         bool protected_rpc_enabled_{false};
+        mutable std::mutex zone_security_policy_mutex_;
+        std::shared_ptr<canopy::security::attestation::zone_security_policy> zone_security_policy_;
     };
 }

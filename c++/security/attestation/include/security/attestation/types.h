@@ -131,17 +131,6 @@ namespace canopy::security::attestation
         std::string reason;
     };
 
-    // This helper is intentionally narrow: it answers only whether a route that
-    // lacks peer Evidence may be accepted. Destination-zone authorization is a
-    // separate policy layer built on top of this cryptographic route status.
-    [[nodiscard]] auto policy_allows_unattested_peer(const attestation_policy& policy) noexcept -> bool;
-
-    [[nodiscard]] auto evaluate_route_attestation_state(const route_attestation_state& state) noexcept
-        -> route_attestation_action;
-    [[nodiscard]] auto evaluate_reference_route_policy(const reference_route_policy_input& input) -> route_policy_decision;
-    [[nodiscard]] auto evaluate_missing_peer_evidence_policy(const attestation_policy& policy)
-        -> peer_evidence_policy_decision;
-
     enum class protected_rpc_direction
     {
         caller_to_destination,

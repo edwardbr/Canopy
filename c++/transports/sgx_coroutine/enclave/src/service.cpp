@@ -352,8 +352,25 @@ namespace rpc
 
     void enclave_service::set_attestation_service(std::shared_ptr<canopy::security::attestation::attestation_service> service)
     {
-        std::lock_guard<std::mutex> lock(attestation_service_mutex_);
-        attestation_service_ = std::move(service);
+        std::optional<canopy::security::attestation::attestation_policy> peer_policy;
+        if (service)
+            peer_policy = service->policy();
+
+        {
+            std::lock_guard<std::mutex> lock(attestation_service_mutex_);
+            attestation_service_ = std::move(service);
+        }
+
+        if (peer_policy.has_value())
+        {
+            // Compatibility bridge for the current configuration model: the
+            // attestation_service still carries backend appraisal defaults, and
+            // the per-enclave-service route policy receives a snapshot of the
+            // no-Evidence route-admission part. Future service flavours can set
+            // their own zone_security_policy after attaching the shared
+            // attestation_service.
+            get_zone_security_policy()->set_peer_attestation_policy(std::move(peer_policy.value()));
+        }
     }
 
     auto enclave_service::get_attestation_service() const
@@ -361,6 +378,23 @@ namespace rpc
     {
         std::lock_guard<std::mutex> lock(attestation_service_mutex_);
         return attestation_service_;
+    }
+
+    void enclave_service::set_zone_security_policy(
+        std::shared_ptr<canopy::security::attestation::zone_security_policy> policy)
+    {
+        if (!policy)
+            policy = std::make_shared<canopy::security::attestation::zone_security_policy>();
+
+        std::lock_guard<std::mutex> lock(zone_security_policy_mutex_);
+        zone_security_policy_ = std::move(policy);
+    }
+
+    auto enclave_service::get_zone_security_policy() const
+        -> std::shared_ptr<canopy::security::attestation::zone_security_policy>
+    {
+        std::lock_guard<std::mutex> lock(zone_security_policy_mutex_);
+        return zone_security_policy_;
     }
 
     void enclave_service::set_protected_rpc_enabled(bool enabled)
@@ -377,14 +411,12 @@ namespace rpc
 
     void enclave_service::set_add_ref_attestation_required(bool required)
     {
-        std::lock_guard<std::mutex> lock(security_context_mutex_);
-        add_ref_attestation_required_ = required;
+        get_zone_security_policy()->set_reference_routes_require_attestation(required);
     }
 
     bool enclave_service::add_ref_attestation_required() const
     {
-        std::lock_guard<std::mutex> lock(security_context_mutex_);
-        return add_ref_attestation_required_;
+        return get_zone_security_policy()->reference_routes_require_attestation();
     }
 
     void enclave_service::set_route_unattested_allowed(
@@ -423,18 +455,16 @@ namespace rpc
         // appear before application code sees it. When policy requires it, the
         // route owning that reference must be known, attested, or explicitly
         // allowed before reference state is created.
-        if (!add_ref_attestation_required())
-            CO_RETURN standard_result{rpc::error::OK(), {}};
         if (!route_zone_id.is_set())
             CO_RETURN standard_result{rpc::error::INVALID_DATA(), {}};
 
+        auto zone_policy = get_zone_security_policy();
         auto state = get_attestation_route_state(route_zone_id);
         canopy::security::attestation::reference_route_policy_input policy_input;
-        policy_input.attestation_required = true;
         policy_input.route_is_local = route_zone_id == get_zone_id();
         policy_input.may_start_handshake = true;
         policy_input.state = state;
-        const auto decision = canopy::security::attestation::evaluate_reference_route_policy(policy_input);
+        const auto decision = zone_policy->evaluate_reference_route(std::move(policy_input));
         if (decision.action == canopy::security::attestation::route_attestation_action::allow)
         {
             // "allow" covers already-attested routes and routes explicitly marked
@@ -671,8 +701,7 @@ namespace rpc
 
         // If the peer did not provide evidence, fall back to the local policy.
         // This is not treated as attested and will not produce a security_context.
-        const auto no_evidence_decision
-            = canopy::security::attestation::evaluate_missing_peer_evidence_policy(service->policy());
+        const auto no_evidence_decision = get_zone_security_policy()->evaluate_missing_peer_evidence();
         if (!no_evidence_decision.accepted)
         {
             set_failed_attestation_route(*this, route_zone_id, state.failure_epoch, no_evidence_decision.reason);
@@ -691,18 +720,16 @@ namespace rpc
         // handshake. They are only valid after the route was already allowed by
         // an earlier add_ref or by explicit policy. Unknown status therefore
         // means reject rather than "try to recover".
-        if (!add_ref_attestation_required())
-            return standard_result{rpc::error::OK(), {}};
         if (!route_zone_id.is_set())
             return standard_result{rpc::error::INVALID_DATA(), {}};
 
+        auto zone_policy = get_zone_security_policy();
         auto state = get_attestation_route_state(route_zone_id);
         canopy::security::attestation::reference_route_policy_input policy_input;
-        policy_input.attestation_required = true;
         policy_input.route_is_local = route_zone_id == get_zone_id();
         policy_input.may_start_handshake = false;
         policy_input.state = state;
-        const auto decision = canopy::security::attestation::evaluate_reference_route_policy(policy_input);
+        const auto decision = zone_policy->evaluate_reference_route(std::move(policy_input));
         if (decision.action == canopy::security::attestation::route_attestation_action::allow)
             return standard_result{rpc::error::OK(), {}};
 
@@ -1011,8 +1038,7 @@ namespace rpc
             // useful for gateways and development clients, but it never creates
             // a protected security_context and must not be confused with
             // attested identity.
-            const auto no_evidence_decision
-                = canopy::security::attestation::evaluate_missing_peer_evidence_policy(service->policy());
+            const auto no_evidence_decision = get_zone_security_policy()->evaluate_missing_peer_evidence();
             if (!no_evidence_decision.accepted)
             {
                 CO_RETURN fail(no_evidence_decision.reason);
