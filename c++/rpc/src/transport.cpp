@@ -1160,7 +1160,11 @@ namespace rpc
                 {
                     dest_transport = shared_from_this();
                 }
-                svc->add_transport(params.remote_object_id.as_zone(), dest_transport);
+                // Another coroutine may have registered an equivalent route after
+                // our get_transport() lookup above. Always continue with the
+                // service's canonical transport so passthrough ownership and
+                // reference counts converge on one route.
+                dest_transport = svc->add_transport(params.remote_object_id.as_zone(), dest_transport);
             }
 
             // otherwise we are going to use or create a pass-through
@@ -1196,7 +1200,10 @@ namespace rpc
                 {
                     caller_transport = shared_from_this();
                 }
-                svc->add_transport(params.caller_zone_id, caller_transport);
+                // See the destination-side note above: passthroughs must be built
+                // against the canonical route that won any duplicate registration
+                // race.
+                caller_transport = svc->add_transport(params.caller_zone_id, caller_transport);
             }
 
             if (dest_transport == caller_transport)

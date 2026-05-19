@@ -60,6 +60,53 @@ namespace
 #endif
     }
 
+    class registry_test_service final : public rpc::root_service
+    {
+    public:
+#ifdef CANOPY_BUILD_COROUTINE
+        registry_test_service(
+            const char* name,
+            rpc::zone zone_id,
+            const std::shared_ptr<coro::scheduler>& scheduler)
+            : rpc::root_service(
+                  name,
+                  zone_id,
+                  scheduler)
+        {
+        }
+#else
+        registry_test_service(
+            const char* name,
+            rpc::zone zone_id)
+            : rpc::root_service(
+                  name,
+                  zone_id)
+        {
+        }
+#endif
+
+        std::shared_ptr<rpc::service_proxy> add_zone_proxy_for_test(const std::shared_ptr<rpc::service_proxy>& proxy)
+        {
+            return add_zone_proxy(proxy);
+        }
+    };
+
+    std::shared_ptr<registry_test_service> make_registry_test_service(
+        const std::string& name
+#ifdef CANOPY_BUILD_COROUTINE
+        ,
+        const std::shared_ptr<coro::scheduler>& scheduler
+#endif
+    )
+    {
+        auto local_zone = rpc::zone{make_local_zone_address(1)};
+#ifdef CANOPY_BUILD_COROUTINE
+        return std::make_shared<registry_test_service>(name.c_str(), local_zone, scheduler);
+#else
+        return std::make_shared<registry_test_service>(name.c_str(), local_zone);
+#endif
+    }
+
     class registry_test_transport final : public rpc::transport
     {
     public:
@@ -155,6 +202,38 @@ TEST(
 
     service->remove_transport_if_matches(destination, first_transport.get());
     EXPECT_EQ(service->get_transport(destination), nullptr);
+}
+
+TEST(
+    transport_registry_tests,
+    duplicate_proxy_cleanup_keeps_canonical_proxy)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_registry_test_service("transport-registry-duplicate-proxy", scheduler);
+#else
+    auto service = make_registry_test_service("transport-registry-duplicate-proxy");
+#endif
+    auto destination = rpc::destination_zone{make_local_zone_address(44)};
+
+    auto canonical_transport = std::make_shared<registry_test_transport>("canonical", service);
+    canonical_transport->set_adjacent_zone_id(destination);
+    auto duplicate_transport = std::make_shared<registry_test_transport>("duplicate", service);
+    duplicate_transport->set_adjacent_zone_id(destination);
+
+    EXPECT_EQ(service->add_transport(destination, canonical_transport).get(), canonical_transport.get());
+
+    auto canonical_proxy = rpc::service_proxy::create("canonical-proxy", service, canonical_transport, destination);
+    EXPECT_EQ(service->add_zone_proxy_for_test(canonical_proxy).get(), canonical_proxy.get());
+
+    {
+        auto duplicate_proxy = rpc::service_proxy::create("duplicate-proxy", service, duplicate_transport, destination);
+        EXPECT_EQ(service->add_zone_proxy_for_test(duplicate_proxy).get(), canonical_proxy.get());
+    }
+
+    auto second_duplicate_proxy
+        = rpc::service_proxy::create("second-duplicate-proxy", service, duplicate_transport, destination);
+    EXPECT_EQ(service->add_zone_proxy_for_test(second_duplicate_proxy).get(), canonical_proxy.get());
 }
 
 TEST(
