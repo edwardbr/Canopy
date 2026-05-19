@@ -327,6 +327,13 @@ policy-hardening work described in the remaining phases.
   policy, as with development JavaScript/demo clients. Routed references
   received during sign-on are still validated later by `add_ref` against the
   referenced zone, not trusted solely because the adjacent stream connected.
+- Service-level route handshakes now complete against the transcript claim
+  that reserved the route. A delayed handshake failure or success may only
+  update the route state while the route is still handshaking for that
+  transcript; if another path has already admitted the route, the stale
+  completion leaves the newer state intact. Runtime coverage blocks an
+  `add_ref` handshake, publishes a superseding attested context, then releases
+  the stale handshake to fail and verifies the route remains admitted.
 - Connection setup now carries an explicit `connection_settings::encoding_type`
   from the caller's service default into `transport::connect()`,
   `inner_connect()`, stream `init_client_channel_send`, `attach_remote_zone()`,
