@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <io_uring/controller.h>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -26,6 +27,7 @@ namespace rpc::sgx::coro::enclave
 
     void register_acceptor_factory(acceptor_factory factory);
     void mark_runtime_connection_established();
+    [[nodiscard]] const std::map<std::string, std::string>& runtime_startup_options() noexcept;
     uint64_t runtime_ticks_per_millisecond() noexcept;
     uint64_t read_runtime_tick_counter() noexcept;
     uint64_t runtime_unix_epoch_milliseconds() noexcept;
@@ -75,6 +77,12 @@ namespace rpc::sgx::coro::enclave
             result.error_code = rpc::error::INVALID_DATA();
             CO_RETURN result;
         }
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("create_child_enclave_zone called without an explicit connection encoding");
+            result.error_code = rpc::error::INVALID_DATA();
+            CO_RETURN result;
+        }
         auto host_transport = std::dynamic_pointer_cast<rpc::sgx::coro::enclave::host_transport>(parent_transport);
         if (!host_transport)
         {
@@ -120,6 +128,7 @@ namespace rpc::sgx::coro::enclave
 
         auto parent_service_proxy
             = rpc::service_proxy::create("parent", enclave_svc, route_transport, input_descr.remote_object_id.as_zone());
+        parent_service_proxy->set_encoding(input_descr.encoding_type);
         parent_service_proxy = enclave_svc->add_parent_zone_proxy(parent_service_proxy);
 
         bool new_proxy_added = true;

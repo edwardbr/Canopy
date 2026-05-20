@@ -871,7 +871,7 @@ namespace io_uring_test_enclave
 
             for (uint32_t index = 0; index < descriptor_count; ++index)
             {
-                auto socket_result = CO_AWAIT controller_->create_tcp_socket();
+                auto socket_result = CO_AWAIT controller_->create_tcp_ipv4_socket();
                 if (socket_result.error_code != rpc::error::OK())
                 {
                     for (auto descriptor : descriptors)
@@ -884,7 +884,7 @@ namespace io_uring_test_enclave
                 descriptors.push_back(socket_result.descriptor);
             }
 
-            auto exhausted_result = CO_AWAIT controller_->create_tcp_socket();
+            auto exhausted_result = CO_AWAIT controller_->create_tcp_ipv4_socket();
             if (exhausted_result.error_code == rpc::error::OK())
             {
                 CO_AWAIT controller_->close_direct(exhausted_result.descriptor);

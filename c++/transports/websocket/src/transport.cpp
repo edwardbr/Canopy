@@ -175,6 +175,7 @@ namespace websocket_protocol
         cs.inbound_interface_id = req.inbound_interface_id;
         cs.outbound_interface_id = req.outbound_interface_id;
         cs.remote_object_id = client_object;
+        cs.encoding_type = websocket_encoding();
 
         // Immediately inform the client of our zone_id and its fully-populated remote_object_id
         // before invoking connection_handler, so any back-channel calls that arrive during

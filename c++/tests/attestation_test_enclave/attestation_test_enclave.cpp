@@ -20,6 +20,8 @@
 
 namespace
 {
+#if defined(SGX_SIM) && !defined(CANOPY_FAKE_SGX) && defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)                       \
+    && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
     // Keep the self-test binding deterministic. This test is not proving
     // freshness; it is proving that the SGX SIM backend can create a report,
     // bind that report to Canopy transcript fields, and then verify the same
@@ -115,6 +117,7 @@ namespace
             return false;
         return rpc::from_canonical_crypto(rpc::byte_span(report.payload), out).empty();
     }
+#endif
 
     class attestation_enclave_test final
         : public rpc::base<attestation_enclave_test, attestation_test::i_attestation_enclave_test>,

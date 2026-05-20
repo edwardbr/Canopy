@@ -6,6 +6,7 @@
 #include <io_uring/controller.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <exception>
 #include <limits>
@@ -19,7 +20,9 @@ namespace rpc::io_uring
     namespace
     {
         static constexpr int32_t socket_family_inet = 2;
+        static constexpr int32_t socket_family_inet6 = 10;
         static constexpr size_t ipv4_sockaddr_size = 16;
+        static constexpr size_t ipv6_sockaddr_size = 28;
         static constexpr uint32_t host_buffer_wait_attempt_limit = 4'000'000;
 
         struct direct_ipv4_sockaddr
@@ -31,6 +34,17 @@ namespace rpc::io_uring
         };
 
         static_assert(sizeof(direct_ipv4_sockaddr) == ipv4_sockaddr_size);
+
+        struct direct_ipv6_sockaddr
+        {
+            uint16_t family{socket_family_inet6};
+            uint16_t port_be{0};
+            uint32_t flowinfo_be{0};
+            uint8_t address[16]{};
+            uint32_t scope_id_be{0};
+        };
+
+        static_assert(sizeof(direct_ipv6_sockaddr) == ipv6_sockaddr_size);
 
         // Converts the test loopback port into the network byte order expected
         // by the kernel sockaddr structure.
@@ -599,7 +613,9 @@ namespace rpc::io_uring
     // Allocates a host buffer and writes an IPv4 loopback sockaddr into it so
     // bind/connect SQEs can pass a kernel-readable address pointer.
     CORO_TASK(controller::host_buffer_allocation_result)
-    controller::make_loopback_address_buffer(uint16_t port)
+    controller::make_ipv4_address_buffer(
+        const std::array<uint8_t, 4>& bind_address,
+        uint16_t port)
     {
         auto allocation = CO_AWAIT allocate_host_buffer(sizeof(direct_ipv4_sockaddr));
         if (allocation.error_code != rpc::error::OK())
@@ -609,6 +625,31 @@ namespace rpc::io_uring
 
         direct_ipv4_sockaddr address{};
         address.port_be = host_to_network_u16(port);
+        std::memcpy(address.address, bind_address.data(), bind_address.size());
+        std::memcpy(allocation.buffer->data(), &address, sizeof(address));
+        CO_RETURN allocation;
+    }
+
+    CORO_TASK(controller::host_buffer_allocation_result)
+    controller::make_loopback_address_buffer(uint16_t port)
+    {
+        CO_RETURN CO_AWAIT make_ipv4_address_buffer({127, 0, 0, 1}, port);
+    }
+
+    CORO_TASK(controller::host_buffer_allocation_result)
+    controller::make_ipv6_address_buffer(
+        const std::array<uint8_t, 16>& bind_address,
+        uint16_t port)
+    {
+        auto allocation = CO_AWAIT allocate_host_buffer(sizeof(direct_ipv6_sockaddr));
+        if (allocation.error_code != rpc::error::OK())
+        {
+            CO_RETURN allocation;
+        }
+
+        direct_ipv6_sockaddr address{};
+        address.port_be = host_to_network_u16(port);
+        std::memcpy(address.address, bind_address.data(), bind_address.size());
         std::memcpy(allocation.buffer->data(), &address, sizeof(address));
         CO_RETURN allocation;
     }

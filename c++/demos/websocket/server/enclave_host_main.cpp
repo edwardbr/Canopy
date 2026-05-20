@@ -5,16 +5,18 @@
 #include <cstdlib>
 #include <cstdint>
 #include <exception>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <thread>
 #include <tuple>
+#include <vector>
 
+#include <canopy/network_config/network_args.h>
 #include <coro/coro.hpp>
 #include <io_uring/host_controller.h>
 #include <rpc/rpc.h>
@@ -25,6 +27,9 @@
 #ifndef CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH
 #  error "CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH must be defined for websocket_enclave_server"
 #endif
+#ifndef CANOPY_WEBSOCKET_DEMO_STATIC_ROOT
+#  define CANOPY_WEBSOCKET_DEMO_STATIC_ROOT "www"
+#endif
 
 namespace
 {
@@ -33,9 +38,12 @@ namespace
     struct command_line
     {
         uint16_t port{8080};
+        std::string listen_address{"127.0.0.1"};
         std::string certificate_path;
         std::string private_key_path;
+        std::string static_root_path;
         uint32_t enclave_worker_threads{0};
+        std::map<std::string, std::string> enclave_options;
     };
 
     void on_signal(int signal_number)
@@ -47,95 +55,140 @@ namespace
         g_stop_requested = 1;
     }
 
-    auto default_cert_path(const char* source_file) -> std::string
+    struct augmented_cli
     {
-        return (std::filesystem::path(source_file).parent_path() / "certs" / "server.crt").string();
+        int argc = 0;
+        std::vector<std::string> storage;
+        std::vector<char*> argv;
+    };
+
+    bool has_cli_option(
+        int argc,
+        char* argv[],
+        std::string_view option)
+    {
+        for (int index = 1; index < argc; ++index)
+        {
+            const std::string_view arg = argv[index];
+            const std::string with_equals = std::string(option) + "=";
+            if (arg == option || arg.rfind(with_equals, 0) == 0)
+                return true;
+        }
+        return false;
     }
 
-    auto default_key_path(const char* source_file) -> std::string
+    augmented_cli add_default_network_args(
+        int argc,
+        char* argv[])
     {
-        return (std::filesystem::path(source_file).parent_path() / "certs" / "server.key").string();
-    }
+        augmented_cli result;
+        result.storage.reserve(8);
+        result.argv.reserve(argc + 8);
 
-    auto starts_with(
-        std::string_view text,
-        std::string_view prefix) -> bool
-    {
-        return text.rfind(prefix, 0) == 0;
-    }
+        for (int index = 0; index < argc; ++index)
+            result.argv.push_back(argv[index]);
 
-    auto parse_port(std::string_view value) -> uint16_t
-    {
-        const auto parsed = std::stoul(std::string(value));
-        if (parsed == 0 || parsed > UINT16_MAX)
-            throw std::invalid_argument("port must be in the range 1..65535");
-        return static_cast<uint16_t>(parsed);
-    }
+        const bool has_any_va
+            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
+              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
+              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argc, argv, "--listen");
 
-    auto parse_worker_thread_count(std::string_view value) -> uint32_t
-    {
-        const auto parsed = std::stoul(std::string(value));
-        if (parsed > UINT32_MAX)
-            throw std::invalid_argument("worker thread count must fit in uint32_t");
-        return static_cast<uint32_t>(parsed);
+        auto append = [&result](std::initializer_list<const char*> args)
+        {
+            for (const char* arg : args)
+            {
+                result.storage.emplace_back(arg);
+                result.argv.push_back(result.storage.back().data());
+            }
+        };
+
+        if (!has_any_va)
+        {
+            append(
+                {"--va-name=server",
+                    "--va-type=ipv4",
+                    "--va-prefix=127.0.0.1",
+                    "--va-subnet-bits=32",
+                    "--va-object-id-bits=32",
+                    "--va-subnet=1"});
+        }
+
+        if (!has_listen)
+            append({"--listen=server:127.0.0.1:8080"});
+
+        result.argc = static_cast<int>(result.argv.size());
+        return result;
     }
 
     auto parse_command_line(
         int argc,
         char* argv[]) -> command_line
     {
-        command_line output;
-        output.certificate_path = default_cert_path(__FILE__);
-        output.private_key_path = default_key_path(__FILE__);
+        args::ArgumentParser parser("WebSocket enclave demo server.");
+        args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
+        auto net = canopy::network_config::add_network_args(parser);
+        args::ValueFlag<std::string> cert_file(
+            parser, "file", "Path to TLS certificate file (PEM format); provide with --key to enable TLS", {"cert"}, "");
+        args::ValueFlag<std::string> key_file(
+            parser, "file", "Path to TLS private key file (PEM format); provide with --cert to enable TLS", {"key"}, "");
+        args::ValueFlag<std::string> static_root(
+            parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
+        args::ValueFlag<uint32_t> enclave_worker_threads(
+            parser, "count", "Number of enclave worker ECALL threads", {"enclave-worker-threads"}, 0);
 
-        for (int index = 1; index < argc; ++index)
+        auto cli = add_default_network_args(argc, argv);
+        try
         {
-            const std::string_view arg = argv[index];
-            if (arg == "--help" || arg == "-h")
-            {
-                std::cout << "Usage: websocket_enclave_server [--port=N] [--cert=FILE] [--key=FILE] "
-                             "[--enclave-worker-threads=N]\n";
-                std::exit(0);
-            }
-            if (starts_with(arg, "--port="))
-            {
-                output.port = parse_port(arg.substr(7));
-                continue;
-            }
-            if (starts_with(arg, "--cert="))
-            {
-                output.certificate_path = std::string(arg.substr(7));
-                continue;
-            }
-            if (starts_with(arg, "--key="))
-            {
-                output.private_key_path = std::string(arg.substr(6));
-                continue;
-            }
-            if (starts_with(arg, "--enclave-worker-threads="))
-            {
-                output.enclave_worker_threads = parse_worker_thread_count(arg.substr(25));
-                continue;
-            }
-
-            throw std::invalid_argument("unknown argument: " + std::string(arg));
+            parser.ParseCLI(cli.argc, cli.argv.data());
+        }
+        catch (const args::Help&)
+        {
+            std::cout << parser;
+            std::exit(0);
+        }
+        catch (const args::ParseError& e)
+        {
+            std::ostringstream message;
+            message << e.what() << "\n" << parser;
+            throw std::invalid_argument(message.str());
         }
 
+        auto cfg = net.get_config();
+        cfg.log_values();
+
+        canopy::network_config::tcp_endpoint listen_ep;
+        if (const auto* endpoint = cfg.first_listen())
+            listen_ep = *endpoint;
+        else
+            listen_ep.port = 8080;
+
+        command_line output;
+        output.port = listen_ep.port;
+        output.listen_address = listen_ep.to_string();
+        output.certificate_path = args::get(cert_file);
+        output.private_key_path = args::get(key_file);
+        output.static_root_path = args::get(static_root);
+        output.enclave_worker_threads = args::get(enclave_worker_threads);
+
+        if (output.static_root_path.empty())
+            throw std::invalid_argument("--static-root must not be empty");
+
+        const size_t listen_address_byte_count
+            = listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? listen_ep.addr.size() : 4;
+
+        output.enclave_options.emplace("listen-address", output.listen_address);
+        output.enclave_options.emplace(
+            "listen-family",
+            listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? "ipv6" : "ipv4");
+        output.enclave_options.emplace(
+            "listen-address-bytes",
+            std::string(reinterpret_cast<const char*>(listen_ep.addr.data()), listen_address_byte_count));
+        output.enclave_options.emplace("listen-port", std::to_string(output.port));
+        output.enclave_options.emplace("static-root", output.static_root_path);
+        output.enclave_options.emplace("cert", output.certificate_path);
+        output.enclave_options.emplace("key", output.private_key_path);
         return output;
-    }
-
-    auto read_text_file(const std::string& path) -> std::string
-    {
-        std::ifstream file(path, std::ios::binary);
-        if (!file.is_open())
-            throw std::runtime_error("unable to open " + path);
-
-        std::ostringstream buffer;
-        buffer << file.rdbuf();
-        auto content = buffer.str();
-        if (content.empty())
-            throw std::runtime_error("empty file " + path);
-        return content;
     }
 
     auto make_scheduler() -> std::shared_ptr<coro::scheduler>
@@ -166,16 +219,10 @@ auto main(
         return 1;
     }
 
-    std::string certificate_pem;
-    std::string private_key_pem;
-    try
+    if ((!cli.certificate_path.empty() && cli.private_key_path.empty())
+        || (cli.certificate_path.empty() && !cli.private_key_path.empty()))
     {
-        certificate_pem = read_text_file(cli.certificate_path);
-        private_key_pem = read_text_file(cli.private_key_path);
-    }
-    catch (const std::exception& e)
-    {
-        RPC_ERROR("{}", e.what());
+        RPC_ERROR("Both --cert and --key must be provided for TLS");
         return 1;
     }
 
@@ -194,6 +241,13 @@ auto main(
     auto enclave_transport = std::make_shared<rpc::sgx::coro::host::transport>(
         "websocket enclave transport", root_service, CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH);
     enclave_transport->set_enclave_worker_thread_count(cli.enclave_worker_threads);
+    auto startup_options_error = enclave_transport->set_enclave_startup_options(cli.enclave_options);
+    if (startup_options_error != rpc::error::OK())
+    {
+        RPC_ERROR("invalid enclave startup options: {}", rpc::error::to_string(startup_options_error));
+        scheduler->shutdown();
+        return 1;
+    }
 
     auto connect_result = coro::sync_wait(
         (rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, websocket_demo::v1::i_enclave_websocket_server>(
@@ -206,7 +260,7 @@ auto main(
     }
 
     auto enclave_server = connect_result.output_interface;
-    auto listen_error = coro::sync_wait(enclave_server->listen(cli.port, certificate_pem, private_key_pem));
+    auto listen_error = coro::sync_wait(enclave_server->listen());
     if (listen_error != rpc::error::OK())
     {
         RPC_ERROR("failed to start enclave websocket listener: {}", rpc::error::to_string(listen_error));
@@ -215,7 +269,7 @@ auto main(
         return 1;
     }
 
-    RPC_INFO("websocket enclave server listening on https://127.0.0.1:{}", cli.port);
+    RPC_INFO("websocket enclave server listening on configured endpoint {} via enclave port {}", cli.listen_address, cli.port);
     while (g_stop_requested == 0)
         std::this_thread::sleep_for(std::chrono::milliseconds{200});
 

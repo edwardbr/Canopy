@@ -5,6 +5,7 @@
 
 #include <io_uring/controller.h>
 
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -18,6 +19,7 @@ namespace rpc::io_uring
     namespace
     {
         static constexpr int32_t socket_family_inet = 2;
+        static constexpr int32_t socket_family_inet6 = 10;
         static constexpr uint64_t socket_type_stream = 1;
         static constexpr uint32_t socket_protocol_tcp = 6;
         static constexpr uint32_t socket_level_socket = 1;
@@ -26,6 +28,7 @@ namespace rpc::io_uring
         static constexpr uint32_t socket_option_tcp_no_delay = 1;
         static constexpr uint32_t socket_message_dontwait = 0x40;
         static constexpr size_t ipv4_sockaddr_size = 16;
+        static constexpr size_t ipv6_sockaddr_size = 28;
         static constexpr int32_t native_operation_cancelled = ECANCELED;
 #if defined(ETIME)
         static constexpr int32_t native_timer_expired = ETIME;
@@ -65,10 +68,10 @@ namespace rpc::io_uring
 #endif
     } // namespace
 
-    // Creates an IPv4 TCP socket directly into the io_uring fixed-file table.
-    // The returned descriptor is a direct descriptor index, not a normal process
+    // Creates a TCP socket directly into the io_uring fixed-file table. The
+    // returned descriptor is a direct descriptor index, not a normal process
     // file descriptor visible inside the enclave.
-    CORO_TASK(descriptor_result) controller::create_tcp_socket()
+    CORO_TASK(descriptor_result) controller::create_tcp_ipv4_socket()
     {
         auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
         if (fixed_files_err != rpc::error::OK())
@@ -81,6 +84,35 @@ namespace rpc::io_uring
             {
                 sqe.opcode = detail::io_uring_op_socket;
                 sqe.fd = socket_family_inet;
+                sqe.off = socket_type_stream;
+                sqe.len = socket_protocol_tcp;
+                sqe.rw_flags = 0;
+                sqe.file_index = detail::io_uring_file_index_alloc;
+            },
+            nullptr);
+
+        if (result.error_code != rpc::error::OK())
+        {
+            CO_RETURN descriptor_result{result.error_code, 0, result.native_result, result.cqe_flags};
+        }
+
+        CO_RETURN descriptor_result{
+            rpc::error::OK(), static_cast<uint32_t>(result.native_result), result.native_result, result.cqe_flags};
+    }
+
+    CORO_TASK(descriptor_result) controller::create_tcp_ipv6_socket()
+    {
+        auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
+        if (fixed_files_err != rpc::error::OK())
+        {
+            CO_RETURN descriptor_result{fixed_files_err, 0, 0, 0};
+        }
+
+        auto result = CO_AWAIT submit_operation(
+            [](detail::sqe_64& sqe, void*)
+            {
+                sqe.opcode = detail::io_uring_op_socket;
+                sqe.fd = socket_family_inet6;
                 sqe.off = socket_type_stream;
                 sqe.len = socket_protocol_tcp;
                 sqe.rw_flags = 0;
@@ -141,7 +173,18 @@ namespace rpc::io_uring
         uint32_t descriptor,
         uint16_t port)
     {
-        auto address_buffer_result = CO_AWAIT make_loopback_address_buffer(port);
+        CO_RETURN CO_AWAIT bind_tcp_ipv4(descriptor, {127, 0, 0, 1}, port);
+    }
+
+    CORO_TASK(operation_result)
+    controller::bind_tcp_ipv4(
+        uint32_t descriptor,
+        const std::array<
+            uint8_t,
+            4>& bind_address,
+        uint16_t port)
+    {
+        auto address_buffer_result = CO_AWAIT make_ipv4_address_buffer(bind_address, port);
         if (address_buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN operation_result{address_buffer_result.error_code, 0, 0};
@@ -162,6 +205,39 @@ namespace rpc::io_uring
                 sqe.fd = static_cast<int32_t>(operation_context.descriptor);
                 sqe.addr = operation_context.address_buffer->address();
                 sqe.off = static_cast<uint64_t>(ipv4_sockaddr_size);
+            },
+            &operation_context);
+    }
+
+    CORO_TASK(operation_result)
+    controller::bind_tcp_ipv6(
+        uint32_t descriptor,
+        const std::array<
+            uint8_t,
+            16>& bind_address,
+        uint16_t port)
+    {
+        auto address_buffer_result = CO_AWAIT make_ipv6_address_buffer(bind_address, port);
+        if (address_buffer_result.error_code != rpc::error::OK())
+        {
+            CO_RETURN operation_result{address_buffer_result.error_code, 0, 0};
+        }
+
+        struct context
+        {
+            uint32_t descriptor;
+            std::shared_ptr<host_buffer> address_buffer;
+        } operation_context{descriptor, std::move(address_buffer_result.buffer)};
+
+        CO_RETURN CO_AWAIT submit_operation(
+            [](detail::sqe_64& sqe, void* data)
+            {
+                auto& operation_context = *static_cast<context*>(data);
+                sqe.opcode = detail::io_uring_op_bind;
+                sqe.flags = detail::io_uring_sqe_fixed_file;
+                sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                sqe.addr = operation_context.address_buffer->address();
+                sqe.off = static_cast<uint64_t>(ipv6_sockaddr_size);
             },
             &operation_context);
     }
@@ -276,7 +352,7 @@ namespace rpc::io_uring
     CORO_TASK(descriptor_result)
     controller::connect_tcp_ipv4_loopback(uint16_t port)
     {
-        auto socket_result = CO_AWAIT create_tcp_socket();
+        auto socket_result = CO_AWAIT create_tcp_ipv4_socket();
         if (socket_result.error_code != rpc::error::OK())
         {
             CO_RETURN socket_result;

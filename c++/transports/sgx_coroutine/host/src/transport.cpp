@@ -39,6 +39,10 @@ namespace rpc::sgx::coro::host
         constexpr rpc::encoding sgx_bootstrap_init_request_encoding = rpc::encoding::yas_binary;
         constexpr uint64_t sgx_bootstrap_init_request_encoding_value
             = static_cast<uint64_t>(sgx_bootstrap_init_request_encoding);
+        constexpr size_t max_startup_option_count = 64;
+        constexpr size_t max_startup_option_key_bytes = 128;
+        constexpr size_t max_startup_option_value_bytes = 4096;
+        constexpr size_t max_startup_options_total_bytes = 64U * 1024U;
 
         bool signal_peer_closed(common::queue_type* send_queue)
         {
@@ -149,6 +153,29 @@ namespace rpc::sgx::coro::host
 
             common::startup_store_error(startup_error_code, error_code);
             common::startup_store_state(startup_state_word, startup_state::failed);
+        }
+
+        int validate_startup_options(const std::map<std::string, std::string>& options)
+        {
+            if (options.size() > max_startup_option_count)
+                return rpc::error::RESOURCE_EXHAUSTED();
+
+            size_t total_bytes = 0;
+            for (const auto& [key, value] : options)
+            {
+                if (key.empty() || key.size() > max_startup_option_key_bytes
+                    || value.size() > max_startup_option_value_bytes)
+                {
+                    return rpc::error::INVALID_DATA();
+                }
+
+                const auto entry_bytes = key.size() + value.size();
+                if (total_bytes > max_startup_options_total_bytes - entry_bytes)
+                    return rpc::error::RESOURCE_EXHAUSTED();
+                total_bytes += entry_bytes;
+            }
+
+            return rpc::error::OK();
         }
 
     }
@@ -318,6 +345,17 @@ namespace rpc::sgx::coro::host
     void transport::set_enclave_worker_thread_count(uint32_t worker_thread_count)
     {
         enclave_worker_thread_count_.store(worker_thread_count, std::memory_order_release);
+    }
+
+    int transport::set_enclave_startup_options(std::map<std::string, std::string> options)
+    {
+        auto validation_error = validate_startup_options(options);
+        if (validation_error != rpc::error::OK())
+            return validation_error;
+
+        std::lock_guard lock(enclave_startup_options_mutex_);
+        enclave_startup_options_ = std::move(options);
+        return rpc::error::OK();
     }
 
     void transport::destroy_enclave_owner_async(
@@ -500,6 +538,11 @@ namespace rpc::sgx::coro::host
         // spawn the main thread for this enclave
         const auto worker_thread_count = enclave_worker_thread_count_.load(std::memory_order_acquire);
         {
+            std::map<std::string, std::string> startup_options;
+            {
+                std::lock_guard lock(enclave_startup_options_mutex_);
+                startup_options = enclave_startup_options_;
+            }
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
             auto state = owner->state_;
@@ -519,7 +562,8 @@ namespace rpc::sgx::coro::host
                 &state->startup_state_,
                 &state->startup_error_code_,
                 host_ticks_per_millisecond(),
-                host_unix_epoch_milliseconds()};
+                host_unix_epoch_milliseconds(),
+                std::move(startup_options)};
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
             auto request_blob
                 = std::make_shared<std::vector<char>>(rpc::serialise<std::vector<char>>(request, request_encoding));

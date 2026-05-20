@@ -249,7 +249,8 @@ if(CANOPY_BUILD_ENCLAVE
     add_executable(websocket_enclave_server enclave_host_main.cpp)
     target_compile_definitions(
       websocket_enclave_server PRIVATE ${CANOPY_DEFINES}
-                                       CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH="${WEBSOCKET_DEMO_ENCLAVE_RUNTIME_PATH}")
+                                       CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH="${WEBSOCKET_DEMO_ENCLAVE_RUNTIME_PATH}"
+                                       CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
     target_include_directories(websocket_enclave_server PRIVATE ${CANOPY_INCLUDES})
     target_link_libraries(
       websocket_enclave_server
@@ -257,6 +258,7 @@ if(CANOPY_BUILD_ENCLAVE
              rpc::rpc
              transport_sgx_coroutine
              canopy_io_uring
+             canopy_network_config
              ${CANOPY_LIBRARIES}
              ${CANOPY_SGX_HOST_LIBRARIES}
              rpc_log)

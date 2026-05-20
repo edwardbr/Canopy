@@ -290,6 +290,21 @@
             }
         },
         {
+            "name": "Debug_Coroutine_SGX",
+            "binaryDir": "build_debug_coroutine_sgx",
+            "inherits": "Debug",
+            "cacheVariables": {
+                "CANOPY_USE_TELEMETRY": "ON",
+                "CANOPY_LOGGING_LEVEL": "2",
+                "CANOPY_BUILD_COROUTINE": "ON",
+                "CANOPY_BUILD_ENCLAVE": "ON",
+                "CANOPY_BUILD_WEBSOCKET": "ON",
+                "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
+                "SGX_HW": "ON",
+                "CANOPY_ATTESTATION_BACKEND": "SGX_EPID"
+            }
+        },
+        {
             "name": "Debug_Coroutine_Fake_SGX",
             "binaryDir": "build_debug_coroutine_fake_sgx",
             "inherits": "Debug_Coroutine",

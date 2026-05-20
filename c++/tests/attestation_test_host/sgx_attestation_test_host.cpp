@@ -53,6 +53,7 @@ namespace
         return result;
     }
 
+#if defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
     [[nodiscard]] bool parse_local_challenge(
         const attestation_test::sgx_sim_test_cmw& challenge,
         rpc::attestation::sgx_sim_local_attestation_challenge& out)
@@ -87,6 +88,7 @@ namespace
         tampered.payload = std::move(payload);
         return tampered;
     }
+#endif
 
     class root_service_owner final
     {
@@ -124,6 +126,9 @@ namespace
     protected:
         void SetUp() override
         {
+#if !defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
+            GTEST_SKIP() << "SGX SIM attestation backend is not selected";
+#else
             scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                 coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                     .pool = coro::thread_pool::options{.thread_count = 1}}));
@@ -135,6 +140,7 @@ namespace
 
             ASSERT_TRUE(connect_enclave("attestation test child A", test_a_));
             ASSERT_TRUE(connect_enclave("attestation test child B", test_b_));
+#endif
         }
 
         void TearDown() override

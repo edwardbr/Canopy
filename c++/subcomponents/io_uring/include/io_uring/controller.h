@@ -6,6 +6,7 @@
 #pragma once
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -97,11 +98,26 @@ namespace rpc::io_uring
             rpc::byte_span buffer,
             uint64_t offset);
 
-        CORO_TASK(descriptor_result) create_tcp_socket();
+        CORO_TASK(descriptor_result) create_tcp_ipv4_socket();
+        CORO_TASK(descriptor_result) create_tcp_ipv6_socket();
         CORO_TASK(operation_result) set_socket_reuse_addr(uint32_t descriptor);
         CORO_TASK(operation_result)
         bind_tcp_ipv4_loopback(
             uint32_t descriptor,
+            uint16_t port);
+        CORO_TASK(operation_result)
+        bind_tcp_ipv4(
+            uint32_t descriptor,
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port);
+        CORO_TASK(operation_result)
+        bind_tcp_ipv6(
+            uint32_t descriptor,
+            const std::array<
+                uint8_t,
+                16>& address,
             uint16_t port);
         CORO_TASK(operation_result)
         listen(
@@ -292,6 +308,18 @@ namespace rpc::io_uring
         void release_host_buffer(
             uint32_t slot,
             uint64_t generation) noexcept;
+        CORO_TASK(host_buffer_allocation_result)
+        make_ipv4_address_buffer(
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port);
+        CORO_TASK(host_buffer_allocation_result)
+        make_ipv6_address_buffer(
+            const std::array<
+                uint8_t,
+                16>& address,
+            uint16_t port);
         CORO_TASK(host_buffer_allocation_result) make_loopback_address_buffer(uint16_t port);
         CORO_TASK(transfer_result)
         send_with_flags(

@@ -59,7 +59,7 @@ namespace websocket_demo
 
         interface i_enclave_websocket_server
         {
-            int listen(uint16_t port, const std::string& certificate_pem, const std::string& private_key_pem);
+            int listen();
             int stop();
         };
     }

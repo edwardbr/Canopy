@@ -5,7 +5,9 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -109,9 +111,12 @@ namespace rpc::sgx::coro::host
 
         const std::string& get_enclave_path() const { return enclave_path_; }
         void set_enclave_worker_thread_count(uint32_t worker_thread_count);
+        [[nodiscard]] int set_enclave_startup_options(std::map<std::string, std::string> options);
 
     private:
         std::atomic<bool> enclave_shutdown_started_{false};
         std::atomic<uint32_t> enclave_worker_thread_count_{0};
+        std::mutex enclave_startup_options_mutex_;
+        std::map<std::string, std::string> enclave_startup_options_;
     };
 }

@@ -106,7 +106,10 @@ namespace rpc::sgx::coro::enclave
         if (!local_service)
             CO_RETURN rpc::error::TRANSPORT_ERROR();
 
-        auto payload_encoding = local_service->get_default_encoding();
+        // The enclave-private io_uring control channel below calls the
+        // generated YAS serialisers directly, so its send_params encoding must
+        // match those bytes even when the service default is Nanopb.
+        auto payload_encoding = rpc::encoding::yas_binary;
 
         rpc::add_ref_params params;
         params.protocol_version = service_proxy->get_remote_rpc_version();

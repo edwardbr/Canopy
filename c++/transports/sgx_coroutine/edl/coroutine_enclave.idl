@@ -50,6 +50,7 @@ namespace rpc
                     error_code* error = 0;
                     uint64_t ticks_per_millisecond = 0;
                     uint64_t initial_unix_epoch_milliseconds = 0;
+                    std::map<std::string, std::string> options;
                 };
 
                 struct enter_thread_request

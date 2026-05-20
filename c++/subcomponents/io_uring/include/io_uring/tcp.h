@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -29,6 +30,17 @@ namespace rpc::io_uring
             uint16_t port,
             uint32_t backlog = 16)
         {
+            CO_RETURN CO_AWAIT listen_ipv4({127, 0, 0, 1}, port, backlog);
+        }
+
+        CORO_TASK(int)
+        listen_ipv4(
+            const std::array<
+                uint8_t,
+                4>& bind_address,
+            uint16_t port,
+            uint32_t backlog = 16)
+        {
             if (!controller_)
             {
                 CO_RETURN rpc::error::RESOURCE_CLOSED();
@@ -39,7 +51,7 @@ namespace rpc::io_uring
                 CO_AWAIT close();
             }
 
-            auto socket_result = CO_AWAIT controller_->create_tcp_socket();
+            auto socket_result = CO_AWAIT controller_->create_tcp_ipv4_socket();
             if (socket_result.error_code != rpc::error::OK())
             {
                 CO_RETURN socket_result.error_code;
@@ -63,7 +75,67 @@ namespace rpc::io_uring
                 CO_RETURN reuse_result.error_code;
             }
 
-            auto bind_result = CO_AWAIT controller_->bind_tcp_ipv4_loopback(listen_descriptor_->get(), port);
+            auto bind_result = CO_AWAIT controller_->bind_tcp_ipv4(listen_descriptor_->get(), bind_address, port);
+            if (bind_result.error_code != rpc::error::OK())
+            {
+                CO_AWAIT close();
+                CO_RETURN bind_result.error_code;
+            }
+
+            auto listen_result = CO_AWAIT controller_->listen(listen_descriptor_->get(), backlog);
+            if (listen_result.error_code != rpc::error::OK())
+            {
+                CO_AWAIT close();
+                CO_RETURN listen_result.error_code;
+            }
+
+            listening_ = true;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(int)
+        listen_ipv6(
+            const std::array<
+                uint8_t,
+                16>& bind_address,
+            uint16_t port,
+            uint32_t backlog = 16)
+        {
+            if (!controller_)
+            {
+                CO_RETURN rpc::error::RESOURCE_CLOSED();
+            }
+
+            if (listen_descriptor_)
+            {
+                CO_AWAIT close();
+            }
+
+            auto socket_result = CO_AWAIT controller_->create_tcp_ipv6_socket();
+            if (socket_result.error_code != rpc::error::OK())
+            {
+                CO_RETURN socket_result.error_code;
+            }
+
+            try
+            {
+                listen_descriptor_ = std::make_shared<direct_descriptor>(controller_, socket_result.descriptor);
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while creating direct io_uring listen descriptor");
+                std::terminate();
+            }
+
+            port_ = port;
+            auto reuse_result = CO_AWAIT controller_->set_socket_reuse_addr(listen_descriptor_->get());
+            if (reuse_result.error_code != rpc::error::OK())
+            {
+                CO_AWAIT close();
+                CO_RETURN reuse_result.error_code;
+            }
+
+            auto bind_result = CO_AWAIT controller_->bind_tcp_ipv6(listen_descriptor_->get(), bind_address, port);
             if (bind_result.error_code != rpc::error::OK())
             {
                 CO_AWAIT close();
