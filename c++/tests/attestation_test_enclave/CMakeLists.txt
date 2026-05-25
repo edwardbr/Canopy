@@ -9,6 +9,10 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   if(CANOPY_USE_TELEMETRY)
     list(APPEND ATTESTATION_TEST_TELEMETRY_ENCLAVE_LIBS rpc_telemetry_enclave)
   endif()
+  set(ATTESTATION_TEST_ATTESTATION_IDL_ENCLAVE_LIBS sgx_sim_protocol_idl_enclave)
+  if(TARGET sgx_dcap_protocol_idl_enclave)
+    list(APPEND ATTESTATION_TEST_ATTESTATION_IDL_ENCLAVE_LIBS sgx_dcap_protocol_idl_enclave)
+  endif()
 
   add_enclave_library(
     sgx_attestation_test_enclave
@@ -21,8 +25,9 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
       ${ATTESTATION_TEST_TELEMETRY_ENCLAVE_LIBS}
       canopy_coroutine_edl_enclave
       common_enclave
+      transport_local_enclave
       attestation_test_idl_enclave
-      sgx_sim_protocol_idl_enclave
+      ${ATTESTATION_TEST_ATTESTATION_IDL_ENCLAVE_LIBS}
       example_idl_enclave
       canopy::security_attestation_enclave
       yas_common

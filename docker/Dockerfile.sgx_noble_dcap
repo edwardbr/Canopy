@@ -1,0 +1,64 @@
+# Canopy SGX/DCAP build image matching the current hardware host family:
+# Ubuntu 24.04 (Noble). The Intel SGX SDK is intentionally not installed from
+# an apt repository here; Canopy bootstraps it from the local
+# submodules/confidential-computing.sgx source tree.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    autoconf \
+    automake \
+    bash \
+    build-essential \
+    ca-certificates \
+    ccache \
+    clang \
+    clang-format \
+    clang-tidy \
+    cmake \
+    curl \
+    debhelper \
+    file \
+    gcc \
+    g++ \
+    git \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-thread-dev \
+    libcurl4-openssl-dev \
+    libprotobuf-dev \
+    libssl-dev \
+    libsystemd0 \
+    libtool \
+    liburing-dev \
+    lsb-release \
+    make \
+    nasm \
+    ninja-build \
+    nodejs \
+    npm \
+    ocaml \
+    ocamlbuild \
+    patch \
+    perl \
+    pkgconf \
+    procps \
+    protobuf-compiler \
+    python-is-python3 \
+    python3 \
+    python3-venv \
+    reprepro \
+    sudo \
+    unzip \
+    wget \
+    xz-utils \
+    zlib1g-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV CC=clang \
+    CXX=clang++
+
+WORKDIR /workspace/Canopy_gitlab
+CMD ["/bin/bash", "-l"]

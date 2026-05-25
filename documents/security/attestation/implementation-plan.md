@@ -646,6 +646,34 @@ policy-hardening work described in the remaining phases.
 - `build_debug_coroutine_fake_sgx/output/attestation_stream_test --gtest_brief=1`
 - `build_debug_coroutine_fake_sgx/output/rpc_test --gtest_filter=ProtectedRpcRuntime.*:ServiceLevelRouteAttestation.*:attested_streaming_transport_poc_test/* --gtest_fail_fast --gtest_brief=1`
 
+### Hardware DCAP Smoke-Test Attempt - 2026-05-25
+
+- Built `canopy-sgx-noble-dcap:latest` from
+  `docker/Dockerfile.sgx_noble_dcap`.
+- Configured `Debug_Coroutine_DCAP` into
+  `build_debug_coroutine_dcap_noble2`, using a build-local copy of
+  `submodules/confidential-computing.sgx` and rebuilding the SGX SDK installer
+  inside the Ubuntu 24.04 container so host artifacts did not depend on the
+  source tree's newer-glibc `sgx_edger8r`.
+- Built `build_debug_coroutine_dcap_noble2/output/sgx_attestation_test_host`
+  and `build_debug_coroutine_dcap_noble2/output/libsgx_attestation_test_enclave.signed.so`
+  in the local container.
+- Verified the DCAP test is discoverable with:
+  `sgx_attestation_test_host --gtest_list_tests`.
+- Deployed the test binary, signed enclave, and required runtime helper
+  libraries to an SGX/DCAP host without compiling on that host.
+- The deployed binary loaded successfully after bundling missing runtime
+  dependencies. The single DCAP hardware test then failed at enclave creation:
+  Intel uRTS reported that it could not open the SGX device, and
+  `sgx_create_enclave` returned before quote generation began. The host's
+  `/dev/sgx_enclave` was owned by `root:sgx`, while the test user was not in
+  `sgx`; `/dev/sgx_provision` was owned by `root:sgx_prv`, and the user was
+  not in `sgx_prv`.
+- The same host's `/etc/sgx_default_qcnl.conf` pointed at
+  `https://0.0.0.0:8081/sgx/certification/v4/` with secure certificates
+  enabled. Even after SGX device access is fixed, PCCS/certificate setup is
+  expected to be the next integration dependency to validate.
+
 ### Not Yet Implemented
 
 - Separate `cmw.h`, `backend.h`, `policy.h`, and `security_context.h` header
@@ -662,7 +690,12 @@ policy-hardening work described in the remaining phases.
   adapter, but no callback binding to Intel PSW/AESM or a real IAS service yet.
   The SGX DCAP backend has a generated CMW schema, fail-closed default,
   production build selection, quote-provider/verifier seams, and host
-  provider/verifier adapters, but no callback binding to Intel QL/QvL/QvE yet.
+  provider/verifier adapters. Test-only hardware integration now binds those
+  seams to Intel QL/QvL (`sgx_qe_get_target_info`, enclave `sgx_create_report`,
+  `sgx_qe_get_quote`, and `sgx_qv_verify_quote`) in
+  `c++/tests/attestation_test_host/sgx_attestation_test_host.cpp`; production
+  setup code still needs reusable QL/QvL/QvE wrappers, QvE enclave-side
+  verification, and policy enforcement.
 - SGX quote or `sgx_ttls` simulation helpers. The current SGX-sim slice uses
   local-report mechanics only. Quote and TLS-certificate carriers should be
   added only where the Intel simulation libraries run without hardware
@@ -726,8 +759,9 @@ policy-hardening work described in the remaining phases.
   binding is transcript id, identity, role, and nonce based; hardware-grade
   sessions now require explicit shared key material before protected RPC can be
   established.
-- `sgx_ttls`, DCAP, production SGX local attestation, EPID PSW/AESM quote
-  provider, IAS verifier, TDX, SEV-SNP, or TrustZone/PSA backends.
+- `sgx_ttls`, production DCAP provider/verifier integration, production SGX
+  local attestation, EPID PSW/AESM quote provider, IAS verifier, TDX, SEV-SNP,
+  or TrustZone/PSA backends.
 
 ### Current Best Next Step
 
@@ -756,9 +790,19 @@ host DCAP verification. Host-only tests now cover oversized DCAP inner
 quote/supplemental-data fields before the verifier seam, provider rejection of
 oversized target-info/report buffers, quote3 parser bounds checks, rejection
 before verifier callback when raw quote report_data is missing or bound to the
-wrong transcript, and explicit delegated-result policy. Next, on the best
-available SGX hardware, wire either the EPID provider/verifier path for legacy
-demos or the DCAP provider/verifier path for SGX-FLC machines, and bind that
+wrong transcript, and explicit delegated-result policy. A local Ubuntu 24.04
+container build now produces `Debug_Coroutine_DCAP` test artifacts using only
+the checked-out `submodules/confidential-computing.sgx` tree; the generated
+test enclave can create a DCAP quote report, and the host test can call Intel
+QL/QvL through dynamically loaded platform libraries. The first deployment to
+an SGX/DCAP host reached `sgx_create_enclave` but failed before quote
+generation because the test user could not open `/dev/sgx_enclave`; that host
+also had `/etc/sgx_default_qcnl.conf` pointed at
+`https://0.0.0.0:8081/sgx/certification/v4/`, which is expected to block
+collateral retrieval unless a trusted local PCCS is actually configured there.
+Next, after SGX device permissions and PCCS are fixed, run the single DCAP
+hardware test to prove real quote generation and verification, then promote the
+test-only QL/QvL wiring into production provider/verifier setup and bind that
 evidence to an agreed shared secret before establishing protected-RPC AEAD keys.
 
 ## Architectural Layers
@@ -1250,9 +1294,14 @@ Current status: the DCAP schema/backend seam is implemented. The code now has
 (`sgx_dcap_host_quote_provider`, `sgx_dcap_host_quote_verifier`),
 CMake/backend-factory selection for `CANOPY_ATTESTATION_BACKEND=DCAP`,
 fail-closed behavior when no provider or verifier is installed, and host tests
-with injected synthetic quote material. The remaining work in this phase is to
-bind those adapters to Intel DCAP APIs on hardware and to the final
-transcript-bound key exchange.
+with injected synthetic quote material. The tree also has a hardware integration
+test path that binds those adapters to Intel DCAP QL/QvL functions and asks the
+test enclave to create the QE-targeted report. That path builds in an Ubuntu
+24.04 container based on the SGX host environment and deploys only runtime
+artifacts to hardware. The remaining work in this phase is to get a successful
+hardware run after host provisioning fixes, move the test-only Intel API
+binding into production provider/verifier setup, add QvE enclave-side
+verification, and bind the final evidence to a transcript-bound key exchange.
 
 ### Deliverables
 
@@ -1280,9 +1329,16 @@ transcript-bound key exchange.
     explicit host-verifier modes. It is rejected by default, can be ignored
     only by explicit configuration, and can be required only with a configured
     QvE delegated-result checker;
-  - remaining: wire the provider function table to `sgx_qe_get_target_info`,
-    enclave `sgx_create_report`, and `sgx_qe_get_quote`;
-  - remaining: wire the verifier callback to `sgx_qv_verify_quote` (or
+  - test-only complete: `sgx_attestation_test_host` wires the provider function
+    table to `sgx_qe_get_target_info`, enclave `sgx_create_report`, and
+    `sgx_qe_get_quote` so hardware quote generation can be smoke-tested;
+  - remaining: move that provider binding into reusable production setup code
+    and run it through the normal attestation service path;
+  - test-only partial: `sgx_attestation_test_host` wires the verifier callback
+    to host-side `sgx_qv_verify_quote` without `qve_report_info`, which is
+    sufficient for host-gateway and smoke-test verification but not the final
+    enclave-to-enclave trust shape;
+  - remaining: wire production verification to `sgx_qv_verify_quote` (or
     `tee_verify_quote`, see [DCAP Operations](dcap-operations.md)) with
     `qve_report_info`, then inside the enclave call
     `sgx_tvl_verify_qve_report_and_identity`, then enforce application policy
@@ -1296,13 +1352,18 @@ transcript-bound key exchange.
   - remaining: map the full `sgx_ql_qv_result_t` catalog to backend verdicts
     per the failure-mode catalog in `dcap-operations.md`.
 - Build wiring:
-  - link `libsgx_dcap_ql` and `libsgx_dcap_quoteverify` on the host;
+  - complete for test builds: `Debug_Coroutine_DCAP` builds the DCAP
+    attestation test target in a local Ubuntu 24.04 container, using the local
+    SGX source tree and dynamically loading host `libsgx_dcap_ql.so.1` /
+    `libsgx_dcap_quoteverify.so.1` at runtime;
+  - remaining for production setup: link or load `libsgx_dcap_ql` and
+    `libsgx_dcap_quoteverify` from a reusable DCAP provider/verifier factory;
   - link `libsgx_dcap_tvl.a` inside the enclave;
   - import `<dcap>/QuoteVerification/dcap_tvl/sgx_dcap_tvl.edl` into the
     enclave EDL (`<dcap>` is the `dcap_source` path used in
     `dcap-operations.md`);
-  - new build option `CANOPY_ATTESTATION_BACKEND=DCAP` for SGX HW
-    presets.
+  - complete: `Debug_Coroutine_DCAP` selects
+    `CANOPY_ATTESTATION_BACKEND=DCAP` for SGX HW coroutine test builds.
 - Threading: `sgx_qe_get_quote` and `sgx_qv_verify_quote` are run on a
   dedicated worker thread off the io_uring proactor, per the threading
   guidance in `dcap-operations.md`.
@@ -1316,6 +1377,13 @@ transcript-bound key exchange.
 - Operator runbook (developer-facing):
   - install `sgx-aesm-service`, `libsgx-dcap-*`, point
     `/etc/sgx_default_qcnl.conf` at a PCCS instance;
+  - ensure the runtime user can open `/dev/sgx_enclave`; add it to the
+    device's owning group, normally `sgx`, then make the user log in again;
+  - ensure quote/provisioning flows can open `/dev/sgx_provision` when
+    required; this normally means membership in `sgx_prv` or an equivalent
+    udev/admin policy;
+  - do not leave `pccs_url` set to `https://0.0.0.0:8081/...` unless a local
+    PCCS with a trusted certificate is actually listening there;
   - build and run the vendored PCCS from
     `submodules/confidential-computing.sgx/external/dcap_source/QuoteGeneration/pccs/`;
   - run `PCKRetrievalTool` (or `SGXPlatformRegistration` for server

@@ -29,7 +29,7 @@ string(REPLACE "LINUX_SGX_BUILD=1" "LINUX_SGX_BUILD=0" _canopy_sgxssl_script "${
 # Canopy's enclave TLS stream does not need OpenSSL's pthread integration. If SGXSSL builds OpenSSL with pthread
 # support, the enclave either has to link libsgx_pthread.a and import sgx_pthread.edl or fail on pthread symbols. Keep
 # the enclave surface smaller by forcing the copied OpenSSL build script to add OpenSSL's no-threads option. The OpenSSL
-# build script may be downloaded by prepare_sgxssl.sh, so this check/sed pair is injected immediately before
+# build script may be downloaded by prepare_sgxssl.sh, so these checks and sed patches are injected immediately before
 # prepare_sgxssl.sh enters the Linux directory and invokes make.
 string(FIND "${_canopy_sgxssl_script}" "pushd $top_dir/Linux/" _canopy_sgxssl_linux_pushd_pos)
 if(_canopy_sgxssl_linux_pushd_pos EQUAL -1)
@@ -38,9 +38,11 @@ endif()
 string(
   REPLACE
     "pushd $top_dir/Linux/"
-    "grep -q -- 'no-afalgeng' \"$build_script\" || { echo \"Canopy SGXSSL patch expected no-afalgeng in $build_script\"; exit 1; }\nsed -i -- 's/no-afalgeng/no-afalgeng no-threads/g' \"$build_script\" || exit 1\npushd $top_dir/Linux/"
+    "grep -q -- 'no-afalgeng' \"$build_script\" || { echo \"Canopy SGXSSL patch expected no-afalgeng in $build_script\"; exit 1; }\nsed -i -- 's/no-afalgeng/no-afalgeng no-threads no-sock/g' \"$build_script\" || exit 1\nsed -i -- 's/ -D_FORTIFY_SOURCE=2/ -U_FORTIFY_SOURCE/g' \"$build_script\" || exit 1\nsgxssl_trusted_makefile=\"$top_dir/Linux/sgx/libsgx_tsgxssl/Makefile\"\ngrep -q -- '^Common_C_Cpp_Flags :=' \"$sgxssl_trusted_makefile\" || { echo \"Canopy SGXSSL patch expected Common_C_Cpp_Flags in $sgxssl_trusted_makefile\"; exit 1; }\ngrep -q -- '_LIBCPP_SGX_CONFIG' \"$sgxssl_trusted_makefile\" || sed -i -- '/^Common_C_Cpp_Flags :=/a Common_C_Cpp_Flags += -D_LIBCPP_DISABLE_AVAILABILITY -D_LIBCPP_SGX_CONFIG -D_LIBCPP_HAS_NO_THREADS -D_LIBCPP_HAS_NO_STDIN -D_LIBCPP_HAS_NO_STDOUT -D_LIBCPP_HAS_NO_GLOBAL_FILESYSTEM_NAMESPACE -D_LIBCPP_SGX_NO_IOSTREAMS -D_LIBCPP_TYPE_VIS_ONLY= -D__LIBCPP_SGX -D_LIBCPP_SGX_HAS_CXX_ATOMIC -D_LIBCPP_ATOMIC_FLAG_TYPE=bool -D__THROW=' \"$sgxssl_trusted_makefile\" || exit 1\npushd $top_dir/Linux/"
     _canopy_sgxssl_script
     "${_canopy_sgxssl_script}")
+
+string(REPLACE "DEBUG=$DEBUG" "DEBUG=$DEBUG NO_THREADS=1" _canopy_sgxssl_script "${_canopy_sgxssl_script}")
 
 if(CANOPY_SGXSSL_SKIP_INTELCPU_CHECK)
   # SGX simulation can run on non-Intel development hosts. SGXSSL's trusted library has an Intel CPU-vendor guard that

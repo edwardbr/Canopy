@@ -305,6 +305,14 @@
             }
         },
         {
+            "name": "Debug_Coroutine_DCAP",
+            "binaryDir": "build_debug_coroutine_dcap",
+            "inherits": "Debug_Coroutine_SGX",
+            "cacheVariables": {
+                "CANOPY_ATTESTATION_BACKEND": "DCAP"
+            }
+        },
+        {
             "name": "Debug_Coroutine_Fake_SGX",
             "binaryDir": "build_debug_coroutine_fake_sgx",
             "inherits": "Debug_Coroutine",

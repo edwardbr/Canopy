@@ -416,6 +416,69 @@ For air-gapped deployments the PCCS can be fed an offline snapshot of PCS
 collateral. The verifier fetches normally; the PCCS just never reaches
 upstream.
 
+## Canopy Hardware Smoke Test Status
+
+The current Canopy tree has a DCAP hardware smoke-test path, not yet the final
+production provider/verifier integration.
+
+Build side:
+
+- Use the local SGX source tree under `submodules/confidential-computing.sgx`.
+  Do not depend on a server-side SGX checkout.
+- `docker/Dockerfile.sgx_noble_dcap` builds an Ubuntu 24.04 environment that
+  matches the first SGX/DCAP test host closely enough to rebuild the SGX SDK
+  installer and Canopy artifacts locally.
+- `Debug_Coroutine_DCAP` selects `CANOPY_ATTESTATION_BACKEND=DCAP` and builds
+  `build_debug_coroutine_dcap_noble2/output/sgx_attestation_test_host` plus
+  `libsgx_attestation_test_enclave.signed.so`.
+- The test bundle can be deployed to SGX hardware without compiling there.
+  This matters for thermally constrained hosts.
+
+Runtime side:
+
+- The single useful hardware smoke test is:
+
+  ```text
+  sgx_attestation_test_host \
+    --gtest_filter=sgx_attestation_test_host_fixture.sgx_dcap_backend_produces_and_verifies_quote_with_platform_libraries
+  ```
+
+- The test dynamically loads `libsgx_dcap_ql.so.1` and
+  `libsgx_dcap_quoteverify.so.1`, calls `sgx_qe_get_target_info`, asks the
+  test enclave to create an `sgx_report_t` with Canopy's report-data binding,
+  calls `sgx_qe_get_quote`, and verifies the resulting quote with host-side
+  `sgx_qv_verify_quote`.
+- This verifies QL/QVL plumbing and Canopy's raw quote `report_data` binding.
+  It does **not** yet prove the final enclave-to-enclave trust path, because
+  it does not pass `qve_report_info` into QvL or verify QvE output inside the
+  application enclave with `sgx_tvl_verify_qve_report_and_identity`.
+
+Before running that smoke test on a host, check:
+
+```text
+id
+ls -l /dev/sgx /dev/sgx_enclave /dev/sgx_provision /dev/sgx_vepc
+systemctl is-active aesmd
+cat /etc/sgx_default_qcnl.conf
+```
+
+The runtime user must be able to open `/dev/sgx_enclave`; on typical Linux
+installs this means membership in the `sgx` group. Quote/provisioning paths may
+also need access to `/dev/sgx_provision`, normally group `sgx_prv`, depending
+on platform state and QPL/AESM behavior. After group changes the user must log
+out and back in.
+
+`/etc/sgx_default_qcnl.conf` must point at a usable PCCS URL. A value such as
+`https://0.0.0.0:8081/sgx/certification/v4/` is a placeholder for a local
+listener, not a routable service address; with `use_secure_cert: true`, the
+PCCS certificate must also chain to a trust anchor accepted by the host.
+
+If the smoke-test binary is deployed outside the build tree, ensure runtime
+dependencies are present on the host or bundled beside the binary. In the first
+Ubuntu 24.04 test deployment, the host provided `libsgx_urts.so.2` but not
+`libsgx_uae_service.so`, `libsgx_capable.so`, or `liburing.so.2`, so those
+were bundled with `LD_LIBRARY_PATH` pointing at the deploy directory.
+
 ## Provisioning A New Platform
 
 A new machine that has never produced quotes needs one-off registration.

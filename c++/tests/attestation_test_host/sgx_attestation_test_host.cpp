@@ -11,6 +11,9 @@
 #include <rpc/internal/serialiser.h>
 #include <rpc/rpc.h>
 #include <security/attestation/service.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_provider.h>
+#include <security/attestation/backends/sgx_dcap/sgx_dcap_host_quote_verifier.h>
 #include <security/attestation/backends/sgx_epid/sgx_epid_host_quote_provider.h>
 #include <security/attestation/backends/simulation/simulation_backend.h>
 #include <transports/sgx_coroutine/host/connect.h>
@@ -21,7 +24,9 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <cstring>
+#include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <optional>
@@ -30,8 +35,12 @@
 #include <utility>
 #include <vector>
 
-#if defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID) && !defined(CANOPY_FAKE_SGX) && !defined(_WIN32)
+#if (defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID) || defined(CANOPY_ATTESTATION_BACKEND_DCAP))                         \
+    && !defined(CANOPY_FAKE_SGX) && !defined(_WIN32)
 #  include <dlfcn.h>
+#endif
+
+#if defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID) && !defined(CANOPY_FAKE_SGX) && !defined(_WIN32)
 #  if defined(__clang__)
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wc99-extensions"
@@ -43,6 +52,22 @@
 #  define CANOPY_ATTESTATION_TEST_HAS_EPID_PSW 1
 #else
 #  define CANOPY_ATTESTATION_TEST_HAS_EPID_PSW 0
+#endif
+
+#if defined(CANOPY_ATTESTATION_BACKEND_DCAP) && !defined(CANOPY_FAKE_SGX) && !defined(_WIN32)
+#  if defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wc99-extensions"
+#    pragma clang diagnostic ignored "-Wflexible-array-extensions"
+#  endif
+#  include <sgx_dcap_ql_wrapper.h>
+#  include <sgx_dcap_quoteverify.h>
+#  if defined(__clang__)
+#    pragma clang diagnostic pop
+#  endif
+#  define CANOPY_ATTESTATION_TEST_HAS_DCAP_PSW 1
+#else
+#  define CANOPY_ATTESTATION_TEST_HAS_DCAP_PSW 0
 #endif
 
 namespace
@@ -251,6 +276,196 @@ namespace
     }
 #endif
 
+#if CANOPY_ATTESTATION_TEST_HAS_DCAP_PSW
+    constexpr uint64_t test_dcap_transcript_id = 0x4443415054455354ULL;
+
+    struct dcap_psw_library
+    {
+        using get_target_info_fn = quote3_error_t (*)(sgx_target_info_t*);
+        using get_quote_size_fn = quote3_error_t (*)(uint32_t*);
+        using get_quote_fn = quote3_error_t (*)(
+            const sgx_report_t*,
+            uint32_t,
+            uint8_t*);
+        using get_supplemental_data_size_fn = quote3_error_t (*)(uint32_t*);
+        using verify_quote_fn = quote3_error_t (*)(
+            const uint8_t*,
+            uint32_t,
+            const sgx_ql_qve_collateral_t*,
+            time_t,
+            uint32_t*,
+            sgx_ql_qv_result_t*,
+            sgx_ql_qe_report_info_t*,
+            uint32_t,
+            uint8_t*);
+
+        dcap_psw_library() = default;
+
+        ~dcap_psw_library()
+        {
+            if (quote_handle)
+                dlclose(quote_handle);
+            if (verify_handle)
+                dlclose(verify_handle);
+        }
+
+        dcap_psw_library(const dcap_psw_library&) = delete;
+        auto operator=(const dcap_psw_library&) -> dcap_psw_library& = delete;
+
+        void* quote_handle{nullptr};
+        void* verify_handle{nullptr};
+        get_target_info_fn get_target_info{nullptr};
+        get_quote_size_fn get_quote_size{nullptr};
+        get_quote_fn get_quote{nullptr};
+        get_supplemental_data_size_fn get_supplemental_data_size{nullptr};
+        verify_quote_fn verify_quote{nullptr};
+    };
+
+    template<typename Function>
+    [[nodiscard]] auto load_dcap_symbol(
+        void* handle,
+        const char* name,
+        Function& function,
+        std::string& error) -> bool
+    {
+        dlerror();
+        auto* symbol = dlsym(handle, name);
+        if (!symbol)
+        {
+            const auto* dl_error = dlerror();
+            error = dl_error ? dl_error : name;
+            return false;
+        }
+        function = reinterpret_cast<Function>(symbol);
+        return true;
+    }
+
+    [[nodiscard]] auto open_dcap_library(
+        const char* soname,
+        const char* fallback,
+        std::string& error) -> void*
+    {
+        auto* handle = dlopen(soname, RTLD_NOW | RTLD_LOCAL);
+        if (!handle)
+            handle = dlopen(fallback, RTLD_NOW | RTLD_LOCAL);
+        if (!handle)
+        {
+            const auto* dl_error = dlerror();
+            error = dl_error ? dl_error : soname;
+        }
+        return handle;
+    }
+
+    [[nodiscard]] auto load_dcap_psw_library(std::string& error) -> std::unique_ptr<dcap_psw_library>
+    {
+        auto library = std::unique_ptr<dcap_psw_library>(new dcap_psw_library{});
+        library->quote_handle = open_dcap_library("libsgx_dcap_ql.so.1", "libsgx_dcap_ql.so", error);
+        if (!library->quote_handle)
+            return {};
+        library->verify_handle = open_dcap_library("libsgx_dcap_quoteverify.so.1", "libsgx_dcap_quoteverify.so", error);
+        if (!library->verify_handle)
+            return {};
+
+        if (!load_dcap_symbol(library->quote_handle, "sgx_qe_get_target_info", library->get_target_info, error)
+            || !load_dcap_symbol(library->quote_handle, "sgx_qe_get_quote_size", library->get_quote_size, error)
+            || !load_dcap_symbol(library->quote_handle, "sgx_qe_get_quote", library->get_quote, error)
+            || !load_dcap_symbol(
+                library->verify_handle, "sgx_qv_get_quote_supplemental_data_size", library->get_supplemental_data_size, error)
+            || !load_dcap_symbol(library->verify_handle, "sgx_qv_verify_quote", library->verify_quote, error))
+        {
+            return {};
+        }
+        return library;
+    }
+
+    [[nodiscard]] auto quote3_status_to_hex(quote3_error_t status) -> std::string
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint32_t>(status);
+        return out.str();
+    }
+
+    [[nodiscard]] auto qv_result_name(sgx_ql_qv_result_t result) -> const char*
+    {
+        switch (result)
+        {
+        case SGX_QL_QV_RESULT_OK:
+            return "OK";
+        case SGX_QL_QV_RESULT_CONFIG_NEEDED:
+            return "CONFIG_NEEDED";
+        case SGX_QL_QV_RESULT_OUT_OF_DATE:
+            return "OUT_OF_DATE";
+        case SGX_QL_QV_RESULT_OUT_OF_DATE_CONFIG_NEEDED:
+            return "OUT_OF_DATE_CONFIG_NEEDED";
+        case SGX_QL_QV_RESULT_INVALID_SIGNATURE:
+            return "INVALID_SIGNATURE";
+        case SGX_QL_QV_RESULT_REVOKED:
+            return "REVOKED";
+        case SGX_QL_QV_RESULT_UNSPECIFIED:
+            return "UNSPECIFIED";
+        case SGX_QL_QV_RESULT_SW_HARDENING_NEEDED:
+            return "SW_HARDENING_NEEDED";
+        case SGX_QL_QV_RESULT_CONFIG_AND_SW_HARDENING_NEEDED:
+            return "CONFIG_AND_SW_HARDENING_NEEDED";
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    [[nodiscard]] auto is_environmental_dcap_status(quote3_error_t status) -> bool
+    {
+        return status == SGX_QL_NO_DEVICE || status == SGX_QL_SERVICE_UNAVAILABLE || status == SGX_QL_NETWORK_FAILURE
+               || status == SGX_QL_SERVICE_TIMEOUT || status == SGX_QL_ERROR_INVALID_PRIVILEGE
+               || status == SGX_QL_NO_PLATFORM_CERT_DATA || status == SGX_QL_CERTS_UNAVAILABLE
+               || status == SGX_QL_PLATFORM_UNKNOWN || status == SGX_QL_ROOT_CA_UNTRUSTED
+               || status == SGX_QL_CONFIG_INVALID_JSON || status == SGX_QL_ENCLAVE_LOAD_ERROR
+               || status == SGX_QL_INTERFACE_UNAVAILABLE || status == SGX_QL_PLATFORM_LIB_UNAVAILABLE
+               || status == SGX_QL_PSW_NOT_AVAILABLE;
+    }
+
+    [[nodiscard]] auto copy_dcap_bytes(const auto& value) -> std::vector<uint8_t>
+    {
+        const auto* begin = reinterpret_cast<const uint8_t*>(&value);
+        return std::vector<uint8_t>(begin, begin + sizeof(value));
+    }
+
+    [[nodiscard]] auto dcap_report_data_matches(
+        const std::vector<uint8_t>& report_blob,
+        const std::vector<uint8_t>& expected_hash) -> bool
+    {
+        if (report_blob.size() != sizeof(sgx_report_t) || expected_hash.size() != 32U)
+            return false;
+
+        sgx_report_t report{};
+        std::memcpy(&report, report_blob.data(), sizeof(report));
+        if (!std::equal(expected_hash.begin(), expected_hash.end(), report.body.report_data.d))
+            return false;
+
+        const auto* zero_begin = report.body.report_data.d + expected_hash.size();
+        const auto* zero_end = report.body.report_data.d + sizeof(report.body.report_data.d);
+        return std::all_of(zero_begin, zero_end, [](uint8_t value) { return value == 0; });
+    }
+
+    [[nodiscard]] auto test_dcap_binding() -> canopy::security::attestation::evidence_binding
+    {
+        canopy::security::attestation::evidence_binding binding;
+        binding.subject = canopy::security::attestation::identity{
+            "sgx-dcap-attestation-test-enclave", "sgx-dcap-attestation-test-zone"};
+        binding.transcript_id = test_dcap_transcript_id;
+        binding.nonce = {0x43, 0x61, 0x6e, 0x6f, 0x70, 0x79, 0x2d, 0x44, 0x43, 0x41, 0x50};
+        return binding;
+    }
+
+    [[nodiscard]] auto test_dcap_policy() -> canopy::security::attestation::attestation_policy
+    {
+        canopy::security::attestation::attestation_policy policy;
+        policy.required_backend_id = canopy::security::attestation::sgx_dcap_backend_id;
+        policy.minimum_security_level = canopy::security::attestation::security_level::hardware;
+        policy.allow_development_evidence = false;
+        return policy;
+    }
+#endif
+
     class root_service_owner final
     {
     public:
@@ -287,9 +502,11 @@ namespace
     protected:
         void SetUp() override
         {
-#if !defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM) && !defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)
+#if !defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM) && !defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)                      \
+    && !defined(CANOPY_ATTESTATION_BACKEND_DCAP)
             GTEST_SKIP() << "an SGX attestation backend is not selected";
 #else
+            enclave_path_ = resolve_enclave_path();
             scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                 coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
                     .pool = coro::thread_pool::options{.thread_count = 1}}));
@@ -361,8 +578,8 @@ namespace
             const char* name,
             rpc::shared_ptr<attestation_test::i_attestation_enclave_test>& test)
         {
-            auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
-                name, root_service_->service(), CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH);
+            auto transport
+                = std::make_shared<rpc::sgx::coro::host::transport>(name, root_service_->service(), enclave_path_);
             transport_refs_.push_back(transport);
             auto result = run_on_manual_scheduler<rpc::service_connect_result<attestation_test::i_attestation_enclave_test>>(
                 scheduler_,
@@ -376,6 +593,30 @@ namespace
                 return false;
             }
             return true;
+        }
+
+        [[nodiscard]] static std::string resolve_enclave_path()
+        {
+            if (const char* override_path = std::getenv("CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH"))
+            {
+                if (override_path[0] != '\0')
+                    return override_path;
+            }
+
+            const std::filesystem::path configured_path{CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH};
+            std::error_code error;
+            if (std::filesystem::exists(configured_path, error))
+                return configured_path.string();
+
+            const auto executable_path = std::filesystem::read_symlink("/proc/self/exe", error);
+            if (!error)
+            {
+                const auto sibling_path = executable_path.parent_path() / "libsgx_attestation_test_enclave.signed.so";
+                if (std::filesystem::exists(sibling_path, error))
+                    return sibling_path.string();
+            }
+
+            return configured_path.string();
         }
 
         void wait_for_flag(
@@ -407,6 +648,7 @@ namespace
         std::unique_ptr<root_service_owner> root_service_;
         rpc::shared_ptr<yyy::i_host> host_;
         std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transport_refs_;
+        std::string enclave_path_;
         rpc::shared_ptr<attestation_test::i_attestation_enclave_test> test_a_;
         rpc::shared_ptr<attestation_test::i_attestation_enclave_test> test_b_;
     };
@@ -431,6 +673,174 @@ TEST_F(
     EXPECT_GT(result.development_signature_size, 0U);
 #else
     GTEST_SKIP() << "SGX SIM attestation backend is not selected";
+#endif
+}
+
+TEST_F(
+    sgx_attestation_test_host_fixture,
+    sgx_dcap_backend_produces_and_verifies_quote_with_platform_libraries)
+{
+#if CANOPY_ATTESTATION_TEST_HAS_DCAP_PSW
+    std::string load_error;
+    auto psw = load_dcap_psw_library(load_error);
+    if (!psw)
+        GTEST_SKIP() << "Intel DCAP quote libraries are unavailable: " << load_error;
+
+    quote3_error_t target_info_status = SGX_QL_SUCCESS;
+    quote3_error_t quote_size_status = SGX_QL_SUCCESS;
+    quote3_error_t get_quote_status = SGX_QL_SUCCESS;
+    quote3_error_t supplemental_data_size_status = SGX_QL_SUCCESS;
+    quote3_error_t verify_quote_status = SGX_QL_SUCCESS;
+    sgx_ql_qv_result_t quote_verification_result = SGX_QL_QV_RESULT_UNSPECIFIED;
+    uint32_t collateral_expiration_status = 0U;
+    bool enclave_report_requested = false;
+    bool enclave_report_data_matched = false;
+
+    canopy::security::attestation::sgx_dcap_host_quote_provider_options provider_options;
+    provider_options.functions.get_target_info
+        = [&]() -> std::optional<canopy::security::attestation::sgx_dcap_target_info_result>
+    {
+        sgx_target_info_t target_info{};
+        target_info_status = psw->get_target_info(&target_info);
+        if (target_info_status != SGX_QL_SUCCESS)
+            return std::nullopt;
+
+        canopy::security::attestation::sgx_dcap_target_info_result result;
+        result.qe_target_info = copy_dcap_bytes(target_info);
+        return result;
+    };
+
+    provider_options.functions.get_quote_size = [&]() -> std::optional<uint32_t>
+    {
+        uint32_t quote_size = 0U;
+        quote_size_status = psw->get_quote_size(&quote_size);
+        if (quote_size_status != SGX_QL_SUCCESS)
+            return std::nullopt;
+        return quote_size;
+    };
+
+    provider_options.report_producer
+        = [&](const canopy::security::attestation::sgx_dcap_report_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        enclave_report_requested = true;
+        std::vector<uint8_t> report;
+        const auto error
+            = SYNC_WAIT(test_a_->sgx_dcap_make_quote_report(request.qe_target_info, request.report_data_sha256, report));
+        if (error != rpc::error::OK())
+            return std::nullopt;
+
+        enclave_report_data_matched = dcap_report_data_matches(report, request.report_data_sha256);
+        return report;
+    };
+
+    provider_options.functions.get_quote
+        = [&](const canopy::security::attestation::sgx_dcap_get_quote_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        if (request.report.size() != sizeof(sgx_report_t) || request.quote_size == 0)
+        {
+            get_quote_status = SGX_QL_ERROR_INVALID_PARAMETER;
+            return std::nullopt;
+        }
+
+        sgx_report_t report{};
+        std::memcpy(&report, request.report.data(), sizeof(report));
+
+        std::vector<uint8_t> quote(request.quote_size);
+        get_quote_status = psw->get_quote(&report, request.quote_size, quote.data());
+        if (get_quote_status != SGX_QL_SUCCESS)
+            return std::nullopt;
+        return quote;
+    };
+
+    canopy::security::attestation::sgx_dcap_host_quote_verifier_options verifier_options;
+    verifier_options.verify_quote
+        = [&](const canopy::security::attestation::sgx_dcap_verifier_input& input,
+              const canopy::security::attestation::attestation_policy&) -> canopy::security::attestation::sgx_dcap_host_quote_verification
+    {
+        canopy::security::attestation::sgx_dcap_host_quote_verification verification;
+
+        uint32_t supplemental_data_size = 0U;
+        supplemental_data_size_status = psw->get_supplemental_data_size(&supplemental_data_size);
+        if (supplemental_data_size_status != SGX_QL_SUCCESS)
+        {
+            verification.failure_reason = "sgx_qv_get_quote_supplemental_data_size failed with "
+                                          + quote3_status_to_hex(supplemental_data_size_status);
+            return verification;
+        }
+
+        std::vector<uint8_t> supplemental_data(supplemental_data_size);
+        collateral_expiration_status = 0U;
+        quote_verification_result = SGX_QL_QV_RESULT_UNSPECIFIED;
+        verify_quote_status = psw->verify_quote(
+            input.quote.quote.data(),
+            static_cast<uint32_t>(input.quote.quote.size()),
+            nullptr,
+            std::time(nullptr),
+            &collateral_expiration_status,
+            &quote_verification_result,
+            nullptr,
+            supplemental_data_size,
+            supplemental_data.empty() ? nullptr : supplemental_data.data());
+
+        verification.call_succeeded = verify_quote_status == SGX_QL_SUCCESS;
+        verification.result.quote_verification_result = static_cast<uint64_t>(quote_verification_result);
+        verification.result.quote_verification_result_name = qv_result_name(quote_verification_result);
+        verification.result.collateral_expired = static_cast<uint8_t>(collateral_expiration_status != 0U);
+        verification.result.verification_time = static_cast<uint64_t>(std::time(nullptr));
+        verification.result.supplemental_data = std::move(supplemental_data);
+        if (!verification.call_succeeded)
+        {
+            verification.failure_reason = "sgx_qv_verify_quote failed with " + quote3_status_to_hex(verify_quote_status);
+        }
+        return verification;
+    };
+
+    auto provider
+        = std::make_shared<canopy::security::attestation::sgx_dcap_host_quote_provider>(std::move(provider_options));
+    auto verifier
+        = std::make_shared<canopy::security::attestation::sgx_dcap_host_quote_verifier>(std::move(verifier_options));
+    canopy::security::attestation::sgx_dcap_backend backend(std::move(provider), std::move(verifier));
+
+    const auto binding = test_dcap_binding();
+    auto evidence = backend.produce_evidence(binding);
+    if (evidence.content_format != canopy::security::attestation::sgx_dcap_quote_evidence_content_format)
+    {
+        const auto failure_status = target_info_status != SGX_QL_SUCCESS
+                                        ? target_info_status
+                                        : (quote_size_status != SGX_QL_SUCCESS ? quote_size_status : get_quote_status);
+        if (is_environmental_dcap_status(failure_status))
+        {
+            GTEST_SKIP() << "Intel DCAP quote generation is unavailable in this environment: "
+                         << quote3_status_to_hex(failure_status);
+        }
+
+        FAIL() << "DCAP quote provider failed; target_info=" << quote3_status_to_hex(target_info_status)
+               << " quote_size=" << quote3_status_to_hex(quote_size_status)
+               << " get_quote=" << quote3_status_to_hex(get_quote_status)
+               << " enclave_report_requested=" << enclave_report_requested
+               << " report_data_matched=" << enclave_report_data_matched;
+    }
+
+    EXPECT_TRUE(enclave_report_requested);
+    EXPECT_TRUE(enclave_report_data_matched);
+    EXPECT_GT(evidence.payload.size(), 0U);
+
+    auto verdict = backend.verify_evidence(evidence, binding, test_dcap_policy());
+    if (!verdict.accepted && is_environmental_dcap_status(verify_quote_status))
+    {
+        GTEST_SKIP() << "Intel DCAP quote verification is unavailable in this environment: "
+                     << quote3_status_to_hex(verify_quote_status);
+    }
+
+    EXPECT_TRUE(verdict.accepted) << verdict.reason << " verify_quote=" << quote3_status_to_hex(verify_quote_status)
+                                  << " qv_result=" << qv_result_name(quote_verification_result)
+                                  << " collateral_expired=" << collateral_expiration_status
+                                  << " supplemental_data_size_status="
+                                  << quote3_status_to_hex(supplemental_data_size_status);
+    EXPECT_EQ(quote_verification_result, SGX_QL_QV_RESULT_OK);
+    EXPECT_EQ(collateral_expiration_status, 0U);
+#else
+    GTEST_SKIP() << "SGX DCAP PSW test is only available in Linux SGX DCAP builds";
 #endif
 }
 

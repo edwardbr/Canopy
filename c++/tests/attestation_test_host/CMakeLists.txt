@@ -5,6 +5,11 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  set(ATTESTATION_TEST_ATTESTATION_IDL_LIBS sgx_sim_protocol_idl)
+  if(TARGET sgx_dcap_protocol_idl)
+    list(APPEND ATTESTATION_TEST_ATTESTATION_IDL_LIBS sgx_dcap_protocol_idl)
+  endif()
+
   add_executable(sgx_attestation_test_host sgx_attestation_test_host.cpp)
 
   if(WIN32)
@@ -28,7 +33,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     sgx_attestation_test_host
     PUBLIC attestation_test_idl
-           sgx_sim_protocol_idl
+           ${ATTESTATION_TEST_ATTESTATION_IDL_LIBS}
            example_idl
            canopy::security_attestation
            rpc::rpc
@@ -42,6 +47,16 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
            ${CANOPY_SGX_HOST_LIBRARIES}
            ${CMAKE_DL_LIBS}
            rpc_log)
+
+  if(CANOPY_ATTESTATION_BACKEND STREQUAL "DCAP")
+    target_include_directories(
+      sgx_attestation_test_host
+      PRIVATE
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/confidential-computing.sgx/external/dcap_source/QuoteGeneration/quote_wrapper/ql/inc>"
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/confidential-computing.sgx/external/dcap_source/QuoteVerification/QvE/Include>"
+        "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/submodules/confidential-computing.sgx/external/dcap_source/QuoteVerification/dcap_quoteverify/inc>"
+    )
+  endif()
 
   target_compile_options(sgx_attestation_test_host PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(sgx_attestation_test_host PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
