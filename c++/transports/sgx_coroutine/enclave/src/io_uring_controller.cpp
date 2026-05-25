@@ -86,6 +86,73 @@ namespace rpc::sgx::coro::enclave
     }
 
     CORO_TASK(rpc::io_uring::descriptor_result)
+    enclave_io_uring_handle::open_file(
+        std::string path,
+        uint32_t open_flags,
+        uint32_t mode)
+    {
+        protocol::host_tcp_result result;
+        protocol::host_tcp_request request;
+        request.operation = protocol::host_tcp_operation::file_open;
+        request.flags = open_flags;
+        request.value = mode;
+        request.payload.assign(path.begin(), path.end());
+        auto err = CO_AWAIT host_tcp_operation(std::move(request), result);
+        if (err != rpc::error::OK())
+            CO_RETURN rpc::io_uring::descriptor_result{err, 0, 0, 0};
+        CO_RETURN to_descriptor_result(result);
+    }
+
+    CORO_TASK(rpc::io_uring::transfer_result)
+    enclave_io_uring_handle::read_at(
+        uint32_t descriptor,
+        rpc::mutable_byte_span buffer,
+        uint64_t offset)
+    {
+        if (buffer.empty())
+            CO_RETURN rpc::io_uring::transfer_result{rpc::error::OK(), 0, 0, 0};
+
+        protocol::host_tcp_result result;
+        protocol::host_tcp_request request;
+        request.operation = protocol::host_tcp_operation::file_read_at;
+        request.descriptor = descriptor;
+        request.value = static_cast<uint32_t>(
+            std::min<size_t>(buffer.size(), static_cast<size_t>(std::numeric_limits<uint32_t>::max())));
+        request.offset = offset;
+        auto err = CO_AWAIT host_tcp_operation(std::move(request), result);
+        if (err != rpc::error::OK())
+            CO_RETURN rpc::io_uring::transfer_result{err, 0, 0, 0};
+        if (result.error_code == rpc::error::OK() && !result.payload.empty())
+        {
+            const auto bytes = std::min(buffer.size(), result.payload.size());
+            std::copy_n(result.payload.data(), bytes, buffer.data());
+            result.bytes_transferred = static_cast<uint32_t>(bytes);
+        }
+        CO_RETURN to_transfer_result(result);
+    }
+
+    CORO_TASK(rpc::io_uring::transfer_result)
+    enclave_io_uring_handle::write_at(
+        uint32_t descriptor,
+        rpc::byte_span buffer,
+        uint64_t offset)
+    {
+        if (buffer.empty())
+            CO_RETURN rpc::io_uring::transfer_result{rpc::error::OK(), 0, 0, 0};
+
+        protocol::host_tcp_result result;
+        protocol::host_tcp_request request;
+        request.operation = protocol::host_tcp_operation::file_write_at;
+        request.descriptor = descriptor;
+        request.offset = offset;
+        request.payload.assign(buffer.begin(), buffer.end());
+        auto err = CO_AWAIT host_tcp_operation(std::move(request), result);
+        if (err != rpc::error::OK())
+            CO_RETURN rpc::io_uring::transfer_result{err, 0, 0, 0};
+        CO_RETURN to_transfer_result(result);
+    }
+
+    CORO_TASK(rpc::io_uring::descriptor_result)
     enclave_io_uring_handle::create_tcp_ipv4_socket()
     {
         protocol::host_tcp_result result;

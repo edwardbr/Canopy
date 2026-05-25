@@ -100,6 +100,15 @@ set(CANOPY_SGX_SDK_INSTALL_PREFIX
 set(CANOPY_SGX_BOOTSTRAP_CMAKE
     ""
     CACHE FILEPATH "Optional CMake executable to use only for SGX SDK bootstrap sub-builds")
+set(CANOPY_SGX_SOURCE_DIR
+    ""
+    CACHE PATH
+          "Optional Intel SGX SDK source tree to use for SDK bootstrap instead of submodules/confidential-computing.sgx"
+)
+option(CANOPY_SGX_REBUILD_SDK_INSTALLER "Ignore any existing SGX SDK installer and rebuild it from source" OFF)
+set(CANOPY_SGX_BOOTSTRAP_JOBS
+    ""
+    CACHE STRING "Parallel job count for Intel SGX SDK bootstrap make invocations; empty uses the detected CPU count")
 
 function(canopy_resolve_existing_sgx_sdk out_var)
   set(candidate_paths)
@@ -146,10 +155,17 @@ function(canopy_bootstrap_sgx_sdk)
       FATAL_ERROR "CANOPY_BOOTSTRAP_SGX_SDK is not supported on Windows. Set SGX_DIR to an installed Intel SGX SDK.")
   endif()
 
-  set(sgx_source_dir "${CMAKE_CURRENT_LIST_DIR}/../submodules/confidential-computing.sgx")
+  if(CANOPY_SGX_SOURCE_DIR)
+    set(sgx_source_dir "${CANOPY_SGX_SOURCE_DIR}")
+  else()
+    set(sgx_source_dir "${CMAKE_CURRENT_LIST_DIR}/../submodules/confidential-computing.sgx")
+  endif()
   if(NOT IS_DIRECTORY "${sgx_source_dir}")
-    message(FATAL_ERROR "SGX source submodule directory not found at ${sgx_source_dir}. "
-                        "Enable GIT_SUBMODULE or populate submodules/confidential-computing.sgx before enclave builds.")
+    message(
+      FATAL_ERROR
+        "SGX source directory not found at ${sgx_source_dir}. "
+        "Enable GIT_SUBMODULE, populate submodules/confidential-computing.sgx, "
+        "or set CANOPY_SGX_SOURCE_DIR to a prepared Intel SGX SDK source tree.")
   endif()
 
   file(
@@ -194,6 +210,11 @@ function(canopy_bootstrap_sgx_sdk)
     message(FATAL_ERROR "Cannot bootstrap Intel SGX SDK because 'cmake' was not found.")
   endif()
 
+  find_program(CANOPY_PYTHON_EXECUTABLE python3 python)
+  if(NOT CANOPY_PYTHON_EXECUTABLE)
+    message(FATAL_ERROR "Cannot bootstrap Intel SGX SDK because neither 'python3' nor 'python' was found.")
+  endif()
+
   set(canopy_sgx_bootstrap_tools_dir "${CMAKE_BINARY_DIR}/sgx-bootstrap-tools")
   file(MAKE_DIRECTORY "${canopy_sgx_bootstrap_tools_dir}")
   set(canopy_sgx_bootstrap_cmake_wrapper "${canopy_sgx_bootstrap_tools_dir}/cmake")
@@ -222,8 +243,77 @@ function(canopy_bootstrap_sgx_sdk)
   else()
     set(canopy_sgx_bootstrap_path "${canopy_sgx_bootstrap_tools_dir}")
   endif()
+  set(canopy_sgx_bootstrap_jobs "${CANOPY_SGX_BOOTSTRAP_JOBS}")
+  if(NOT canopy_sgx_bootstrap_jobs)
+    include(ProcessorCount)
+    ProcessorCount(canopy_sgx_bootstrap_jobs)
+    if(canopy_sgx_bootstrap_jobs EQUAL 0)
+      set(canopy_sgx_bootstrap_jobs 1)
+    endif()
+  endif()
+  set(canopy_sgx_bootstrap_makeflags "-j${canopy_sgx_bootstrap_jobs}")
+  if(DEFINED ENV{MAKEFLAGS} AND NOT "$ENV{MAKEFLAGS}" STREQUAL "")
+    set(canopy_sgx_bootstrap_makeflags "$ENV{MAKEFLAGS} ${canopy_sgx_bootstrap_makeflags}")
+  endif()
+  message(STATUS "Intel SGX SDK bootstrap make jobs: ${canopy_sgx_bootstrap_jobs}")
+  set(canopy_sgx_bootstrap_make_wrapper "${canopy_sgx_bootstrap_tools_dir}/make")
+  file(
+    WRITE "${canopy_sgx_bootstrap_make_wrapper}"
+    "#!/usr/bin/env bash\n"
+    "for arg in \"$@\"; do\n"
+    "  case \"$arg\" in\n"
+    "    -j|--jobs|-j*|--jobs=*) exec \"${CANOPY_MAKE_EXECUTABLE}\" \"$@\" ;;\n"
+    "  esac\n"
+    "done\n"
+    "exec \"${CANOPY_MAKE_EXECUTABLE}\" -j${canopy_sgx_bootstrap_jobs} \"$@\"\n")
+  file(
+    CHMOD
+    "${canopy_sgx_bootstrap_make_wrapper}"
+    PERMISSIONS
+    OWNER_READ
+    OWNER_WRITE
+    OWNER_EXECUTE
+    GROUP_READ
+    GROUP_EXECUTE
+    WORLD_READ
+    WORLD_EXECUTE)
+  set(canopy_sgx_bootstrap_python_wrapper "${canopy_sgx_bootstrap_tools_dir}/python")
+  file(WRITE "${canopy_sgx_bootstrap_python_wrapper}" "#!/usr/bin/env bash\n"
+                                                      "exec \"${CANOPY_PYTHON_EXECUTABLE}\" \"$@\"\n")
+  file(
+    CHMOD
+    "${canopy_sgx_bootstrap_python_wrapper}"
+    PERMISSIONS
+    OWNER_READ
+    OWNER_WRITE
+    OWNER_EXECUTE
+    GROUP_READ
+    GROUP_EXECUTE
+    WORLD_READ
+    WORLD_EXECUTE)
 
   file(GLOB sgx_sdk_installers "${sgx_source_dir}/linux/installer/bin/sgx_linux_x64_sdk_*.bin")
+  if(CANOPY_SGX_REBUILD_SDK_INSTALLER)
+    message(STATUS "Ignoring existing Intel SGX SDK installers because CANOPY_SGX_REBUILD_SDK_INSTALLER is ON")
+    if(sgx_sdk_installers)
+      file(REMOVE ${sgx_sdk_installers})
+    endif()
+    set(sgx_sdk_installers)
+
+    message(STATUS "Cleaning Intel SGX SDK build outputs in ${sgx_source_dir}")
+    execute_process(
+      COMMAND
+        "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++"
+        "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "MAKEFLAGS=${canopy_sgx_bootstrap_makeflags}" "CMAKE_BUILD_PARALLEL_LEVEL=${canopy_sgx_bootstrap_jobs}"
+        "${CANOPY_MAKE_EXECUTABLE}" clean
+      WORKING_DIRECTORY "${sgx_source_dir}"
+      RESULT_VARIABLE sgx_sdk_clean_result)
+
+    if(NOT sgx_sdk_clean_result EQUAL 0)
+      message(FATAL_ERROR "Failed to clean Intel SGX SDK sources in ${sgx_source_dir} before rebuilding the installer.")
+    endif()
+  endif()
   list(LENGTH sgx_sdk_installers sgx_sdk_installer_count)
 
   if(sgx_sdk_installer_count EQUAL 0)
@@ -238,12 +328,16 @@ function(canopy_bootstrap_sgx_sdk)
       endif()
     endforeach()
 
-    if(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES)
-      message(STATUS "Bootstrapping Intel SGX SDK from submodules/confidential-computing.sgx")
+    if(canopy_sgx_sources_prepared)
+      message(STATUS "Skipping Intel SGX SDK source preparation because prepared source markers are present in "
+                     "${sgx_source_dir}.")
+    elseif(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES)
+      message(STATUS "Preparing Intel SGX SDK source tree at ${sgx_source_dir}")
       execute_process(
         COMMAND
           "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc"
           "CXX=g++" "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
+          "MAKEFLAGS=${canopy_sgx_bootstrap_makeflags}" "CMAKE_BUILD_PARALLEL_LEVEL=${canopy_sgx_bootstrap_jobs}"
           "${CANOPY_MAKE_EXECUTABLE}" preparation
         WORKING_DIRECTORY "${sgx_source_dir}"
         RESULT_VARIABLE sgx_sdk_prep_result)
@@ -252,9 +346,6 @@ function(canopy_bootstrap_sgx_sdk)
         message(FATAL_ERROR "Failed to prepare Intel SGX SDK sources in ${sgx_source_dir}. "
                             "Install the SGX SDK prerequisites or inspect the submodule preparation step.")
       endif()
-    elseif(canopy_sgx_sources_prepared)
-      message(STATUS "Skipping Intel SGX SDK source preparation because CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES is OFF "
-                     "and the prepared source markers are present.")
     else()
       message(
         FATAL_ERROR
@@ -266,8 +357,9 @@ function(canopy_bootstrap_sgx_sdk)
     execute_process(
       COMMAND
         "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++"
-        "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
-        sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
+        "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "MAKEFLAGS=${canopy_sgx_bootstrap_makeflags}" "CMAKE_BUILD_PARALLEL_LEVEL=${canopy_sgx_bootstrap_jobs}"
+        "${CANOPY_MAKE_EXECUTABLE}" sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
       WORKING_DIRECTORY "${sgx_source_dir}"
       RESULT_VARIABLE sgx_sdk_build_result)
 
@@ -279,7 +371,7 @@ function(canopy_bootstrap_sgx_sdk)
     file(GLOB sgx_sdk_installers "${sgx_source_dir}/linux/installer/bin/sgx_linux_x64_sdk_*.bin")
     list(LENGTH sgx_sdk_installers sgx_sdk_installer_count)
   else()
-    message(STATUS "Using existing Intel SGX SDK installer from submodules/confidential-computing.sgx")
+    message(STATUS "Using existing Intel SGX SDK installer from ${sgx_source_dir}")
   endif()
 
   if(sgx_sdk_installer_count EQUAL 0)
@@ -367,6 +459,13 @@ function(canopy_configure_sgxssl_for_enclave)
       FATAL_ERROR
         "CANOPY_BOOTSTRAP_SGXSSL is ON, but ${CANOPY_SGXSSL_ROOT_DIR}/prepare_sgxssl.sh was not found. "
         "Populate submodules/confidential-computing.sgx, or set CANOPY_SGXSSL_ROOT_DIR to an Intel SGXSSL source tree.")
+  endif()
+  if(_canopy_sgxssl_real_backend AND CANOPY_BOOTSTRAP_SGXSSL)
+    find_program(CANOPY_UNZIP_EXECUTABLE unzip)
+    if(NOT CANOPY_UNZIP_EXECUTABLE)
+      message(FATAL_ERROR "CANOPY_BOOTSTRAP_SGXSSL is ON, but 'unzip' was not found. "
+                          "Install unzip or set CANOPY_BOOTSTRAP_SGXSSL=OFF and provide a prebuilt SGXSSL package.")
+    endif()
   endif()
 
   set(CANOPY_SGXSSL_BUILD_DIR
@@ -841,22 +940,22 @@ else()
   # -Wpedantic flags. Using a separate variable avoids cmake list-append ordering issues. SHELL: prefix prevents cmake
   # from deduplicating this flag against the earlier -Wno-variadic-macros in CANOPY_ENCLAVE_COMPILE_OPTIONS, ensuring it
   # lands after -Wpedantic (which re-enables the warning) in the final compile command.
-  set(CANOPY_WARN_PEDANTIC_ENCLAVE ${CANOPY_WARN_PEDANTIC} "SHELL:-Wno-variadic-macros")
-  set(CANOPY_WARN_OK_ENCLAVE ${CANOPY_WARN_OK} "SHELL:-Wno-variadic-macros")
+  set(CANOPY_WARN_PEDANTIC_ENCLAVE ${CANOPY_WARN_PEDANTIC} "SHELL:-Wno-variadic-macros" "SHELL:-Wno-gnu-include-next")
+  set(CANOPY_WARN_OK_ENCLAVE ${CANOPY_WARN_OK} "SHELL:-Wno-variadic-macros" "SHELL:-Wno-gnu-include-next")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(
       APPEND
       CANOPY_WARN_PEDANTIC_ENCLAVE
       "SHELL:-Wno-pedantic"
-      "SHELL:-Wno-suggest-override"
-      "SHELL:-Wno-changes-meaning"
-      "SHELL:-Wno-dangling-reference")
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-suggest-override>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-changes-meaning>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-dangling-reference>)
     list(
       APPEND
       CANOPY_WARN_OK_ENCLAVE
-      "SHELL:-Wno-suggest-override"
-      "SHELL:-Wno-changes-meaning"
-      "SHELL:-Wno-dangling-reference")
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-suggest-override>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-changes-meaning>
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-dangling-reference>)
   endif()
 
   # Resolve the installed SDK layout, tools, libraries, helper functions, and SGX-specific CMake abstractions via

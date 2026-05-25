@@ -667,7 +667,7 @@ namespace synchronous_generator
         default:
             return "";
         }
-    };
+    }
 
     bool do_in_param(
         print_type option,
@@ -1086,7 +1086,7 @@ namespace synchronous_generator
         {
             proxy("if(__rpc_request_id != 0) __rpc_sp->get_operating_zone_service()->finish_out_param_request(__rpc_request_id);");
         }
-    };
+    }
 
     void write_method(
         bool from_host,
@@ -2525,7 +2525,7 @@ namespace synchronous_generator
         stub("CO_RETURN rpc::send_result{{rpc::error::INVALID_METHOD_ID(), {{}}, {{}}}};");
         stub("}}");
         stub("");
-    };
+    }
 
     void write_interface_forward_declaration(
         const class_entity& m_ob,
@@ -2990,7 +2990,7 @@ namespace synchronous_generator
         header("{{");
         header("return !(lhs != rhs);");
         header("}}");
-    };
+    }
 
     void write_encapsulate_outbound_interfaces(
         const class_entity& obj,

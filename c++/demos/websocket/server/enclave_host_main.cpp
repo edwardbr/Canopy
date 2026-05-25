@@ -42,6 +42,7 @@ namespace
         std::string certificate_path;
         std::string private_key_path;
         std::string static_root_path;
+        std::string enclave_path;
         uint32_t enclave_worker_threads{0};
         std::map<std::string, std::string> enclave_options;
     };
@@ -134,6 +135,8 @@ namespace
             parser, "file", "Path to TLS private key file (PEM format); provide with --cert to enable TLS", {"key"}, "");
         args::ValueFlag<std::string> static_root(
             parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
+        args::ValueFlag<std::string> enclave_path(
+            parser, "path", "Path to the signed websocket demo enclave image", {"enclave"}, CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH);
         args::ValueFlag<uint32_t> enclave_worker_threads(
             parser, "count", "Number of enclave worker ECALL threads", {"enclave-worker-threads"}, 0);
 
@@ -169,10 +172,13 @@ namespace
         output.certificate_path = args::get(cert_file);
         output.private_key_path = args::get(key_file);
         output.static_root_path = args::get(static_root);
+        output.enclave_path = args::get(enclave_path);
         output.enclave_worker_threads = args::get(enclave_worker_threads);
 
         if (output.static_root_path.empty())
             throw std::invalid_argument("--static-root must not be empty");
+        if (output.enclave_path.empty())
+            throw std::invalid_argument("--enclave must not be empty");
 
         const size_t listen_address_byte_count
             = listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? listen_ep.addr.size() : 4;
@@ -238,7 +244,7 @@ auto main(
     controller_options.sq_thread_idle_ms = 50;
 
     auto enclave_transport = std::make_shared<rpc::sgx::coro::host::transport>(
-        "websocket enclave transport", root_service, CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH);
+        "websocket enclave transport", root_service, cli.enclave_path);
     enclave_transport->set_enclave_worker_thread_count(cli.enclave_worker_threads);
     auto startup_options_error = enclave_transport->set_enclave_startup_options(cli.enclave_options);
     if (startup_options_error != rpc::error::OK())

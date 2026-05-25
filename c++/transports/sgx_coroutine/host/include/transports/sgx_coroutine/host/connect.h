@@ -21,7 +21,9 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -48,6 +50,9 @@ namespace rpc::sgx::coro::host
                 for (auto fd : host_tcp_descriptors_)
                     ::close(fd);
                 host_tcp_descriptors_.clear();
+                for (auto fd : host_file_descriptors_)
+                    ::close(fd);
+                host_file_descriptors_.clear();
             }
 
             CORO_TASK(int) transfer_encapsulated_interface(rpc::shared_ptr<rpc::i_noop>& iface) override
@@ -142,7 +147,15 @@ namespace rpc::sgx::coro::host
                 return host_tcp_descriptors_.find(static_cast<int>(descriptor)) != host_tcp_descriptors_.end();
             }
 
+            bool owns_file_descriptor_locked(uint32_t descriptor) const
+            {
+                if (descriptor > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+                    return false;
+                return host_file_descriptors_.find(static_cast<int>(descriptor)) != host_file_descriptors_.end();
+            }
+
             void track_descriptor_locked(int fd) { host_tcp_descriptors_.insert(fd); }
+            void track_file_descriptor_locked(int fd) { host_file_descriptors_.insert(fd); }
 
             auto create_socket_locked(int family) -> rpc::sgx::coro::protocol::host_tcp_result
             {
@@ -342,13 +355,85 @@ namespace rpc::sgx::coro::host
                 return result;
             }
 
+            auto file_open_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
+                -> rpc::sgx::coro::protocol::host_tcp_result
+            {
+                if (request.payload.empty())
+                    return invalid_data_result();
+
+                const std::string path(request.payload.begin(), request.payload.end());
+                const auto fd = ::open(path.c_str(), static_cast<int>(request.flags), static_cast<mode_t>(request.value));
+                if (fd < 0)
+                    return native_error_result(errno);
+
+                if (auto err = set_descriptor_flags(fd); err != 0)
+                {
+                    ::close(fd);
+                    return native_error_result(err);
+                }
+
+                track_file_descriptor_locked(fd);
+                auto result = ok_result(fd);
+                result.descriptor = fd;
+                return result;
+            }
+
+            auto file_read_at_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
+                -> rpc::sgx::coro::protocol::host_tcp_result
+            {
+                if (!owns_file_descriptor_locked(request.descriptor) || request.value > max_host_tcp_payload_size
+                    || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
+                    return invalid_data_result();
+
+                rpc::sgx::coro::protocol::host_tcp_result result;
+                result.payload.resize(request.value);
+                auto native_result = ::pread(
+                    static_cast<int>(request.descriptor),
+                    result.payload.data(),
+                    result.payload.size(),
+                    static_cast<off_t>(request.offset));
+                if (native_result < 0)
+                    return native_error_result(errno);
+
+                result.error_code = rpc::error::OK();
+                result.native_result = static_cast<int32_t>(native_result);
+                result.bytes_transferred = static_cast<uint32_t>(native_result);
+                result.payload.resize(result.bytes_transferred);
+                return result;
+            }
+
+            auto file_write_at_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
+                -> rpc::sgx::coro::protocol::host_tcp_result
+            {
+                if (!owns_file_descriptor_locked(request.descriptor) || request.payload.size() > max_host_tcp_payload_size
+                    || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
+                    return invalid_data_result();
+
+                auto native_result = ::pwrite(
+                    static_cast<int>(request.descriptor),
+                    request.payload.data(),
+                    request.payload.size(),
+                    static_cast<off_t>(request.offset));
+                if (native_result < 0)
+                    return native_error_result(errno);
+
+                auto result = ok_result(static_cast<int32_t>(native_result));
+                result.bytes_transferred = static_cast<uint32_t>(native_result);
+                return result;
+            }
+
             auto close_descriptor_locked(uint32_t descriptor) -> rpc::sgx::coro::protocol::host_tcp_result
             {
-                if (!owns_descriptor_locked(descriptor))
+                const bool is_tcp_descriptor = owns_descriptor_locked(descriptor);
+                const bool is_file_descriptor = owns_file_descriptor_locked(descriptor);
+                if (!is_tcp_descriptor && !is_file_descriptor)
                     return invalid_data_result();
 
                 auto fd = static_cast<int>(descriptor);
-                host_tcp_descriptors_.erase(fd);
+                if (is_tcp_descriptor)
+                    host_tcp_descriptors_.erase(fd);
+                if (is_file_descriptor)
+                    host_file_descriptors_.erase(fd);
                 auto native_result = ::close(fd);
                 if (native_result < 0)
                     return native_error_result(errno);
@@ -407,6 +492,12 @@ namespace rpc::sgx::coro::host
                     return ok_result();
                 case operation::tcp_close:
                     return close_descriptor_locked(request.descriptor);
+                case operation::file_open:
+                    return file_open_locked(request);
+                case operation::file_read_at:
+                    return file_read_at_locked(request);
+                case operation::file_write_at:
+                    return file_write_at_locked(request);
                 }
 
                 return invalid_data_result();
@@ -416,6 +507,7 @@ namespace rpc::sgx::coro::host
             std::unique_ptr<rpc::io_uring::host_controller> controller_;
             rpc::shared_ptr<rpc::i_noop> encapsulated_interface_;
             std::unordered_set<int> host_tcp_descriptors_;
+            std::unordered_set<int> host_file_descriptors_;
         };
     }
 

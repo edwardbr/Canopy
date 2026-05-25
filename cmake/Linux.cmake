@@ -118,9 +118,9 @@ else()
   set(CANOPY_CLANG_WARNS
       -Wno-variadic-macros
       -Wno-gnu-zero-variadic-macro-arguments
-      -Wno-c++20-extensions
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++20-extensions>
       # GCC equivalents where available
-      -Wsuggest-override # GCC equivalent of -Winconsistent-missing-override
+      $<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override> # GCC equivalent of -Winconsistent-missing-override
       -Wimplicit-fallthrough=5 # Highest level fallthrough warnings
       -Wunused # Catch unused variables/functions
       -Wformat-security # Format string security

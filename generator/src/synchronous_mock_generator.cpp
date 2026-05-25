@@ -117,7 +117,7 @@ namespace synchronous_mock_generator
 
         header("}};");
         header("");
-    };
+    }
 
     void write_struct(
         const class_entity& m_ob,

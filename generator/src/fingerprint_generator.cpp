@@ -83,7 +83,7 @@ namespace fingerprint
         } while (current_namespace);
 
         return nullptr;
-    };
+    }
 
     std::string extract_subsituted_templates(
         const std::string& source,

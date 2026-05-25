@@ -9,6 +9,7 @@
 #include <edl/coroutine_enclave.h>
 #include <io_uring/controller.h>
 #include <memory>
+#include <string>
 
 namespace rpc::sgx::coro::enclave
 {
@@ -25,6 +26,21 @@ namespace rpc::sgx::coro::enclave
         notify_submitted(
             const rpc::io_uring::data& ring_data,
             uint32_t sqe_count) override;
+        CORO_TASK(rpc::io_uring::descriptor_result)
+        open_file(
+            std::string path,
+            uint32_t open_flags,
+            uint32_t mode) override;
+        CORO_TASK(rpc::io_uring::transfer_result)
+        read_at(
+            uint32_t descriptor,
+            rpc::mutable_byte_span buffer,
+            uint64_t offset) override;
+        CORO_TASK(rpc::io_uring::transfer_result)
+        write_at(
+            uint32_t descriptor,
+            rpc::byte_span buffer,
+            uint64_t offset) override;
         CORO_TASK(rpc::io_uring::descriptor_result) create_tcp_ipv4_socket() override;
         CORO_TASK(rpc::io_uring::descriptor_result) create_tcp_ipv6_socket() override;
         CORO_TASK(rpc::io_uring::operation_result) set_socket_reuse_addr(uint32_t descriptor) override;

@@ -44,10 +44,18 @@ namespace rpc::io_uring
             CO_RETURN descriptor_result{rpc::error::INVALID_DATA(), 0, 0, 0};
         }
 
-        auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
-        if (fixed_files_err != rpc::error::OK())
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
         {
-            CO_RETURN descriptor_result{fixed_files_err, 0, 0, 0};
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+            {
+                CO_RETURN CO_AWAIT handle_->open_file(std::move(path), open_flags, mode);
+            }
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
         const auto path_size = path.size() + 1;
@@ -102,6 +110,20 @@ namespace rpc::io_uring
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN transfer_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+            {
+                CO_RETURN CO_AWAIT handle_->read_at(descriptor, buffer, offset);
+            }
+            CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
 #ifndef FOR_SGX
@@ -182,6 +204,20 @@ namespace rpc::io_uring
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN transfer_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+            {
+                CO_RETURN CO_AWAIT handle_->write_at(descriptor, buffer, offset);
+            }
+            CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
 #ifndef FOR_SGX

@@ -956,5 +956,5 @@ namespace interface_declaration_generator
         }
         header("}};");
         header("");
-    };
+    }
 }

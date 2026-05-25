@@ -983,7 +983,7 @@ namespace yas_generator
                 }
             }
         }
-    };
+    }
 
     // entry point
     void write_namespace(

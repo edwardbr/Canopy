@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <io_uring/types.h>
@@ -28,6 +29,30 @@ namespace rpc::io_uring
         virtual CORO_TASK(int) notify_submitted(
             const data& ring_data,
             uint32_t sqe_count) = 0;
+
+        virtual CORO_TASK(descriptor_result) open_file(
+            std::string,
+            uint32_t,
+            uint32_t)
+        {
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+        }
+
+        virtual CORO_TASK(transfer_result) read_at(
+            uint32_t,
+            rpc::mutable_byte_span,
+            uint64_t)
+        {
+            CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+        }
+
+        virtual CORO_TASK(transfer_result) write_at(
+            uint32_t,
+            rpc::byte_span,
+            uint64_t)
+        {
+            CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+        }
 
         virtual CORO_TASK(descriptor_result) create_tcp_ipv4_socket()
         {

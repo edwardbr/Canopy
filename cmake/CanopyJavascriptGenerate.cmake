@@ -241,11 +241,17 @@ function(
         COMMENT "Compiling protobuf JS for ${idl_basename} (${_proto_js_base}.js)")
       list(APPEND ALL_STAMPS "${_pbjs_stamp}")
     else()
+      set(_missing_js_tools "")
       if(NOT NPM_EXECUTABLE)
-        message(STATUS "CanopyJavascriptGenerate: npm not found — ${name} proto JS skipped")
-      elseif(NOT NODE_EXECUTABLE)
-        message(STATUS "CanopyJavascriptGenerate: node not found — ${name} proto JS skipped")
+        list(APPEND _missing_js_tools "npm")
       endif()
+      if(NOT NODE_EXECUTABLE)
+        list(APPEND _missing_js_tools "node")
+      endif()
+      list(JOIN _missing_js_tools ", " _missing_js_tools_text)
+      message(
+        FATAL_ERROR
+          "CanopyJavascriptGenerate: ${name} requested compile_proto_js but ${_missing_js_tools_text} was not found")
     endif()
   endif()
 

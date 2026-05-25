@@ -165,6 +165,9 @@ namespace rpc
                     tcp_receive_nonblocking = 13,
                     tcp_cancel = 14,
                     tcp_close = 15,
+                    file_open = 16,
+                    file_read_at = 17,
+                    file_write_at = 18,
                 };
 
                 struct host_tcp_request
@@ -173,6 +176,7 @@ namespace rpc
                     uint32_t descriptor = 0;
                     uint32_t value = 0;
                     uint32_t flags = 0;
+                    uint64_t offset = 0;
                     std::vector<uint8_t> address;
                     std::vector<uint8_t> payload;
                 };

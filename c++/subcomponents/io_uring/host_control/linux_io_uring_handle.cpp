@@ -15,6 +15,7 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <utility>
 
@@ -167,6 +168,87 @@ namespace rpc::io_uring
         // enclaves. If SQPOLL was unavailable during controller setup,
         // wake_iouring() submits pending entries with io_uring_enter().
         CO_RETURN controller->wake_iouring();
+    }
+
+    CORO_TASK(descriptor_result)
+    linux_io_uring_handle::open_file(
+        std::string path,
+        uint32_t open_flags,
+        uint32_t mode)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (path.empty())
+            CO_RETURN invalid_descriptor_result();
+
+        const auto fd = ::open(path.c_str(), static_cast<int>(open_flags), static_cast<mode_t>(mode));
+        if (fd < 0)
+            CO_RETURN native_descriptor_error_result(errno);
+
+        if (auto err = set_descriptor_flags(fd); err != 0)
+        {
+            ::close(fd);
+            CO_RETURN native_descriptor_error_result(err);
+        }
+
+        try
+        {
+            file_descriptors_.insert(fd);
+        }
+        catch (const std::bad_alloc&)
+        {
+            ::close(fd);
+            CO_RETURN descriptor_result{rpc::error::OUT_OF_MEMORY(), 0, 0, 0};
+        }
+
+        CO_RETURN descriptor_result{rpc::error::OK(), static_cast<uint32_t>(fd), fd, 0};
+    }
+
+    CORO_TASK(transfer_result)
+    linux_io_uring_handle::read_at(
+        uint32_t descriptor,
+        rpc::mutable_byte_span buffer,
+        uint64_t offset)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!owns_file_descriptor_locked(descriptor))
+            CO_RETURN invalid_transfer_result();
+        if (buffer.empty())
+            CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        if (buffer.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())
+            || offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
+            CO_RETURN invalid_transfer_result();
+
+        const auto native_result
+            = ::pread(static_cast<int>(descriptor), buffer.data(), buffer.size(), static_cast<off_t>(offset));
+        if (native_result < 0)
+            CO_RETURN native_transfer_error_result(errno);
+
+        CO_RETURN transfer_result{
+            rpc::error::OK(), static_cast<uint32_t>(native_result), static_cast<int32_t>(native_result), 0};
+    }
+
+    CORO_TASK(transfer_result)
+    linux_io_uring_handle::write_at(
+        uint32_t descriptor,
+        rpc::byte_span buffer,
+        uint64_t offset)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!owns_file_descriptor_locked(descriptor))
+            CO_RETURN invalid_transfer_result();
+        if (buffer.empty())
+            CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        if (buffer.size() > static_cast<size_t>(std::numeric_limits<int32_t>::max())
+            || offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
+            CO_RETURN invalid_transfer_result();
+
+        const auto native_result
+            = ::pwrite(static_cast<int>(descriptor), buffer.data(), buffer.size(), static_cast<off_t>(offset));
+        if (native_result < 0)
+            CO_RETURN native_transfer_error_result(errno);
+
+        CO_RETURN transfer_result{
+            rpc::error::OK(), static_cast<uint32_t>(native_result), static_cast<int32_t>(native_result), 0};
     }
 
     CORO_TASK(descriptor_result) linux_io_uring_handle::create_tcp_ipv4_socket()
@@ -398,13 +480,17 @@ namespace rpc::io_uring
     {
         std::unique_ptr<host_controller> controller;
         std::unordered_set<int> tcp_descriptors;
+        std::unordered_set<int> file_descriptors;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             tcp_descriptors = std::move(tcp_descriptors_);
+            file_descriptors = std::move(file_descriptors_);
             controller = std::move(controller_);
         }
 
         for (auto fd : tcp_descriptors)
+            ::close(fd);
+        for (auto fd : file_descriptors)
             ::close(fd);
 
         if (controller)
@@ -435,6 +521,13 @@ namespace rpc::io_uring
         if (descriptor > static_cast<uint32_t>(std::numeric_limits<int>::max()))
             return false;
         return tcp_descriptors_.find(static_cast<int>(descriptor)) != tcp_descriptors_.end();
+    }
+
+    bool linux_io_uring_handle::owns_file_descriptor_locked(uint32_t descriptor) const noexcept
+    {
+        if (descriptor > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+            return false;
+        return file_descriptors_.find(static_cast<int>(descriptor)) != file_descriptors_.end();
     }
 
     int linux_io_uring_handle::max_tcp_descriptors_locked() const noexcept
@@ -480,11 +573,16 @@ namespace rpc::io_uring
 
     operation_result linux_io_uring_handle::close_descriptor_locked(uint32_t descriptor) noexcept
     {
-        if (!owns_tcp_descriptor_locked(descriptor))
+        const bool is_tcp_descriptor = owns_tcp_descriptor_locked(descriptor);
+        const bool is_file_descriptor = owns_file_descriptor_locked(descriptor);
+        if (!is_tcp_descriptor && !is_file_descriptor)
             return invalid_operation_result();
 
         const auto fd = static_cast<int>(descriptor);
-        tcp_descriptors_.erase(fd);
+        if (is_tcp_descriptor)
+            tcp_descriptors_.erase(fd);
+        if (is_file_descriptor)
+            file_descriptors_.erase(fd);
         const auto native_result = ::close(fd);
         if (native_result < 0)
             return native_operation_error_result(errno);

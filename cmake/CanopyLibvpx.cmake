@@ -25,6 +25,18 @@ endif()
 set(CANOPY_LIBVPX_SRC_DIR "${CMAKE_SOURCE_DIR}/c++/submodules/libvpx")
 set(CANOPY_LIBVPX_BUILD_DIR "${CMAKE_BINARY_DIR}/libvpx-build")
 set(CANOPY_LIBVPX_ARCHIVE "${CANOPY_LIBVPX_BUILD_DIR}/libvpx.a")
+set(CANOPY_LIBVPX_BUILD_JOBS
+    ""
+    CACHE STRING "Parallel job count for libvpx make invocations; empty uses the detected CPU count")
+
+set(_canopy_libvpx_build_jobs "${CANOPY_LIBVPX_BUILD_JOBS}")
+if(NOT _canopy_libvpx_build_jobs)
+  include(ProcessorCount)
+  ProcessorCount(_canopy_libvpx_build_jobs)
+  if(_canopy_libvpx_build_jobs EQUAL 0)
+    set(_canopy_libvpx_build_jobs 1)
+  endif()
+endif()
 
 if(NOT EXISTS "${CANOPY_LIBVPX_SRC_DIR}/configure")
   message(FATAL_ERROR "libvpx submodule not present at ${CANOPY_LIBVPX_SRC_DIR}. "
@@ -39,16 +51,16 @@ endif()
 
 file(MAKE_DIRECTORY "${CANOPY_LIBVPX_BUILD_DIR}")
 
-# Configure + build in one custom command. Re-runs only if the archive is
-# missing; libvpx's own make handles incremental rebuilds if its dir is kept.
+# Configure + build in one custom command. Re-runs only if the archive is missing; libvpx's own make handles incremental
+# rebuilds if its dir is kept.
 add_custom_command(
   OUTPUT "${CANOPY_LIBVPX_ARCHIVE}"
   WORKING_DIRECTORY "${CANOPY_LIBVPX_BUILD_DIR}"
   COMMAND
-    "${CANOPY_LIBVPX_SRC_DIR}/configure" --target=x86_64-linux-gcc --disable-vp9 --enable-vp8
-    --enable-vp8-encoder --enable-vp8-decoder --disable-examples --disable-tools --disable-docs
-    --disable-unit-tests --disable-shared --enable-static --enable-pic --as=nasm
-  COMMAND ${CMAKE_COMMAND} -E env make -j4
+    "${CANOPY_LIBVPX_SRC_DIR}/configure" --target=x86_64-linux-gcc --disable-vp9 --enable-vp8 --enable-vp8-encoder
+    --enable-vp8-decoder --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-shared
+    --enable-static --enable-pic --as=nasm
+  COMMAND ${CMAKE_COMMAND} -E env make -j${_canopy_libvpx_build_jobs}
   COMMENT "Configuring and building libvpx (VP8 enc+dec, static)"
   VERBATIM)
 
@@ -56,34 +68,35 @@ add_custom_target(canopy_libvpx_build DEPENDS "${CANOPY_LIBVPX_ARCHIVE}")
 
 add_library(canopy_libvpx STATIC IMPORTED GLOBAL)
 set_target_properties(
-  canopy_libvpx
-  PROPERTIES IMPORTED_LOCATION "${CANOPY_LIBVPX_ARCHIVE}"
-             INTERFACE_INCLUDE_DIRECTORIES "${CANOPY_LIBVPX_SRC_DIR};${CANOPY_LIBVPX_BUILD_DIR}")
+  canopy_libvpx PROPERTIES IMPORTED_LOCATION "${CANOPY_LIBVPX_ARCHIVE}"
+                           INTERFACE_INCLUDE_DIRECTORIES "${CANOPY_LIBVPX_SRC_DIR};${CANOPY_LIBVPX_BUILD_DIR}")
 add_dependencies(canopy_libvpx canopy_libvpx_build)
 
 # ---------------------------------------------------------------------------
 # Enclave variant: canopy_libvpx_enclave
 # ---------------------------------------------------------------------------
-# Built against the SGX freestanding toolchain (tlibc + the project's enclave
-# polyfill, -nostdinc). For replicable builds the target CPU feature set is an
-# explicit, recorded build input — NOT runtime-probed: a replicator pins
-# CANOPY_LIBVPX_ENCLAVE_CPU to their target machine so the enclave bytes (and
-# MRENCLAVE) are deterministic.
+# Built against the SGX freestanding toolchain (tlibc + the project's enclave polyfill, -nostdinc). For replicable
+# builds the target CPU feature set is an explicit, recorded build input — NOT runtime-probed: a replicator pins
+# CANOPY_LIBVPX_ENCLAVE_CPU to their target machine so the enclave bytes (and MRENCLAVE) are deterministic.
 #
-#   generic  -> --target=generic-gnu : pure C, no x86 asm, no nasm, no
-#               runtime CPUID. Maximally portable + deterministic. Default.
-#   sse2 / sse4_1 / avx2 / ...
-#            -> --target=x86_64-linux-gcc --disable-runtime-cpu-detect plus
-#               -m<feature> in extra-cflags; pinned ISA, still no probe.
+# generic  -> --target=generic-gnu : pure C, no x86 asm, no nasm, no runtime CPUID. Maximally portable + deterministic.
+# Default. sse2 / sse4_1 / avx2 / ... -> --target=x86_64-linux-gcc --disable-runtime-cpu-detect plus -m<feature> in
+# extra-cflags; pinned ISA, still no probe.
 if(CANOPY_BUILD_ENCLAVE)
-  # Default sse2: the universal x86_64 SIMD baseline — a large speedup over
-  # pure C, present on every x86_64 (so portable + deterministic) and, with
-  # --disable-runtime-cpu-detect, no in-enclave CPUID. Pin to sse4_1/avx/avx2
-  # for a known target machine; `generic` forces pure C (no asm at all).
+  # Default sse2: the universal x86_64 SIMD baseline — a large speedup over pure C, present on every x86_64 (so portable
+  # + deterministic) and, with --disable-runtime-cpu-detect, no in-enclave CPUID. Pin to sse4_1/avx/avx2 for a known
+  # target machine; `generic` forces pure C (no asm at all).
   set(CANOPY_LIBVPX_ENCLAVE_CPU
       "sse2"
       CACHE STRING "libvpx enclave target CPU feature set (replicable builds pin this to the target machine)")
-  set_property(CACHE CANOPY_LIBVPX_ENCLAVE_CPU PROPERTY STRINGS generic sse2 sse4_1 avx avx2)
+  set_property(
+    CACHE CANOPY_LIBVPX_ENCLAVE_CPU
+    PROPERTY STRINGS
+             generic
+             sse2
+             sse4_1
+             avx
+             avx2)
 
   set(CANOPY_LIBVPX_ENCLAVE_BUILD_DIR "${CMAKE_BINARY_DIR}/libvpx-build-enclave")
   set(CANOPY_LIBVPX_ENCLAVE_ARCHIVE "${CANOPY_LIBVPX_ENCLAVE_BUILD_DIR}/libvpx.a")
@@ -97,25 +110,30 @@ if(CANOPY_BUILD_ENCLAVE)
     set(_canopy_libvpx_enc_isa_cflags "-m${CANOPY_LIBVPX_ENCLAVE_CPU}")
   endif()
 
-  # Enclave freestanding cflags: polyfill first (shadows tlibc gaps), then the
-  # SGX libc includes, -nostdinc, PIC. Derived from the toolchain include vars
-  # Canopy computed — no hardcoded SGX paths. Deliberately NOT forwarding
-  # CANOPY_ENCLAVE_DEFINES: libvpx is a self-contained C library that needs
-  # only the freestanding toolchain, not Canopy app defines — and libvpx bakes
-  # the configure command line verbatim into vpx_config.c as a C string, so
-  # path/quoted defines (RUNTIME_DIR="/var/secretarium/runtime/", TEMP_DIR…)
-  # would break that generated literal.
+  # Enclave freestanding flags: polyfill first (shadows tlibc gaps), then the SGX libc/libc++ includes, -nostdinc, PIC.
+  # Derived from the toolchain include vars Canopy computed — no hardcoded SGX paths. Deliberately NOT forwarding
+  # CANOPY_ENCLAVE_DEFINES: libvpx is self-contained and bakes the configure command line verbatim into vpx_config.c as
+  # a C string, so path/quoted defines (RUNTIME_DIR="/var/secretarium/runtime/", TEMP_DIR…) would break that generated
+  # literal.
   set(_canopy_libvpx_enc_cflags "-nostdinc -fPIC ${_canopy_libvpx_enc_isa_cflags}")
-  foreach(_inc IN LISTS CANOPY_ENCLAVE_POLYFILL_INCLUDES CANOPY_ENCLAVE_LIBC_INCLUDES)
+  foreach(_inc IN LISTS CANOPY_ENCLAVE_LIBCXX_INCLUDES)
     string(APPEND _canopy_libvpx_enc_cflags " -I${_inc}")
   endforeach()
 
-  # The SIMD source files include the compiler's own intrinsic headers
-  # (<emmintrin.h>, <immintrin.h>, ...). -nostdinc drops the clang resource
-  # dir too, so re-add just its include/ as -isystem (searched AFTER our -I
-  # tlibc/polyfill, so it only supplies intrinsics — never host libc/stdio).
+  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    set(_canopy_libvpx_enc_cc "${CMAKE_C_COMPILER}")
+  else()
+    find_program(_canopy_libvpx_enc_cc clang)
+    if(NOT _canopy_libvpx_enc_cc)
+      message(FATAL_ERROR "Could not find clang for libvpx enclave freestanding build")
+    endif()
+  endif()
+
+  # The SIMD source files include the compiler's own intrinsic headers (<emmintrin.h>, <immintrin.h>, ...). -nostdinc
+  # drops the clang resource dir too, so re-add just its include/ as -isystem (searched AFTER our -I tlibc/polyfill, so
+  # it only supplies intrinsics — never host libc/stdio).
   execute_process(
-    COMMAND clang -print-resource-dir
+    COMMAND "${_canopy_libvpx_enc_cc}" -print-resource-dir
     OUTPUT_VARIABLE _canopy_clang_resource_dir
     OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE _canopy_clang_rd_rc)
@@ -129,16 +147,15 @@ if(CANOPY_BUILD_ENCLAVE)
     OUTPUT "${CANOPY_LIBVPX_ENCLAVE_ARCHIVE}"
     WORKING_DIRECTORY "${CANOPY_LIBVPX_ENCLAVE_BUILD_DIR}"
     COMMAND
-      ${CMAKE_COMMAND} -E env CC=clang "${CANOPY_LIBVPX_SRC_DIR}/configure"
-      --target=${_canopy_libvpx_enc_target} --disable-vp9 --enable-vp8 --enable-vp8-encoder
-      --enable-vp8-decoder --disable-examples --disable-tools --disable-docs --disable-unit-tests
-      --disable-multithread --disable-runtime-cpu-detect --disable-shared --enable-static --enable-pic
-      --disable-postproc --disable-rate_ctrl --as=nasm "--extra-cflags=${_canopy_libvpx_enc_cflags}"
-    # Build just the C static archive (we use the C vpx_codec_* API only).
-    # postproc + rate_ctrl are disabled at configure above — they pull
-    # add_noise.c's rand() and the C++ libvpxrc (<new>), neither available
-    # nor needed in the freestanding enclave build.
-    COMMAND ${CMAKE_COMMAND} -E env make -j4 libvpx.a
+      ${CMAKE_COMMAND} -E env "CC=${_canopy_libvpx_enc_cc}" "${CANOPY_LIBVPX_SRC_DIR}/configure"
+      --target=${_canopy_libvpx_enc_target} --disable-vp9 --enable-vp8 --enable-vp8-encoder --enable-vp8-decoder
+      --disable-examples --disable-tools --disable-docs --disable-unit-tests --disable-multithread
+      --disable-runtime-cpu-detect --disable-shared --enable-static --enable-pic --disable-postproc --disable-rate_ctrl
+      --as=nasm "--extra-cflags=${_canopy_libvpx_enc_cflags}"
+    # Build just the C static archive (we use the C vpx_codec_* API only). postproc + rate_ctrl are disabled at
+    # configure above — they pull add_noise.c's rand() and the C++ libvpxrc (<new>), neither available nor needed in the
+    # freestanding enclave build.
+    COMMAND ${CMAKE_COMMAND} -E env make -j${_canopy_libvpx_build_jobs} libvpx.a
     COMMENT "Configuring and building libvpx for enclave (VP8, ${CANOPY_LIBVPX_ENCLAVE_CPU}, freestanding)"
     VERBATIM)
 
