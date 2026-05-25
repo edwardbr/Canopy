@@ -43,7 +43,7 @@ namespace rpc
                 // it before converting it back to the concrete SPSC queue type.
                 uint64_t runtime_to_parent_queue_ptr = 0;
                 // Parent-shared startup state. The runtime validates this pointer before publishing
-                // state changes; low-level atomic access is handled by the runtime helper layer.
+                // state changes; low-level atomic access is handled by the runtime implementation.
                 startup_state* state = 0;
                 // Parent-shared startup error word. The runtime writes this before publishing failed state.
                 error_code* error = 0;

@@ -50,9 +50,9 @@ namespace rpc::sgx::coro::host
                 for (auto fd : brokered_tcp_descriptors_)
                     ::close(fd);
                 brokered_tcp_descriptors_.clear();
-                for (auto fd : host_file_descriptors_)
+                for (auto fd : brokered_file_descriptors_)
                     ::close(fd);
-                host_file_descriptors_.clear();
+                brokered_file_descriptors_.clear();
             }
 
             CORO_TASK(int) transfer_encapsulated_interface(rpc::shared_ptr<rpc::i_noop>& iface) override
@@ -147,15 +147,15 @@ namespace rpc::sgx::coro::host
                 return brokered_tcp_descriptors_.find(static_cast<int>(descriptor)) != brokered_tcp_descriptors_.end();
             }
 
-            bool owns_file_descriptor_locked(uint32_t descriptor) const
+            bool owns_brokered_file_descriptor_locked(uint32_t descriptor) const
             {
                 if (descriptor > static_cast<uint32_t>(std::numeric_limits<int>::max()))
                     return false;
-                return host_file_descriptors_.find(static_cast<int>(descriptor)) != host_file_descriptors_.end();
+                return brokered_file_descriptors_.find(static_cast<int>(descriptor)) != brokered_file_descriptors_.end();
             }
 
             void track_descriptor_locked(int fd) { brokered_tcp_descriptors_.insert(fd); }
-            void track_file_descriptor_locked(int fd) { host_file_descriptors_.insert(fd); }
+            void track_brokered_file_descriptor_locked(int fd) { brokered_file_descriptors_.insert(fd); }
 
             auto create_socket_locked(int family) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
@@ -372,7 +372,7 @@ namespace rpc::sgx::coro::host
                     return native_error_result(err);
                 }
 
-                track_file_descriptor_locked(fd);
+                track_brokered_file_descriptor_locked(fd);
                 auto result = ok_result(fd);
                 result.descriptor_id = fd;
                 return result;
@@ -381,7 +381,7 @@ namespace rpc::sgx::coro::host
             auto file_read_at_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
                 -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_file_descriptor_locked(request.descriptor_id) || request.value > max_brokered_io_payload_size
+                if (!owns_brokered_file_descriptor_locked(request.descriptor_id) || request.value > max_brokered_io_payload_size
                     || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
                     return invalid_data_result();
 
@@ -405,7 +405,8 @@ namespace rpc::sgx::coro::host
             auto file_write_at_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
                 -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_file_descriptor_locked(request.descriptor_id) || request.payload.size() > max_brokered_io_payload_size
+                if (!owns_brokered_file_descriptor_locked(request.descriptor_id)
+                    || request.payload.size() > max_brokered_io_payload_size
                     || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
                     return invalid_data_result();
 
@@ -425,7 +426,7 @@ namespace rpc::sgx::coro::host
             auto close_descriptor_locked(uint32_t descriptor) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 const bool is_tcp_descriptor = owns_descriptor_locked(descriptor);
-                const bool is_file_descriptor = owns_file_descriptor_locked(descriptor);
+                const bool is_file_descriptor = owns_brokered_file_descriptor_locked(descriptor);
                 if (!is_tcp_descriptor && !is_file_descriptor)
                     return invalid_data_result();
 
@@ -433,7 +434,7 @@ namespace rpc::sgx::coro::host
                 if (is_tcp_descriptor)
                     brokered_tcp_descriptors_.erase(fd);
                 if (is_file_descriptor)
-                    host_file_descriptors_.erase(fd);
+                    brokered_file_descriptors_.erase(fd);
                 auto native_result = ::close(fd);
                 if (native_result < 0)
                     return native_error_result(errno);
@@ -507,7 +508,7 @@ namespace rpc::sgx::coro::host
             std::unique_ptr<rpc::io_uring::host_controller> controller_;
             rpc::shared_ptr<rpc::i_noop> encapsulated_interface_;
             std::unordered_set<int> brokered_tcp_descriptors_;
-            std::unordered_set<int> host_file_descriptors_;
+            std::unordered_set<int> brokered_file_descriptors_;
         };
     }
 
