@@ -19,6 +19,7 @@ security review aid and a checklist for hardening work.
 - [SGX Enclave Threat Model](sgx-threat-model.md)
 - [SGX Runtime Lifecycle Security](sgx-runtime-lifecycle.md)
 - [Attestation And Protected RPC](attestation/overview.md)
+- [Route Security Design Patterns](attestation/route-security-design-patterns.md)
 - [Untrusted Transport Input](untrusted-transport-input.md)
 - [Reference Protocol Security](reference-protocol-security.md)
 - [Telemetry And Logging Security](telemetry-and-logging.md)

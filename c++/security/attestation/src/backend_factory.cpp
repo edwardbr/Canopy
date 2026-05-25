@@ -5,11 +5,12 @@
 
 #include <security/attestation/backend_factory.h>
 
-#include <security/attestation/backends/fake/fake_backend.h>
 #include <security/attestation/backends/null/null_backend.h>
-#include <security/attestation/backends/sgx_dcap/sgx_dcap_backend.h>
-#include <security/attestation/backends/sgx_epid/sgx_epid_backend.h>
-#include <security/attestation/backends/simulation/simulation_backend.h>
+
+#ifdef CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS
+#  include <security/attestation/backends/fake/fake_backend.h>
+#  include <security/attestation/backends/simulation/simulation_backend.h>
+#endif
 
 #include <exception>
 #include <memory>
@@ -28,6 +29,11 @@ namespace canopy::security::attestation
 {
     namespace
     {
+        constexpr const char* fake_backend_name = "fake";
+        constexpr const char* simulation_backend_name = "sgx-sim";
+        constexpr const char* sgx_epid_backend_name = "sgx-epid";
+        constexpr const char* sgx_dcap_backend_name = "sgx-dcap";
+
         [[nodiscard]] auto requires_explicit_backend_override(configured_backend_kind kind) noexcept -> bool
         {
             return kind == configured_backend_kind::sgx_epid_backend || kind == configured_backend_kind::sgx_dcap_backend;
@@ -54,7 +60,7 @@ namespace canopy::security::attestation
                 policy.allow_development_evidence = false;
                 policy.minimum_security_level = security_level::none;
             }
-            else if (policy.required_backend_id == fake_backend_id)
+            else if (policy.required_backend_id == fake_backend_name)
             {
                 policy.send_local_evidence = true;
                 policy.require_peer_evidence = true;
@@ -62,7 +68,7 @@ namespace canopy::security::attestation
                 policy.allow_development_evidence = true;
                 policy.minimum_security_level = security_level::development;
             }
-            else if (policy.required_backend_id == simulation_backend_id)
+            else if (policy.required_backend_id == simulation_backend_name)
             {
                 policy.send_local_evidence = true;
                 policy.require_peer_evidence = true;
@@ -90,13 +96,13 @@ namespace canopy::security::attestation
         case configured_backend_kind::null_backend:
             return null_backend_id;
         case configured_backend_kind::fake_backend:
-            return fake_backend_id;
+            return fake_backend_name;
         case configured_backend_kind::sgx_sim_backend:
-            return simulation_backend_id;
+            return simulation_backend_name;
         case configured_backend_kind::sgx_epid_backend:
-            return sgx_epid_backend_id;
+            return sgx_epid_backend_name;
         case configured_backend_kind::sgx_dcap_backend:
-            return sgx_dcap_backend_id;
+            return sgx_dcap_backend_name;
         }
         terminate_for_invalid_backend_configuration();
     }

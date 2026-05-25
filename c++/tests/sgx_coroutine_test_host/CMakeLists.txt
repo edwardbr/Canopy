@@ -38,7 +38,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
 
   target_compile_options(sgx_coroutine_test_host PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(sgx_coroutine_test_host PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
-  target_link_directories(sgx_coroutine_test_host PUBLIC ${SGX_LIBRARY_PATH})
+  target_link_directories(sgx_coroutine_test_host PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
   set_property(TARGET sgx_coroutine_test_host PROPERTY COMPILE_PDB_NAME sgx_coroutine_test_host)
 
   if(CANOPY_ENABLE_CLANG_TIDY)

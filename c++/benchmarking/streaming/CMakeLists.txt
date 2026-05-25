@@ -82,7 +82,7 @@ if(CANOPY_BUILD_ENCLAVE
            canopy_io_uring
            ${CANOPY_SGX_HOST_LIBRARIES})
   target_link_options(streaming_benchmark PRIVATE ${CANOPY_SGX_HOST_LINK_OPTIONS})
-  target_link_directories(streaming_benchmark PUBLIC ${SGX_LIBRARY_PATH})
+  target_link_directories(streaming_benchmark PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
   add_dependencies(streaming_benchmark sgx_coroutine_test_enclave)
 endif()
 target_compile_options(streaming_benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

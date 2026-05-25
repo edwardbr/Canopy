@@ -81,13 +81,6 @@ namespace rpc::io_uring
             CO_RETURN rpc::error::PROTOCOL_ERROR();
         }
 
-        if (!detail::has_sqpoll(ring_data))
-        {
-            RPC_WARNING("direct io_uring no_op requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
-            record_no_op_complete(0, rpc::error::INCOMPATIBLE_SERVICE());
-            CO_RETURN rpc::error::INCOMPATIBLE_SERVICE();
-        }
-
         const auto start_ticks = read_tick_counter();
         std::shared_ptr<detail::direct_ring_operation> operation;
         try
@@ -107,11 +100,9 @@ namespace rpc::io_uring
             CO_RETURN err;
         }
 
-        // SQPOLL only needs an io_uring_enter(...SQ_WAKEUP) call when the
-        // kernel sets IORING_SQ_NEED_WAKEUP. Calling back to the host for
-        // every SQE works for a single smoke test, but it makes bursts of
-        // direct-ring submissions spend most of their time marshalling wake RPCs.
-        if (detail::sqpoll_needs_wakeup(ring_data))
+        // SQPOLL only needs an explicit wake when the kernel requests it. A
+        // non-SQPOLL ring needs io_uring_enter() for every submitted SQE.
+        if (detail::submission_notification_needed(ring_data))
         {
             err = CO_AWAIT notify_submitted(ring_data, 1);
             if (err != rpc::error::OK())

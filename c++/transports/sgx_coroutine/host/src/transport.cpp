@@ -155,7 +155,10 @@ namespace rpc::sgx::coro::host
             common::startup_store_state(startup_state_word, startup_state::failed);
         }
 
-        int validate_startup_options(const std::map<std::string, std::string>& options)
+        int validate_startup_options(
+            const std::map<
+                std::string,
+                std::string>& options)
         {
             if (options.size() > max_startup_option_count)
                 return rpc::error::RESOURCE_EXHAUSTED();
@@ -163,8 +166,7 @@ namespace rpc::sgx::coro::host
             size_t total_bytes = 0;
             for (const auto& [key, value] : options)
             {
-                if (key.empty() || key.size() > max_startup_option_key_bytes
-                    || value.size() > max_startup_option_value_bytes)
+                if (key.empty() || key.size() > max_startup_option_key_bytes || value.size() > max_startup_option_value_bytes)
                 {
                     return rpc::error::INVALID_DATA();
                 }
@@ -347,7 +349,10 @@ namespace rpc::sgx::coro::host
         enclave_worker_thread_count_.store(worker_thread_count, std::memory_order_release);
     }
 
-    int transport::set_enclave_startup_options(std::map<std::string, std::string> options)
+    int transport::set_enclave_startup_options(
+        std::map<
+            std::string,
+            std::string> options)
     {
         auto validation_error = validate_startup_options(options);
         if (validation_error != rpc::error::OK())

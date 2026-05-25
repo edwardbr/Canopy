@@ -111,7 +111,10 @@ namespace rpc::sgx::coro::host
 
         const std::string& get_enclave_path() const { return enclave_path_; }
         void set_enclave_worker_thread_count(uint32_t worker_thread_count);
-        [[nodiscard]] int set_enclave_startup_options(std::map<std::string, std::string> options);
+        [[nodiscard]] int set_enclave_startup_options(
+            std::map<
+                std::string,
+                std::string> options);
 
     private:
         std::atomic<bool> enclave_shutdown_started_{false};

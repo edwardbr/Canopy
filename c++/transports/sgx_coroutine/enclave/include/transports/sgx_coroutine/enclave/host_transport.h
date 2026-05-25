@@ -40,6 +40,10 @@ namespace rpc::sgx::coro::enclave
 
         CORO_TASK(int) wake_host_iouring();
         CORO_TASK(int) get_iouring_data(rpc::io_uring::data& ring_data);
+        CORO_TASK(int)
+        host_tcp_operation(
+            rpc::sgx::coro::protocol::host_tcp_request request,
+            rpc::sgx::coro::protocol::host_tcp_result& result);
 
         int release_io_uring_control_reference();
 

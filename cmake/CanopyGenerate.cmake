@@ -258,9 +258,13 @@ function(
   if(${params_canonical_crypto})
     if(CANOPY_BUILD_CANONICAL_CRYPTO)
       set(generate_canonical_crypto TRUE)
-    elseif(NOT generate_yas AND NOT generate_protobuf AND NOT generate_nanopb)
-      message(FATAL_ERROR "canonical_crypto generation was requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF "
-                          "and no alternative generated serialization format was requested.")
+    elseif(
+      NOT generate_yas
+      AND NOT generate_protobuf
+      AND NOT generate_nanopb)
+      message(
+        FATAL_ERROR "canonical_crypto generation was requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF "
+                    "and no alternative generated serialization format was requested.")
     else()
       message(STATUS "canonical_crypto generation requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF. "
                      "Continuing with the other requested serialization format(s).")

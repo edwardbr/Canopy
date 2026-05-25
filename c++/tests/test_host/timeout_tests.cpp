@@ -598,8 +598,7 @@ protected:
         peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
         root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
-        auto ret = rpc::io_uring::create_host_io_uring_scheduler(
-            io_uring_scheduler_owner_, make_io_uring_options(), io_scheduler_);
+        auto ret = rpc::io_uring::create_scheduler(io_uring_scheduler_owner_, make_io_uring_options(), io_scheduler_);
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("timeout_iouring_setup: failed to create io_uring scheduler: {}", ret);

@@ -11,18 +11,18 @@
 
 namespace rpc::io_uring
 {
-    controller::options default_host_controller_options() noexcept
+    controller::options default_controller_options() noexcept
     {
         controller::options options;
         options.completion_wait_strategy = wait_strategy::proactor;
-        // Host-only streams can safely submit their per-call byte spans
+        // Non-enclave streams can safely submit their per-call byte spans
         // directly to the kernel. SGX paths must override this to false so
-        // transfers stage through host-visible buffers.
+        // transfers stage through staging buffers.
         options.use_caller_buffers_for_transfers = true;
         return options;
     }
 
-    int create_host_io_uring_scheduler(
+    int create_scheduler(
         std::shared_ptr<io_uring_scheduler>& scheduler_owner,
         linux_io_uring_handle::options handle_options,
         std::shared_ptr<rpc::coro::scheduler> scheduler,
@@ -47,7 +47,7 @@ namespace rpc::io_uring
         }
         catch (const std::bad_alloc&)
         {
-            RPC_ERROR("bad_alloc while creating host io_uring controller");
+            RPC_ERROR("bad_alloc while creating io_uring controller");
             std::terminate();
         }
 

@@ -27,7 +27,10 @@ namespace rpc::sgx::coro::enclave
 
     void register_acceptor_factory(acceptor_factory factory);
     void mark_runtime_connection_established();
-    [[nodiscard]] const std::map<std::string, std::string>& runtime_startup_options() noexcept;
+    [[nodiscard]] const std::map<
+        std::string,
+        std::string>&
+    runtime_startup_options() noexcept;
     uint64_t runtime_ticks_per_millisecond() noexcept;
     uint64_t read_runtime_tick_counter() noexcept;
     uint64_t runtime_unix_epoch_milliseconds() noexcept;

@@ -15,6 +15,10 @@
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 
+#ifndef EVP_PKEY_CTX_set_hkdf_mode
+#  define EVP_PKEY_CTX_set_hkdf_mode EVP_PKEY_CTX_hkdf_mode
+#endif
+
 namespace canopy::security::attestation::detail
 {
     namespace

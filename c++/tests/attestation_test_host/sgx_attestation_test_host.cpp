@@ -11,16 +11,39 @@
 #include <rpc/internal/serialiser.h>
 #include <rpc/rpc.h>
 #include <security/attestation/service.h>
+#include <security/attestation/backends/sgx_epid/sgx_epid_host_quote_provider.h>
 #include <security/attestation/backends/simulation/simulation_backend.h>
 #include <transports/sgx_coroutine/host/connect.h>
 #include <transports/sgx_coroutine/host/transport.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
 #include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
+
+#if defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID) && !defined(CANOPY_FAKE_SGX) && !defined(_WIN32)
+#  include <dlfcn.h>
+#  if defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wc99-extensions"
+#  endif
+#  include <sgx_uae_epid.h>
+#  if defined(__clang__)
+#    pragma clang diagnostic pop
+#  endif
+#  define CANOPY_ATTESTATION_TEST_HAS_EPID_PSW 1
+#else
+#  define CANOPY_ATTESTATION_TEST_HAS_EPID_PSW 0
+#endif
 
 namespace
 {
@@ -90,6 +113,144 @@ namespace
     }
 #endif
 
+#if CANOPY_ATTESTATION_TEST_HAS_EPID_PSW
+    constexpr size_t epid_spid_size = 16U;
+    constexpr uint64_t test_epid_transcript_id = 0x4550494454455354ULL;
+
+    struct epid_psw_library
+    {
+        using init_quote_fn = sgx_status_t (*)(
+            sgx_target_info_t*,
+            sgx_epid_group_id_t*);
+        using calc_quote_size_fn = sgx_status_t (*)(
+            const uint8_t*,
+            uint32_t,
+            uint32_t*);
+        using get_quote_fn = sgx_status_t (*)(
+            const sgx_report_t*,
+            sgx_quote_sign_type_t,
+            const sgx_spid_t*,
+            const sgx_quote_nonce_t*,
+            const uint8_t*,
+            uint32_t,
+            sgx_report_t*,
+            sgx_quote_t*,
+            uint32_t);
+
+        epid_psw_library() = default;
+
+        ~epid_psw_library()
+        {
+            if (handle)
+                dlclose(handle);
+        }
+
+        epid_psw_library(const epid_psw_library&) = delete;
+        auto operator=(const epid_psw_library&) -> epid_psw_library& = delete;
+
+        void* handle{nullptr};
+        init_quote_fn init_quote{nullptr};
+        calc_quote_size_fn calc_quote_size{nullptr};
+        get_quote_fn get_quote{nullptr};
+    };
+
+    template<typename Function>
+    [[nodiscard]] auto load_symbol(
+        void* handle,
+        const char* name,
+        Function& function,
+        std::string& error) -> bool
+    {
+        dlerror();
+        auto* symbol = dlsym(handle, name);
+        if (!symbol)
+        {
+            const auto* dl_error = dlerror();
+            error = dl_error ? dl_error : name;
+            return false;
+        }
+        function = reinterpret_cast<Function>(symbol);
+        return true;
+    }
+
+    [[nodiscard]] auto load_epid_psw_library(std::string& error) -> std::unique_ptr<epid_psw_library>
+    {
+        void* handle = dlopen("libsgx_epid.so.1", RTLD_NOW | RTLD_LOCAL);
+        if (!handle)
+            handle = dlopen("libsgx_epid.so", RTLD_NOW | RTLD_LOCAL);
+        if (!handle)
+        {
+            const auto* dl_error = dlerror();
+            error = dl_error ? dl_error : "libsgx_epid.so could not be loaded";
+            return {};
+        }
+
+        auto library = std::unique_ptr<epid_psw_library>(new epid_psw_library{});
+        library->handle = handle;
+        if (!load_symbol(handle, "sgx_init_quote", library->init_quote, error)
+            || !load_symbol(handle, "sgx_calc_quote_size", library->calc_quote_size, error)
+            || !load_symbol(handle, "sgx_get_quote", library->get_quote, error))
+        {
+            return {};
+        }
+        return library;
+    }
+
+    [[nodiscard]] auto sgx_status_to_hex(sgx_status_t status) -> std::string
+    {
+        std::ostringstream out;
+        out << "0x" << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint32_t>(status);
+        return out.str();
+    }
+
+    [[nodiscard]] auto is_environmental_epid_status(sgx_status_t status) -> bool
+    {
+        return status == SGX_ERROR_NETWORK_FAILURE || status == SGX_ERROR_SERVICE_UNAVAILABLE
+               || status == SGX_ERROR_AE_INVALID_EPIDBLOB;
+    }
+
+    [[nodiscard]] auto copy_bytes(const auto& value) -> std::vector<uint8_t>
+    {
+        const auto* begin = reinterpret_cast<const uint8_t*>(&value);
+        return std::vector<uint8_t>(begin, begin + sizeof(value));
+    }
+
+    [[nodiscard]] auto report_data_matches(
+        const std::vector<uint8_t>& report_blob,
+        const std::vector<uint8_t>& expected_hash) -> bool
+    {
+        if (report_blob.size() != sizeof(sgx_report_t) || expected_hash.size() != 32U)
+            return false;
+
+        sgx_report_t report{};
+        std::memcpy(&report, report_blob.data(), sizeof(report));
+        if (!std::equal(expected_hash.begin(), expected_hash.end(), report.body.report_data.d))
+            return false;
+
+        const auto* zero_begin = report.body.report_data.d + expected_hash.size();
+        const auto* zero_end = report.body.report_data.d + sizeof(report.body.report_data.d);
+        return std::all_of(zero_begin, zero_end, [](uint8_t value) { return value == 0; });
+    }
+
+    [[nodiscard]] auto test_epid_binding() -> canopy::security::attestation::evidence_binding
+    {
+        canopy::security::attestation::evidence_binding binding;
+        binding.subject = canopy::security::attestation::identity{
+            "sgx-epid-attestation-test-enclave", "sgx-epid-attestation-test-zone"};
+        binding.transcript_id = test_epid_transcript_id;
+        binding.nonce = {0x43, 0x61, 0x6e, 0x6f, 0x70, 0x79, 0x2d, 0x45, 0x50, 0x49, 0x44};
+        return binding;
+    }
+
+    [[nodiscard]] auto test_report_data_hash() -> std::vector<uint8_t>
+    {
+        std::vector<uint8_t> report_data(32U);
+        for (size_t index = 0; index < report_data.size(); ++index)
+            report_data[index] = static_cast<uint8_t>(0xa0U + index);
+        return report_data;
+    }
+#endif
+
     class root_service_owner final
     {
     public:
@@ -126,8 +287,8 @@ namespace
     protected:
         void SetUp() override
         {
-#if !defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM)
-            GTEST_SKIP() << "SGX SIM attestation backend is not selected";
+#if !defined(CANOPY_ATTESTATION_BACKEND_SGX_SIM) && !defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)
+            GTEST_SKIP() << "an SGX attestation backend is not selected";
 #else
             scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                 coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
@@ -340,5 +501,135 @@ TEST_F(
     EXPECT_TRUE(verification_b_to_a.sgx_verify_report_succeeded);
 #else
     GTEST_SKIP() << "SGX SIM attestation backend is not selected";
+#endif
+}
+
+TEST_F(
+    sgx_attestation_test_host_fixture,
+    sgx_epid_host_quote_provider_uses_psw_and_enclave_report)
+{
+#if CANOPY_ATTESTATION_TEST_HAS_EPID_PSW
+    std::string load_error;
+    auto psw = load_epid_psw_library(load_error);
+    if (!psw)
+        GTEST_SKIP() << "Intel EPID PSW library is unavailable: " << load_error;
+
+    sgx_status_t init_quote_status = SGX_SUCCESS;
+    sgx_status_t calculate_quote_size_status = SGX_SUCCESS;
+    sgx_status_t get_quote_status = SGX_SUCCESS;
+    bool enclave_report_requested = false;
+    bool enclave_report_data_matched = false;
+
+    canopy::security::attestation::sgx_epid_host_quote_provider_options options;
+    options.spid.resize(epid_spid_size);
+    options.quote_sign_type = SGX_UNLINKABLE_SIGNATURE;
+
+    options.functions.init_quote = [&]() -> std::optional<canopy::security::attestation::sgx_epid_init_quote_result>
+    {
+        sgx_target_info_t target_info{};
+        sgx_epid_group_id_t epid_group_id{};
+        init_quote_status = psw->init_quote(&target_info, &epid_group_id);
+        if (init_quote_status != SGX_SUCCESS)
+            return std::nullopt;
+
+        canopy::security::attestation::sgx_epid_init_quote_result result;
+        result.qe_target_info = copy_bytes(target_info);
+        std::memcpy(
+            &result.extended_epid_group_id,
+            &epid_group_id,
+            std::min(sizeof(result.extended_epid_group_id), sizeof(epid_group_id)));
+        return result;
+    };
+
+    options.functions.calculate_quote_size = [&](const std::vector<uint8_t>& sig_rl) -> std::optional<uint32_t>
+    {
+        uint32_t quote_size = 0;
+        const auto* sig_rl_data = sig_rl.empty() ? nullptr : sig_rl.data();
+        calculate_quote_size_status = psw->calc_quote_size(sig_rl_data, static_cast<uint32_t>(sig_rl.size()), &quote_size);
+        if (calculate_quote_size_status != SGX_SUCCESS)
+            return std::nullopt;
+        return quote_size;
+    };
+
+    options.report_producer
+        = [&](const canopy::security::attestation::sgx_epid_report_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        enclave_report_requested = true;
+        std::vector<uint8_t> report;
+        const auto error
+            = SYNC_WAIT(test_a_->sgx_epid_make_quote_report(request.qe_target_info, request.report_data_sha256, report));
+        if (error != rpc::error::OK())
+            return std::nullopt;
+
+        enclave_report_data_matched = report_data_matches(report, request.report_data_sha256);
+        return report;
+    };
+
+    options.functions.get_quote
+        = [&](const canopy::security::attestation::sgx_epid_get_quote_request& request) -> std::optional<std::vector<uint8_t>>
+    {
+        if (request.report.size() != sizeof(sgx_report_t) || request.spid.size() != epid_spid_size
+            || request.quote_size == 0)
+        {
+            get_quote_status = SGX_ERROR_INVALID_PARAMETER;
+            return std::nullopt;
+        }
+
+        sgx_report_t report{};
+        std::memcpy(&report, request.report.data(), sizeof(report));
+
+        sgx_spid_t spid{};
+        std::memcpy(spid.id, request.spid.data(), sizeof(spid.id));
+
+        sgx_quote_nonce_t nonce{};
+        std::vector<uint8_t> quote(request.quote_size);
+        const auto* sig_rl_data = request.sig_rl.empty() ? nullptr : request.sig_rl.data();
+        get_quote_status = psw->get_quote(
+            &report,
+            static_cast<sgx_quote_sign_type_t>(request.quote_sign_type),
+            &spid,
+            &nonce,
+            sig_rl_data,
+            static_cast<uint32_t>(request.sig_rl.size()),
+            nullptr,
+            reinterpret_cast<sgx_quote_t*>(quote.data()),
+            static_cast<uint32_t>(quote.size()));
+        if (get_quote_status != SGX_SUCCESS)
+            return std::nullopt;
+        return quote;
+    };
+
+    canopy::security::attestation::sgx_epid_host_quote_provider provider(std::move(options));
+    canopy::security::attestation::sgx_epid_quote_request request;
+    request.binding = test_epid_binding();
+    request.report_data_sha256 = test_report_data_hash();
+
+    auto material = provider.produce_quote(request);
+    if (!material.has_value())
+    {
+        const auto failure_status
+            = init_quote_status != SGX_SUCCESS
+                  ? init_quote_status
+                  : (calculate_quote_size_status != SGX_SUCCESS ? calculate_quote_size_status : get_quote_status);
+        if (is_environmental_epid_status(failure_status))
+        {
+            GTEST_SKIP() << "Intel EPID PSW did not provide quote material in this environment: "
+                         << sgx_status_to_hex(failure_status);
+        }
+
+        FAIL() << "EPID quote provider failed; init=" << sgx_status_to_hex(init_quote_status)
+               << " calc=" << sgx_status_to_hex(calculate_quote_size_status)
+               << " get_quote=" << sgx_status_to_hex(get_quote_status)
+               << " enclave_report_requested=" << enclave_report_requested
+               << " report_data_matched=" << enclave_report_data_matched;
+    }
+
+    EXPECT_TRUE(enclave_report_requested);
+    EXPECT_TRUE(enclave_report_data_matched);
+    EXPECT_EQ(material->quote_sign_type, SGX_UNLINKABLE_SIGNATURE);
+    EXPECT_EQ(material->spid.size(), epid_spid_size);
+    EXPECT_GT(material->quote.size(), 0U);
+#else
+    GTEST_SKIP() << "SGX EPID PSW test is only available in Linux SGX EPID builds";
 #endif
 }

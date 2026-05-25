@@ -168,12 +168,13 @@ namespace websocket_demo::v1
             if (certificate.empty() || private_key.empty())
                 CO_RETURN tls_credentials_result{rpc::error::INVALID_DATA(), {}, {}};
 
-            CO_RETURN tls_credentials_result{
-                rpc::error::OK(), bytes_to_string(certificate), bytes_to_string(private_key)};
+            CO_RETURN tls_credentials_result{rpc::error::OK(), bytes_to_string(certificate), bytes_to_string(private_key)};
         }
 
         auto option_or_default(
-            const std::map<std::string, std::string>& options,
+            const std::map<
+                std::string,
+                std::string>& options,
             const std::string& key,
             std::string fallback) -> std::string
         {
@@ -191,7 +192,10 @@ namespace websocket_demo::v1
             std::array<uint8_t, 16> ipv6_address{};
         };
 
-        auto parse_startup_listen_endpoint(const std::map<std::string, std::string>& options) -> startup_listen_endpoint
+        auto parse_startup_listen_endpoint(
+            const std::map<
+                std::string,
+                std::string>& options) -> startup_listen_endpoint
         {
             startup_listen_endpoint endpoint;
             endpoint.ipv6 = option_or_default(options, "listen-family", "ipv4") == "ipv6";
@@ -210,7 +214,10 @@ namespace websocket_demo::v1
             return endpoint;
         }
 
-        auto parse_startup_listen_port(const std::map<std::string, std::string>& options) -> uint16_t
+        auto parse_startup_listen_port(
+            const std::map<
+                std::string,
+                std::string>& options) -> uint16_t
         {
             auto value = option_or_default(options, "listen-port", "8080");
             uint32_t port = 0;
@@ -220,14 +227,12 @@ namespace websocket_demo::v1
             return static_cast<uint16_t>(port);
         }
 
-        auto listen_request_is_valid(
-            const enclave_websocket_state& state) -> bool
+        auto listen_request_is_valid(const enclave_websocket_state& state) -> bool
         {
             const bool has_tls_paths = !state.certificate_path.empty() && !state.private_key_path.empty();
             const bool has_partial_tls_paths = !state.certificate_path.empty() || !state.private_key_path.empty();
             return state.service && state.controller && state.file_system_manager && state.listen_endpoint_valid
-                   && state.listen_port != 0
-                   && (has_tls_paths || !has_partial_tls_paths);
+                   && state.listen_port != 0 && (has_tls_paths || !has_partial_tls_paths);
         }
 
         CORO_TASK(void)
@@ -373,9 +378,10 @@ namespace websocket_demo::v1
                 auto acceptor = make_std_shared_or_terminate<rpc::io_uring::acceptor>(
                     "enclave websocket io_uring acceptor", state_->controller);
 
-                auto listen_error = state_->listen_ipv6
-                                        ? CO_AWAIT acceptor->listen_ipv6(state_->listen_ipv6_address, state_->listen_port)
-                                        : CO_AWAIT acceptor->listen_ipv4(state_->listen_ipv4_address, state_->listen_port);
+                auto listen_error
+                    = state_->listen_ipv6
+                          ? CO_AWAIT acceptor->listen_ipv6(state_->listen_ipv6_address, state_->listen_port)
+                          : CO_AWAIT acceptor->listen_ipv4(state_->listen_ipv4_address, state_->listen_port);
                 if (listen_error != rpc::error::OK())
                     CO_RETURN listen_error;
 
@@ -384,7 +390,8 @@ namespace websocket_demo::v1
                 state_->tls_context = tls_context;
                 state_->acceptor = std::move(acceptor);
 
-                if (!state_->service->spawn(accept_loop(state_, state_->acceptor, std::move(tls_context), state_->listen_port)))
+                if (!state_->service->spawn(
+                        accept_loop(state_, state_->acceptor, std::move(tls_context), state_->listen_port)))
                 {
                     CO_AWAIT state_->acceptor->close();
                     state_->acceptor.reset();

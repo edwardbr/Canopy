@@ -148,11 +148,51 @@ namespace rpc
                     io_uring_fixed_file_data fixed_files;
                 };
 
+                enum host_tcp_operation
+                {
+                    tcp_create_ipv4_socket = 1,
+                    tcp_create_ipv6_socket = 2,
+                    tcp_set_socket_reuse_addr = 3,
+                    tcp_bind_ipv4_loopback = 4,
+                    tcp_bind_ipv4 = 5,
+                    tcp_bind_ipv6 = 6,
+                    tcp_listen = 7,
+                    tcp_accept = 8,
+                    tcp_connect_ipv4_loopback = 9,
+                    tcp_set_tcp_no_delay = 10,
+                    tcp_send = 11,
+                    tcp_receive = 12,
+                    tcp_receive_nonblocking = 13,
+                    tcp_cancel = 14,
+                    tcp_close = 15,
+                };
+
+                struct host_tcp_request
+                {
+                    host_tcp_operation operation;
+                    uint32_t descriptor = 0;
+                    uint32_t value = 0;
+                    uint32_t flags = 0;
+                    std::vector<uint8_t> address;
+                    std::vector<uint8_t> payload;
+                };
+
+                struct host_tcp_result
+                {
+                    int error_code = 0;
+                    int32_t descriptor = 0;
+                    uint32_t bytes_transferred = 0;
+                    int32_t native_result = 0;
+                    uint32_t cqe_flags = 0;
+                    std::vector<uint8_t> payload;
+                };
+
                 interface i_io_uring_control
                 {
                     int transfer_encapsulated_interface([out] rpc::shared_ptr<rpc::i_noop>& iface);
                     int wake_iouring();
                     int get_iouring_data([out] io_uring_data& ring_data);
+                    int host_tcp_operation(host_tcp_request request, [out] host_tcp_result& tcp_result);
                 };
             }
         }

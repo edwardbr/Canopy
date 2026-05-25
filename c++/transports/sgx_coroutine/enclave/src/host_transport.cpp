@@ -223,6 +223,47 @@ namespace rpc::sgx::coro::enclave
         CO_RETURN ret;
     }
 
+    CORO_TASK(int)
+    host_transport::host_tcp_operation(
+        rpc::sgx::coro::protocol::host_tcp_request request,
+        rpc::sgx::coro::protocol::host_tcp_result& result)
+    {
+        std::optional<host_control_reference> control_reference;
+        {
+            std::lock_guard<std::mutex> lock(host_control_reference_mutex_);
+            control_reference = host_control_reference_;
+        }
+        if (!control_reference)
+            CO_RETURN rpc::error::INVALID_DATA();
+
+        std::vector<char> in_buf;
+        auto ret
+            = rpc::sgx::coro::protocol::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::host_tcp_operation(
+                request, in_buf, control_reference->encoding);
+        if (rpc::error::is_error(ret))
+            CO_RETURN ret;
+
+        auto send_result = CO_AWAIT outbound_send(
+            rpc::send_params{
+                .protocol_version = control_reference->protocol_version,
+                .encoding_type = control_reference->encoding,
+                .tag = 0,
+                .caller_zone_id = control_reference->caller_zone_id,
+                .remote_object_id = control_reference->remote_object_id,
+                .interface_id = rpc::sgx::coro::protocol::i_io_uring_control::get_id(control_reference->protocol_version),
+                .method_id = {4},
+                .in_data = std::move(in_buf),
+                .in_back_channel = {},
+                .request_id = 0,
+            });
+        ret = send_result.error_code;
+        if (ret == rpc::error::OBJECT_GONE() || rpc::error::is_critical(ret))
+            CO_RETURN ret;
+
+        CO_RETURN rpc::sgx::coro::protocol::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::host_tcp_operation(
+            result, send_result.out_buf, control_reference->encoding);
+    }
+
     int host_transport::release_io_uring_control_reference()
     {
         std::optional<rpc::release_params> release_params;

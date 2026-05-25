@@ -31,10 +31,9 @@ namespace stream_bench
             const std::shared_ptr<coro::scheduler>& scheduler)
         {
             std::shared_ptr<rpc::io_uring::io_uring_scheduler> owner;
-            auto controller_options = rpc::io_uring::default_host_controller_options();
+            auto controller_options = rpc::io_uring::default_controller_options();
             controller_options.completion_wait_strategy = rpc::io_uring::wait_strategy::proactor;
-            if (rpc::io_uring::create_host_io_uring_scheduler(
-                    owner, benchmark_io_uring_options(), scheduler, controller_options)
+            if (rpc::io_uring::create_scheduler(owner, benchmark_io_uring_options(), scheduler, controller_options)
                 != rpc::error::OK())
             {
                 return {};

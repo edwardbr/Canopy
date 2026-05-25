@@ -317,6 +317,19 @@ not a complete IAS implementation. The next runtime slice on SGX1 hardware
 should wire the provider callbacks to the SGX PSW/AESM APIs and wire the IAS
 validator callback to a real IAS verification implementation.
 
+Running EPID on real SGX hardware has additional operational requirements that
+do not apply to DCAP:
+
+- Intel SGX PSW EPID components must be installed, including the AESM EPID
+  plugin and `libsgx_epid`;
+- `aesmd` must be running and able to provision through Intel's attestation
+  services;
+- if AESM cannot reach those services, EPID quote initialisation can fail with
+  `SGX_ERROR_NETWORK_FAILURE`;
+- IAS verification needs application IAS/SPID material, accepted quote-status
+  policy, advisory handling, certificate/signature validation, and any required
+  SigRL handling.
+
 That verifier contract is load-bearing. A production or demo verifier must
 reject unless it has checked the IAS signature, IAS signing certificate chain
 and trust anchor, quote status, advisory ids, revocation material, quote

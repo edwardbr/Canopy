@@ -96,6 +96,35 @@ The Intel attested-TLS quote/certificate sample is hardware SGX-FLC only and is
 not supported by SGX simulation mode. Canopy's simulation builds can still build
 plain in-enclave TLS around PEM credentials for development.
 
+### Minimum SGX Environment
+
+Runnable Intel SGX enclave builds require more than the SDK headers:
+
+- an SGX-capable CPU with SGX enabled in firmware
+- a Linux kernel/driver exposing an SGX enclave device such as
+  `/dev/sgx_enclave` or the legacy `/dev/isgx`
+- Intel SGX SDK headers and signing tools
+- Intel SGX PSW/uRTS libraries from the platform package, not only the SDK
+  compatibility stubs
+- `aesmd` running with its socket available, usually under `/var/run/aesmd/`
+- Intel SGXSSL for enclave TLS and enclave attestation crypto
+
+Modern production SGX remote attestation should target DCAP/ECDSA. EPID/IAS is
+kept as a legacy compatibility backend; see
+[Attestation Backends](documents/security/attestation/attestation-backends.md)
+for backend-specific requirements and limitations.
+
+Full Google Protocol Buffers is a host-side dependency only. SGX enclave targets
+must not link the full protobuf C++ runtime; use the Nanopb-backed
+protobuf-compatible path for enclave marshalling. It is normal for a build to
+compile host protobuf/protoc tools while the enclave target itself remains
+Nanopb-only.
+
+Host OpenSSL development headers are still required for non-enclave host
+attestation and TLS support. OpenSSL 1.1.1 or later is sufficient; OpenSSL 3.x is
+supported. Enclave code uses Intel SGXSSL's enclave OpenSSL build instead of the
+operating system `libssl`.
+
 ---
 
 ## Why Canopy?
@@ -356,7 +385,7 @@ Key entry points:
 - **CMake**: 3.24 or higher
 - **Build System**: Ninja (recommended)
 - **Node.js**: 18+ (for llhttp code generation)
-- **OpenSSL**: Development headers (libssl-dev on Linux, OpenSSL SDK on Windows)
+- **OpenSSL**: Development headers, OpenSSL 1.1.1+ (`libssl-dev` on Linux, OpenSSL SDK on Windows)
 - **nasm**: 2.14+ (only for the websocket video demo; libvpx's x86 assembly. Fedora: `sudo dnf install nasm`)
 - **clang-tidy** (optional): LLVM 16+ for static analysis; LLVM 21+ recommended for full check coverage including `modernize-use-designated-initializers`
 

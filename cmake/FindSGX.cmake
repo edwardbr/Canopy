@@ -713,8 +713,7 @@ if(SGX_FOUND)
                 "First step ${SGX_ENCLAVE_SIGNER} signing $<TARGET_FILE:${target}>"
         COMMAND
           ${CMAKE_COMMAND} -E env ${CANOPY_SGX_DETERMINISTIC_ENV} ${SGX_ENCLAVE_SIGNER} gendata -config
-          ${CONFIG_ABSPATH} -enclave "$<TARGET_FILE:${target}>" -out
-          "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex"
+          ${CONFIG_ABSPATH} -enclave "$<TARGET_FILE:${target}>" -out "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex"
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Extracting SGX public signing key"
         COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_SGX_DETERMINISTIC_ENV} ${SGX_OPENSSL_EXECUTABLE} pkey -in
                 ${KEY_ABSPATH} -pubout -out "${PUBLIC_KEY_OUTPUT}"
@@ -726,8 +725,7 @@ if(SGX_FOUND)
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Third step ${SGX_ENCLAVE_SIGNER} signing"
         COMMAND
           ${CMAKE_COMMAND} -E env ${CANOPY_SGX_DETERMINISTIC_ENV} ${SGX_ENCLAVE_SIGNER} catsig -enclave
-          "$<TARGET_FILE:${target}>" -out
-          "$<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME}" -key "${PUBLIC_KEY_OUTPUT}" -sig
+          "$<TARGET_FILE:${target}>" -out "$<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME}" -key "${PUBLIC_KEY_OUTPUT}" -sig
           "$<TARGET_FILE_DIR:${target}>/${target}.signed.hex" -unsigned
           "$<TARGET_FILE_DIR:${target}>/${target}_hash.hex" -config ${CONFIG_ABSPATH}
         COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan "Signing complete"
@@ -738,9 +736,8 @@ if(SGX_FOUND)
         TARGET ${target}
         POST_BUILD
         COMMAND
-          ${CMAKE_COMMAND} -E env ${CANOPY_SGX_DETERMINISTIC_ENV} ${SGX_ENCLAVE_SIGNER} sign -key ${KEY_ABSPATH}
-          -config ${CONFIG_ABSPATH} -enclave $<TARGET_FILE:${target}> -out
-          $<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME}
+          ${CMAKE_COMMAND} -E env ${CANOPY_SGX_DETERMINISTIC_ENV} ${SGX_ENCLAVE_SIGNER} sign -key ${KEY_ABSPATH} -config
+          ${CONFIG_ABSPATH} -enclave $<TARGET_FILE:${target}> -out $<TARGET_FILE_DIR:${target}>/${OUTPUT_NAME}
         USES_TERMINAL
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 

@@ -23,26 +23,42 @@ else()
   message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
 endif()
 
-set(LLAMA_ALL_WARNINGS
-    OFF
-    CACHE BOOL "llama: enable all compiler warnings" FORCE)
-set(LLAMA_FATAL_WARNINGS
-    OFF
-    CACHE BOOL "llama: enable -Werror flag" FORCE)
-add_subdirectory(llama.cpp)
+set(WEBSOCKET_DEMO_OPTIONAL_SRCS)
+set(WEBSOCKET_DEMO_OPTIONAL_LIBS)
+set(WEBSOCKET_DEMO_OPTIONAL_DEFINES)
 
-foreach(llama_demo_target IN ITEMS llama common cpp-httplib build_info)
-  if(TARGET ${llama_demo_target})
-    set_target_properties(${llama_demo_target} PROPERTIES CXX_CLANG_TIDY "")
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-      target_compile_options(${llama_demo_target} PRIVATE -w)
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      target_compile_options(${llama_demo_target} PRIVATE -w)
-    elseif(MSVC)
-      target_compile_options(${llama_demo_target} PRIVATE /W0)
+if(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+  list(APPEND WEBSOCKET_DEMO_OPTIONAL_DEFINES CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+else()
+  set(LLAMA_ALL_WARNINGS
+      OFF
+      CACHE BOOL "llama: enable all compiler warnings" FORCE)
+  set(LLAMA_FATAL_WARNINGS
+      OFF
+      CACHE BOOL "llama: enable -Werror flag" FORCE)
+  add_subdirectory(llama.cpp)
+
+  foreach(llama_demo_target IN ITEMS llama common cpp-httplib build_info)
+    if(TARGET ${llama_demo_target})
+      set_target_properties(${llama_demo_target} PROPERTIES CXX_CLANG_TIDY "")
+      if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        target_compile_options(${llama_demo_target} PRIVATE -w)
+      elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${llama_demo_target} PRIVATE -w)
+      elseif(MSVC)
+        target_compile_options(${llama_demo_target} PRIVATE /W0)
+      endif()
     endif()
-  endif()
-endforeach()
+  endforeach()
+
+  list(APPEND WEBSOCKET_DEMO_OPTIONAL_SRCS llama_server_engine.cpp)
+  list(
+    APPEND
+    WEBSOCKET_DEMO_OPTIONAL_LIBS
+    secret_llama_idl
+    llama
+    common)
+endif()
 
 if(TARGET transport_websocket)
   target_compile_definitions(transport_websocket
@@ -64,9 +80,9 @@ add_executable(
   video_session.cpp
   genie_sprite.cpp
   face_track.cpp
-  llama_server_engine.cpp)
+  ${WEBSOCKET_DEMO_OPTIONAL_SRCS})
 
-target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES}
+target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES} ${WEBSOCKET_DEMO_OPTIONAL_DEFINES}
                                                     CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
 
 target_include_directories(
@@ -82,9 +98,7 @@ target_link_libraries(
          streaming_transport_idl
          transport_websocket
          websocket_demo_idl
-         secret_llama_idl
-         llama
-         common
+         ${WEBSOCKET_DEMO_OPTIONAL_LIBS}
          rpc
          canopy_file_system
          canopy_http_server
@@ -248,9 +262,9 @@ if(CANOPY_BUILD_ENCLAVE
 
     add_executable(websocket_enclave_server enclave_host_main.cpp)
     target_compile_definitions(
-      websocket_enclave_server PRIVATE ${CANOPY_DEFINES}
-                                       CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH="${WEBSOCKET_DEMO_ENCLAVE_RUNTIME_PATH}"
-                                       CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
+      websocket_enclave_server
+      PRIVATE ${CANOPY_DEFINES} CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH="${WEBSOCKET_DEMO_ENCLAVE_RUNTIME_PATH}"
+              CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
     target_include_directories(websocket_enclave_server PRIVATE ${CANOPY_INCLUDES})
     target_link_libraries(
       websocket_enclave_server
@@ -264,7 +278,7 @@ if(CANOPY_BUILD_ENCLAVE
              rpc_log)
     target_compile_options(websocket_enclave_server PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
     target_link_options(websocket_enclave_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
-    target_link_directories(websocket_enclave_server PUBLIC ${SGX_LIBRARY_PATH})
+    target_link_directories(websocket_enclave_server PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
     add_dependencies(websocket_enclave_server websocket_demo_enclave)
 
     if(CANOPY_ENABLE_CLANG_TIDY)

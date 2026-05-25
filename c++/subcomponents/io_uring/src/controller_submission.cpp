@@ -61,12 +61,6 @@ namespace rpc::io_uring
             CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
         }
 
-        if (!detail::has_sqpoll(ring_data))
-        {
-            RPC_WARNING("direct io_uring operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
-            CO_RETURN operation_result{rpc::error::INCOMPATIBLE_SERVICE(), 0, 0};
-        }
-
         std::shared_ptr<detail::direct_ring_operation> operation;
         try
         {
@@ -84,7 +78,7 @@ namespace rpc::io_uring
             CO_RETURN operation_result{err, operation->cqe_result, operation->cqe_flags};
         }
 
-        if (detail::sqpoll_needs_wakeup(ring_data))
+        if (detail::submission_notification_needed(ring_data))
         {
             err = CO_AWAIT notify_submitted(ring_data, 1);
             if (err != rpc::error::OK())
@@ -135,12 +129,6 @@ namespace rpc::io_uring
             CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
         }
 
-        if (!detail::has_sqpoll(ring_data))
-        {
-            RPC_WARNING("direct io_uring linked operation requires SQPOLL setup_flags={}", ring_data.setup.setup_flags);
-            CO_RETURN operation_result{rpc::error::INCOMPATIBLE_SERVICE(), 0, 0};
-        }
-
         std::shared_ptr<detail::direct_ring_operation> primary_operation;
         std::shared_ptr<detail::direct_ring_operation> linked_operation;
         try
@@ -161,7 +149,7 @@ namespace rpc::io_uring
             CO_RETURN operation_result{err, primary_operation->cqe_result, primary_operation->cqe_flags};
         }
 
-        if (detail::sqpoll_needs_wakeup(ring_data))
+        if (detail::submission_notification_needed(ring_data))
         {
             err = CO_AWAIT notify_submitted(ring_data, 2);
             if (err != rpc::error::OK())

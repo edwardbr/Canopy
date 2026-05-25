@@ -59,6 +59,14 @@ namespace attestation_test
                 [in] const sgx_sim_test_cmw& report,
                 [in] const sgx_sim_test_cmw& challenge,
                 [out] sgx_sim_local_attestation_verification& verification);
+            // Prover enclave creates a report targeted at the EPID quoting
+            // enclave. The host obtains qe_target_info from the PSW EPID
+            // quote APIs and then asks this method to bind report_data_sha256
+            // into sgx_report_data_t.
+            int sgx_epid_make_quote_report(
+                [in] const std::vector<uint8_t>& qe_target_info,
+                [in] const std::vector<uint8_t>& report_data_sha256,
+                [out] std::vector<uint8_t>& report);
         };
     }
 }

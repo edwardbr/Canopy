@@ -5,8 +5,10 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <mutex>
+#include <unordered_set>
 
 #include <io_uring/host_controller.h>
 #include <io_uring/io_uring_handle.h>
@@ -36,6 +38,47 @@ namespace rpc::io_uring
         notify_submitted(
             const data& ring_data,
             uint32_t sqe_count) override;
+
+        CORO_TASK(descriptor_result) create_tcp_ipv4_socket() override;
+        CORO_TASK(descriptor_result) create_tcp_ipv6_socket() override;
+        CORO_TASK(operation_result) set_socket_reuse_addr(uint32_t descriptor) override;
+        CORO_TASK(operation_result)
+        bind_tcp_ipv4_loopback(
+            uint32_t descriptor,
+            uint16_t port) override;
+        CORO_TASK(operation_result)
+        bind_tcp_ipv4(
+            uint32_t descriptor,
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port) override;
+        CORO_TASK(operation_result)
+        bind_tcp_ipv6(
+            uint32_t descriptor,
+            const std::array<
+                uint8_t,
+                16>& address,
+            uint16_t port) override;
+        CORO_TASK(operation_result)
+        listen(
+            uint32_t descriptor,
+            uint32_t backlog) override;
+        CORO_TASK(descriptor_result) accept(uint32_t descriptor) override;
+        CORO_TASK(descriptor_result) connect_tcp_ipv4_loopback(uint16_t port) override;
+        CORO_TASK(operation_result) set_tcp_no_delay(uint32_t descriptor) override;
+        CORO_TASK(transfer_result)
+        send(
+            uint32_t descriptor,
+            rpc::byte_span buffer,
+            uint32_t msg_flags) override;
+        CORO_TASK(transfer_result)
+        receive(
+            uint32_t descriptor,
+            rpc::mutable_byte_span buffer,
+            uint32_t msg_flags) override;
+        CORO_TASK(operation_result) close_direct(uint32_t descriptor) override;
+
         void close() noexcept override;
 
         [[nodiscard]] bool is_open() const noexcept;
@@ -43,8 +86,13 @@ namespace rpc::io_uring
 
     private:
         [[nodiscard]] host_controller* controller_locked() const noexcept;
+        [[nodiscard]] bool owns_tcp_descriptor_locked(uint32_t descriptor) const noexcept;
+        [[nodiscard]] int max_tcp_descriptors_locked() const noexcept;
+        [[nodiscard]] descriptor_result create_socket_locked(int family) noexcept;
+        [[nodiscard]] operation_result close_descriptor_locked(uint32_t descriptor) noexcept;
 
         mutable std::mutex mutex_;
         std::unique_ptr<host_controller> controller_;
+        std::unordered_set<int> tcp_descriptors_;
     };
 } // namespace rpc::io_uring

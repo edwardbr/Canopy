@@ -737,6 +737,7 @@ choose whether identity keys or sealed state are copied during this handoff.
 ## Related Documents
 
 - [Attestation Backends](attestation-backends.md)
+- [Route Security Design Patterns](route-security-design-patterns.md)
 - [Wire Format](wire-format.md)
 - [DCAP Operations](dcap-operations.md)
 - [Protected RPC Envelope](protected-rpc-envelope.md)

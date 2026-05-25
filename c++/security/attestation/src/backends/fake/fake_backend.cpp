@@ -5,13 +5,8 @@
 
 #include <security/attestation/backends/fake/fake_backend.h>
 
-#include <fmt/format.h>
-
-#include <algorithm>
-#include <iterator>
 #include <limits>
 #include <optional>
-#include <string_view>
 #include <utility>
 
 namespace canopy::security::attestation
@@ -29,10 +24,6 @@ namespace canopy::security::attestation
         };
 
         constexpr size_t max_fake_evidence_field_size = 1024 * 1024;
-        constexpr std::string_view fake_session_id_prefix = "fake-enclave-session:";
-        constexpr std::string_view session_id_format_version = "v2";
-        constexpr size_t uint64_decimal_max_digits = std::numeric_limits<uint64_t>::digits10 + 1;
-        constexpr size_t size_t_decimal_max_digits = std::numeric_limits<size_t>::digits10 + 1;
 
         auto can_append(
             const std::vector<uint8_t>& out,
@@ -257,80 +248,7 @@ namespace canopy::security::attestation
             return verdict;
         }
 
-        auto session_participant_key(const identity& value) -> std::string
-        {
-            if (!value.enclave_id.empty())
-                return value.enclave_id;
-            return "/" + value.zone_id;
-        }
-
     } // namespace
-
-    auto security_level_rank(security_level level) noexcept -> int
-    {
-        switch (level)
-        {
-        case security_level::none:
-            return 0;
-        case security_level::development:
-            return 1;
-        case security_level::simulation:
-            return 2;
-        case security_level::hardware_legacy:
-            return 3;
-        case security_level::hardware:
-            return 4;
-        }
-        return 0;
-    }
-
-    auto security_level_name(security_level level) noexcept -> const char*
-    {
-        switch (level)
-        {
-        case security_level::none:
-            return "none";
-        case security_level::development:
-            return "development";
-        case security_level::simulation:
-            return "simulation";
-        case security_level::hardware_legacy:
-            return "hardware_legacy";
-        case security_level::hardware:
-            return "hardware";
-        }
-        return "none";
-    }
-
-    auto make_session_id(
-        const identity& local,
-        const identity& peer,
-        uint64_t transcript_id) -> std::string
-    {
-        auto left = session_participant_key(local);
-        auto right = session_participant_key(peer);
-        if (right < left)
-            std::swap(left, right);
-
-        std::string out;
-        out.reserve(
-            fake_session_id_prefix.size() + session_id_format_version.size() + left.size() + right.size()
-            + (size_t_decimal_max_digits * 2) + uint64_decimal_max_digits + 5);
-        // The session id is a readable map key, but it is also fed back into
-        // KDF context. Length framing prevents attacker-controlled identity
-        // strings containing ':' from aliasing a different participant pair.
-        fmt::format_to(
-            std::back_inserter(out),
-            "{}{}:{}:{}:{}:{}:{}",
-            fake_session_id_prefix,
-            session_id_format_version,
-            left.size(),
-            left,
-            right.size(),
-            right,
-            transcript_id);
-        return out;
-    }
 
     fake_backend::fake_backend(std::string development_key)
         : fake_backend(

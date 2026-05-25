@@ -38,12 +38,12 @@ namespace rpc::io_uring
             // experiments without changing the stream or transport layers.
             uint32_t send_message_flags{0};
             uint32_t receive_message_flags{0};
-            // Host-only optimization: submit the caller's per-transfer
+            // Non-enclave optimization: submit the caller's per-transfer
             // byte_span/mutable_byte_span address directly in SEND/RECV SQEs.
             // Enclave controllers must leave this disabled because those
             // caller buffers are enclave-private memory and are not
             // kernel-visible. The fallback path stages bytes through the
-            // controller's host buffer pool.
+            // controller's staging buffer pool.
             bool use_caller_buffers_for_transfers{false};
         };
 
@@ -70,7 +70,7 @@ namespace rpc::io_uring
         void request_shutdown(int error_code) noexcept;
         [[nodiscard]] bool is_shutdown_requested() const noexcept;
 
-        CORO_TASK(int) wake_host_iouring();
+        CORO_TASK(int) wake_iouring();
         CORO_TASK(int)
         notify_submitted(
             const data& ring_data,
@@ -148,15 +148,15 @@ namespace rpc::io_uring
     private:
         friend class direct_descriptor;
 
-        class host_buffer
+        class staging_buffer
         {
         public:
-            ~host_buffer();
+            ~staging_buffer();
 
-            host_buffer(const host_buffer&) = delete;
-            host_buffer& operator=(const host_buffer&) = delete;
-            host_buffer(host_buffer&&) = delete;
-            host_buffer& operator=(host_buffer&&) = delete;
+            staging_buffer(const staging_buffer&) = delete;
+            staging_buffer& operator=(const staging_buffer&) = delete;
+            staging_buffer(staging_buffer&&) = delete;
+            staging_buffer& operator=(staging_buffer&&) = delete;
 
             [[nodiscard]] uint8_t* data() const noexcept;
             [[nodiscard]] size_t size() const noexcept;
@@ -165,7 +165,7 @@ namespace rpc::io_uring
         private:
             friend class controller;
 
-            host_buffer(
+            staging_buffer(
                 controller* controller,
                 uint32_t slot,
                 uint64_t generation,
@@ -179,20 +179,20 @@ namespace rpc::io_uring
             size_t size_{0};
         };
 
-        struct host_buffer_allocation_result
+        struct staging_buffer_allocation_result
         {
             int error_code{rpc::error::OK()};
-            std::shared_ptr<host_buffer> buffer;
+            std::shared_ptr<staging_buffer> buffer;
         };
 
-        struct host_buffer_pair_allocation_result
+        struct staging_buffer_pair_allocation_result
         {
             int error_code{rpc::error::OK()};
-            std::shared_ptr<host_buffer> first_buffer;
-            std::shared_ptr<host_buffer> second_buffer;
+            std::shared_ptr<staging_buffer> first_buffer;
+            std::shared_ptr<staging_buffer> second_buffer;
         };
 
-        struct host_buffer_reservation
+        struct staging_buffer_reservation
         {
             uint32_t slot{0};
             uint64_t generation{0};
@@ -200,7 +200,7 @@ namespace rpc::io_uring
             size_t size{0};
         };
 
-        struct host_buffer_waiter
+        struct staging_buffer_waiter
         {
             uint32_t required_buffer_count{0};
             size_t first_requested_size{0};
@@ -208,8 +208,8 @@ namespace rpc::io_uring
             bool queued{false};
             bool granted{false};
             int error_code{rpc::error::OK()};
-            host_buffer_reservation first_reservation;
-            host_buffer_reservation second_reservation;
+            staging_buffer_reservation first_reservation;
+            staging_buffer_reservation second_reservation;
         };
 
         struct submission_waiter
@@ -263,7 +263,7 @@ namespace rpc::io_uring
         [[nodiscard]] int shutdown_error() const noexcept;
         [[nodiscard]] bool can_accept_work() const noexcept;
         CORO_TASK(operation_result) set_tcp_no_delay(uint32_t descriptor);
-        void fail_host_buffer_waiters(int error_code) noexcept;
+        void fail_staging_buffer_waiters(int error_code) noexcept;
         void fail_submission_waiters(int error_code) noexcept;
         void record_completion_pump(uint32_t completion_count) noexcept;
         void consume_pump_result(detail::direct_ring_completion_pump_result& pump_result) noexcept;
@@ -274,53 +274,54 @@ namespace rpc::io_uring
             int err) noexcept;
 
         [[nodiscard]] data cached_iouring_data_copy() const noexcept;
+        [[nodiscard]] bool cached_fixed_file_table_available() const noexcept;
         CORO_TASK(int) ensure_iouring_data();
         CORO_TASK(int) ensure_fixed_file_table();
 
-        int initialize_host_buffer_cache_locked(const data& ring_data);
-        CORO_TASK(host_buffer_pair_allocation_result)
-        allocate_host_buffers(
+        int initialize_staging_buffer_cache_locked(const data& ring_data);
+        CORO_TASK(staging_buffer_pair_allocation_result)
+        allocate_staging_buffers(
             uint32_t required_buffer_count,
             size_t first_requested_size,
             size_t second_requested_size);
-        CORO_TASK(host_buffer_allocation_result) allocate_host_buffer(size_t requested_size);
-        CORO_TASK(host_buffer_pair_allocation_result)
-        allocate_host_buffer_pair(
+        CORO_TASK(staging_buffer_allocation_result) allocate_staging_buffer(size_t requested_size);
+        CORO_TASK(staging_buffer_pair_allocation_result)
+        allocate_staging_buffer_pair(
             size_t first_requested_size,
             size_t second_requested_size);
-        [[nodiscard]] std::shared_ptr<host_buffer_waiter> make_host_buffer_waiter(
+        [[nodiscard]] std::shared_ptr<staging_buffer_waiter> make_staging_buffer_waiter(
             uint32_t required_buffer_count,
             size_t first_requested_size,
             size_t second_requested_size,
             int& error_code) const;
-        [[nodiscard]] int reserve_host_buffers_locked(
+        [[nodiscard]] int reserve_staging_buffers_locked(
             uint32_t required_buffer_count,
             size_t first_requested_size,
             size_t second_requested_size,
-            host_buffer_reservation& first_reservation,
-            host_buffer_reservation& second_reservation) noexcept;
-        std::shared_ptr<host_buffer_waiter> grant_next_host_buffer_waiter_locked() noexcept;
-        void cancel_host_buffer_waiter(const std::shared_ptr<host_buffer_waiter>& waiter) noexcept;
-        [[nodiscard]] host_buffer_pair_allocation_result make_host_buffers_from_reservations(
+            staging_buffer_reservation& first_reservation,
+            staging_buffer_reservation& second_reservation) noexcept;
+        std::shared_ptr<staging_buffer_waiter> grant_next_staging_buffer_waiter_locked() noexcept;
+        void cancel_staging_buffer_waiter(const std::shared_ptr<staging_buffer_waiter>& waiter) noexcept;
+        [[nodiscard]] staging_buffer_pair_allocation_result make_staging_buffers_from_reservations(
             uint32_t required_buffer_count,
-            const host_buffer_reservation& first_reservation,
-            const host_buffer_reservation& second_reservation);
-        void release_host_buffer(
+            const staging_buffer_reservation& first_reservation,
+            const staging_buffer_reservation& second_reservation);
+        void release_staging_buffer(
             uint32_t slot,
             uint64_t generation) noexcept;
-        CORO_TASK(host_buffer_allocation_result)
+        CORO_TASK(staging_buffer_allocation_result)
         make_ipv4_address_buffer(
             const std::array<
                 uint8_t,
                 4>& address,
             uint16_t port);
-        CORO_TASK(host_buffer_allocation_result)
+        CORO_TASK(staging_buffer_allocation_result)
         make_ipv6_address_buffer(
             const std::array<
                 uint8_t,
                 16>& address,
             uint16_t port);
-        CORO_TASK(host_buffer_allocation_result) make_loopback_address_buffer(uint16_t port);
+        CORO_TASK(staging_buffer_allocation_result) make_loopback_address_buffer(uint16_t port);
         CORO_TASK(transfer_result)
         send_with_flags(
             uint32_t descriptor,
@@ -392,15 +393,15 @@ namespace rpc::io_uring
         std::atomic<lifecycle_state> lifecycle_state_{lifecycle_state::running};
         std::atomic<int> shutdown_error_code_{rpc::error::OK()};
         std::atomic<bool> completion_pump_active_{false};
-        rpc::spin_mutex host_buffer_mutex_;
-        std::vector<uint8_t> host_buffer_slots_in_use_;
-        std::deque<std::shared_ptr<host_buffer_waiter>> host_buffer_waiters_;
+        rpc::spin_mutex staging_buffer_mutex_;
+        std::vector<uint8_t> staging_buffer_slots_in_use_;
+        std::deque<std::shared_ptr<staging_buffer_waiter>> staging_buffer_waiters_;
         rpc::spin_mutex submission_waiter_mutex_;
         std::deque<std::shared_ptr<submission_waiter>> submission_waiters_;
         uint64_t buffer_region_ptr_{0};
-        uint32_t host_buffer_count_{0};
-        uint32_t host_buffer_size_{0};
-        uint64_t host_buffer_generation_{0};
+        uint32_t staging_buffer_count_{0};
+        uint32_t staging_buffer_size_{0};
+        uint64_t staging_buffer_generation_{0};
         atomic_measurements measurements_;
     };
 } // namespace rpc::io_uring

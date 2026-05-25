@@ -7,10 +7,9 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
-option(
-  CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT
-  "Validate the DCAP quote3 parser offsets against Intel sgx_quote_3.h. Requires that header on the include path."
-  OFF)
+option(CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT
+       "Validate the DCAP quote3 parser offsets against Intel sgx_quote_3.h. Requires that header on the include path."
+       OFF)
 
 set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/aead.cpp
@@ -19,20 +18,41 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/kdf.cpp
     src/backends/null/null_backend.cpp
     src/protected_rpc.cpp
-    src/backends/sgx_dcap/sgx_dcap_backend.cpp
-    src/backends/sgx_dcap/sgx_dcap_host_quote_provider.cpp
-    src/backends/sgx_dcap/sgx_dcap_host_quote_verifier.cpp
-    src/backends/sgx_dcap/sgx_dcap_quote3_parser.cpp
-    src/backends/sgx_epid/sgx_epid_backend.cpp
-    src/backends/sgx_epid/sgx_epid_host_quote_provider.cpp
-    src/backends/sgx_epid/sgx_epid_ias_report_verifier.cpp
     src/types.cpp
     src/zone_security_policy.cpp
     src/service.cpp)
 
+set(CANOPY_SECURITY_ATTESTATION_IDL_LIBS protected_rpc_protocol_idl)
+set(CANOPY_SECURITY_ATTESTATION_ENCLAVE_IDL_LIBS protected_rpc_protocol_idl_enclave)
+
 if(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
   list(APPEND CANOPY_SECURITY_ATTESTATION_SOURCES src/backends/fake/fake_backend.cpp
        src/backends/simulation/simulation_backend.cpp)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_IDL_LIBS sgx_sim_protocol_idl)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_ENCLAVE_IDL_LIBS sgx_sim_protocol_idl_enclave)
+endif()
+
+if(CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_EPID" OR CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
+  list(
+    APPEND
+    CANOPY_SECURITY_ATTESTATION_SOURCES
+    src/backends/sgx_epid/sgx_epid_backend.cpp
+    src/backends/sgx_epid/sgx_epid_host_quote_provider.cpp
+    src/backends/sgx_epid/sgx_epid_ias_report_verifier.cpp)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_IDL_LIBS sgx_epid_protocol_idl)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_ENCLAVE_IDL_LIBS sgx_epid_protocol_idl_enclave)
+endif()
+
+if(CANOPY_ATTESTATION_BACKEND STREQUAL "DCAP" OR CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
+  list(
+    APPEND
+    CANOPY_SECURITY_ATTESTATION_SOURCES
+    src/backends/sgx_dcap/sgx_dcap_backend.cpp
+    src/backends/sgx_dcap/sgx_dcap_host_quote_provider.cpp
+    src/backends/sgx_dcap/sgx_dcap_host_quote_verifier.cpp
+    src/backends/sgx_dcap/sgx_dcap_quote3_parser.cpp)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_IDL_LIBS sgx_dcap_protocol_idl)
+  list(APPEND CANOPY_SECURITY_ATTESTATION_ENCLAVE_IDL_LIBS sgx_dcap_protocol_idl_enclave)
 endif()
 
 add_library(security_attestation STATIC ${CANOPY_SECURITY_ATTESTATION_SOURCES})
@@ -49,8 +69,9 @@ endif()
 target_compile_options(security_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(security_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
-  security_attestation PUBLIC rpc PRIVATE protected_rpc_protocol_idl sgx_dcap_protocol_idl sgx_epid_protocol_idl
-                                          sgx_sim_protocol_idl OpenSSL::Crypto)
+  security_attestation
+  PUBLIC rpc
+  PRIVATE ${CANOPY_SECURITY_ATTESTATION_IDL_LIBS} OpenSSL::Crypto)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(security_attestation PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -77,18 +98,18 @@ if(CANOPY_BUILD_ENCLAVE)
       target_compile_definitions(security_attestation_enclave PRIVATE CANOPY_ATTESTATION_USE_INTEL_DCAP_QUOTE3_LAYOUT)
     endif()
     target_compile_options(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
-                                                               ${CANOPY_WARN_OK_ENCLAVE})
+                                                                ${CANOPY_WARN_OK_ENCLAVE})
     if(NOT CANOPY_SGX_BACKEND STREQUAL "Fake")
-      target_include_directories(
-        security_attestation_enclave PRIVATE "${CANOPY_SGX_OPENSSL_INCLUDE_DIR}" "${CANOPY_SGXSSL_INCLUDE_DIR}")
+      target_include_directories(security_attestation_enclave PRIVATE "${CANOPY_SGX_OPENSSL_INCLUDE_DIR}"
+                                                                      "${CANOPY_SGXSSL_INCLUDE_DIR}")
       target_compile_definitions(security_attestation_enclave PRIVATE OPENSSL_NO_STDIO)
       target_compile_options(security_attestation_enclave PRIVATE "SHELL:-include tsgxsslio.h")
     endif()
     target_link_options(security_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
     target_link_libraries(
-      security_attestation_enclave PUBLIC rpc::rpc_enclave PRIVATE protected_rpc_protocol_idl_enclave
-                                                   sgx_dcap_protocol_idl_enclave sgx_epid_protocol_idl_enclave
-                                                   sgx_sim_protocol_idl_enclave)
+      security_attestation_enclave
+      PUBLIC rpc::rpc_enclave
+      PRIVATE ${CANOPY_SECURITY_ATTESTATION_ENCLAVE_IDL_LIBS})
 
     if(CANOPY_SGX_BACKEND STREQUAL "Fake")
       target_link_libraries(security_attestation_enclave PRIVATE OpenSSL::Crypto)
@@ -121,17 +142,18 @@ if(CANOPY_BUILD_ENCLAVE)
   endif()
 endif()
 
-if(CANOPY_BUILD_TEST AND CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
+if(CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
   add_executable(attestation_service_test tests/attestation_service_test.cpp)
   target_include_directories(attestation_service_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(attestation_service_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(attestation_service_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(attestation_service_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(
-    attestation_service_test PRIVATE canopy::security_attestation route_attestation_protocol_idl GTest::gtest_main
-                                     rpc_log)
+  target_link_libraries(attestation_service_test PRIVATE canopy::security_attestation route_attestation_protocol_idl
+                                                         GTest::gtest_main rpc_log)
   add_test(NAME attestation_service_test COMMAND attestation_service_test)
   message(STATUS "attestation_service_test configured")
+elseif(CANOPY_BUILD_TEST AND CANOPY_ATTESTATION_BACKEND_IS_HARDWARE)
+  message(STATUS "attestation_service_test not configured: hardware attestation backend build")
 elseif(CANOPY_BUILD_TEST)
   message(STATUS "attestation_service_test not configured: development attestation backends are disabled")
 endif()

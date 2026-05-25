@@ -204,17 +204,17 @@ namespace comprehensive::v1
         std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_owner_1;
         std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_owner_2;
         const auto handle_options = benchmark_io_uring_options(host_buffer_size);
-        const auto setup_controller_options = rpc::io_uring::default_host_controller_options();
+        const auto setup_controller_options = rpc::io_uring::default_controller_options();
         const auto measured_wait_strategy
             = use_proactor ? rpc::io_uring::wait_strategy::proactor : rpc::io_uring::wait_strategy::cooperative_poll;
 
-        result.error = rpc::io_uring::create_host_io_uring_scheduler(
-            io_uring_owner_1, handle_options, scheduler_1, setup_controller_options);
+        result.error
+            = rpc::io_uring::create_scheduler(io_uring_owner_1, handle_options, scheduler_1, setup_controller_options);
         if (result.error != rpc::error::OK())
             return result;
 
-        result.error = rpc::io_uring::create_host_io_uring_scheduler(
-            io_uring_owner_2, handle_options, scheduler_2, setup_controller_options);
+        result.error
+            = rpc::io_uring::create_scheduler(io_uring_owner_2, handle_options, scheduler_2, setup_controller_options);
         if (result.error != rpc::error::OK())
             return result;
 

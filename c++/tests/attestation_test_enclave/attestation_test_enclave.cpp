@@ -11,12 +11,21 @@
 #include <security/attestation/backends/simulation/simulation_backend.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <new>
 #include <string>
 #include <utility>
 #include <vector>
+
+#if defined(FOR_SGX) && defined(SGX_HW) && !defined(CANOPY_FAKE_SGX) && defined(CANOPY_ATTESTATION_BACKEND_SGX_EPID)
+#  include <sgx_utils.h>
+#  define CANOPY_ATTESTATION_HAS_INTEL_SGX_EPID_REPORT 1
+#else
+#  define CANOPY_ATTESTATION_HAS_INTEL_SGX_EPID_REPORT 0
+#endif
 
 namespace
 {
@@ -277,6 +286,36 @@ namespace
             CO_RETURN rpc::error::OK();
 #else
             verification.failure_reason = "SGX SIM local attestation is not available in this build";
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+#endif
+        }
+
+        CORO_TASK(int)
+        sgx_epid_make_quote_report(
+            const std::vector<uint8_t>& qe_target_info,
+            const std::vector<uint8_t>& report_data_sha256,
+            std::vector<uint8_t>& report) override
+        {
+            report.clear();
+
+#if CANOPY_ATTESTATION_HAS_INTEL_SGX_EPID_REPORT
+            if (qe_target_info.size() != sizeof(sgx_target_info_t) || report_data_sha256.size() != 32U)
+                CO_RETURN rpc::error::INVALID_DATA();
+
+            sgx_target_info_t target_info{};
+            std::memcpy(&target_info, qe_target_info.data(), sizeof(target_info));
+
+            sgx_report_data_t report_data{};
+            std::copy(report_data_sha256.begin(), report_data_sha256.end(), report_data.d);
+
+            sgx_report_t sgx_report{};
+            if (sgx_create_report(&target_info, &report_data, &sgx_report) != SGX_SUCCESS)
+                CO_RETURN rpc::error::SECURITY_ERROR();
+
+            report.resize(sizeof(sgx_report));
+            std::memcpy(report.data(), &sgx_report, sizeof(sgx_report));
+            CO_RETURN rpc::error::OK();
+#else
             CO_RETURN rpc::error::NOT_IMPLEMENTED();
 #endif
         }

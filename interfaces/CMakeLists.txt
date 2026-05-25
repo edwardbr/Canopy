@@ -35,38 +35,44 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR})
 
-CanopyGenerate(
-  sgx_sim_protocol
-  attestation/sgx_sim_protocol.idl
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_BINARY_DIR}/generated
-  ""
-  canonical_crypto
-  dependencies route_attestation_protocol_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  install_dir ${GENERATED_INSTALL_DIR})
+if(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS OR CANOPY_BUILD_SGX_ATTESTATION_TESTS)
+  CanopyGenerate(
+    sgx_sim_protocol
+    attestation/sgx_sim_protocol.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
+    ""
+    canonical_crypto
+    dependencies route_attestation_protocol_idl
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+    install_dir ${GENERATED_INSTALL_DIR})
+endif()
 
-CanopyGenerate(
-  sgx_epid_protocol
-  attestation/sgx_epid_protocol.idl
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_BINARY_DIR}/generated
-  ""
-  canonical_crypto
-  dependencies route_attestation_protocol_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  install_dir ${GENERATED_INSTALL_DIR})
+if(CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_EPID" OR CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
+  CanopyGenerate(
+    sgx_epid_protocol
+    attestation/sgx_epid_protocol.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
+    ""
+    canonical_crypto
+    dependencies route_attestation_protocol_idl
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+    install_dir ${GENERATED_INSTALL_DIR})
+endif()
 
-CanopyGenerate(
-  sgx_dcap_protocol
-  attestation/sgx_dcap_protocol.idl
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_BINARY_DIR}/generated
-  ""
-  canonical_crypto
-  dependencies route_attestation_protocol_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  install_dir ${GENERATED_INSTALL_DIR})
+if(CANOPY_ATTESTATION_BACKEND STREQUAL "DCAP" OR CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
+  CanopyGenerate(
+    sgx_dcap_protocol
+    attestation/sgx_dcap_protocol.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
+    ""
+    canonical_crypto
+    dependencies route_attestation_protocol_idl
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+    install_dir ${GENERATED_INSTALL_DIR})
+endif()
 
 CanopyGenerate(
   protected_rpc_protocol

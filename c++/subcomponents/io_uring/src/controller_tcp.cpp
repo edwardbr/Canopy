@@ -54,6 +54,17 @@ namespace rpc::io_uring
             return native_error == native_operation_cancelled || native_error == native_timer_expired;
         }
 
+        bool is_retryable_socket_result(int32_t native_result) noexcept
+        {
+            if (native_result >= 0)
+            {
+                return false;
+            }
+
+            const auto native_error = -native_result;
+            return native_error == EAGAIN || native_error == EWOULDBLOCK || native_error == EINPROGRESS;
+        }
+
 #ifndef FOR_SGX
         uint64_t user_pointer_value(const void* ptr) noexcept
         {
@@ -73,10 +84,16 @@ namespace rpc::io_uring
     // file descriptor visible inside the enclave.
     CORO_TASK(descriptor_result) controller::create_tcp_ipv4_socket()
     {
-        auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
-        if (fixed_files_err != rpc::error::OK())
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
         {
-            CO_RETURN descriptor_result{fixed_files_err, 0, 0, 0};
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->create_tcp_ipv4_socket();
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
         auto result = CO_AWAIT submit_operation(
@@ -102,10 +119,16 @@ namespace rpc::io_uring
 
     CORO_TASK(descriptor_result) controller::create_tcp_ipv6_socket()
     {
-        auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
-        if (fixed_files_err != rpc::error::OK())
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
         {
-            CO_RETURN descriptor_result{fixed_files_err, 0, 0, 0};
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->create_tcp_ipv6_socket();
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
         auto result = CO_AWAIT submit_operation(
@@ -134,7 +157,19 @@ namespace rpc::io_uring
     // SO_REUSEADDR through SOCKET_URING_OP_SETSOCKOPT before bind().
     CORO_TASK(operation_result) controller::set_socket_reuse_addr(uint32_t descriptor)
     {
-        auto option_buffer_result = CO_AWAIT allocate_host_buffer(sizeof(int));
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->set_socket_reuse_addr(descriptor);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
+        auto option_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(int));
         if (option_buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN operation_result{option_buffer_result.error_code, 0, 0};
@@ -146,7 +181,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> option_buffer;
+            std::shared_ptr<staging_buffer> option_buffer;
         } operation_context{descriptor, std::move(option_buffer_result.buffer)};
 
         CO_RETURN CO_AWAIT submit_operation(
@@ -166,13 +201,25 @@ namespace rpc::io_uring
     }
 
     // Binds a direct TCP socket to 127.0.0.1:port. The sockaddr must live in a
-    // host-registered buffer because the kernel cannot read enclave-private
-    // stack memory for the SQE.
+    // ring-visible staging buffer because the kernel cannot read
+    // enclave-private stack memory for the SQE.
     CORO_TASK(operation_result)
     controller::bind_tcp_ipv4_loopback(
         uint32_t descriptor,
         uint16_t port)
     {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->bind_tcp_ipv4_loopback(descriptor, port);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
         CO_RETURN CO_AWAIT bind_tcp_ipv4(descriptor, {127, 0, 0, 1}, port);
     }
 
@@ -184,6 +231,18 @@ namespace rpc::io_uring
             4>& bind_address,
         uint16_t port)
     {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->bind_tcp_ipv4(descriptor, bind_address, port);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
         auto address_buffer_result = CO_AWAIT make_ipv4_address_buffer(bind_address, port);
         if (address_buffer_result.error_code != rpc::error::OK())
         {
@@ -193,7 +252,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> address_buffer;
+            std::shared_ptr<staging_buffer> address_buffer;
         } operation_context{descriptor, std::move(address_buffer_result.buffer)};
 
         CO_RETURN CO_AWAIT submit_operation(
@@ -217,6 +276,18 @@ namespace rpc::io_uring
             16>& bind_address,
         uint16_t port)
     {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->bind_tcp_ipv6(descriptor, bind_address, port);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
         auto address_buffer_result = CO_AWAIT make_ipv6_address_buffer(bind_address, port);
         if (address_buffer_result.error_code != rpc::error::OK())
         {
@@ -226,7 +297,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> address_buffer;
+            std::shared_ptr<staging_buffer> address_buffer;
         } operation_context{descriptor, std::move(address_buffer_result.buffer)};
 
         CO_RETURN CO_AWAIT submit_operation(
@@ -248,6 +319,18 @@ namespace rpc::io_uring
         uint32_t descriptor,
         uint32_t backlog)
     {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->listen(descriptor, backlog);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
         struct context
         {
             uint32_t descriptor;
@@ -268,10 +351,22 @@ namespace rpc::io_uring
 
     // Disables Nagle for a direct TCP descriptor. The descriptor is a fixed-file
     // table index, so ordinary setsockopt() cannot see it; use the kernel socket
-    // URING_CMD operation and keep the option value in host-visible memory.
+    // URING_CMD operation and keep the option value in ring-visible memory.
     CORO_TASK(operation_result) controller::set_tcp_no_delay(uint32_t descriptor)
     {
-        auto option_buffer_result = CO_AWAIT allocate_host_buffer(sizeof(int));
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+                CO_RETURN CO_AWAIT handle_->set_tcp_no_delay(descriptor);
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
+        auto option_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(int));
         if (option_buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN operation_result{option_buffer_result.error_code, 0, 0};
@@ -283,7 +378,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> option_buffer;
+            std::shared_ptr<staging_buffer> option_buffer;
         } operation_context{descriptor, std::move(option_buffer_result.buffer)};
 
         CO_RETURN CO_AWAIT submit_operation(
@@ -306,10 +401,45 @@ namespace rpc::io_uring
     // the kernel to allocate the accepted socket into the same fixed-file table.
     CORO_TASK(descriptor_result) controller::accept(uint32_t listen_descriptor)
     {
-        auto fixed_files_err = CO_AWAIT ensure_fixed_file_table();
-        if (fixed_files_err != rpc::error::OK())
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
         {
-            CO_RETURN descriptor_result{fixed_files_err, 0, 0, 0};
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            while (can_accept_work())
+            {
+                auto result = CO_AWAIT handle_->accept(listen_descriptor);
+                if (result.error_code == rpc::error::OK())
+                {
+                    auto no_delay_result = CO_AWAIT set_tcp_no_delay(result.descriptor);
+                    if (no_delay_result.error_code != rpc::error::OK())
+                    {
+                        RPC_WARNING(
+                            "descriptor fallback TCP_NODELAY failed for accepted descriptor={} error_code={} "
+                            "native_result={}",
+                            result.descriptor,
+                            no_delay_result.error_code,
+                            no_delay_result.native_result);
+                    }
+                    CO_RETURN result;
+                }
+
+                if (!is_retryable_socket_result(result.native_result))
+                {
+                    CO_RETURN result;
+                }
+
+                CO_AWAIT wait_before_next_poll();
+            }
+
+            CO_RETURN descriptor_result{shutdown_error(), 0, 0, 0};
         }
 
         struct context
@@ -352,6 +482,37 @@ namespace rpc::io_uring
     CORO_TASK(descriptor_result)
     controller::connect_tcp_ipv4_loopback(uint16_t port)
     {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            auto connect_result = CO_AWAIT handle_->connect_tcp_ipv4_loopback(port);
+            if (connect_result.error_code != rpc::error::OK())
+            {
+                CO_RETURN connect_result;
+            }
+
+            auto no_delay_result = CO_AWAIT set_tcp_no_delay(connect_result.descriptor);
+            if (no_delay_result.error_code != rpc::error::OK())
+            {
+                RPC_WARNING(
+                    "descriptor fallback TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
+                    connect_result.descriptor,
+                    no_delay_result.error_code,
+                    no_delay_result.native_result);
+            }
+
+            CO_RETURN connect_result;
+        }
+
         auto socket_result = CO_AWAIT create_tcp_ipv4_socket();
         if (socket_result.error_code != rpc::error::OK())
         {
@@ -368,7 +529,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> address_buffer;
+            std::shared_ptr<staging_buffer> address_buffer;
         } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer)};
 
         auto connect_result = CO_AWAIT submit_operation(
@@ -404,9 +565,9 @@ namespace rpc::io_uring
             rpc::error::OK(), socket_result.descriptor, connect_result.native_result, connect_result.cqe_flags};
     }
 
-    // Sends bytes from the caller's span. Host-only controllers can submit the
-    // caller pointer directly. Enclave controllers must stage through the host
-    // buffer pool because enclave-private memory is not kernel-visible.
+    // Sends bytes from the caller's span. Non-enclave controllers can submit the
+    // caller pointer directly. Enclave controllers must stage through the
+    // staging buffer pool because enclave-private memory is not kernel-visible.
     CORO_TASK(transfer_result)
     controller::send(
         uint32_t descriptor,
@@ -424,6 +585,32 @@ namespace rpc::io_uring
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN transfer_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            while (can_accept_work())
+            {
+                auto result = CO_AWAIT handle_->send(descriptor, buffer, msg_flags);
+                if (result.error_code == rpc::error::OK() || !is_retryable_socket_result(result.native_result))
+                {
+                    CO_RETURN result;
+                }
+
+                CO_AWAIT wait_before_next_poll();
+            }
+
+            CO_RETURN transfer_result{shutdown_error(), 0, 0, 0};
         }
 
 #ifndef FOR_SGX
@@ -459,7 +646,7 @@ namespace rpc::io_uring
         }
 #endif
 
-        auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
+        auto buffer_result = CO_AWAIT allocate_staging_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN transfer_result{buffer_result.error_code, 0, 0, 0};
@@ -468,7 +655,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> buffer;
+            std::shared_ptr<staging_buffer> buffer;
             uint32_t msg_flags;
         } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
@@ -492,8 +679,8 @@ namespace rpc::io_uring
             result.cqe_flags};
     }
 
-    // Receives bytes into the caller's span. Host-only controllers can submit
-    // the caller pointer directly. Enclave controllers receive into a host
+    // Receives bytes into the caller's span. Non-enclave controllers can submit
+    // the caller pointer directly. Enclave controllers receive into a staging
     // buffer first, then copy the completed bytes back into enclave memory.
     CORO_TASK(transfer_result)
     controller::receive(
@@ -520,6 +707,34 @@ namespace rpc::io_uring
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN transfer_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            const bool nonblocking_receive = (msg_flags & socket_message_dontwait) != 0;
+            while (can_accept_work())
+            {
+                auto result = CO_AWAIT handle_->receive(descriptor, buffer, msg_flags);
+                if (result.error_code == rpc::error::OK() || nonblocking_receive
+                    || !is_retryable_socket_result(result.native_result))
+                {
+                    CO_RETURN result;
+                }
+
+                CO_AWAIT wait_before_next_poll();
+            }
+
+            CO_RETURN transfer_result{shutdown_error(), 0, 0, 0};
         }
 
 #ifndef FOR_SGX
@@ -555,7 +770,7 @@ namespace rpc::io_uring
         }
 #endif
 
-        auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
+        auto buffer_result = CO_AWAIT allocate_staging_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN transfer_result{buffer_result.error_code, 0, 0, 0};
@@ -564,7 +779,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> buffer;
+            std::shared_ptr<staging_buffer> buffer;
             uint32_t msg_flags;
         } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
@@ -592,11 +807,11 @@ namespace rpc::io_uring
     }
 
     // Receives with a kernel-enforced timeout. Enclave controllers stage both
-    // the receive target and timeout structure through host buffers.
+    // the receive target and timeout structure through staging buffers.
     // The RECV SQE is linked to IORING_OP_LINK_TIMEOUT so the kernel cancels
     // the receive if no bytes arrive before the deadline. The timeout structure
-    // also lives in a host buffer because the kernel cannot read enclave stack
-    // memory.
+    // also lives in a staging buffer because the kernel cannot read enclave
+    // stack memory.
     CORO_TASK(transfer_result)
     controller::receive(
         uint32_t descriptor,
@@ -611,6 +826,44 @@ namespace rpc::io_uring
         if (buffer.empty())
         {
             CO_RETURN transfer_result{rpc::error::OK(), 0, 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN transfer_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN transfer_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            const auto deadline = std::chrono::steady_clock::now() + timeout;
+            while (can_accept_work())
+            {
+                auto result = CO_AWAIT handle_->receive(
+                    descriptor, buffer, options_.receive_message_flags | socket_message_dontwait);
+                if (result.error_code == rpc::error::OK())
+                {
+                    CO_RETURN result;
+                }
+
+                if (!is_retryable_socket_result(result.native_result))
+                {
+                    CO_RETURN result;
+                }
+
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    CO_RETURN transfer_result{rpc::error::CALL_TIMEOUT(), 0, -native_timer_expired, 0};
+                }
+
+                CO_AWAIT wait_before_next_poll();
+            }
+
+            CO_RETURN transfer_result{shutdown_error(), 0, 0, 0};
         }
 
 #ifndef FOR_SGX
@@ -666,7 +919,7 @@ namespace rpc::io_uring
         }
 #endif
 
-        auto buffer_pair_result = CO_AWAIT allocate_host_buffer_pair(buffer.size(), sizeof(detail::kernel_timespec));
+        auto buffer_pair_result = CO_AWAIT allocate_staging_buffer_pair(buffer.size(), sizeof(detail::kernel_timespec));
         if (buffer_pair_result.error_code != rpc::error::OK())
         {
             CO_RETURN transfer_result{buffer_pair_result.error_code, 0, 0, 0};
@@ -678,8 +931,8 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> buffer;
-            std::shared_ptr<host_buffer> timeout_buffer;
+            std::shared_ptr<staging_buffer> buffer;
+            std::shared_ptr<staging_buffer> timeout_buffer;
         };
         context operation_context{
             descriptor, std::move(buffer_pair_result.first_buffer), std::move(buffer_pair_result.second_buffer)};
@@ -728,6 +981,20 @@ namespace rpc::io_uring
             CO_RETURN operation_result{rpc::error::INVALID_DATA(), 0, 0};
         }
 
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+            {
+                CO_RETURN CO_AWAIT handle_->cancel_direct(descriptor);
+            }
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
+        }
+
         struct context
         {
             uint32_t descriptor;
@@ -752,6 +1019,20 @@ namespace rpc::io_uring
         if (descriptor == std::numeric_limits<uint32_t>::max())
         {
             CO_RETURN operation_result{rpc::error::INVALID_DATA(), 0, 0};
+        }
+
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN operation_result{err, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (handle_)
+            {
+                CO_RETURN CO_AWAIT handle_->close_direct(descriptor);
+            }
+            CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
         }
 
         struct context

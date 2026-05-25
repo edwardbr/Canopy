@@ -9,6 +9,7 @@ This document has moved to the attestation design section:
 
 - [Overview](attestation/overview.md)
 - [Attestation Backends](attestation/attestation-backends.md)
+- [Route Security Design Patterns](attestation/route-security-design-patterns.md)
 - [Protected RPC Envelope](attestation/protected-rpc-envelope.md)
 - [Zone Address Validation](attestation/zone-address-validation.md)
 - [Back-Channel Context](attestation/back-channel-context.md)

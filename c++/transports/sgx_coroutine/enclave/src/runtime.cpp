@@ -272,7 +272,10 @@ namespace rpc::sgx::coro::enclave
             return rpc::error::OK();
         }
 
-        int validate_startup_options(const std::map<std::string, std::string>& options)
+        int validate_startup_options(
+            const std::map<
+                std::string,
+                std::string>& options)
         {
             if (options.size() > max_startup_option_count)
                 return rpc::error::RESOURCE_EXHAUSTED();
@@ -280,8 +283,7 @@ namespace rpc::sgx::coro::enclave
             size_t total_bytes = 0;
             for (const auto& [key, value] : options)
             {
-                if (key.empty() || key.size() > max_startup_option_key_bytes
-                    || value.size() > max_startup_option_value_bytes)
+                if (key.empty() || key.size() > max_startup_option_key_bytes || value.size() > max_startup_option_value_bytes)
                 {
                     return rpc::error::INVALID_DATA();
                 }
@@ -723,7 +725,10 @@ namespace rpc::sgx::coro::enclave
         runtime.connection_established.store(true, std::memory_order_release);
     }
 
-    const std::map<std::string, std::string>& runtime_startup_options() noexcept
+    const std::map<
+        std::string,
+        std::string>&
+    runtime_startup_options() noexcept
     {
         return runtime_storage().startup_options;
     }

@@ -33,8 +33,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     sgx_attestation_test_enclave
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
-           "$<INSTALL_INTERFACE:include/marshalled_tests>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>" "$<INSTALL_INTERFACE:include/marshalled_tests>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
 
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

@@ -12,11 +12,11 @@
 
 namespace rpc::io_uring
 {
-    [[nodiscard]] controller::options default_host_controller_options() noexcept;
+    [[nodiscard]] controller::options default_controller_options() noexcept;
 
-    [[nodiscard]] int create_host_io_uring_scheduler(
+    [[nodiscard]] int create_scheduler(
         std::shared_ptr<io_uring_scheduler>& scheduler_owner,
         linux_io_uring_handle::options handle_options = {},
         std::shared_ptr<rpc::coro::scheduler> scheduler = {},
-        controller::options controller_options = default_host_controller_options()) noexcept;
+        controller::options controller_options = default_controller_options()) noexcept;
 } // namespace rpc::io_uring

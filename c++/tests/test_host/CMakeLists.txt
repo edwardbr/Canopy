@@ -83,8 +83,8 @@ if(CANOPY_BUILD_ENCLAVE AND SGX_HW)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-#list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
-#"$<TARGET_FILE:canopy_ipc_child_process>")
+  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
+  # "$<TARGET_FILE:canopy_ipc_child_process>")
   list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
@@ -178,7 +178,7 @@ endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(rpc_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
-target_link_directories(rpc_test PUBLIC ${SGX_LIBRARY_PATH})
+target_link_directories(rpc_test PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
 set_property(TARGET rpc_test PROPERTY COMPILE_PDB_NAME rpc_test)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -203,7 +203,7 @@ if(CANOPY_BUILD_COROUTINE)
 endif()
 
 include(CTest)
-#Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
+# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
 endif()

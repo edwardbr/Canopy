@@ -60,6 +60,12 @@ message("CANOPY_WEBSOCKET_DEMO_ENCODING ${CANOPY_WEBSOCKET_DEMO_ENCODING} -> ${C
 
 include(CanopyJavascriptGenerate)
 
+if(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+  set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_JS true)
+else()
+  set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_JS false)
+endif()
+
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/websocket_demo_config.js.in"
                "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js" @ONLY)
 

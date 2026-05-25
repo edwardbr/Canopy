@@ -7,7 +7,7 @@ let sentCount = 0;
 let receivedCount = 0;
 let connectTime = null;
 let uptimeInterval = null;
-let currentMode = 'echo'; // 'echo' or 'calculator'
+let currentMode = 'echo'; // 'echo', 'calculator', or 'chat'
 let currentAssistantMessage = null;
 
 // DOM elements
@@ -159,6 +159,24 @@ function updateUptime() {
     }
 }
 
+function defaultWebSocketUrl() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+}
+
+function describeError(err) {
+    if (!err) {
+        return 'unknown error';
+    }
+    if (err.message) {
+        return err.message;
+    }
+    if (err.type) {
+        return err.type;
+    }
+    return String(err);
+}
+
 function setUIConnected(connected) {
     messageInput.disabled = !connected;
     sendBtn.disabled = !connected;
@@ -222,8 +240,9 @@ function connect() {
     updateStatus('Connecting...', 'connecting');
     addMessage('system', 'Connecting to WebSocket server...');
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}`;
+    const config = window.CanopyWebsocketDemoConfig || {};
+    const queryWsUrl = new URLSearchParams(window.location.search).get('ws');
+    const wsUrl = queryWsUrl || config.wsUrl || defaultWebSocketUrl();
     const transportProto = $protobuf_websocket.protobuf.websocket_protocol_v1;
     const appProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 
@@ -249,8 +268,7 @@ function connect() {
         url: wsUrl,
         proto: transportProto,
         appProto: appProto,
-        encoding: (window.CanopyWebsocketDemoConfig && window.CanopyWebsocketDemoConfig.encoding)
-            || CanopyWebsocketTransport.ENCODING_NANOPB,
+        encoding: config.encoding || CanopyWebsocketTransport.ENCODING_NANOPB,
         inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
         outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
         onOpen: function(t) {
@@ -289,7 +307,7 @@ function connect() {
 
     transport.registerStub(eventStub);
     transport.connect().catch(function(err) {
-        addMessage('error', `Connection failed: ${err.message}`);
+        addMessage('error', `Connection failed: ${describeError(err)}`);
         updateStatus('Disconnected', 'disconnected');
     });
 }
@@ -759,5 +777,12 @@ chatInput.addEventListener('keypress', function (e) {
 
 // Initial message
 addMessage('system', 'WebSocket client ready. Click "Connect" to start.');
-addMessage('system', 'Mode: Echo - Switch to Calculator or Chat mode to use other features');
+if ((window.CanopyWebsocketDemoConfig || {}).calculatorOnly) {
+    echoModeRadio.disabled = true;
+    chatModeRadio.disabled = true;
+    calculatorModeRadio.checked = true;
+    switchMode('calculator');
+} else {
+    addMessage('system', 'Mode: Echo - Switch to Calculator or Chat mode to use other features');
+}
 addMessage('system', 'Using generated Canopy proxy/stub from websocket_demo.js');

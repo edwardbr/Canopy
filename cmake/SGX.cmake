@@ -265,9 +265,8 @@ function(canopy_bootstrap_sgx_sdk)
 
     execute_process(
       COMMAND
-        "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc"
-        "CXX=g++" "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5"
-        "${CANOPY_MAKE_EXECUTABLE}"
+        "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "PATH=${canopy_sgx_bootstrap_path}" "CC=gcc" "CXX=g++"
+        "CFLAGS=-std=gnu17" "CXXFLAGS=-std=gnu++17" "CMAKE_POLICY_VERSION_MINIMUM=3.5" "${CANOPY_MAKE_EXECUTABLE}"
         sdk_install_pkg_no_mitigation USE_OPT_LIBS=1
       WORKING_DIRECTORY "${sgx_source_dir}"
       RESULT_VARIABLE sgx_sdk_build_result)
@@ -717,7 +716,7 @@ if(WIN32)
 
   # Enclave compile options (Windows)
   set(CANOPY_SHARED_ENCLAVE_COMPILE_OPTIONS ${CANOPY_SHARED_COMPILE_OPTIONS} /d2FH4- /Qspectre
-                                             ${CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS})
+                                            ${CANOPY_SGX_DETERMINISTIC_COMPILE_OPTIONS})
 
   # Enclave link options (Windows)
   set(CANOPY_SHARED_ENCLAVE_LINK_OPTIONS ${CANOPY_LINK_OPTIONS} ${CANOPY_SGX_DETERMINISTIC_LINK_OPTIONS})
@@ -865,13 +864,48 @@ else()
   find_package(SGX REQUIRED)
 
   # Host-side SGX link options are intentionally kept separate from CANOPY_LINK_OPTIONS/CANOPY_LINK_EXE_OPTIONS so
-  # non-SGX targets do not inherit SGX SDK libraries just because enclave support is enabled for the build.
-  set(CANOPY_SGX_HOST_LINK_OPTIONS -L${SGX_LIBRARY_PATH})
-  if(EXISTS "${SGX_LIBRARY_PATH}/libsgx_dcap_quoteverify.so")
-    list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_quoteverify)
+  # non-SGX targets do not inherit SGX SDK libraries just because enclave support is enabled for the build. Hardware
+  # builds should load uRTS from the PSW package rather than the SDK copy; the SDK directory is still kept available for
+  # helper libraries such as sgx_uae_service when a distro package does not provide them separately.
+  set(CANOPY_SGX_HOST_LIBRARY_DIRS ${SGX_LIBRARY_PATH})
+  if(SGX_HW AND NOT WIN32)
+    set(CANOPY_SGX_PSW_LIBRARY_SEARCH_DIRS)
+    if(CMAKE_LIBRARY_ARCHITECTURE)
+      list(APPEND CANOPY_SGX_PSW_LIBRARY_SEARCH_DIRS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+    endif()
+    list(APPEND CANOPY_SGX_PSW_LIBRARY_SEARCH_DIRS /usr/lib64 /usr/lib)
+    list(REMOVE_DUPLICATES CANOPY_SGX_PSW_LIBRARY_SEARCH_DIRS)
+
+    find_library(
+      CANOPY_SGX_PSW_URTS_LIBRARY
+      NAMES sgx_urts
+      PATHS ${CANOPY_SGX_PSW_LIBRARY_SEARCH_DIRS}
+      NO_DEFAULT_PATH)
+    if(CANOPY_SGX_PSW_URTS_LIBRARY)
+      get_filename_component(CANOPY_SGX_PSW_LIBRARY_DIR "${CANOPY_SGX_PSW_URTS_LIBRARY}" DIRECTORY)
+      set(CANOPY_SGX_HOST_LIBRARY_DIRS ${CANOPY_SGX_PSW_LIBRARY_DIR} ${SGX_LIBRARY_PATH})
+      message(STATUS "Using SGX PSW host runtime directory: ${CANOPY_SGX_PSW_LIBRARY_DIR}")
+    endif()
   endif()
-  if(EXISTS "${SGX_LIBRARY_PATH}/libsgx_dcap_ql.so")
-    list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_ql)
+
+  set(CANOPY_SGX_HOST_LINK_OPTIONS)
+  foreach(CANOPY_SGX_HOST_LIBRARY_DIR IN LISTS CANOPY_SGX_HOST_LIBRARY_DIRS)
+    list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -L${CANOPY_SGX_HOST_LIBRARY_DIR}
+         LINKER:-rpath,${CANOPY_SGX_HOST_LIBRARY_DIR})
+  endforeach()
+  if(CANOPY_ATTESTATION_BACKEND STREQUAL "DCAP")
+    foreach(CANOPY_SGX_HOST_LIBRARY_DIR IN LISTS CANOPY_SGX_HOST_LIBRARY_DIRS)
+      if(EXISTS "${CANOPY_SGX_HOST_LIBRARY_DIR}/libsgx_dcap_quoteverify.so")
+        list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_quoteverify)
+        break()
+      endif()
+    endforeach()
+    foreach(CANOPY_SGX_HOST_LIBRARY_DIR IN LISTS CANOPY_SGX_HOST_LIBRARY_DIRS)
+      if(EXISTS "${CANOPY_SGX_HOST_LIBRARY_DIR}/libsgx_dcap_ql.so")
+        list(APPEND CANOPY_SGX_HOST_LINK_OPTIONS -lsgx_dcap_ql)
+        break()
+      endif()
+    endforeach()
   endif()
 
   # Check if SGX SDK has debug information

@@ -51,7 +51,7 @@ namespace rpc::io_uring
         }
 
         const auto path_size = path.size() + 1;
-        auto path_buffer_result = CO_AWAIT allocate_host_buffer(path_size);
+        auto path_buffer_result = CO_AWAIT allocate_staging_buffer(path_size);
         if (path_buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN descriptor_result{path_buffer_result.error_code, 0, 0, 0};
@@ -66,7 +66,7 @@ namespace rpc::io_uring
 
         struct context
         {
-            std::shared_ptr<host_buffer> path_buffer;
+            std::shared_ptr<staging_buffer> path_buffer;
             uint32_t open_flags;
             uint32_t mode;
         } operation_context{std::move(path_buffer_result.buffer), open_flags, mode};
@@ -137,7 +137,7 @@ namespace rpc::io_uring
         }
 #endif
 
-        auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
+        auto buffer_result = CO_AWAIT allocate_staging_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN transfer_result{buffer_result.error_code, 0, 0, 0};
@@ -146,7 +146,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> buffer;
+            std::shared_ptr<staging_buffer> buffer;
             uint64_t offset;
         } operation_context{descriptor, std::move(buffer_result.buffer), offset};
 
@@ -217,7 +217,7 @@ namespace rpc::io_uring
         }
 #endif
 
-        auto buffer_result = CO_AWAIT allocate_host_buffer(buffer.size());
+        auto buffer_result = CO_AWAIT allocate_staging_buffer(buffer.size());
         if (buffer_result.error_code != rpc::error::OK())
         {
             CO_RETURN transfer_result{buffer_result.error_code, 0, 0, 0};
@@ -226,7 +226,7 @@ namespace rpc::io_uring
         struct context
         {
             uint32_t descriptor;
-            std::shared_ptr<host_buffer> buffer;
+            std::shared_ptr<staging_buffer> buffer;
             uint64_t offset;
         } operation_context{descriptor, std::move(buffer_result.buffer), offset};
 

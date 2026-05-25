@@ -39,17 +39,17 @@ protected:
         options.fixed_file_count = 128;
         options.register_fixed_files = true;
 
-        auto ret = rpc::io_uring::create_host_io_uring_scheduler(io_uring_scheduler_owner_, options, this->io_scheduler_);
+        auto ret = rpc::io_uring::create_scheduler(io_uring_scheduler_owner_, options, this->io_scheduler_);
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("Failed to create host io_uring scheduler: {}", ret);
+            RPC_ERROR("Failed to create io_uring scheduler: {}", ret);
             CO_RETURN false;
         }
 
         auto controller = io_uring_scheduler_owner_->get_controller();
         if (!controller)
         {
-            RPC_ERROR("Host io_uring scheduler did not create a controller");
+            RPC_ERROR("io_uring scheduler did not create a controller");
             CO_RETURN false;
         }
 

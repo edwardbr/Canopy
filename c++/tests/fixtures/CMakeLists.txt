@@ -46,13 +46,14 @@ target_link_libraries(
          spdlog::spdlog
          GTest::gtest
          GTest::gmock
+         ${CMAKE_DL_LIBS}
          ${CANOPY_LIBRARIES}
          ${CANOPY_FMT_LIB}
          ${ENCLAVE_DEPENDENCIES})
 
 # Add compile options and link options
 target_compile_options(test_fixtures PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_directories(test_fixtures PUBLIC ${SGX_LIBRARY_PATH})
+target_link_directories(test_fixtures PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
 target_link_options(test_fixtures PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 # Set properties

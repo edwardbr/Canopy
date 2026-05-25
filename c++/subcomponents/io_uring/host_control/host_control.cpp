@@ -44,6 +44,19 @@ namespace rpc::io_uring
             return static_cast<int>(::syscall(__NR_io_uring_enter, ring_fd, 0U, 0U, IORING_ENTER_SQ_WAKEUP, nullptr, 0U));
         }
 
+        auto submit_pending_entries(::io_uring& ring) noexcept -> int
+        {
+            const auto head = __atomic_load_n(ring.sq.khead, __ATOMIC_ACQUIRE);
+            const auto tail = __atomic_load_n(ring.sq.ktail, __ATOMIC_ACQUIRE);
+            const auto pending = tail - head;
+            if (pending == 0)
+            {
+                return 0;
+            }
+
+            return static_cast<int>(::syscall(__NR_io_uring_enter, ring.ring_fd, pending, 0U, 0U, nullptr, 0U));
+        }
+
         auto pointer_value(const void* ptr) noexcept -> uint64_t
         {
             return static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(ptr));
@@ -121,7 +134,6 @@ namespace rpc::io_uring
         try
         {
             new_state = std::make_shared<state>();
-            new_state->controller_options = controller_options;
             new_state->buffer_region.resize(buffer_region_size);
         }
         catch (const std::bad_alloc&)
@@ -130,40 +142,60 @@ namespace rpc::io_uring
             std::terminate();
         }
 
+        auto effective_options = controller_options;
         io_uring_params params{};
-        params.flags = setup_flags(controller_options);
-        if (controller_options.use_sqpoll)
+        params.flags = setup_flags(effective_options);
+        if (effective_options.use_sqpoll)
         {
-            params.sq_thread_idle = controller_options.sq_thread_idle_ms;
+            params.sq_thread_idle = effective_options.sq_thread_idle_ms;
         }
 
-        const auto result = io_uring_queue_init_params(controller_options.queue_depth, &new_state->ring, &params);
+        auto result = io_uring_queue_init_params(effective_options.queue_depth, &new_state->ring, &params);
+        if (result == -EINVAL && effective_options.use_sqpoll && effective_options.use_single_issuer)
+        {
+            RPC_WARNING("io_uring_queue_init_params rejected SINGLE_ISSUER; retrying with SQPOLL only");
+            effective_options.use_single_issuer = false;
+            params = {};
+            params.flags = setup_flags(effective_options);
+            params.sq_thread_idle = effective_options.sq_thread_idle_ms;
+            result = io_uring_queue_init_params(effective_options.queue_depth, &new_state->ring, &params);
+        }
+        if (result == -EPERM && effective_options.use_sqpoll)
+        {
+            RPC_WARNING("io_uring_queue_init_params rejected SQPOLL permission; retrying with explicit io_uring_enter");
+            effective_options.use_sqpoll = false;
+            effective_options.use_single_issuer = false;
+            params = {};
+            params.flags = setup_flags(effective_options);
+            result = io_uring_queue_init_params(effective_options.queue_depth, &new_state->ring, &params);
+        }
         if (result < 0)
         {
-            RPC_WARNING("io_uring_queue_init_params failed errno_code={}", -result);
+            RPC_WARNING("io_uring_queue_init_params failed errno_code={} flags={}", -result, params.flags);
             return rpc::error::NATIVE_IO_ERROR();
         }
+        new_state->controller_options = effective_options;
         new_state->params = params;
         new_state->open.store(true, std::memory_order_release);
 
-        if (controller_options.use_sqpoll && wake_sqpoll_thread(new_state->ring.ring_fd) < 0)
+        if (effective_options.use_sqpoll && wake_sqpoll_thread(new_state->ring.ring_fd) < 0)
         {
             RPC_WARNING("io_uring initial SQPOLL wake failed for ring_fd={} errno={}", new_state->ring.ring_fd, errno);
             close_state_now(new_state);
             return rpc::error::NATIVE_IO_ERROR();
         }
 
-        if (controller_options.register_buffers && !new_state->buffer_region.empty())
+        if (effective_options.register_buffers && !new_state->buffer_region.empty())
         {
             try
             {
-                new_state->registered_buffers.reserve(controller_options.buffer_count);
+                new_state->registered_buffers.reserve(effective_options.buffer_count);
                 auto* buffer_begin = new_state->buffer_region.data();
-                for (uint32_t index = 0; index < controller_options.buffer_count; ++index)
+                for (uint32_t index = 0; index < effective_options.buffer_count; ++index)
                 {
                     iovec iov{};
-                    iov.iov_base = buffer_begin + (static_cast<size_t>(index) * controller_options.buffer_size);
-                    iov.iov_len = controller_options.buffer_size;
+                    iov.iov_base = buffer_begin + (static_cast<size_t>(index) * effective_options.buffer_size);
+                    iov.iov_len = effective_options.buffer_size;
                     new_state->registered_buffers.push_back(iov);
                 }
             }
@@ -186,35 +218,49 @@ namespace rpc::io_uring
             new_state->buffers_registered = true;
         }
 
-        if (controller_options.register_fixed_files && controller_options.fixed_file_count != 0)
+        if (effective_options.register_fixed_files && effective_options.fixed_file_count != 0)
         {
             const auto registration_result
-                = io_uring_register_files_sparse(&new_state->ring, controller_options.fixed_file_count);
+                = io_uring_register_files_sparse(&new_state->ring, effective_options.fixed_file_count);
             if (registration_result < 0)
             {
-                RPC_WARNING("io_uring_register_files_sparse failed errno_code={}", -registration_result);
-                close_state_now(new_state);
-                return rpc::error::NATIVE_IO_ERROR();
+                if (registration_result == -EINVAL)
+                {
+                    RPC_WARNING("io_uring fixed-file sparse registration unavailable; continuing without fixed files");
+                    effective_options.register_fixed_files = false;
+                    effective_options.fixed_file_count = 0;
+                    new_state->controller_options = effective_options;
+                    new_state->fixed_files_registered = false;
+                    new_state->fixed_file_count = 0;
+                }
+                else
+                {
+                    RPC_WARNING("io_uring_register_files_sparse failed errno_code={}", -registration_result);
+                    close_state_now(new_state);
+                    return rpc::error::NATIVE_IO_ERROR();
+                }
             }
-
-            // This range is a policy hint for direct descriptor allocation. Some
-            // older kernels accept sparse files but not this narrowing call; the
-            // sparse table itself is still enough for direct descriptors, so do
-            // not fail controller creation just because the hint was rejected.
-            const auto alloc_range_result
-                = io_uring_register_file_alloc_range(&new_state->ring, 0, controller_options.fixed_file_count);
-            if (alloc_range_result < 0)
+            else
             {
-                RPC_WARNING("io_uring_register_file_alloc_range failed errno_code={}", -alloc_range_result);
-            }
+                // This range is a policy hint for direct descriptor allocation. Some
+                // older kernels accept sparse files but not this narrowing call; the
+                // sparse table itself is still enough for direct descriptors, so do
+                // not fail controller creation just because the hint was rejected.
+                const auto alloc_range_result
+                    = io_uring_register_file_alloc_range(&new_state->ring, 0, effective_options.fixed_file_count);
+                if (alloc_range_result < 0)
+                {
+                    RPC_WARNING("io_uring_register_file_alloc_range failed errno_code={}", -alloc_range_result);
+                }
 
-            new_state->fixed_files_registered = true;
-            new_state->fixed_file_count = controller_options.fixed_file_count;
+                new_state->fixed_files_registered = true;
+                new_state->fixed_file_count = effective_options.fixed_file_count;
+            }
         }
 
         try
         {
-            controller.reset(new host_controller(controller_options, std::move(scheduler), std::move(new_state)));
+            controller.reset(new host_controller(effective_options, std::move(scheduler), std::move(new_state)));
         }
         catch (const std::bad_alloc&)
         {
@@ -238,20 +284,25 @@ namespace rpc::io_uring
             return rpc::error::RESOURCE_CLOSED();
         }
 
-        if (!state->controller_options.use_sqpoll)
-        {
-            return rpc::error::OK();
-        }
-
         std::lock_guard<std::mutex> lock(state->mutex);
         if (!state->open.load(std::memory_order_acquire))
         {
             return rpc::error::RESOURCE_CLOSED();
         }
 
-        if (wake_sqpoll_thread(state->ring.ring_fd) < 0)
+        if (state->controller_options.use_sqpoll)
         {
-            RPC_WARNING("io_uring SQPOLL wake failed for ring_fd={} errno={}", state->ring.ring_fd, errno);
+            if (wake_sqpoll_thread(state->ring.ring_fd) < 0)
+            {
+                RPC_WARNING("io_uring SQPOLL wake failed for ring_fd={} errno={}", state->ring.ring_fd, errno);
+                return rpc::error::NATIVE_IO_ERROR();
+            }
+            return rpc::error::OK();
+        }
+
+        if (submit_pending_entries(state->ring) < 0)
+        {
+            RPC_WARNING("io_uring_enter submit failed for ring_fd={} errno={}", state->ring.ring_fd, errno);
             return rpc::error::NATIVE_IO_ERROR();
         }
 

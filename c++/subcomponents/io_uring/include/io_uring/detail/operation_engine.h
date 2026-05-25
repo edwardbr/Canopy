@@ -212,6 +212,11 @@ namespace rpc::io_uring::detail
         return (load_ring_u32_acquire(sq_flags) & io_uring_sq_need_wakeup) != 0;
     }
 
+    static inline bool submission_notification_needed(const data& ring_data) noexcept
+    {
+        return !has_sqpoll(ring_data) || sqpoll_needs_wakeup(ring_data);
+    }
+
     static inline bool validate_ring_data_for_direct_ring(const data& ring_data) noexcept
     {
         const auto& sq = ring_data.submission_queue;

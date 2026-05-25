@@ -30,7 +30,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             canopy_coroutine_edl)
   target_compile_options(transport_sgx_coroutine PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(transport_sgx_coroutine PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
-  target_link_directories(transport_sgx_coroutine PUBLIC ${SGX_LIBRARY_PATH})
+  target_link_directories(transport_sgx_coroutine PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
   set_property(TARGET transport_sgx_coroutine PROPERTY COMPILE_PDB_NAME transport_sgx_coroutine)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
@@ -58,7 +58,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(transport_sgx_coroutine_enclave_service_host_test PROPERTIES CXX_CLANG_TIDY
-                                                                                      "${CLANG_TIDY_COMMAND}")
+                                                                                       "${CLANG_TIDY_COMMAND}")
   endif()
 
   add_library(transport_sgx_coroutine_sgxssl_time_enclave STATIC enclave/src/sgxssl_time.cpp)

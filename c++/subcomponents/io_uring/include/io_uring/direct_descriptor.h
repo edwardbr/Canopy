@@ -21,7 +21,7 @@ namespace rpc::io_uring
     public:
         static constexpr uint32_t invalid_descriptor = std::numeric_limits<uint32_t>::max();
 
-        // Owns one kernel fixed-file-table slot allocated by the host io_uring.
+        // Owns one kernel fixed-file-table slot allocated by the io_uring instance.
         // The value is not a process fd inside the enclave; it must be used with
         // SQEs carrying IOSQE_FIXED_FILE/direct-descriptor semantics.
         direct_descriptor(

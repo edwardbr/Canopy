@@ -179,8 +179,7 @@ namespace
 
         output.enclave_options.emplace("listen-address", output.listen_address);
         output.enclave_options.emplace(
-            "listen-family",
-            listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? "ipv6" : "ipv4");
+            "listen-family", listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? "ipv6" : "ipv4");
         output.enclave_options.emplace(
             "listen-address-bytes",
             std::string(reinterpret_cast<const char*>(listen_ep.addr.data()), listen_address_byte_count));
@@ -215,7 +214,7 @@ auto main(
     }
     catch (const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        RPC_ERROR("{}\n", e.what());
         return 1;
     }
 
@@ -269,7 +268,8 @@ auto main(
         return 1;
     }
 
-    RPC_INFO("websocket enclave server listening on configured endpoint {} via enclave port {}", cli.listen_address, cli.port);
+    RPC_INFO(
+        "websocket enclave server listening on configured endpoint {} via enclave port {}", cli.listen_address, cli.port);
     while (g_stop_requested == 0)
         std::this_thread::sleep_for(std::chrono::milliseconds{200});
 

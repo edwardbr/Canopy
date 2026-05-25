@@ -16,15 +16,14 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   endif()
 
   target_compile_definitions(
-    sgx_attestation_test_host PRIVATE ${CANOPY_DEFINES}
-                                      CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH="${CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH}")
+    sgx_attestation_test_host
+    PRIVATE ${CANOPY_DEFINES} CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH="${CANOPY_TEST_SGX_ATTESTATION_ENCLAVE_PATH}")
   target_include_directories(
     sgx_attestation_test_host
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
     PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
-            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sgx_coroutine_test_host>"
-            ${CANOPY_INCLUDES})
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sgx_coroutine_test_host>" ${CANOPY_INCLUDES})
 
   target_link_libraries(
     sgx_attestation_test_host
@@ -41,11 +40,12 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
            ${CANOPY_FMT_LIB}
            ${CANOPY_LIBRARIES}
            ${CANOPY_SGX_HOST_LIBRARIES}
+           ${CMAKE_DL_LIBS}
            rpc_log)
 
   target_compile_options(sgx_attestation_test_host PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(sgx_attestation_test_host PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
-  target_link_directories(sgx_attestation_test_host PUBLIC ${SGX_LIBRARY_PATH})
+  target_link_directories(sgx_attestation_test_host PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
   set_property(TARGET sgx_attestation_test_host PROPERTY COMPILE_PDB_NAME sgx_attestation_test_host)
 
   if(CANOPY_ENABLE_CLANG_TIDY)

@@ -160,7 +160,7 @@ namespace rpc::io_uring
 
         shutdown_error_code_.store(error_code, std::memory_order_release);
         fail_submission_waiters(error_code);
-        fail_host_buffer_waiters(error_code);
+        fail_staging_buffer_waiters(error_code);
         resume_completed_operations(operation_engine_.fail_all_operations(error_code));
         {
             std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
@@ -177,9 +177,9 @@ namespace rpc::io_uring
         CO_RETURN rpc::error::OK();
     }
 
-    // Performs the narrow host RPC needed to wake an SQPOLL kernel thread when
-    // the ring sets IORING_SQ_NEED_WAKEUP.
-    CORO_TASK(int) controller::wake_host_iouring()
+    // Performs the narrow environment callback needed to wake an SQPOLL kernel
+    // thread or submit pending SQEs for a non-SQPOLL ring.
+    CORO_TASK(int) controller::wake_iouring()
     {
         data ring_data;
         {
@@ -188,8 +188,7 @@ namespace rpc::io_uring
                 ring_data = cached_iouring_data_;
         }
 
-        if (!detail::validate_ring_data_for_direct_ring(ring_data) || !detail::has_sqpoll(ring_data)
-            || !detail::sqpoll_needs_wakeup(ring_data))
+        if (!detail::validate_ring_data_for_direct_ring(ring_data) || !detail::submission_notification_needed(ring_data))
         {
             CO_RETURN rpc::error::OK();
         }
@@ -218,7 +217,7 @@ namespace rpc::io_uring
     }
 
     // Returns the cached io_uring descriptor to callers, fetching it from the
-    // host first if this controller has not cached it yet.
+    // environment handle first if this controller has not cached it yet.
     CORO_TASK(int) controller::get_iouring_data(data& ring_data)
     {
         auto err = CO_AWAIT ensure_iouring_data();
@@ -231,9 +230,9 @@ namespace rpc::io_uring
         CO_RETURN rpc::error::OK();
     }
 
-    // Refreshes the descriptor snapshot from the host RPC interface. The data is
-    // cached only to avoid repeated marshalling; every use still validates the
-    // untrusted ring pointers before touching host/kernel memory.
+    // Refreshes the descriptor snapshot from the environment handle. The data
+    // is cached only to avoid repeated marshalling; every use still validates
+    // the untrusted ring pointers before touching kernel-visible memory.
     CORO_TASK(int) controller::refresh_iouring_data()
     {
         auto shutdown_err = shutdown_error();
@@ -266,7 +265,7 @@ namespace rpc::io_uring
 
         // The descriptor is still untrusted after it is cached. Caching only
         // avoids an expensive marshalled call on every operation; each ring
-        // access still copies and validates data from host/kernel memory.
+        // access still copies and validates data from kernel-visible memory.
         {
             std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
             cached_iouring_data_ = ring_data;
@@ -275,8 +274,8 @@ namespace rpc::io_uring
         CO_RETURN rpc::error::OK();
     }
 
-    // Drops any cached descriptor so a later operation is forced to ask the host
-    // for a fresh view of the ring resources.
+    // Drops any cached descriptor so a later operation is forced to ask the
+    // environment handle for a fresh view of the ring resources.
     void controller::clear_iouring_data_cache() noexcept
     {
         std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
@@ -285,8 +284,8 @@ namespace rpc::io_uring
     }
 
     // Exposes whether a descriptor is cached without performing an RPC. This is
-    // useful for diagnostics, but callers must not treat the returned host data
-    // as trusted.
+    // useful for diagnostics, but callers must not treat the returned
+    // environment data as trusted.
     const data* controller::cached_iouring_data() const noexcept
     {
         return has_cached_iouring_data_ ? &cached_iouring_data_ : nullptr;
@@ -355,6 +354,14 @@ namespace rpc::io_uring
         return cached_iouring_data_;
     }
 
+    bool controller::cached_fixed_file_table_available() const noexcept
+    {
+        std::lock_guard<rpc::spin_mutex> lock(cache_mutex_);
+        return has_cached_iouring_data_ && cached_iouring_data_.descriptor_version >= 2
+               && cached_iouring_data_.fixed_files.fixed_files_registered
+               && cached_iouring_data_.fixed_files.fixed_file_count != 0;
+    }
+
     // Ensures this controller has a descriptor snapshot; this is the common
     // cheap fast path before every operation touches SQ/CQ memory.
     CORO_TASK(int) controller::ensure_iouring_data()
@@ -376,7 +383,7 @@ namespace rpc::io_uring
         CO_RETURN CO_AWAIT refresh_iouring_data();
     }
 
-    // Verifies the host created a registered fixed-file table. TCP direct
+    // Verifies the environment created a registered fixed-file table. TCP direct
     // descriptors rely on that table because the enclave never receives normal
     // process file descriptors.
     CORO_TASK(int) controller::ensure_fixed_file_table()

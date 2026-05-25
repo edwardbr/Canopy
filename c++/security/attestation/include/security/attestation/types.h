@@ -217,8 +217,18 @@ namespace canopy::security::attestation
         }
     };
 
+    // Numeric ordering used by policy checks. Higher ranks satisfy lower
+    // minimum_security_level values.
     [[nodiscard]] auto security_level_rank(security_level level) noexcept -> int;
+
+    // Stable string form used in KDF context and diagnostics.
     [[nodiscard]] auto security_level_name(security_level level) noexcept -> const char*;
+
+    // Builds the route-session identifier shared by both sides of one
+    // attestation handshake. The participant pair is sorted so caller/responder
+    // order does not matter, and each identity component is length-framed before
+    // it is fed into the readable string. If enclave_id is present, zone_id is
+    // treated as subordinate metadata and is not part of the session key.
     [[nodiscard]] auto make_session_id(
         const identity& local,
         const identity& peer,
