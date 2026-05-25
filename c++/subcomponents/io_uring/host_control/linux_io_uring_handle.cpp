@@ -23,7 +23,7 @@ namespace rpc::io_uring
 {
     namespace
     {
-        constexpr size_t max_host_tcp_payload_size = 16U * 1024U * 1024U;
+        constexpr size_t max_tcp_payload_size = 16U * 1024U * 1024U;
 
         auto native_descriptor_error_result(int native_error) noexcept -> descriptor_result
         {
@@ -436,7 +436,7 @@ namespace rpc::io_uring
         uint32_t msg_flags)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!owns_tcp_descriptor_locked(descriptor) || buffer.size() > max_host_tcp_payload_size)
+        if (!owns_tcp_descriptor_locked(descriptor) || buffer.size() > max_tcp_payload_size)
             CO_RETURN invalid_transfer_result();
 
         auto flags = static_cast<int>(msg_flags);
@@ -458,7 +458,7 @@ namespace rpc::io_uring
         uint32_t msg_flags)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!owns_tcp_descriptor_locked(descriptor) || buffer.size() > max_host_tcp_payload_size)
+        if (!owns_tcp_descriptor_locked(descriptor) || buffer.size() > max_tcp_payload_size)
             CO_RETURN invalid_transfer_result();
 
         const auto native_result

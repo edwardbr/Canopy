@@ -15,9 +15,9 @@
 #include <cstdint>
 
 #include <rpc/rpc.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
+#include <streaming/spsc_queue/stream.h>
 #include <transports/streaming/transport.h>
-#include <transports/sgx_coroutine/common/startup_status.h>
-#include <transports/sgx_coroutine/common/shared_queue.h>
 
 namespace streaming
 {
@@ -34,22 +34,18 @@ namespace rpc::sgx::coro::host
         {
             struct thread_state
             {
-                explicit thread_state(uint64_t eid)
-                    : eid_(eid)
-                {
-                    common::initialise_startup_status(startup_state_, startup_error_code_);
-                }
+                explicit thread_state(uint64_t eid);
 
                 uint64_t eid_ = 0;
                 std::vector<std::thread> worker_threads_;
-                rpc::sgx::coro::protocol::startup_state startup_state_{};
+                rpc::v4::secure_coroutine_module::startup_state startup_state_{};
                 error_code startup_error_code_{};
                 // The enclave receives raw queue pointers through the ECALL.
                 // Keep the queue storage tied to the ECALL thread lifetime so
                 // transport destruction cannot unmap it while workers are
                 // still returning from the enclave.
-                std::shared_ptr<common::queue_type> host_to_enclave_queue_;
-                std::shared_ptr<common::queue_type> enclave_to_host_queue_;
+                std::shared_ptr<streaming::spsc_queue::queue_type> host_to_enclave_queue_;
+                std::shared_ptr<streaming::spsc_queue::queue_type> enclave_to_host_queue_;
             };
 
             explicit enclave_owner(uint64_t eid)
@@ -71,8 +67,8 @@ namespace rpc::sgx::coro::host
         };
 
         std::string enclave_path_;
-        std::shared_ptr<common::queue_type> host_to_enclave_queue_;
-        std::shared_ptr<common::queue_type> enclave_to_host_queue_;
+        std::shared_ptr<streaming::spsc_queue::queue_type> host_to_enclave_queue_;
+        std::shared_ptr<streaming::spsc_queue::queue_type> enclave_to_host_queue_;
         std::shared_ptr<deferred_stream> deferred_stream_;
         std::shared_ptr<streaming::spsc_queue::stream> queue_stream_;
         std::shared_ptr<enclave_owner> enclave_owner_;

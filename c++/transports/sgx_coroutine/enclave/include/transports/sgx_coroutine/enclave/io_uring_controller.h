@@ -6,10 +6,10 @@
 
 #include <array>
 #include <chrono>
-#include <edl/coroutine_enclave.h>
 #include <io_uring/controller.h>
 #include <memory>
 #include <string>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 
 namespace rpc::sgx::coro::enclave
 {
@@ -85,9 +85,9 @@ namespace rpc::sgx::coro::enclave
 
     private:
         CORO_TASK(int)
-        host_tcp_operation(
-            rpc::sgx::coro::protocol::host_tcp_request request,
-            rpc::sgx::coro::protocol::host_tcp_result& result);
+        brokered_io_operation(
+            rpc::v4::secure_coroutine_module::brokered_io_request request,
+            rpc::v4::secure_coroutine_module::brokered_io_result& result);
 
         std::weak_ptr<host_transport> host_transport_;
     };

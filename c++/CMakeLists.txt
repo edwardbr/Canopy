@@ -18,6 +18,10 @@ add_subdirectory(subcomponents/spsc_queue)
 # themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
 add_subdirectory(streaming)
 
+if(CANOPY_BUILD_COROUTINE)
+  add_subdirectory(transports/secure_coroutine_module)
+endif()
+
 # io_uring is coroutine-only by design (see project memory). file_system is
 # dual-mode: coroutine builds use the io_uring controller, blocking builds
 # use plain POSIX ::open/::read/::write/::close.

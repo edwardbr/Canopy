@@ -6,7 +6,7 @@
 #include <file_system/file_system_manager.h>
 #include <rpc/rpc.h>
 
-#include <edl/coroutine_enclave.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
 #include <atomic>

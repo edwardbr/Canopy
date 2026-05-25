@@ -3,11 +3,8 @@
  *   All rights reserved.
  */
 
-#include <transports/sgx_coroutine/common/startup_status.h>
-#include <transports/sgx_coroutine/common/shared_queue.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
-#include <edl/coroutine_enclave.h>
 #include <io_uring/io_uring_scheduler.h>
 #include <trusted/canopy_coroutine_enclave_t.h>
 #include <sgx_error.h>
@@ -33,6 +30,7 @@
 #endif
 #include <tuple>
 #include <vector>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 namespace rpc
@@ -50,12 +48,38 @@ namespace rpc::sgx::coro::enclave
 
     namespace
     {
-        namespace protocol = rpc::sgx::coro::protocol;
+        namespace secure_module = rpc::v4::secure_coroutine_module;
         constexpr size_t max_init_request_blob_bytes = 128U * 1024U;
         constexpr size_t max_startup_option_count = 64;
         constexpr size_t max_startup_option_key_bytes = 128;
         constexpr size_t max_startup_option_value_bytes = 4096;
         constexpr size_t max_startup_options_total_bytes = 64U * 1024U;
+
+        inline auto startup_store_error(
+            error_code* value,
+            error_code new_value) noexcept -> void
+        {
+            static_assert(sizeof(error_code) == sizeof(int));
+            __atomic_store_n(value, new_value, __ATOMIC_RELEASE);
+        }
+
+        inline auto startup_load_state(const secure_module::startup_state* value) noexcept -> secure_module::startup_state
+        {
+            using state_word = std::uint32_t;
+            static_assert(sizeof(secure_module::startup_state) == sizeof(state_word));
+            const auto loaded = __atomic_load_n(reinterpret_cast<const state_word*>(value), __ATOMIC_ACQUIRE);
+            return static_cast<secure_module::startup_state>(loaded);
+        }
+
+        inline auto startup_store_state(
+            secure_module::startup_state* value,
+            secure_module::startup_state state) noexcept -> void
+        {
+            using state_word = std::uint32_t;
+            static_assert(sizeof(secure_module::startup_state) == sizeof(state_word));
+            const auto stored = static_cast<state_word>(state);
+            __atomic_store_n(reinterpret_cast<state_word*>(value), stored, __ATOMIC_RELEASE);
+        }
 
         struct runtime_state
         {
@@ -87,7 +111,7 @@ namespace rpc::sgx::coro::enclave
             // Host-owned startup words. They are not enclave-owned storage;
             // they are validated once during init and then used only for
             // low-level state publication.
-            protocol::startup_state* startup_state = nullptr;
+            secure_module::startup_state* startup_state = nullptr;
             error_code* startup_error_code = nullptr;
 
             // Runtime lifetime flags. The host asks for shutdown by changing
@@ -206,10 +230,10 @@ namespace rpc::sgx::coro::enclave
             if (!queue_ptr)
                 return false;
 
-            if (!is_aligned(queue_ptr, alignof(common::queue_type)))
+            if (!is_aligned(queue_ptr, alignof(streaming::spsc_queue::queue_type)))
                 return false;
 
-            return sgx_is_outside_enclave(queue_ptr, sizeof(common::queue_type)) != 0;
+            return sgx_is_outside_enclave(queue_ptr, sizeof(streaming::spsc_queue::queue_type)) != 0;
         }
 
         template<typename T> auto validate_outside_word_pointer(T* pointer) -> T*
@@ -228,10 +252,10 @@ namespace rpc::sgx::coro::enclave
 
         struct validated_init_request
         {
-            protocol::init_request request{};
-            common::queue_type* host_to_enclave_queue = nullptr;
-            common::queue_type* enclave_to_host_queue = nullptr;
-            protocol::startup_state* startup_state = nullptr;
+            secure_module::init_request request{};
+            streaming::spsc_queue::queue_type* host_to_enclave_queue = nullptr;
+            streaming::spsc_queue::queue_type* enclave_to_host_queue = nullptr;
+            secure_module::startup_state* startup_state = nullptr;
             error_code* startup_error_code = nullptr;
             int error_code = rpc::error::OK();
 
@@ -248,12 +272,12 @@ namespace rpc::sgx::coro::enclave
             uint64_t request_type_id,
             const char* req,
             size_t req_sz,
-            protocol::init_request& request)
+            secure_module::init_request& request)
         {
             // request_type_id is the schema fingerprint. request_encoding is
             // the byte format. Keeping them separate lets the ECALL ABI stay
             // stable while future init payloads move to another encoding.
-            if (request_type_id != rpc::id<protocol::init_request>::get(rpc::get_version()))
+            if (request_type_id != rpc::id<secure_module::init_request>::get(rpc::get_version()))
                 return rpc::error::INVALID_DATA();
 
             if (req_sz > max_init_request_blob_bytes)
@@ -297,14 +321,14 @@ namespace rpc::sgx::coro::enclave
             return rpc::error::OK();
         }
 
-        auto validate_init_request_memory(const protocol::init_request& request) -> validated_init_request
+        auto validate_init_request_memory(const secure_module::init_request& request) -> validated_init_request
         {
             validated_init_request result{};
             result.request = request;
-            result.host_to_enclave_queue
-                = static_cast<common::queue_type*>(pointer_from_request_address(request.host_to_enclave_queue_ptr));
-            result.enclave_to_host_queue
-                = static_cast<common::queue_type*>(pointer_from_request_address(request.enclave_to_host_queue_ptr));
+            result.host_to_enclave_queue = static_cast<streaming::spsc_queue::queue_type*>(
+                pointer_from_request_address(request.parent_to_runtime_queue_ptr));
+            result.enclave_to_host_queue = static_cast<streaming::spsc_queue::queue_type*>(
+                pointer_from_request_address(request.runtime_to_parent_queue_ptr));
             result.startup_state = validate_outside_word_pointer(request.state);
             result.startup_error_code = validate_outside_word_pointer(request.error);
 
@@ -343,8 +367,8 @@ namespace rpc::sgx::coro::enclave
             if (!startup_state)
                 return false;
 
-            auto state = common::startup_load_state(startup_state);
-            return state == protocol::startup_state::shutting_down || state == protocol::startup_state::stopped;
+            auto state = startup_load_state(startup_state);
+            return state == secure_module::startup_state::shutting_down || state == secure_module::startup_state::stopped;
         }
 
         bool runtime_stopped(runtime_state& runtime)
@@ -356,30 +380,30 @@ namespace rpc::sgx::coro::enclave
             if (!startup_state)
                 return true;
 
-            auto state = common::startup_load_state(startup_state);
-            return state == protocol::startup_state::failed || state == protocol::startup_state::shutting_down
-                   || state == protocol::startup_state::stopped;
+            auto state = startup_load_state(startup_state);
+            return state == secure_module::startup_state::failed || state == secure_module::startup_state::shutting_down
+                   || state == secure_module::startup_state::stopped;
         }
 
         void set_startup_status(
-            protocol::startup_state* startup_state,
+            secure_module::startup_state* startup_state,
             error_code* startup_error_code,
-            protocol::startup_state state,
+            secure_module::startup_state state,
             int error_code)
         {
             if (!startup_state || !startup_error_code)
                 return;
 
-            common::startup_store_error(startup_error_code, error_code);
-            common::startup_store_state(startup_state, state);
+            startup_store_error(startup_error_code, error_code);
+            startup_store_state(startup_state, state);
         }
 
         void set_worker_request(
-            protocol::startup_state* startup_state,
+            secure_module::startup_state* startup_state,
             error_code* startup_error_code)
         {
             set_startup_status(
-                startup_state, startup_error_code, protocol::startup_state::workers_requested, rpc::error::OK());
+                startup_state, startup_error_code, secure_module::startup_state::workers_requested, rpc::error::OK());
         }
 
         int reject_worker_entry(runtime_state& runtime)
@@ -387,7 +411,7 @@ namespace rpc::sgx::coro::enclave
             set_startup_status(
                 runtime.startup_state,
                 runtime.startup_error_code,
-                protocol::startup_state::failed,
+                secure_module::startup_state::failed,
                 rpc::error::FRAUDULANT_REQUEST());
             return rpc::error::FRAUDULANT_REQUEST();
         }
@@ -632,7 +656,7 @@ namespace rpc::sgx::coro::enclave
 #ifdef CANOPY_USE_TELEMETRY
             rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
 #endif
-            runtime.enclave_zone = init.request.enclave_zone_id;
+            runtime.enclave_zone = init.request.runtime_zone_id;
             runtime.startup_options = init.request.options;
             runtime.startup_state = init.startup_state;
             runtime.startup_error_code = init.startup_error_code;
@@ -659,7 +683,7 @@ namespace rpc::sgx::coro::enclave
             try
             {
                 return std::make_shared<rpc::enclave_service>(
-                    "sgx_coroutine_enclave", init.request.enclave_zone_id, init.request.host_zone_id, scheduler);
+                    "sgx_coroutine_enclave", init.request.runtime_zone_id, init.request.parent_zone_id, scheduler);
             }
             catch (const std::bad_alloc&)
             {
@@ -694,9 +718,9 @@ namespace rpc::sgx::coro::enclave
 
         void stop_runtime(
             runtime_state& runtime,
-            protocol::startup_state* startup_state,
+            secure_module::startup_state* startup_state,
             error_code* startup_error_code,
-            protocol::startup_state state,
+            secure_module::startup_state state,
             int error_code)
         {
             // Stop is intentionally ordered: cancel controller-owned io_uring
@@ -837,7 +861,7 @@ namespace rpc::sgx::coro::enclave
 
             // Phase 1: decode the stable ECALL payload and validate every
             // host pointer before the enclave stores or dereferences it.
-            protocol::init_request request{};
+            secure_module::init_request request{};
             auto decode_error = decode_init_request_blob(request_encoding, request_type_id, req, req_sz, request);
             if (decode_error != rpc::error::OK())
             {
@@ -850,7 +874,7 @@ namespace rpc::sgx::coro::enclave
             {
                 if (init.has_startup_status())
                     set_startup_status(
-                        init.startup_state, init.startup_error_code, protocol::startup_state::failed, init.error_code);
+                        init.startup_state, init.startup_error_code, secure_module::startup_state::failed, init.error_code);
                 runtime.init_called.store(false, std::memory_order_release);
                 return;
             }
@@ -864,7 +888,7 @@ namespace rpc::sgx::coro::enclave
             auto register_error = initialise_runtime_from_request(runtime, init);
             if (register_error != rpc::error::OK())
             {
-                set_startup_status(startup_state, startup_error_code, protocol::startup_state::failed, register_error);
+                set_startup_status(startup_state, startup_error_code, secure_module::startup_state::failed, register_error);
                 runtime.init_called.store(false, std::memory_order_release);
                 return;
             }
@@ -880,7 +904,8 @@ namespace rpc::sgx::coro::enclave
             runtime.accepting_workers.store(false, std::memory_order_release);
             if (worker_error != rpc::error::OK())
             {
-                stop_runtime(runtime, startup_state, startup_error_code, protocol::startup_state::failed, worker_error);
+                stop_runtime(
+                    runtime, startup_state, startup_error_code, secure_module::startup_state::failed, worker_error);
                 return;
             }
 
@@ -893,7 +918,7 @@ namespace rpc::sgx::coro::enclave
                     runtime,
                     startup_state,
                     startup_error_code,
-                    protocol::startup_state::failed,
+                    secure_module::startup_state::failed,
                     rpc::error::INCOMPATIBLE_SERVICE());
                 return;
             }
@@ -903,12 +928,17 @@ namespace rpc::sgx::coro::enclave
             if (!host_runtime_transport)
             {
                 stop_runtime(
-                    runtime, startup_state, startup_error_code, protocol::startup_state::failed, rpc::error::TRANSPORT_ERROR());
+                    runtime,
+                    startup_state,
+                    startup_error_code,
+                    secure_module::startup_state::failed,
+                    rpc::error::TRANSPORT_ERROR());
                 return;
             }
 
             publish_parent_transport(runtime, host_runtime_transport);
-            set_startup_status(startup_state, startup_error_code, protocol::startup_state::runtime_ready, rpc::error::OK());
+            set_startup_status(
+                startup_state, startup_error_code, secure_module::startup_state::runtime_ready, rpc::error::OK());
 
             // Phase 5: drive the scheduler from the master ECALL. The initial
             // loop lets the host-side connect handshake complete before this
@@ -926,7 +956,7 @@ namespace rpc::sgx::coro::enclave
                     if (sleep_error != rpc::error::OK())
                     {
                         stop_runtime(
-                            runtime, startup_state, startup_error_code, protocol::startup_state::failed, sleep_error);
+                            runtime, startup_state, startup_error_code, secure_module::startup_state::failed, sleep_error);
                         return;
                     }
                 }
@@ -947,7 +977,7 @@ namespace rpc::sgx::coro::enclave
             auto drain_error = drain_until_host_transport_released(runtime, weak_transport);
             if (loop_error == rpc::error::OK())
                 loop_error = drain_error;
-            stop_runtime(runtime, startup_state, startup_error_code, protocol::startup_state::stopped, loop_error);
+            stop_runtime(runtime, startup_state, startup_error_code, secure_module::startup_state::stopped, loop_error);
         }
 
         // Worker ECALL. The host starts one of these per requested worker
@@ -962,7 +992,7 @@ namespace rpc::sgx::coro::enclave
             if (!validate_ecall_blob(req, req_sz))
                 return rpc::error::FRAUDULANT_REQUEST();
 
-            protocol::enter_thread_request request{};
+            secure_module::enter_thread_request request{};
             auto err = rpc::sgx::coro::enclave::decode_yas_blob(
                 rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
             if (err != rpc::error::OK())
@@ -975,7 +1005,7 @@ namespace rpc::sgx::coro::enclave
             if (!runtime.scheduler)
                 return reject_worker_entry(runtime);
 
-            if (request.enclave_zone_id != runtime.enclave_zone)
+            if (request.runtime_zone_id != runtime.enclave_zone)
                 return reject_worker_entry(runtime);
 
             if (!runtime.accepting_workers.load(std::memory_order_acquire))

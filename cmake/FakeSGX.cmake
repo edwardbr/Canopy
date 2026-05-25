@@ -128,8 +128,8 @@ function(
   add_custom_target(${target}-create-header ALL
                     DEPENDS ${CANOPY_FAKE_SGX_ROOT}/include/untrusted/canopy_coroutine_enclave_u.h)
   add_dependencies(${target} ${target}-create-header)
-  if(TARGET coroutine_enclave_idl)
-    add_dependencies(${target} coroutine_enclave_idl)
+  if(TARGET secure_coroutine_module_idl)
+    add_dependencies(${target} secure_coroutine_module_idl)
   endif()
 endfunction()
 

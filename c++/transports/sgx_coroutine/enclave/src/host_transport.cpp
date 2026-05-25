@@ -3,12 +3,9 @@
  *   All rights reserved.
  */
 
-#include <transports/sgx_coroutine/common/startup_status.h>
-#include <transports/sgx_coroutine/common/io_uring_data_conversion.h>
-#include <transports/sgx_coroutine/common/shared_queue.h>
+#include <transports/secure_coroutine_module/io_uring_data_conversion.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
-#include <edl/coroutine_enclave.h>
 #include <trusted/canopy_coroutine_enclave_t.h>
 #include <sgx_error.h>
 #include <sgx_trts.h>
@@ -28,6 +25,7 @@
 #include <new>
 #include <tuple>
 #include <vector>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 
 namespace rpc::sgx::coro::enclave
 {
@@ -72,7 +70,7 @@ namespace rpc::sgx::coro::enclave
 
     CORO_TASK(int)
     host_transport::retain_io_uring_control_reference(
-        const rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control>& control)
+        const rpc::shared_ptr<rpc::v4::secure_coroutine_module::i_io_uring_control>& control)
     {
         {
             std::lock_guard<std::mutex> lock(host_control_reference_mutex_);
@@ -154,7 +152,7 @@ namespace rpc::sgx::coro::enclave
 
         std::vector<char> in_buf;
         auto ret
-            = rpc::sgx::coro::protocol::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::wake_iouring(
+            = rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::wake_iouring(
                 in_buf, control_reference->encoding);
         if (rpc::error::is_error(ret))
             CO_RETURN ret;
@@ -166,7 +164,8 @@ namespace rpc::sgx::coro::enclave
                 .tag = 0,
                 .caller_zone_id = control_reference->caller_zone_id,
                 .remote_object_id = control_reference->remote_object_id,
-                .interface_id = rpc::sgx::coro::protocol::i_io_uring_control::get_id(control_reference->protocol_version),
+                .interface_id
+                = rpc::v4::secure_coroutine_module::i_io_uring_control::get_id(control_reference->protocol_version),
                 .method_id = {2},
                 .in_data = std::move(in_buf),
                 .in_back_channel = {},
@@ -176,7 +175,7 @@ namespace rpc::sgx::coro::enclave
         if (ret == rpc::error::OBJECT_GONE() || rpc::error::is_critical(ret))
             CO_RETURN ret;
 
-        CO_RETURN rpc::sgx::coro::protocol::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::wake_iouring(
+        CO_RETURN rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::wake_iouring(
             send_result.out_buf, control_reference->encoding);
     }
 
@@ -193,7 +192,7 @@ namespace rpc::sgx::coro::enclave
 
         std::vector<char> in_buf;
         auto ret
-            = rpc::sgx::coro::protocol::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::get_iouring_data(
+            = rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::get_iouring_data(
                 in_buf, control_reference->encoding);
         if (rpc::error::is_error(ret))
             CO_RETURN ret;
@@ -205,7 +204,8 @@ namespace rpc::sgx::coro::enclave
                 .tag = 0,
                 .caller_zone_id = control_reference->caller_zone_id,
                 .remote_object_id = control_reference->remote_object_id,
-                .interface_id = rpc::sgx::coro::protocol::i_io_uring_control::get_id(control_reference->protocol_version),
+                .interface_id
+                = rpc::v4::secure_coroutine_module::i_io_uring_control::get_id(control_reference->protocol_version),
                 .method_id = {3},
                 .in_data = std::move(in_buf),
                 .in_back_channel = {},
@@ -215,18 +215,18 @@ namespace rpc::sgx::coro::enclave
         if (ret == rpc::error::OBJECT_GONE() || rpc::error::is_critical(ret))
             CO_RETURN ret;
 
-        rpc::sgx::coro::protocol::io_uring_data wire_data;
-        ret = rpc::sgx::coro::protocol::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::get_iouring_data(
+        rpc::v4::secure_coroutine_module::io_uring_data wire_data;
+        ret = rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::get_iouring_data(
             wire_data, send_result.out_buf, control_reference->encoding);
         if (ret == rpc::error::OK())
-            rpc::sgx::coro::protocol::copy_to_native(wire_data, ring_data);
+            rpc::v4::secure_coroutine_module::copy_to_native(wire_data, ring_data);
         CO_RETURN ret;
     }
 
     CORO_TASK(int)
-    host_transport::host_tcp_operation(
-        rpc::sgx::coro::protocol::host_tcp_request request,
-        rpc::sgx::coro::protocol::host_tcp_result& result)
+    host_transport::brokered_io_operation(
+        rpc::v4::secure_coroutine_module::brokered_io_request request,
+        rpc::v4::secure_coroutine_module::brokered_io_result& result)
     {
         std::optional<host_control_reference> control_reference;
         {
@@ -238,7 +238,7 @@ namespace rpc::sgx::coro::enclave
 
         std::vector<char> in_buf;
         auto ret
-            = rpc::sgx::coro::protocol::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::host_tcp_operation(
+            = rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::brokered_io_operation(
                 request, in_buf, control_reference->encoding);
         if (rpc::error::is_error(ret))
             CO_RETURN ret;
@@ -250,7 +250,8 @@ namespace rpc::sgx::coro::enclave
                 .tag = 0,
                 .caller_zone_id = control_reference->caller_zone_id,
                 .remote_object_id = control_reference->remote_object_id,
-                .interface_id = rpc::sgx::coro::protocol::i_io_uring_control::get_id(control_reference->protocol_version),
+                .interface_id
+                = rpc::v4::secure_coroutine_module::i_io_uring_control::get_id(control_reference->protocol_version),
                 .method_id = {4},
                 .in_data = std::move(in_buf),
                 .in_back_channel = {},
@@ -260,7 +261,7 @@ namespace rpc::sgx::coro::enclave
         if (ret == rpc::error::OBJECT_GONE() || rpc::error::is_critical(ret))
             CO_RETURN ret;
 
-        CO_RETURN rpc::sgx::coro::protocol::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::host_tcp_operation(
+        CO_RETURN rpc::v4::secure_coroutine_module::i_io_uring_control::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::brokered_io_operation(
             result, send_result.out_buf, control_reference->encoding);
     }
 

@@ -6,7 +6,7 @@
 
 #include <io_uring/host_controller.h>
 #include <rpc/rpc.h>
-#include <transports/sgx_coroutine/common/io_uring_data_conversion.h>
+#include <transports/secure_coroutine_module/io_uring_data_conversion.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -33,7 +33,7 @@ namespace rpc::sgx::coro::host
     namespace detail
     {
         class enclave_io_uring_control
-            : public rpc::base<enclave_io_uring_control, rpc::sgx::coro::protocol::i_io_uring_control>
+            : public rpc::base<enclave_io_uring_control, rpc::v4::secure_coroutine_module::i_io_uring_control>
         {
         public:
             enclave_io_uring_control(
@@ -47,9 +47,9 @@ namespace rpc::sgx::coro::host
             ~enclave_io_uring_control() override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                for (auto fd : host_tcp_descriptors_)
+                for (auto fd : brokered_tcp_descriptors_)
                     ::close(fd);
-                host_tcp_descriptors_.clear();
+                brokered_tcp_descriptors_.clear();
                 for (auto fd : host_file_descriptors_)
                     ::close(fd);
                 host_file_descriptors_.clear();
@@ -78,7 +78,7 @@ namespace rpc::sgx::coro::host
                 CO_RETURN controller_->wake_iouring();
             }
 
-            CORO_TASK(int) get_iouring_data(rpc::sgx::coro::protocol::io_uring_data& ring_data) override
+            CORO_TASK(int) get_iouring_data(rpc::v4::secure_coroutine_module::io_uring_data& ring_data) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (!controller_)
@@ -87,41 +87,41 @@ namespace rpc::sgx::coro::host
                 rpc::io_uring::data native_data;
                 auto err = controller_->get_iouring_data(native_data);
                 if (err == rpc::error::OK())
-                    rpc::sgx::coro::protocol::copy_to_wire(native_data, ring_data);
+                    rpc::v4::secure_coroutine_module::copy_to_wire(native_data, ring_data);
                 CO_RETURN err;
             }
 
             CORO_TASK(int)
-            host_tcp_operation(
-                rpc::sgx::coro::protocol::host_tcp_request request,
-                rpc::sgx::coro::protocol::host_tcp_result& result) override
+            brokered_io_operation(
+                rpc::v4::secure_coroutine_module::brokered_io_request request,
+                rpc::v4::secure_coroutine_module::brokered_io_result& result) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                result = handle_host_tcp_operation_locked(std::move(request));
+                result = handle_brokered_io_operation_locked(std::move(request));
                 CO_RETURN rpc::error::OK();
             }
 
         private:
-            static constexpr size_t max_host_tcp_payload_size = 16U * 1024U * 1024U;
+            static constexpr size_t max_brokered_io_payload_size = 16U * 1024U * 1024U;
 
-            static auto native_error_result(int native_error) -> rpc::sgx::coro::protocol::host_tcp_result
+            static auto native_error_result(int native_error) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                rpc::sgx::coro::protocol::host_tcp_result result;
+                rpc::v4::secure_coroutine_module::brokered_io_result result;
                 result.error_code = rpc::error::NATIVE_IO_ERROR();
                 result.native_result = -native_error;
                 return result;
             }
 
-            static auto invalid_data_result() -> rpc::sgx::coro::protocol::host_tcp_result
+            static auto invalid_data_result() -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                rpc::sgx::coro::protocol::host_tcp_result result;
+                rpc::v4::secure_coroutine_module::brokered_io_result result;
                 result.error_code = rpc::error::INVALID_DATA();
                 return result;
             }
 
-            static auto ok_result(int32_t native_result = 0) -> rpc::sgx::coro::protocol::host_tcp_result
+            static auto ok_result(int32_t native_result = 0) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                rpc::sgx::coro::protocol::host_tcp_result result;
+                rpc::v4::secure_coroutine_module::brokered_io_result result;
                 result.error_code = rpc::error::OK();
                 result.native_result = native_result;
                 return result;
@@ -144,7 +144,7 @@ namespace rpc::sgx::coro::host
             {
                 if (descriptor > static_cast<uint32_t>(std::numeric_limits<int>::max()))
                     return false;
-                return host_tcp_descriptors_.find(static_cast<int>(descriptor)) != host_tcp_descriptors_.end();
+                return brokered_tcp_descriptors_.find(static_cast<int>(descriptor)) != brokered_tcp_descriptors_.end();
             }
 
             bool owns_file_descriptor_locked(uint32_t descriptor) const
@@ -154,13 +154,13 @@ namespace rpc::sgx::coro::host
                 return host_file_descriptors_.find(static_cast<int>(descriptor)) != host_file_descriptors_.end();
             }
 
-            void track_descriptor_locked(int fd) { host_tcp_descriptors_.insert(fd); }
+            void track_descriptor_locked(int fd) { brokered_tcp_descriptors_.insert(fd); }
             void track_file_descriptor_locked(int fd) { host_file_descriptors_.insert(fd); }
 
-            auto create_socket_locked(int family) -> rpc::sgx::coro::protocol::host_tcp_result
+            auto create_socket_locked(int family) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 const auto max_descriptors = controller_ ? controller_->get_options().fixed_file_count : 0U;
-                if (max_descriptors != 0 && host_tcp_descriptors_.size() >= max_descriptors)
+                if (max_descriptors != 0 && brokered_tcp_descriptors_.size() >= max_descriptors)
                 {
                     return native_error_result(EMFILE);
                 }
@@ -177,14 +177,14 @@ namespace rpc::sgx::coro::host
 
                 track_descriptor_locked(fd);
                 auto result = ok_result(fd);
-                result.descriptor = fd;
+                result.descriptor_id = fd;
                 return result;
             }
 
             template<class Operation>
             auto descriptor_operation_locked(
                 uint32_t descriptor,
-                Operation operation) -> rpc::sgx::coro::protocol::host_tcp_result
+                Operation operation) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 if (!owns_descriptor_locked(descriptor))
                     return invalid_data_result();
@@ -198,7 +198,7 @@ namespace rpc::sgx::coro::host
             auto bind_ipv4_locked(
                 uint32_t descriptor,
                 const std::vector<uint8_t>& address,
-                uint16_t port) -> rpc::sgx::coro::protocol::host_tcp_result
+                uint16_t port) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 if (!owns_descriptor_locked(descriptor) || address.size() != 4)
                     return invalid_data_result();
@@ -218,7 +218,7 @@ namespace rpc::sgx::coro::host
             auto bind_ipv6_locked(
                 uint32_t descriptor,
                 const std::vector<uint8_t>& address,
-                uint16_t port) -> rpc::sgx::coro::protocol::host_tcp_result
+                uint16_t port) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 if (!owns_descriptor_locked(descriptor) || address.size() != 16)
                     return invalid_data_result();
@@ -235,7 +235,7 @@ namespace rpc::sgx::coro::host
                 return ok_result(native_result);
             }
 
-            auto accept_locked(uint32_t descriptor) -> rpc::sgx::coro::protocol::host_tcp_result
+            auto accept_locked(uint32_t descriptor) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 if (!owns_descriptor_locked(descriptor))
                     return invalid_data_result();
@@ -252,11 +252,11 @@ namespace rpc::sgx::coro::host
 
                 track_descriptor_locked(fd);
                 auto result = ok_result(fd);
-                result.descriptor = fd;
+                result.descriptor_id = fd;
                 return result;
             }
 
-            auto connect_ipv4_loopback_locked(uint16_t port) -> rpc::sgx::coro::protocol::host_tcp_result
+            auto connect_ipv4_loopback_locked(uint16_t port) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 auto socket_result = create_socket_locked(AF_INET);
                 if (socket_result.error_code != rpc::error::OK())
@@ -267,7 +267,7 @@ namespace rpc::sgx::coro::host
                 socket_address.sin_port = htons(port);
                 socket_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-                auto fd = socket_result.descriptor;
+                auto fd = socket_result.descriptor_id;
                 auto native_result
                     = ::connect(fd, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(socket_address));
                 if (native_result < 0 && errno == EINPROGRESS)
@@ -279,7 +279,7 @@ namespace rpc::sgx::coro::host
                     auto poll_result = ::poll(&poll_descriptor, 1, 5000);
                     if (poll_result <= 0)
                     {
-                        host_tcp_descriptors_.erase(fd);
+                        brokered_tcp_descriptors_.erase(fd);
                         ::close(fd);
                         return native_error_result(poll_result == 0 ? ETIMEDOUT : errno);
                     }
@@ -288,13 +288,13 @@ namespace rpc::sgx::coro::host
                     socklen_t socket_error_size = sizeof(socket_error);
                     if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_size) < 0)
                     {
-                        host_tcp_descriptors_.erase(fd);
+                        brokered_tcp_descriptors_.erase(fd);
                         ::close(fd);
                         return native_error_result(errno);
                     }
                     if (socket_error != 0)
                     {
-                        host_tcp_descriptors_.erase(fd);
+                        brokered_tcp_descriptors_.erase(fd);
                         ::close(fd);
                         return native_error_result(socket_error);
                     }
@@ -303,7 +303,7 @@ namespace rpc::sgx::coro::host
                 }
                 else if (native_result < 0)
                 {
-                    host_tcp_descriptors_.erase(fd);
+                    brokered_tcp_descriptors_.erase(fd);
                     ::close(fd);
                     return native_error_result(errno);
                 }
@@ -312,18 +312,18 @@ namespace rpc::sgx::coro::host
                 return socket_result;
             }
 
-            auto send_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto send_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_descriptor_locked(request.descriptor) || request.payload.size() > max_host_tcp_payload_size)
+                if (!owns_descriptor_locked(request.descriptor_id) || request.payload.size() > max_brokered_io_payload_size)
                     return invalid_data_result();
 
                 auto flags = static_cast<int>(request.flags);
 #ifdef MSG_NOSIGNAL
                 flags |= MSG_NOSIGNAL;
 #endif
-                auto native_result
-                    = ::send(static_cast<int>(request.descriptor), request.payload.data(), request.payload.size(), flags);
+                auto native_result = ::send(
+                    static_cast<int>(request.descriptor_id), request.payload.data(), request.payload.size(), flags);
                 if (native_result < 0)
                     return native_error_result(errno);
 
@@ -332,16 +332,16 @@ namespace rpc::sgx::coro::host
                 return result;
             }
 
-            auto receive_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto receive_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_descriptor_locked(request.descriptor) || request.value > max_host_tcp_payload_size)
+                if (!owns_descriptor_locked(request.descriptor_id) || request.value > max_brokered_io_payload_size)
                     return invalid_data_result();
 
-                rpc::sgx::coro::protocol::host_tcp_result result;
+                rpc::v4::secure_coroutine_module::brokered_io_result result;
                 result.payload.resize(request.value);
                 auto native_result = ::recv(
-                    static_cast<int>(request.descriptor),
+                    static_cast<int>(request.descriptor_id),
                     result.payload.data(),
                     result.payload.size(),
                     static_cast<int>(request.flags));
@@ -355,8 +355,8 @@ namespace rpc::sgx::coro::host
                 return result;
             }
 
-            auto file_open_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto file_open_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 if (request.payload.empty())
                     return invalid_data_result();
@@ -374,21 +374,21 @@ namespace rpc::sgx::coro::host
 
                 track_file_descriptor_locked(fd);
                 auto result = ok_result(fd);
-                result.descriptor = fd;
+                result.descriptor_id = fd;
                 return result;
             }
 
-            auto file_read_at_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto file_read_at_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_file_descriptor_locked(request.descriptor) || request.value > max_host_tcp_payload_size
+                if (!owns_file_descriptor_locked(request.descriptor_id) || request.value > max_brokered_io_payload_size
                     || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
                     return invalid_data_result();
 
-                rpc::sgx::coro::protocol::host_tcp_result result;
+                rpc::v4::secure_coroutine_module::brokered_io_result result;
                 result.payload.resize(request.value);
                 auto native_result = ::pread(
-                    static_cast<int>(request.descriptor),
+                    static_cast<int>(request.descriptor_id),
                     result.payload.data(),
                     result.payload.size(),
                     static_cast<off_t>(request.offset));
@@ -402,15 +402,15 @@ namespace rpc::sgx::coro::host
                 return result;
             }
 
-            auto file_write_at_locked(const rpc::sgx::coro::protocol::host_tcp_request& request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto file_write_at_locked(const rpc::v4::secure_coroutine_module::brokered_io_request& request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                if (!owns_file_descriptor_locked(request.descriptor) || request.payload.size() > max_host_tcp_payload_size
+                if (!owns_file_descriptor_locked(request.descriptor_id) || request.payload.size() > max_brokered_io_payload_size
                     || request.offset > static_cast<uint64_t>(std::numeric_limits<off_t>::max()))
                     return invalid_data_result();
 
                 auto native_result = ::pwrite(
-                    static_cast<int>(request.descriptor),
+                    static_cast<int>(request.descriptor_id),
                     request.payload.data(),
                     request.payload.size(),
                     static_cast<off_t>(request.offset));
@@ -422,7 +422,7 @@ namespace rpc::sgx::coro::host
                 return result;
             }
 
-            auto close_descriptor_locked(uint32_t descriptor) -> rpc::sgx::coro::protocol::host_tcp_result
+            auto close_descriptor_locked(uint32_t descriptor) -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
                 const bool is_tcp_descriptor = owns_descriptor_locked(descriptor);
                 const bool is_file_descriptor = owns_file_descriptor_locked(descriptor);
@@ -431,7 +431,7 @@ namespace rpc::sgx::coro::host
 
                 auto fd = static_cast<int>(descriptor);
                 if (is_tcp_descriptor)
-                    host_tcp_descriptors_.erase(fd);
+                    brokered_tcp_descriptors_.erase(fd);
                 if (is_file_descriptor)
                     host_file_descriptors_.erase(fd);
                 auto native_result = ::close(fd);
@@ -440,10 +440,10 @@ namespace rpc::sgx::coro::host
                 return ok_result(native_result);
             }
 
-            auto handle_host_tcp_operation_locked(rpc::sgx::coro::protocol::host_tcp_request request)
-                -> rpc::sgx::coro::protocol::host_tcp_result
+            auto handle_brokered_io_operation_locked(rpc::v4::secure_coroutine_module::brokered_io_request request)
+                -> rpc::v4::secure_coroutine_module::brokered_io_result
             {
-                using operation = rpc::sgx::coro::protocol::host_tcp_operation;
+                using operation = rpc::v4::secure_coroutine_module::brokered_io_operation;
 
                 switch (request.operation)
                 {
@@ -453,29 +453,29 @@ namespace rpc::sgx::coro::host
                     return create_socket_locked(AF_INET6);
                 case operation::tcp_set_socket_reuse_addr:
                     return descriptor_operation_locked(
-                        request.descriptor,
+                        request.descriptor_id,
                         [](int fd)
                         {
                             const int value = 1;
                             return ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
                         });
                 case operation::tcp_bind_ipv4_loopback:
-                    return bind_ipv4_locked(request.descriptor, std::vector<uint8_t>{127, 0, 0, 1}, request.value);
+                    return bind_ipv4_locked(request.descriptor_id, std::vector<uint8_t>{127, 0, 0, 1}, request.value);
                 case operation::tcp_bind_ipv4:
-                    return bind_ipv4_locked(request.descriptor, request.address, request.value);
+                    return bind_ipv4_locked(request.descriptor_id, request.address, request.value);
                 case operation::tcp_bind_ipv6:
-                    return bind_ipv6_locked(request.descriptor, request.address, request.value);
+                    return bind_ipv6_locked(request.descriptor_id, request.address, request.value);
                 case operation::tcp_listen:
                     return descriptor_operation_locked(
-                        request.descriptor,
+                        request.descriptor_id,
                         [backlog = request.value](int fd) { return ::listen(fd, static_cast<int>(backlog)); });
                 case operation::tcp_accept:
-                    return accept_locked(request.descriptor);
+                    return accept_locked(request.descriptor_id);
                 case operation::tcp_connect_ipv4_loopback:
                     return connect_ipv4_loopback_locked(request.value);
                 case operation::tcp_set_tcp_no_delay:
                     return descriptor_operation_locked(
-                        request.descriptor,
+                        request.descriptor_id,
                         [](int fd)
                         {
                             const int value = 1;
@@ -487,11 +487,11 @@ namespace rpc::sgx::coro::host
                 case operation::tcp_receive_nonblocking:
                     return receive_locked(request);
                 case operation::tcp_cancel:
-                    if (!owns_descriptor_locked(request.descriptor))
+                    if (!owns_descriptor_locked(request.descriptor_id))
                         return invalid_data_result();
                     return ok_result();
                 case operation::tcp_close:
-                    return close_descriptor_locked(request.descriptor);
+                    return close_descriptor_locked(request.descriptor_id);
                 case operation::file_open:
                     return file_open_locked(request);
                 case operation::file_read_at:
@@ -506,7 +506,7 @@ namespace rpc::sgx::coro::host
             std::mutex mutex_;
             std::unique_ptr<rpc::io_uring::host_controller> controller_;
             rpc::shared_ptr<rpc::i_noop> encapsulated_interface_;
-            std::unordered_set<int> host_tcp_descriptors_;
+            std::unordered_set<int> brokered_tcp_descriptors_;
             std::unordered_set<int> host_file_descriptors_;
         };
     }
@@ -549,10 +549,10 @@ namespace rpc::sgx::coro::host
             CO_RETURN result;
         }
 
-        rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control> control;
+        rpc::shared_ptr<rpc::v4::secure_coroutine_module::i_io_uring_control> control;
         try
         {
-            control = rpc::shared_ptr<rpc::sgx::coro::protocol::i_io_uring_control>(
+            control = rpc::shared_ptr<rpc::v4::secure_coroutine_module::i_io_uring_control>(
                 new detail::enclave_io_uring_control(std::move(controller), std::move(erased_interface)));
         }
         catch (const std::bad_alloc&)
@@ -561,7 +561,7 @@ namespace rpc::sgx::coro::host
             std::terminate();
         }
 
-        CO_RETURN CO_AWAIT service->template connect_to_zone<rpc::sgx::coro::protocol::i_io_uring_control, Local>(
+        CO_RETURN CO_AWAIT service->template connect_to_zone<rpc::v4::secure_coroutine_module::i_io_uring_control, Local>(
             name, std::move(enclave_transport), std::move(control));
     }
 }

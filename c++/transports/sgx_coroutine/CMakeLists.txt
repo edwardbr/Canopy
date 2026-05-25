@@ -14,13 +14,13 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     transport_sgx_coroutine
     PUBLIC transport_sgx_coroutine_host_headers
-           transport_sgx_coroutine_common_headers
+           transport_secure_coroutine_module_headers
            spsc_queue
            streaming_spsc_queue
            transport_streaming
            canopy_io_uring
     PRIVATE yas_common
-            coroutine_enclave_idl
+            secure_coroutine_module_idl
             rpc_types_idl
             streaming_transport_idl
             streaming
@@ -46,9 +46,11 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     transport_sgx_coroutine_enclave_service_host_test
     PUBLIC transport_sgx_coroutine_enclave_headers
+           transport_secure_coroutine_module_headers
     PRIVATE canopy::security_attestation
             canopy_io_uring
             route_attestation_protocol_idl
+            secure_coroutine_module_idl
             streaming
             transport_streaming
             rpc::rpc)
@@ -85,12 +87,12 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     transport_sgx_coroutine_enclave
     PUBLIC transport_sgx_coroutine_enclave_headers
-           transport_sgx_coroutine_common_headers
+           transport_secure_coroutine_module_headers
            streaming_spsc_queue_enclave
            transport_streaming_enclave
            canopy_io_uring_enclave
     PRIVATE yas_common
-            coroutine_enclave_idl_enclave
+            secure_coroutine_module_idl_enclave
             rpc_types_idl_enclave
             route_attestation_protocol_idl_enclave
             streaming_transport_idl_enclave

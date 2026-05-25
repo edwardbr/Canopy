@@ -63,7 +63,8 @@ namespace rpc::sgx::coro::enclave
     {
         (void)name;
         rpc::remote_object_result result{rpc::error::OK(), {}};
-        if (input_descr.inbound_interface_id != rpc::sgx::coro::protocol::i_io_uring_control::get_id(rpc::get_version()))
+        if (input_descr.inbound_interface_id
+            != rpc::v4::secure_coroutine_module::i_io_uring_control::get_id(rpc::get_version()))
         {
             RPC_ERROR("create_child_enclave_zone inbound interface id does not match i_io_uring_control");
             result.error_code = rpc::error::INVALID_INTERFACE_ID();
@@ -154,7 +155,7 @@ namespace rpc::sgx::coro::enclave
         }
 
         auto control_query
-            = CO_AWAIT object_proxy->template query_interface<rpc::sgx::coro::protocol::i_io_uring_control>(false);
+            = CO_AWAIT object_proxy->template query_interface<rpc::v4::secure_coroutine_module::i_io_uring_control>(false);
         if (control_query.error_code != rpc::error::OK())
         {
             result.error_code = control_query.error_code;

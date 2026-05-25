@@ -316,24 +316,28 @@ c++/transports/sgx_coroutine/host/include/...
 c++/transports/sgx_coroutine/host/src/...
 c++/transports/sgx_coroutine/enclave/include/...
 c++/transports/sgx_coroutine/enclave/src/...
-c++/transports/sgx_coroutine/common/include/...
+c++/transports/secure_coroutine_module/include/...
+c++/transports/secure_coroutine_module/interfaces/secure_coroutine_module/secure_coroutine_module.idl
 c++/transports/sgx_coroutine/edl/...
 ```
 
 Host-only APIs belong under `rpc::sgx::coro::host`. Enclave-only APIs belong
-under `rpc::sgx::coro::enclave`. Shared protocol and queue helpers stay under
-`rpc::sgx::coro::common` or `rpc::sgx::coro::protocol`.
+under `rpc::sgx::coro::enclave`. Shared secure-module control contracts that
+are not specific to SGX belong under `rpc::v4::secure_coroutine_module`; SGX
+bootstrap helpers belong in the SGX host/enclave implementation because their
+memory-safety rules are ECALL-specific.
 
-The existing file name `canopy_coroutine_enclave.idl` is too broad and should
-be renamed to `coroutine_enclave.idl`. The SGX EDL file can keep whatever name
-is easiest for the SGX build, but generated C++ IDL target names should stop
-encoding the old `canopy_` prefix once the rename is complete.
+The shared wire IDL belongs to `secure_coroutine_module/secure_coroutine_module.idl`
+with generated targets named from `secure_coroutine_module`.
+The SGX EDL file can keep whatever name is easiest for the SGX build because
+it only defines the SGX ECALL/OCALL byte bridge.
 
 The SGX coroutine transport is enclave-only. If `CANOPY_BUILD_ENCLAVE` is
 false, neither the blocking SGX transport nor the SGX coroutine transport
-should be configured, including fake-SGX builds. The private
-`coroutine_enclave.idl` target is also SGX/enclave-only; non-enclave coroutine
-builds should not learn about or depend on it.
+should be configured, including fake-SGX builds. The generic
+`secure_coroutine_module` target may still be configured for
+future secure coroutine module transports; same-zone host code should continue
+to use the native io_uring controller directly rather than this brokered IDL.
 
 Prefer target usage requirements over repeated include-directory plumbing.
 When a target publicly links another target, it should inherit the generated

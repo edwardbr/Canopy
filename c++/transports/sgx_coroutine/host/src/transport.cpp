@@ -4,8 +4,6 @@
  */
 
 #include <transports/sgx_coroutine/host/transport.h>
-#include <transports/sgx_coroutine/common/startup_status.h>
-#include <edl/coroutine_enclave.h>
 #include <untrusted/canopy_coroutine_enclave_u.h>
 #include <transports/streaming/transport.h>
 #include <streaming/stream_transport.h>
@@ -20,6 +18,7 @@
 #include <thread>
 #include <tuple>
 #include <utility>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 
 #ifndef CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG
 #  define CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG SGX_DEBUG_FLAG
@@ -34,7 +33,7 @@ namespace rpc::sgx::coro::host
 {
     namespace
     {
-        using namespace rpc::sgx::coro::protocol;
+        using namespace rpc::v4::secure_coroutine_module;
 
         constexpr rpc::encoding sgx_bootstrap_init_request_encoding = rpc::encoding::yas_binary;
         constexpr uint64_t sgx_bootstrap_init_request_encoding_value
@@ -44,7 +43,47 @@ namespace rpc::sgx::coro::host
         constexpr size_t max_startup_option_value_bytes = 4096;
         constexpr size_t max_startup_options_total_bytes = 64U * 1024U;
 
-        bool signal_peer_closed(common::queue_type* send_queue)
+        inline auto startup_load_error(const error_code* value) noexcept -> error_code
+        {
+            static_assert(sizeof(error_code) == sizeof(int));
+            return __atomic_load_n(value, __ATOMIC_ACQUIRE);
+        }
+
+        inline auto startup_store_error(
+            error_code* value,
+            error_code new_value) noexcept -> void
+        {
+            static_assert(sizeof(error_code) == sizeof(int));
+            __atomic_store_n(value, new_value, __ATOMIC_RELEASE);
+        }
+
+        inline auto startup_load_state(const startup_state* value) noexcept -> startup_state
+        {
+            using state_word = std::uint32_t;
+            static_assert(sizeof(startup_state) == sizeof(state_word));
+            const auto loaded = __atomic_load_n(reinterpret_cast<const state_word*>(value), __ATOMIC_ACQUIRE);
+            return static_cast<startup_state>(loaded);
+        }
+
+        inline auto startup_store_state(
+            startup_state* value,
+            startup_state state) noexcept -> void
+        {
+            using state_word = std::uint32_t;
+            static_assert(sizeof(startup_state) == sizeof(state_word));
+            const auto stored = static_cast<state_word>(state);
+            __atomic_store_n(reinterpret_cast<state_word*>(value), stored, __ATOMIC_RELEASE);
+        }
+
+        inline auto initialise_startup_status(
+            startup_state& state,
+            error_code& error) noexcept -> void
+        {
+            startup_store_state(&state, startup_state::pending);
+            startup_store_error(&error, 0);
+        }
+
+        bool signal_peer_closed(streaming::spsc_queue::queue_type* send_queue)
         {
             if (!send_queue)
                 return false;
@@ -79,12 +118,12 @@ namespace rpc::sgx::coro::host
             auto deadline = std::chrono::steady_clock::now() + timeout;
             while (std::chrono::steady_clock::now() < deadline)
             {
-                auto state = common::startup_load_state(startup_state_word);
+                auto state = startup_load_state(startup_state_word);
                 if (startup_state_matches(state, expected_state))
                     CO_RETURN rpc::error::OK();
 
                 if (state == startup_state::failed)
-                    CO_RETURN common::startup_load_error(startup_error_code);
+                    CO_RETURN startup_load_error(startup_error_code);
 
                 // This is host-side enclave bootstrap, before the stream pumps
                 // are established. It must be driven by the service scheduler;
@@ -151,8 +190,8 @@ namespace rpc::sgx::coro::host
             if (!startup_state_word || !startup_error_code)
                 return;
 
-            common::startup_store_error(startup_error_code, error_code);
-            common::startup_store_state(startup_state_word, startup_state::failed);
+            startup_store_error(startup_error_code, error_code);
+            startup_store_state(startup_state_word, startup_state::failed);
         }
 
         int validate_startup_options(
@@ -225,14 +264,20 @@ namespace rpc::sgx::coro::host
         std::shared_ptr<streaming::stream> stream_;
     };
 
+    transport::enclave_owner::thread_state::thread_state(uint64_t eid)
+        : eid_(eid)
+    {
+        initialise_startup_status(startup_state_, startup_error_code_);
+    }
+
     void transport::enclave_owner::request_shutdown() const
     {
         auto state = state_;
         if (state)
         {
-            auto current_state = common::startup_load_state(&state->startup_state_);
+            auto current_state = startup_load_state(&state->startup_state_);
             if (current_state != startup_state::failed && current_state != startup_state::stopped)
-                common::startup_store_state(&state->startup_state_, startup_state::shutting_down);
+                startup_store_state(&state->startup_state_, startup_state::shutting_down);
         }
     }
 
@@ -506,8 +551,8 @@ namespace rpc::sgx::coro::host
         auto adjacent_zone_id = zone_result.zone_id;
         set_adjacent_zone_id(adjacent_zone_id);
 
-        host_to_enclave_queue_ = std::make_shared<common::queue_type>();
-        enclave_to_host_queue_ = std::make_shared<common::queue_type>();
+        host_to_enclave_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
+        enclave_to_host_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
 
         queue_stream_ = std::make_shared<streaming::spsc_queue::stream>(
             host_to_enclave_queue_, enclave_to_host_queue_, svc->get_scheduler());

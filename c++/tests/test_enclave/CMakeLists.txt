@@ -103,7 +103,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       transport_local_enclave
       canopy_io_uring_enclave
       common_enclave
-      coroutine_enclave_idl_enclave
+      secure_coroutine_module_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
       example_shared_idl_enclave

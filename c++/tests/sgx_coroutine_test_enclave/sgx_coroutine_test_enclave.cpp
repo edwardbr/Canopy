@@ -8,7 +8,7 @@
 #include <rpc/rpc.h>
 #include <example/example.h>
 #include <io_uring/controller.h>
-#include <edl/coroutine_enclave.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 #include <io_uring_test/test.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 

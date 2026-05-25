@@ -4,10 +4,9 @@
  */
 
 #include <canopy/fake_sgx/runtime.h>
-#include <edl/coroutine_enclave.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 #include <rpc/rpc.h>
-#include <transports/sgx_coroutine/common/shared_queue.h>
-#include <transports/sgx_coroutine/common/startup_status.h>
+#include <streaming/spsc_queue/stream.h>
 #include <untrusted/canopy_coroutine_enclave_u.h>
 
 #include <cstddef>
@@ -84,9 +83,9 @@ extern "C"
         auto enclave_req = copy_to_enclave_buffer(req, req_sz);
 
         call.add_inside(enclave_req.data(), enclave_req.size);
-        if (request_type_id == rpc::id<rpc::sgx::coro::protocol::init_request>::get(rpc::get_version()))
+        if (request_type_id == rpc::id<rpc::v4::secure_coroutine_module::init_request>::get(rpc::get_version()))
         {
-            rpc::sgx::coro::protocol::init_request init_request{};
+            rpc::v4::secure_coroutine_module::init_request init_request{};
             auto decode_error = rpc::deserialise(
                 normalise_request_encoding(request_encoding),
                 rpc::byte_span{reinterpret_cast<const uint8_t*>(enclave_req.data()), enclave_req.size},
@@ -94,11 +93,11 @@ extern "C"
             if (decode_error.empty())
             {
                 call.add_outside(
-                    pointer_from_request_address(init_request.host_to_enclave_queue_ptr),
-                    sizeof(rpc::sgx::coro::common::queue_type));
+                    pointer_from_request_address(init_request.parent_to_runtime_queue_ptr),
+                    sizeof(streaming::spsc_queue::queue_type));
                 call.add_outside(
-                    pointer_from_request_address(init_request.enclave_to_host_queue_ptr),
-                    sizeof(rpc::sgx::coro::common::queue_type));
+                    pointer_from_request_address(init_request.runtime_to_parent_queue_ptr),
+                    sizeof(streaming::spsc_queue::queue_type));
                 if (init_request.state)
                     call.add_outside(init_request.state, sizeof(*init_request.state));
                 if (init_request.error)

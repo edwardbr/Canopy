@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <edl/coroutine_enclave.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 #include <sgx_urts.h>
 
 #include <cstddef>
