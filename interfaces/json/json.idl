@@ -1,0 +1,22 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+// Forwarding IDL for the C++ JSON DOM. This lets generated IDL code use
+// json::v1::object/map/array as first-class Canopy parameters while the C++
+// implementation lives in c++/subcomponents/json.
+
+namespace json
+{
+#cpp_quote(R^multiline(
+    // Placeholder namespace content: the real C++ types are provided by the
+    // include emitted below.
+)multiline^)
+}
+
+#cpp_quote(R^multiline(
+
+#include <json/json_dom.h>
+
+)multiline^)

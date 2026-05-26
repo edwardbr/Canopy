@@ -74,6 +74,11 @@ namespace nanopb_generator
                || normalized == "std::vector<char>" || normalized == "std::vector<signed char>";
     }
 
+    bool is_json_dom_type(const std::string& type)
+    {
+        return proto_generator::is_json_dom_type(normalize_type(type));
+    }
+
     bool is_pointer_type(const std::string& type)
     {
         return type.find('*') != std::string::npos;
@@ -253,8 +258,8 @@ namespace nanopb_generator
     {
         if (is_optional_type(type))
             return is_unsupported_nanopb_field_type(optional_inner_type(type));
-        if (is_interface_type(type) || is_byte_vector_type(type) || is_repeated_varint_type(type)
-            || is_sequence_structure_type(type) || is_dictionary_structure_type(type))
+        if (is_interface_type(type) || is_byte_vector_type(type) || is_json_dom_type(type)
+            || is_repeated_varint_type(type) || is_sequence_structure_type(type) || is_dictionary_structure_type(type))
             return false;
         return is_sequence_type(type) || is_map_type(type) || is_int128_type(type)
                || (is_template_type(type) && !is_user_template_instantiation(type));
@@ -596,7 +601,8 @@ namespace nanopb_generator
         const auto normalized = normalize_type(inner_type);
 
         if (is_scalar_type(normalized) || is_string_type(normalized) || is_byte_vector_type(normalized)
-            || is_pointer_type(normalized) || is_interface_type(normalized) || is_enum_type(lib, normalized))
+            || is_json_dom_type(normalized) || is_pointer_type(normalized) || is_interface_type(normalized)
+            || is_enum_type(lib, normalized))
             return false;
 
         if (is_repeated_varint_type(normalized) || is_sequence_structure_type(normalized)
@@ -701,6 +707,17 @@ namespace nanopb_generator
                 state_prefix,
                 source_value_expr,
                 source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("std::vector<char> {}_buffer;", state_prefix);
+            cpp("{}.nanopb_serialise({}_buffer);", source_value_expr, state_prefix);
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state {{ {}_buffer.data(), {}_buffer.size() }};",
+                state_prefix,
+                state_prefix,
+                state_prefix);
             cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, field_name);
             cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
         }
@@ -858,6 +875,13 @@ namespace nanopb_generator
             cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", target_expr, field_name);
             cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
         }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("std::vector<uint8_t> {}_decoded;", state_prefix);
+            cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", state_prefix, state_prefix);
+            cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
         else if (is_repeated_varint_type(field_type))
         {
             const auto inner_type = vector_inner_type(field_type);
@@ -949,6 +973,11 @@ namespace nanopb_generator
         else if (is_byte_vector_type(field_type))
         {
             cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", dest_expr, state_prefix, state_prefix);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("std::vector<char> {}_buffer({}_decoded.begin(), {}_decoded.end());", state_prefix, state_prefix, state_prefix);
+            cpp("{}.nanopb_deserialise({}_buffer);", dest_expr, state_prefix);
         }
         else if (is_repeated_varint_type(field_type) || is_sequence_structure_type(field_type)
                  || is_dictionary_structure_type(field_type))
@@ -1054,6 +1083,17 @@ namespace nanopb_generator
                 member_name,
                 source_expr,
                 member_name);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, member_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, member_name, state_prefix);
+        }
+        else if (is_json_dom_type(member_type))
+        {
+            cpp("std::vector<char> {}_buffer;", state_prefix);
+            cpp("{}.{}.nanopb_serialise({}_buffer);", source_expr, member_name, state_prefix);
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state {{ {}_buffer.data(), {}_buffer.size() }};",
+                state_prefix,
+                state_prefix,
+                state_prefix);
             cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, member_name);
             cpp("{}.{}.arg = &{}_state;", target_expr, member_name, state_prefix);
         }
@@ -1281,6 +1321,15 @@ namespace nanopb_generator
                 cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", target_expr, member_name);
                 cpp("{}.{}.arg = &{}_state;", target_expr, member_name, current_prefix);
             }
+            else if (is_json_dom_type(member_type))
+            {
+                cpp("std::vector<uint8_t> {}_decoded;", current_prefix);
+                cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};",
+                    current_prefix,
+                    current_prefix);
+                cpp("{}.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", target_expr, member_name);
+                cpp("{}.{}.arg = &{}_state;", target_expr, member_name, current_prefix);
+            }
             else if (is_repeated_varint_type(member_type))
             {
                 const auto inner_type = vector_inner_type(member_type);
@@ -1436,6 +1485,14 @@ namespace nanopb_generator
                     member_name,
                     current_prefix,
                     current_prefix);
+            }
+            else if (is_json_dom_type(member_type))
+            {
+                cpp("std::vector<char> {}_buffer({}_decoded.begin(), {}_decoded.end());",
+                    current_prefix,
+                    current_prefix,
+                    current_prefix);
+                cpp("{}.{}.nanopb_deserialise({}_buffer);", target_expr, member_name, current_prefix);
             }
             else if (is_repeated_varint_type(member_type) || is_sequence_structure_type(member_type)
                      || is_dictionary_structure_type(member_type))
@@ -1710,6 +1767,13 @@ namespace nanopb_generator
                 cpp("msg.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", field_name);
                 cpp("msg.{}.arg = &{}_state;", field_name, field_name);
             }
+            else if (is_json_dom_type(member_type))
+            {
+                cpp("std::vector<uint8_t> {}_decoded;", field_name);
+                cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
+                cpp("msg.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", field_name);
+                cpp("msg.{}.arg = &{}_state;", field_name, field_name);
+            }
             else if (is_repeated_varint_type(member_type))
             {
                 const auto inner_type = vector_inner_type(member_type);
@@ -1825,6 +1889,11 @@ namespace nanopb_generator
             {
                 cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", member_name, field_name, field_name);
             }
+            else if (is_json_dom_type(member_type))
+            {
+                cpp("std::vector<char> {}_buffer({}_decoded.begin(), {}_decoded.end());", field_name, field_name, field_name);
+                cpp("{}.nanopb_deserialise({}_buffer);", member_name, field_name);
+            }
             else if (is_repeated_varint_type(member_type))
             {
                 cpp("{} = std::move({}_decoded);", member_name, field_name);
@@ -1912,6 +1981,13 @@ namespace nanopb_generator
                 cpp("__message.{}.arg = &{}_state;", field_name, field_name);
             }
             else if (is_byte_vector_type(param_type))
+            {
+                cpp("std::vector<uint8_t> {}_decoded;", field_name);
+                cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
+                cpp("__message.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", field_name);
+                cpp("__message.{}.arg = &{}_state;", field_name, field_name);
+            }
+            else if (is_json_dom_type(param_type))
             {
                 cpp("std::vector<uint8_t> {}_decoded;", field_name);
                 cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
@@ -2021,6 +2097,17 @@ namespace nanopb_generator
                 field_name,
                 source_name,
                 source_name);
+            cpp("__message.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", field_name);
+            cpp("__message.{}.arg = &{}_state;", field_name, field_name);
+        }
+        else if (is_json_dom_type(param_type))
+        {
+            cpp("std::vector<char> {}_buffer;", field_name);
+            cpp("{}.nanopb_serialise({}_buffer);", source_name, field_name);
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state {{ {}_buffer.data(), {}_buffer.size() }};",
+                field_name,
+                field_name,
+                field_name);
             cpp("__message.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", field_name);
             cpp("__message.{}.arg = &{}_state;", field_name, field_name);
         }
@@ -2143,6 +2230,11 @@ namespace nanopb_generator
         else if (is_byte_vector_type(param_type))
         {
             cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", destination_name, field_name, field_name);
+        }
+        else if (is_json_dom_type(param_type))
+        {
+            cpp("std::vector<char> {}_buffer({}_decoded.begin(), {}_decoded.end());", field_name, field_name, field_name);
+            cpp("{}.nanopb_deserialise({}_buffer);", destination_name, field_name);
         }
         else if (is_repeated_varint_type(param_type))
         {

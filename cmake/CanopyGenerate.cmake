@@ -813,6 +813,12 @@ function(
     endif()
 
     target_link_libraries(${name}_idl PUBLIC ${dep})
+    if(TARGET ${name}_protobuf_generated)
+      target_link_libraries(${name}_protobuf_generated PRIVATE ${dep})
+    endif()
+    if(TARGET ${name}_nanopb_generated)
+      target_link_libraries(${name}_nanopb_generated PRIVATE ${dep})
+    endif()
   endforeach()
 
   foreach(dep ${params_link_libraries})

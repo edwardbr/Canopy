@@ -122,6 +122,17 @@ namespace proto_generator
         return false;
     }
 
+    bool is_json_dom_type(const std::string& type_name)
+    {
+        auto normalized = normalise_cpp_type(type_name);
+        if (normalized.rfind("::", 0) == 0)
+            normalized.erase(0, 2);
+
+        return normalized == "json::v1::object" || normalized == "json::object" || normalized == "json::v1::map"
+               || normalized == "json::map" || normalized == "json::v1::array" || normalized == "json::array"
+               || normalized == "json::v1::number" || normalized == "json::number";
+    }
+
     bool is_optional_type(
         const std::string& type,
         std::string& inner_type)
@@ -278,6 +289,9 @@ namespace proto_generator
 
         if (is_pointer)
             return "uint64";
+
+        if (is_json_dom_type(type))
+            return "bytes";
 
         if (type == "std::vector<uint8_t>" || type == "std::vector<unsigned char>" || type == "std::vector<char>"
             || type == "std::vector<signed char>")

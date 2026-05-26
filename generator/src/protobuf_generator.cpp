@@ -1527,6 +1527,11 @@ namespace protobuf_generator
                || norm_type == "std::vector<signed char>";
     }
 
+    bool is_json_dom_type(const std::string& type_str)
+    {
+        return proto_generator::is_json_dom_type(normalize_type(type_str));
+    }
+
     bool is_simple_protobuf_type(const std::string& type_str)
     {
         std::string norm_type = normalize_type(type_str);
@@ -1817,6 +1822,14 @@ namespace protobuf_generator
                 // Pointer types marshal the address only (uint64_t)
                 cpp("__request.set_{}({});", param_accessor, param_name);
             }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("{}.protobuf_serialise({}_protobuf_buffer);", param_name, param_name);
+                cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *__request.mutable_{}());",
+                    param_name,
+                    param_accessor);
+            }
             else if (is_simple_protobuf_type(param_type))
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
@@ -2012,6 +2025,14 @@ namespace protobuf_generator
             {
                 // Pointer types marshal the address only (uint64_t)
                 cpp("{} = __response.{}();", param_name, param_accessor);
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("rpc::serialization::protobuf::deserialize_bytes(__response.{}(), {}_protobuf_buffer);",
+                    param_accessor,
+                    param_name);
+                cpp("{}.protobuf_deserialise({}_protobuf_buffer);", param_name, param_name);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -2213,6 +2234,14 @@ namespace protobuf_generator
                 // Pointer types marshal the address only (uint64_t)
                 cpp("{} = __request.{}();", param_name, param_accessor);
             }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("rpc::serialization::protobuf::deserialize_bytes(__request.{}(), {}_protobuf_buffer);",
+                    param_accessor,
+                    param_name);
+                cpp("{}.protobuf_deserialise({}_protobuf_buffer);", param_name, param_name);
+            }
             else if (is_simple_protobuf_type(param_type))
             {
                 // Simple protobuf types (primitives, std::string, containers with scalar elements)
@@ -2397,6 +2426,14 @@ namespace protobuf_generator
             {
                 // Pointer types marshal the address only (uint64_t)
                 cpp("__response.set_{}({});", param_accessor, param_name);
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("{}.protobuf_serialise({}_protobuf_buffer);", param_name, param_name);
+                cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *__response.mutable_{}());",
+                    param_name,
+                    param_accessor);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -2891,6 +2928,16 @@ namespace protobuf_generator
                 proto_var,
                 field_accessor);
         }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("{}std::vector<char> {}_protobuf_buffer;", indent, field_name);
+            cpp("{}{}.protobuf_serialise({}_protobuf_buffer);", indent, source_expr, field_name);
+            cpp("{}rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *{}.mutable_{}());",
+                indent,
+                field_name,
+                proto_var,
+                field_accessor);
+        }
         else if (is_std_vector(field_type))
         {
             const auto inner_type = extract_template_inner_type(field_type);
@@ -3024,6 +3071,16 @@ namespace protobuf_generator
         else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
         {
             cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {});", indent, proto_var, field_accessor, dest_expr);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("{}std::vector<char> {}_protobuf_buffer;", indent, field_name);
+            cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {}_protobuf_buffer);",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name);
+            cpp("{}{}.protobuf_deserialise({}_protobuf_buffer);", indent, dest_expr, field_name);
         }
         else if (is_std_vector(field_type))
         {
@@ -3206,6 +3263,15 @@ namespace protobuf_generator
                     // Special case: std::vector<uint8_t> and std::vector<char> map to protobuf bytes field
                     cpp("// Serialize {} as bytes", field_type);
                     cpp("rpc::serialization::protobuf::serialize_bytes({}, *msg.mutable_{}());", member_name, field_accessor);
+                }
+                else if (is_json_dom_type(field_type))
+                {
+                    cpp("// Serialize {} as protobuf bytes", field_type);
+                    cpp("std::vector<char> {}_protobuf_buffer;", field_name);
+                    cpp("{}.protobuf_serialise({}_protobuf_buffer);", member_name, field_name);
+                    cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *msg.mutable_{}());",
+                        field_name,
+                        field_accessor);
                 }
                 else if (is_std_vector(field_type))
                 {
@@ -3494,6 +3560,15 @@ namespace protobuf_generator
                     // Special case: std::vector<uint8_t> and std::vector<char> map to protobuf bytes field
                     cpp("// Deserialize {} from bytes", field_type);
                     cpp("rpc::serialization::protobuf::deserialize_bytes(msg.{}(), {});", field_accessor, member_name);
+                }
+                else if (is_json_dom_type(field_type))
+                {
+                    cpp("// Deserialize {} from protobuf bytes", field_type);
+                    cpp("std::vector<char> {}_protobuf_buffer;", field_name);
+                    cpp("rpc::serialization::protobuf::deserialize_bytes(msg.{}(), {}_protobuf_buffer);",
+                        field_accessor,
+                        field_name);
+                    cpp("{}.protobuf_deserialise({}_protobuf_buffer);", member_name, field_name);
                 }
                 else if (is_std_vector(field_type))
                 {

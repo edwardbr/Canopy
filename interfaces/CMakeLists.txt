@@ -21,6 +21,28 @@ CanopyGenerate(
   additional_headers stdint.h no_include_rpc_headers ON)
 
 CanopyGenerate(
+  json
+  json/json.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  nanopb
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+target_include_directories(json_idl PUBLIC "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+foreach(json_generated_target json_protobuf_generated json_nanopb_generated)
+  if(TARGET ${json_generated_target})
+    target_include_directories(${json_generated_target}
+                               PRIVATE "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+  endif()
+endforeach()
+
+CanopyGenerate(
   route_attestation_protocol
   attestation/route_attestation_protocol.idl
   ${CMAKE_CURRENT_SOURCE_DIR}

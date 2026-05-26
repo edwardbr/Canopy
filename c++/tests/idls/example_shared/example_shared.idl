@@ -3,6 +3,8 @@
  *   All rights reserved.
  */
 
+#import "json/json.idl"
+
 typedef int error_code;
 
 namespace xxx
@@ -85,6 +87,7 @@ namespace xxx
 
         error_code do_multi_val(int val1, int val2);
         error_code do_multi_complicated_val(const something_more_complicated val1, const something_more_complicated val2);
+        error_code exchange_json_object([in] const json::v1::object& in_val, [out] json::v1::object& out_val);
 
         error_code receive_interface([out]rpc::shared_ptr<i_foo>& val);//can be null
         error_code give_interface([in]rpc::shared_ptr<i_baz> val);//can be null

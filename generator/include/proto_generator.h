@@ -51,6 +51,8 @@ namespace proto_generator
         const class_entity& lib,
         const std::string& type_name);
 
+    bool is_json_dom_type(const std::string& type_name);
+
     std::string cpp_type_to_proto_type(const std::string& cpp_type);
 
     std::string cpp_type_to_proto_type(

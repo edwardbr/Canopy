@@ -9,6 +9,7 @@
 #include <mutex>
 #include <example/example.h>
 
+#include <json/json_dom.h>
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
@@ -292,6 +293,23 @@ namespace marshalled_tests
             std::ignore = val1;
             std::ignore = val2;
             RPC_DEBUG("got {}", val1.map_val.begin()->first);
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_json_object(
+            const json::v1::object& in_val,
+            json::v1::object& out_val) override
+        {
+            json::v1::array details;
+            details.emplace_back("json");
+            details.emplace_back(int64_t{3});
+
+            json::v1::map response;
+            response["echo"] = in_val;
+            response["handled"] = json::v1::object(true);
+            response["details"] = json::v1::object(std::move(details));
+            out_val = std::move(response);
             CO_RETURN rpc::error::OK();
         }
 

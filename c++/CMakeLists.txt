@@ -12,6 +12,7 @@ add_subdirectory(security/attestation)
 add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
+add_subdirectory(subcomponents/json)
 
 # The abstract streaming::stream interface is dual-mode; concrete impls inside
 # c++/streaming (tcp, tls, mbedtls, spsc, attestation, websocket) gate
