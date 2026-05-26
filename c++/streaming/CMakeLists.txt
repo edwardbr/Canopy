@@ -6,19 +6,23 @@
 cmake_minimum_required(VERSION 3.24)
 
 add_subdirectory(core)
+# tcp, websocket and tls (OpenSSL) are dual-mode. mbedtls/spsc/attestation
+# are still coroutine-only.
 add_subdirectory(tcp)
+if(CANOPY_BUILD_WEBSOCKET)
+  add_subdirectory(websocket)
+endif()
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
   add_subdirectory(tls)
 endif()
-if(CANOPY_BUILD_MBEDTLS AND TARGET canopy_mbedtls_tls)
-  add_subdirectory(mbedtls)
-endif()
-add_subdirectory(spsc_queue)
-add_subdirectory(spsc_wrapping)
-add_subdirectory(attestation)
 
-if(CANOPY_BUILD_WEBSOCKET)
-  add_subdirectory(websocket)
+if(CANOPY_BUILD_COROUTINE)
+  if(CANOPY_BUILD_MBEDTLS AND TARGET canopy_mbedtls_tls)
+    add_subdirectory(mbedtls)
+  endif()
+  add_subdirectory(spsc_queue)
+  add_subdirectory(spsc_wrapping)
+  add_subdirectory(attestation)
 endif()
 
 if(CANOPY_BUILD_TEST

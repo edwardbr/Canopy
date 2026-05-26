@@ -76,17 +76,26 @@ if(CANOPY_BUILD_ENCLAVE)
 endif()
 
 # ######################################################################################################################
+set(_rpc_blocking_executor_sources)
+if(NOT CANOPY_BUILD_COROUTINE)
+  list(APPEND _rpc_blocking_executor_sources
+       include/rpc/internal/executor/blocking_executor.h
+       src/executor/blocking_executor.cpp)
+endif()
+
 add_library(
   rpc
   include/rpc/internal/address_utils.h
   include/rpc/internal/assert.h
   include/rpc/internal/casting_interface.h
   include/rpc/internal/error_codes.h
+  include/rpc/internal/executor/executor.h
   include/rpc/internal/logger.h
   include/rpc/internal/marshaller.h
   include/rpc/internal/object_proxy.h
   include/rpc/internal/pass_through.h
   include/rpc/internal/polyfill/atomic_shared_ptr.h
+  include/rpc/internal/polyfill/io_status.h
   include/rpc/internal/serialiser.h
   include/rpc/internal/service_proxy.h
   include/rpc/internal/service.h
@@ -94,6 +103,7 @@ add_library(
   include/rpc/internal/transport.h
   include/rpc/internal/types.h
   include/rpc/internal/version.h
+  ${_rpc_blocking_executor_sources}
   src/address_utils.cpp
   src/rpc_types.cpp
   src/casting_interface.cpp

@@ -153,7 +153,7 @@ Canopy provides several transport implementations, each optimized for different 
 | [Local](../transports/local.md) | In-process parent-child zone communication | None |
 | [Dynamic Library](../transports/dynamic_library.md) | In-process DLL-backed child zones | Blocking or coroutine variant |
 | [IPC Transport](../transports/dynamic_library.md) | Process-owned child zone connections over SPSC streams | Coroutines |
-| [TCP](../transports/tcp.md) | Network communication between machines | Coroutines |
+| [TCP](../transports/tcp.md) | Network communication between machines | Coroutine scheduler or blocking executor |
 | [SPSC and IPC](../transports/spsc_and_ipc.md) | Lock-free inter-process communication and SPSC-backed process transport | Coroutines |
 | [SGX](../transports/sgx.md) | Secure enclave communication | SGX SDK |
 | [Custom](../transports/custom.md) | User-defined transport implementations | Depends on implementation |

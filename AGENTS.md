@@ -53,7 +53,7 @@ Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files
 - `generator/` - IDL code generator
 - `transports/` - transport implementations
   - current transport subdirectories include `direct`, `local`, `mock_test`, `sgx`, `streaming`
-- `streaming/` - coroutine-only streaming stack and tests
+- `streaming/` - stream interfaces and concrete stream implementations; TCP, WebSocket, and OpenSSL TLS are dual-mode, while mbedtls/SPSC/attestation/io_uring remain coroutine-only or conditionally built
 - `types/` - additional types, including JSON support
 - `telemetry/` - telemetry/logging support
 - `tests/` - host tests, fixtures, fuzz tests, unit tests, schema tests, serializer tests
@@ -115,7 +115,9 @@ Use the exact preset names from `CMakePresets.json`. Do not normalize or rename 
 - `CANOPY_BUILD_DEMOS` defaults to `ON`.
 - `CANOPY_BUILD_BENCHMARKING` defaults to `ON`.
 - `CANOPY_BUILD_COROUTINE` defaults to `OFF`.
-- `streaming/` is only added when coroutine builds are enabled.
+- `streaming/` is added in both blocking and coroutine builds; individual stream implementations gate coroutine-only pieces locally.
+- `CANOPY_BUILD_RUST` defaults to `OFF`.
+- `CANOPY_BUILD_TEST=OFF` also disables integration/fuzz test targets.
 - `tests/test_enclave` is only added when `CANOPY_BUILD_ENCLAVE=ON`.
 - `tests/json_schema_test` is only added when `NLOHMANN_JSON_CONFIG_INSTALL_DIR` is defined.
 

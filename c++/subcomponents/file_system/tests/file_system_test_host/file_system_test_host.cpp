@@ -226,9 +226,9 @@ namespace
                 "file system test enclave", root_service_, CANOPY_FILE_SYSTEM_TEST_ENCLAVE_PATH);
             transports_.push_back(transport);
 
-            auto result
-                = SYNC_WAIT((rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, rpc::file_system::i_manager>(
-                    root_service_, "file system test enclave", transport, {}, host_controller_options)));
+            auto result = run_on_manual_scheduler<rpc::service_connect_result<rpc::file_system::i_manager>>(
+                rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, rpc::file_system::i_manager>(
+                    root_service_, "file system test enclave", transport, {}, host_controller_options));
             connect_error_ = result.error_code;
             manager_ = std::move(result.output_interface);
         }
@@ -287,6 +287,51 @@ namespace
             }
             teardown_done_.store(true);
             CO_RETURN;
+        }
+
+        template<
+            class Result,
+            class Awaitable>
+        Result run_on_manual_scheduler(
+            Awaitable&& awaitable,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{20000})
+        {
+            struct scheduler_state
+            {
+                Result result{};
+                std::atomic<bool> done{false};
+            };
+
+            auto state = std::make_shared<scheduler_state>();
+            state->result.error_code = rpc::error::CALL_TIMEOUT();
+
+            auto runner = [task = std::forward<Awaitable>(awaitable), state]() mutable -> CORO_TASK(void)
+            {
+                state->result = CO_AWAIT task;
+                state->done.store(true, std::memory_order_release);
+                CO_RETURN;
+            };
+
+            if (!scheduler_ || !scheduler_->spawn_detached(runner()))
+            {
+                ADD_FAILURE() << "failed to spawn file-system SGX setup coroutine";
+                return state->result;
+            }
+
+            const auto deadline = std::chrono::steady_clock::now() + timeout;
+            while (!state->done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
+            {
+                scheduler_->process_events(std::chrono::milliseconds{1});
+            }
+
+            if (!state->done.load(std::memory_order_acquire))
+            {
+                ADD_FAILURE() << "timed out while connecting file-system SGX test enclave";
+                Result timeout_result{};
+                timeout_result.error_code = rpc::error::CALL_TIMEOUT();
+                return timeout_result;
+            }
+            return state->result;
         }
 
         std::shared_ptr<coro::scheduler> scheduler_;

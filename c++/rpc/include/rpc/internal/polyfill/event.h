@@ -37,7 +37,12 @@ namespace rpc
     class event
     {
     public:
-        explicit event(bool initially_set = true)
+        // Default matches the coroutine branch (libcoro coro::event): an event
+        // is created in the UNSIGNALLED state and consumers wait for a
+        // producer to call set(). The previous blocking default of `true`
+        // was inconsistent with coro mode and caused waits to return
+        // immediately on freshly-constructed events.
+        explicit event(bool initially_set = false)
             : signaled_(initially_set)
         {
         }
@@ -62,6 +67,12 @@ namespace rpc
             std::lock_guard<std::mutex> lock(mutex_);
             return signaled_;
         }
+
+        // No-op in blocking builds. Present so transport code that calls
+        // set_scheduler() in the SGX coroutine branch compiles unchanged
+        // here without #ifdef islands at the call site. The argument is
+        // void* to avoid pulling in a scheduler forward declaration.
+        void set_scheduler(void* /*scheduler*/) { }
 
         void wait() const
         {

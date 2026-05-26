@@ -92,22 +92,22 @@ namespace websocket_demo
         websocket_service::websocket_service(
             std::string name,
             rpc::zone zone_id,
-            std::shared_ptr<rpc::coro::scheduler> scheduler)
+            rpc::executor_ptr executor)
             : rpc::root_service(
                   name.data(),
                   zone_id,
-                  scheduler)
+                  executor)
         {
         }
 
         websocket_service::websocket_service(
             std::string name,
             const rpc::service_config& config,
-            std::shared_ptr<rpc::coro::scheduler> scheduler)
+            rpc::executor_ptr executor)
             : rpc::root_service(
                   name.data(),
                   config,
-                  scheduler)
+                  executor)
         {
         }
 

@@ -305,7 +305,7 @@ namespace
         fmt::print(", dll");
 #else
         fmt::print(
-            ", libcoro_dll_scheduled, libcoro_host_scheduled, ipc_direct, ipc_dll, spsc, tcp, io_uring, "
+            ", libcoro_dll_scheduled, libcoro_host_scheduled, ipc_direct, ipc_dll, spsc, io_uring, "
             "io_uring_proactor_4k, io_uring_proactor_64k, io_uring_cooperative_4k, io_uring_cooperative_64k");
 #  ifdef CANOPY_BENCHMARK_SGX_COROUTINE
         fmt::print(
@@ -313,6 +313,16 @@ namespace
             "sgx_io_uring_cooperative_4k, sgx_io_uring_cooperative_64k, sgx_io_uring_pair, "
             "sgx_io_uring_pair_proactor_4k, sgx_io_uring_pair_proactor_64k, "
             "sgx_io_uring_pair_cooperative_4k, sgx_io_uring_pair_cooperative_64k");
+#  endif
+#endif
+        fmt::print(", tcp");
+#ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+        fmt::print(", tls+tcp");
+#endif
+#ifdef CANOPY_BUILD_WEBSOCKET
+        fmt::print(", ws+tcp");
+#  ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+        fmt::print(", tls+ws+tcp");
 #  endif
 #endif
         fmt::print("\nFormat names: yas_binary, yas_compressed");
@@ -1679,6 +1689,7 @@ int main(
         "spsc",
         [](rpc::encoding enc, size_t blob_size) { return run_spsc_benchmark(enc, blob_size); });
 
+#endif
     add_transport_jobs(
         jobs,
         filters,
@@ -1687,6 +1698,39 @@ int main(
         "tcp",
         [](rpc::encoding enc, size_t blob_size) { return run_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
 
+#ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+    add_transport_jobs(
+        jobs,
+        filters,
+        encodings,
+        blob_sizes,
+        "tls+tcp",
+        [](rpc::encoding enc, size_t blob_size)
+        { return run_tls_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
+#endif
+
+#ifdef CANOPY_BUILD_WEBSOCKET
+    add_transport_jobs(
+        jobs,
+        filters,
+        encodings,
+        blob_sizes,
+        "ws+tcp",
+        [](rpc::encoding enc, size_t blob_size)
+        { return run_websocket_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
+#  ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+    add_transport_jobs(
+        jobs,
+        filters,
+        encodings,
+        blob_sizes,
+        "tls+ws+tcp",
+        [](rpc::encoding enc, size_t blob_size)
+        { return run_tls_websocket_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
+#  endif
+#endif
+
+#ifdef CANOPY_BUILD_COROUTINE
     const std::vector<io_uring_benchmark_variant> io_uring_variants = {
         {"io_uring_proactor_4k", true, 4096},
         {"io_uring_proactor_64k", true, 65536},

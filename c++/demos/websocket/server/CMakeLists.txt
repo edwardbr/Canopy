@@ -9,23 +9,32 @@ if(NOT TARGET canopy_file_system)
 endif()
 
 set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET)
-if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
-  if(NOT TARGET streaming_mbedtls)
-    message(FATAL_ERROR "websocket_server requires streaming_mbedtls when CANOPY_SECURE_STREAM_BACKEND=MBEDTLS")
+# Secure stream is currently coroutine-only. In blocking builds the demo
+# runs over plain HTTP only; --cert/--key are rejected at runtime.
+if(CANOPY_BUILD_COROUTINE)
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    if(NOT TARGET streaming_mbedtls)
+      message(FATAL_ERROR "websocket_server requires streaming_mbedtls when CANOPY_SECURE_STREAM_BACKEND=MBEDTLS")
+    endif()
+    set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_mbedtls)
+  elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+    if(NOT TARGET streaming_tls)
+      message(FATAL_ERROR "websocket_server requires streaming_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
+    endif()
+    set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_tls)
+  else()
+    message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
   endif()
-  set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_mbedtls)
-elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
-  if(NOT TARGET streaming_tls)
-    message(FATAL_ERROR "websocket_server requires streaming_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
-  endif()
-  set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET streaming_tls)
-else()
-  message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
 endif()
 
 set(WEBSOCKET_DEMO_OPTIONAL_SRCS)
 set(WEBSOCKET_DEMO_OPTIONAL_LIBS)
 set(WEBSOCKET_DEMO_OPTIONAL_DEFINES)
+
+if(NOT CANOPY_BUILD_COROUTINE AND NOT CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+  message(STATUS "Forcing CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY=ON for non-coroutine websocket_server")
+  set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY ON)
+endif()
 
 if(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
   list(APPEND WEBSOCKET_DEMO_OPTIONAL_DEFINES CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
@@ -69,6 +78,14 @@ if(TARGET transport_websocket_enclave)
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
+# Video session / genie / face_track depend on libvpx and an async video
+# pipeline that hasn't been dual-moded yet. Keep them in the coroutine build
+# only; blocking builds get a slim REST + WS calculator demo.
+set(WEBSOCKET_DEMO_VIDEO_SRCS)
+if(CANOPY_BUILD_COROUTINE)
+  list(APPEND WEBSOCKET_DEMO_VIDEO_SRCS video_session.cpp genie_sprite.cpp face_track.cpp)
+endif()
+
 add_executable(
   websocket_server
   main.cpp
@@ -77,9 +94,7 @@ add_executable(
   rest_handler.cpp
   websocket_handler.cpp
   demo_zone.cpp
-  video_session.cpp
-  genie_sprite.cpp
-  face_track.cpp
+  ${WEBSOCKET_DEMO_VIDEO_SRCS}
   ${WEBSOCKET_DEMO_OPTIONAL_SRCS})
 
 target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES} ${WEBSOCKET_DEMO_OPTIONAL_DEFINES}

@@ -41,8 +41,8 @@ namespace websocket_protocol
 
             ~activity_tracker()
             {
-                if (svc_)
-                    svc_->spawn(transport_->cleanup(transport_, svc_));
+                if (svc_ && !svc_->SPAWN(transport_->cleanup(transport_, svc_)))
+                    transport_->set_status(rpc::transport_status::DISCONNECTED);
             }
         };
 
@@ -105,7 +105,7 @@ namespace websocket_protocol
         cleanup(
             std::shared_ptr<transport> transport,
             std::shared_ptr<rpc::service> svc);
-        bool is_valid(coro::net::io_status status);
+        bool is_valid(rpc::io_status status);
 
     private:
         std::shared_ptr<streaming::stream> stream_;

@@ -9,7 +9,7 @@ Scope note:
 
 - this document describes the current C++ TCP transport stack
 - the TCP transport described here is built on the C++ streaming transport
-  layer and coroutine runtime
+  layer; it supports either the coroutine scheduler or the blocking executor
 - see [C++ Status](../status/cpp.md), [Rust Status](../status/rust.md), and
   [JavaScript Status](../status/javascript.md) for implementation scope
 
@@ -23,8 +23,9 @@ Network communication between different machines or processes.
 
 ## Requirements
 
-- `CANOPY_BUILD_COROUTINE=ON` (requires libcoro)
-- Coroutine-based async I/O
+- Coroutine build with `rpc::coro::scheduler`, or blocking build with an
+  `rpc::blocking_executor` attached to the service
+- TCP server/listener use still requires an executor in both modes
 
 ## See Also
 
@@ -40,6 +41,10 @@ In the current C++ implementation, TCP support is provided by:
 - `rpc::stream_transport::transport`
 
 ## Server Setup with Listener
+
+The examples below use coroutine syntax. Blocking builds use the same listener
+and transport layering but construct a `streaming::tcp::endpoint` acceptor and
+pass an `rpc::blocking_executor` to the owning service.
 
 ```cpp
 auto listener = std::make_unique<streaming::listener>(

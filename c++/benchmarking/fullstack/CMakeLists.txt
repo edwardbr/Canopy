@@ -3,7 +3,7 @@
    All rights reserved.
 ]]
 #
-# Fullstack Benchmark CMakeLists.txt Benchmarks covering SPSC and TCP transport with multiple encodings
+#Fullstack Benchmark CMakeLists.txt Benchmarks covering SPSC and TCP transport with multiple encodings
 #
 
 cmake_minimum_required(VERSION 3.24)
@@ -122,7 +122,16 @@ else()
     rpc_log)
 endif()
 
-add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp)
+set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL" AND TARGET streaming_tls)
+  set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET streaming_tls)
+elseif(CANOPY_BUILD_COROUTINE
+       AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
+       AND TARGET streaming_mbedtls)
+  set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
+endif()
+
+add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp src/benchmark_tcp.cpp)
 if(CANOPY_BUILD_COROUTINE)
   target_sources(
     benchmark
@@ -130,13 +139,21 @@ if(CANOPY_BUILD_COROUTINE)
             src/benchmark_libcoro_host_scheduled_dynamic_library.cpp
             src/benchmark_ipc.cpp
             src/benchmark_spsc.cpp
-            src/benchmark_tcp.cpp
             src/benchmark_io_uring.cpp)
   if(CANOPY_BUILD_ENCLAVE)
     target_sources(benchmark PRIVATE src/benchmark_sgx_coroutine.cpp)
   endif()
 endif()
 target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
+if(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
+  target_compile_definitions(
+    benchmark
+    PRIVATE CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+            CANOPY_FULLSTACK_BENCHMARK_CERT_DIR="${CANOPY_CPP_SOURCE_DIR}/benchmarking/streaming/certs")
+endif()
+if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
+  target_compile_definitions(benchmark PRIVATE CANOPY_BUILD_WEBSOCKET)
+endif()
 if(CANOPY_BUILD_COROUTINE)
   target_compile_definitions(
     benchmark
@@ -157,16 +174,27 @@ else()
 endif()
 target_include_directories(benchmark PRIVATE "${CANOPY_CPP_SOURCE_DIR}/benchmarking/fullstack/src"
                                              "${CANOPY_CPP_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
-target_link_libraries(benchmark PUBLIC comprehensive_idl transport_local rpc ${CANOPY_LIBRARIES})
+target_link_libraries(
+  benchmark
+  PUBLIC comprehensive_idl
+         transport_local
+         transport_streaming
+         streaming_tcp
+         rpc
+         ${CANOPY_LIBRARIES})
+if(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
+  target_link_libraries(benchmark PUBLIC ${FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET})
+endif()
+if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
+  target_link_libraries(benchmark PUBLIC streaming_websocket wslay)
+endif()
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     benchmark
-    PUBLIC transport_streaming
-           transport_libcoro_dll_scheduled_dynamic_library
+    PUBLIC transport_libcoro_dll_scheduled_dynamic_library
            transport_libcoro_host_scheduled_dynamic_library
            transport_ipc_transport
            streaming_spsc_queue
-           streaming_tcp
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
            rpc_log)
   if(CANOPY_BUILD_ENCLAVE)

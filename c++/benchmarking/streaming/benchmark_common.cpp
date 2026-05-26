@@ -5,7 +5,10 @@
 
 #include "benchmark_common.h"
 
+#include <streaming/tcp/stream.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <fstream>
@@ -17,6 +20,10 @@
 #include <system_error>
 
 #include <fmt/format.h>
+
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <coro/net/tcp/server.hpp>
+#endif
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -347,6 +354,74 @@ namespace stream_bench
 
             return escaped;
         }
+
+#ifndef CANOPY_BUILD_COROUTINE
+        void close_fd(int& fd) noexcept
+        {
+            if (fd >= 0)
+            {
+                ::close(fd);
+                fd = -1;
+            }
+        }
+
+        int make_loopback_listener(uint16_t& port) noexcept
+        {
+            int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+            if (listen_fd < 0)
+                return -1;
+
+            int reuse = 1;
+            ::setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = 0;
+
+            if (::bind(listen_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0)
+            {
+                close_fd(listen_fd);
+                return -1;
+            }
+
+            if (::listen(listen_fd, 16) != 0)
+            {
+                close_fd(listen_fd);
+                return -1;
+            }
+
+            sockaddr_in bound_addr{};
+            socklen_t bound_addr_len = sizeof(bound_addr);
+            if (::getsockname(listen_fd, reinterpret_cast<sockaddr*>(&bound_addr), &bound_addr_len) != 0)
+            {
+                close_fd(listen_fd);
+                return -1;
+            }
+
+            port = ntohs(bound_addr.sin_port);
+            return listen_fd;
+        }
+
+        int connect_loopback(uint16_t port) noexcept
+        {
+            int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+            if (fd < 0)
+                return -1;
+
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = htons(port);
+            if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) != 0)
+            {
+                close_fd(fd);
+                return -1;
+            }
+
+            return fd;
+        }
+#endif
     } // namespace
 
     double stress_stats::send_mbps() const
@@ -429,7 +504,8 @@ namespace stream_bench
         fmt::print(
             "Usage: {} [--stream <name[,name...]>] [--scenario <name[,name...]>] [--size <bytes[,bytes...]>] "
             "[--passes <count>] [--shuffle] [--seed <value>] [--html-report [path]] [--no-html-report]\n\n"
-            "Stream names: spsc, tcp, io_uring, sgx_io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
+            "Stream names: tcp, tls+tcp, ws+tcp, tls+ws+tcp; coroutine builds also add spsc, io_uring, "
+            "sgx_io_uring, tls+spsc, ws+spsc, tls+ws+spsc\n"
             "Scenario names: unidirectional, send_reply, stress, all\n"
             "Size examples: 64, 4096, 64k, 1m\n"
             "Aliases: --streams, --transport, --transports, --blob-size, --sizes, --report\n"
@@ -675,6 +751,7 @@ namespace stream_bench
         return executions;
     }
 
+#ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> make_scheduler()
     {
         return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -682,6 +759,7 @@ namespace stream_bench
                 .pool = coro::thread_pool::options{.thread_count = 2},
                 .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
     }
+#endif
 
     uint16_t allocate_loopback_port()
     {
@@ -703,6 +781,82 @@ namespace stream_bench
 
         ::close(fd);
         return ntohs(bound_addr.sin_port);
+    }
+
+    void tcp_stream_pair::shutdown()
+    {
+#ifdef CANOPY_BUILD_COROUTINE
+        if (scheduler_a)
+            scheduler_a->shutdown();
+        if (scheduler_b)
+            scheduler_b->shutdown();
+#endif
+    }
+
+    bool make_tcp_stream_pair(tcp_stream_pair& pair)
+    {
+#ifdef CANOPY_BUILD_COROUTINE
+        const coro::net::socket_address endpoint{"127.0.0.1", allocate_loopback_port()};
+        pair.scheduler_a = make_scheduler();
+        pair.scheduler_b = make_scheduler();
+
+        rpc::event server_ready;
+        std::shared_ptr<streaming::stream> server_stream;
+        std::shared_ptr<streaming::stream> client_stream;
+        coro::sync_wait(
+            coro::when_all(
+                [&]() -> coro::task<void>
+                {
+                    auto server = std::make_shared<coro::net::tcp::server>(pair.scheduler_a, endpoint);
+                    server_ready.set();
+                    auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
+                    if (!accepted)
+                        co_return;
+                    server_stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), pair.scheduler_a);
+                }(),
+                [&]() -> coro::task<void>
+                {
+                    co_await server_ready.wait();
+                    coro::net::tcp::client client(pair.scheduler_b, endpoint);
+                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
+                        co_return;
+                    client_stream = std::make_shared<streaming::tcp::stream>(std::move(client), pair.scheduler_b);
+                }()));
+
+        pair.side_a = std::move(server_stream);
+        pair.side_b = std::move(client_stream);
+        if (pair.side_a && pair.side_b)
+            return true;
+
+        pair.shutdown();
+        return false;
+#else
+        uint16_t port = 0;
+        int listen_fd = make_loopback_listener(port);
+        if (listen_fd < 0)
+            return false;
+
+        int client_fd = connect_loopback(port);
+        if (client_fd < 0)
+        {
+            close_fd(listen_fd);
+            return false;
+        }
+
+        sockaddr_in peer_addr{};
+        socklen_t peer_addr_len = sizeof(peer_addr);
+        int server_fd = ::accept(listen_fd, reinterpret_cast<sockaddr*>(&peer_addr), &peer_addr_len);
+        close_fd(listen_fd);
+        if (server_fd < 0)
+        {
+            close_fd(client_fd);
+            return false;
+        }
+
+        pair.side_a = std::make_shared<streaming::tcp::stream>(streaming::tcp::socket(server_fd));
+        pair.side_b = std::make_shared<streaming::tcp::stream>(streaming::tcp::socket(client_fd));
+        return true;
+#endif
     }
 
     bench_stats compute_stats(
@@ -1201,7 +1355,8 @@ initFilters();draw();
         return static_cast<bool>(output);
     }
 
-    coro::task<bench_stats> run_unidirectional_sender(
+    CORO_TASK(bench_stats)
+    run_unidirectional_sender(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
@@ -1215,7 +1370,7 @@ initFilters();draw();
         {
             const auto start = clock_type::now();
             wd.heartbeat();
-            auto status = co_await stream->send(rpc::byte_span(payload));
+            auto status = CO_AWAIT stream->send(rpc::byte_span(payload));
             const auto end = clock_type::now();
             wd.heartbeat();
             if (!status.is_ok())
@@ -1227,10 +1382,11 @@ initFilters();draw();
         }
 
         stop.store(true, std::memory_order_release);
-        co_return compute_stats(std::move(samples), payload.size(), cfg.count / 10);
+        CO_RETURN compute_stats(std::move(samples), payload.size(), cfg.count / 10);
     }
 
-    coro::task<void> run_drain(
+    CORO_TASK(void)
+    run_drain(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         watchdog& wd)
@@ -1238,15 +1394,17 @@ initFilters();draw();
         std::vector<uint8_t> buffer(1 << 20);
         while (!stop.load(std::memory_order_acquire))
         {
-            auto [status, span] = co_await stream->receive(rpc::mutable_byte_span(buffer), std::chrono::milliseconds{10});
+            auto [status, span] = CO_AWAIT stream->receive(rpc::mutable_byte_span(buffer), std::chrono::milliseconds{10});
             wd.heartbeat();
             if (status.is_closed())
                 break;
             (void)span;
         }
+        CO_RETURN;
     }
 
-    coro::task<bench_stats> run_send_reply(
+    CORO_TASK(bench_stats)
+    run_send_reply(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
@@ -1261,7 +1419,7 @@ initFilters();draw();
         {
             const auto start = clock_type::now();
             wd.heartbeat();
-            auto send_status = co_await stream->send(rpc::byte_span(payload));
+            auto send_status = CO_AWAIT stream->send(rpc::byte_span(payload));
             wd.heartbeat();
             if (!send_status.is_ok())
                 break;
@@ -1270,7 +1428,7 @@ initFilters();draw();
             bool failed = false;
             while (received < payload.size())
             {
-                auto [status, span] = co_await stream->receive(
+                auto [status, span] = CO_AWAIT stream->receive(
                     rpc::mutable_byte_span(recv_buffer.data() + received, recv_buffer.size() - received), cfg.recv_timeout);
                 wd.heartbeat();
                 if (status.is_closed())
@@ -1290,10 +1448,11 @@ initFilters();draw();
         }
 
         stop.store(true, std::memory_order_release);
-        co_return compute_stats(std::move(samples), payload.size(), cfg.count / 10);
+        CO_RETURN compute_stats(std::move(samples), payload.size(), cfg.count / 10);
     }
 
-    coro::task<void> run_echo(
+    CORO_TASK(void)
+    run_echo(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         watchdog& wd)
@@ -1301,19 +1460,21 @@ initFilters();draw();
         std::vector<uint8_t> buffer(1 << 20);
         while (!stop.load(std::memory_order_acquire))
         {
-            auto [status, span] = co_await stream->receive(rpc::mutable_byte_span(buffer), std::chrono::milliseconds{10});
+            auto [status, span] = CO_AWAIT stream->receive(rpc::mutable_byte_span(buffer), std::chrono::milliseconds{10});
             wd.heartbeat();
             if (status.is_closed())
                 break;
             if (status.is_ok() && !span.empty())
             {
-                co_await stream->send(rpc::byte_span(span));
+                CO_AWAIT stream->send(rpc::byte_span(span));
                 wd.heartbeat();
             }
         }
+        CO_RETURN;
     }
 
-    coro::task<stress_stats> run_stress_sender(
+    CORO_TASK(stress_stats)
+    run_stress_sender(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
@@ -1327,7 +1488,7 @@ initFilters();draw();
 
         while (clock_type::now() < end && !stop.load(std::memory_order_acquire))
         {
-            auto status = co_await stream->send(rpc::byte_span(payload));
+            auto status = CO_AWAIT stream->send(rpc::byte_span(payload));
             wd.heartbeat();
             if (!status.is_ok())
                 break;
@@ -1339,10 +1500,11 @@ initFilters();draw();
         stats.elapsed_ms = static_cast<double>(
             std::chrono::duration_cast<std::chrono::milliseconds>(clock_type::now() - start).count());
         stats.valid = true;
-        co_return stats;
+        CO_RETURN stats;
     }
 
-    coro::task<stress_stats> run_stress_drain(
+    CORO_TASK(stress_stats)
+    run_stress_drain(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         const bench_config& cfg,
@@ -1354,7 +1516,7 @@ initFilters();draw();
 
         while (!stop.load(std::memory_order_acquire))
         {
-            auto [status, span] = co_await stream->receive(rpc::mutable_byte_span(buffer), cfg.recv_timeout);
+            auto [status, span] = CO_AWAIT stream->receive(rpc::mutable_byte_span(buffer), cfg.recv_timeout);
             wd.heartbeat();
             if (status.is_closed())
                 break;
@@ -1372,7 +1534,54 @@ initFilters();draw();
         stats.elapsed_ms = static_cast<double>(
             std::chrono::duration_cast<std::chrono::milliseconds>(clock_type::now() - start).count());
         stats.valid = true;
-        co_return stats;
+        CO_RETURN stats;
+    }
+
+    void run_stream_unidirectional_bench(
+        std::shared_ptr<streaming::stream> side_a,
+        std::shared_ptr<streaming::stream> side_b,
+        const bench_config& cfg,
+        watchdog& wd,
+        size_t blob_size,
+        bench_stats& out_unidirectional)
+    {
+        const std::vector<uint8_t> payload(blob_size, 0xab);
+
+        std::atomic<bool> stop{false};
+#ifdef CANOPY_BUILD_COROUTINE
+        coro::sync_wait(
+            coro::when_all(
+                [&]() -> coro::task<void>
+                { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
+                run_drain(side_b, stop, wd)));
+#else
+        std::thread peer([&]() { run_drain(side_b, stop, wd); });
+        out_unidirectional = run_unidirectional_sender(side_a, payload, stop, cfg, wd);
+        peer.join();
+#endif
+    }
+
+    void run_stream_send_reply_bench(
+        std::shared_ptr<streaming::stream> side_a,
+        std::shared_ptr<streaming::stream> side_b,
+        const bench_config& cfg,
+        watchdog& wd,
+        size_t blob_size,
+        bench_stats& out_send_reply)
+    {
+        const std::vector<uint8_t> payload(blob_size, 0xab);
+
+        std::atomic<bool> stop{false};
+#ifdef CANOPY_BUILD_COROUTINE
+        coro::sync_wait(
+            coro::when_all(
+                [&]() -> coro::task<void> { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
+                run_echo(side_b, stop, wd)));
+#else
+        std::thread peer([&]() { run_echo(side_b, stop, wd); });
+        out_send_reply = run_send_reply(side_a, payload, stop, cfg, wd);
+        peer.join();
+#endif
     }
 
     void run_paired_stream_bench(
@@ -1384,27 +1593,11 @@ initFilters();draw();
         bench_stats& out_unidirectional,
         bench_stats& out_send_reply)
     {
-        const std::vector<uint8_t> payload(blob_size, 0xab);
-
         if (cfg.run_unidirectional)
-        {
-            std::atomic<bool> stop{false};
-            coro::sync_wait(
-                coro::when_all(
-                    [&]() -> coro::task<void>
-                    { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
-                    run_drain(side_b, stop, wd)));
-        }
+            run_stream_unidirectional_bench(side_a, side_b, cfg, wd, blob_size, out_unidirectional);
 
         if (cfg.run_send_reply)
-        {
-            std::atomic<bool> stop{false};
-            coro::sync_wait(
-                coro::when_all(
-                    [&]() -> coro::task<void>
-                    { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
-                    run_echo(side_b, stop, wd)));
-        }
+            run_stream_send_reply_bench(side_a, side_b, cfg, wd, blob_size, out_send_reply);
     }
 
     void run_paired_stream_stress_bench(
@@ -1418,9 +1611,15 @@ initFilters();draw();
     {
         const std::vector<uint8_t> payload(blob_size, 0xab);
         std::atomic<bool> stop{false};
+#ifdef CANOPY_BUILD_COROUTINE
         coro::sync_wait(
             coro::when_all(
                 [&]() -> coro::task<void> { out_send = co_await run_stress_sender(side_a, payload, stop, cfg, wd); }(),
                 [&]() -> coro::task<void> { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
+#else
+        std::thread peer([&]() { out_recv = run_stress_drain(side_b, stop, cfg, wd); });
+        out_send = run_stress_sender(side_a, payload, stop, cfg, wd);
+        peer.join();
+#endif
     }
 }

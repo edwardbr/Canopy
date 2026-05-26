@@ -6,11 +6,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <string>
 #include <sys/types.h>
 #include <vector>
 
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <rpc/internal/coro_runtime/mutex.h>
+#endif
 #include <streaming/stream.h>
 
 struct wslay_event_context;
@@ -18,8 +22,9 @@ struct wslay_event_on_msg_recv_arg;
 
 namespace streaming::websocket
 {
-    // Single-executor WebSocket stream.  send() and receive() must not be called
-    // concurrently — each belongs to one coroutine at a time.
+    // WebSocket stream over any streaming::stream. wslay's context is not
+    // thread-safe, so this wrapper serializes access to wslay-owned state while
+    // leaving underlying stream I/O outside the lock.
     class stream : public ::streaming::stream
     {
     public:
@@ -34,25 +39,27 @@ namespace streaming::websocket
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override;
+            -> CORO_TASK(::streaming::receive_result) override;
 
-        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
         bool is_closed() const override;
-        auto set_closed() -> coro::task<void> override;
+        auto set_closed() -> CORO_TASK(void) override;
         auto get_peer_info() const -> peer_info override;
 
     private:
         static constexpr size_t io_chunk_size = 8192;
 
         auto serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<
-            coro::net::io_status,
+            rpc::io_status,
+            rpc::mutable_byte_span>;
+        auto serve_decoded_locked(rpc::mutable_byte_span buffer) -> std::pair<
+            rpc::io_status,
             rpc::mutable_byte_span>;
 
         // Drive wslay's outgoing queue until it has nothing left to send.
-        auto drive_send() -> coro::task<bool>;
-        auto flush_outgoing_raw() -> coro::task<bool>;
+        auto drive_send() -> CORO_TASK(bool);
+        auto drive_send_locked() -> CORO_TASK(bool);
+        auto flush_outgoing_raw(std::vector<uint8_t> raw) -> CORO_TASK(bool);
 
         static auto send_callback(
             wslay_event_context* ctx,
@@ -71,6 +78,12 @@ namespace streaming::websocket
             const wslay_event_on_msg_recv_arg* arg,
             void* user_data);
 
+        mutable std::mutex mtx_;
+#ifdef CANOPY_BUILD_COROUTINE
+        rpc::coro::mutex send_mtx_;
+#else
+        std::mutex send_mtx_;
+#endif
         std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context* wslay_ctx_{nullptr};
         std::string raw_recv_buffer_;

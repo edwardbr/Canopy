@@ -48,14 +48,12 @@ namespace streaming::io_uring
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override;
+            -> CORO_TASK(::streaming::receive_result) override;
 
-        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
 
         [[nodiscard]] bool is_closed() const override;
-        auto set_closed() -> coro::task<void> override;
+        auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] streaming::peer_info get_peer_info() const override;
 
     private:

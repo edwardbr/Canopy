@@ -7,7 +7,9 @@
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
 
-#include <coro/coro.hpp>
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <coro/coro.hpp>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -180,8 +182,24 @@ namespace stream_bench
         size_t job_count,
         const bench_config& cfg);
 
+#ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> make_scheduler();
+#endif
     uint16_t allocate_loopback_port();
+
+    struct tcp_stream_pair
+    {
+        std::shared_ptr<streaming::stream> side_a;
+        std::shared_ptr<streaming::stream> side_b;
+#ifdef CANOPY_BUILD_COROUTINE
+        std::shared_ptr<coro::scheduler> scheduler_a;
+        std::shared_ptr<coro::scheduler> scheduler_b;
+#endif
+
+        void shutdown();
+    };
+
+    bool make_tcp_stream_pair(tcp_stream_pair& pair);
 
     bench_stats compute_stats(
         std::vector<int64_t> samples,
@@ -209,38 +227,58 @@ namespace stream_bench
         const std::vector<standard_result_row>& send_reply_rows,
         const std::vector<stress_result_row>& stress_rows);
 
-    coro::task<bench_stats> run_unidirectional_sender(
+    CORO_TASK(bench_stats)
+    run_unidirectional_sender(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd);
-    coro::task<void> run_drain(
+    CORO_TASK(void)
+    run_drain(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         watchdog& wd);
-    coro::task<bench_stats> run_send_reply(
+    CORO_TASK(bench_stats)
+    run_send_reply(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd);
-    coro::task<void> run_echo(
+    CORO_TASK(void)
+    run_echo(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         watchdog& wd);
-    coro::task<stress_stats> run_stress_sender(
+    CORO_TASK(stress_stats)
+    run_stress_sender(
         std::shared_ptr<streaming::stream> stream,
         const std::vector<uint8_t>& payload,
         std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd);
-    coro::task<stress_stats> run_stress_drain(
+    CORO_TASK(stress_stats)
+    run_stress_drain(
         std::shared_ptr<streaming::stream> stream,
         const std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd);
 
+    void run_stream_unidirectional_bench(
+        std::shared_ptr<streaming::stream> side_a,
+        std::shared_ptr<streaming::stream> side_b,
+        const bench_config& cfg,
+        watchdog& wd,
+        size_t blob_size,
+        bench_stats& out_unidirectional);
+    void run_stream_send_reply_bench(
+        std::shared_ptr<streaming::stream> side_a,
+        std::shared_ptr<streaming::stream> side_b,
+        const bench_config& cfg,
+        watchdog& wd,
+        size_t blob_size,
+        bench_stats& out_send_reply);
     void run_paired_stream_bench(
         std::shared_ptr<streaming::stream> side_a,
         std::shared_ptr<streaming::stream> side_b,
@@ -289,6 +327,21 @@ namespace stream_bench
         std::vector<standard_benchmark_job>& standard_jobs,
         std::vector<stress_benchmark_job>& stress_jobs);
     void add_tls_websocket_spsc_jobs(
+        const bench_config& cfg,
+        watchdog& wd,
+        std::vector<standard_benchmark_job>& standard_jobs,
+        std::vector<stress_benchmark_job>& stress_jobs);
+    void add_tls_tcp_jobs(
+        const bench_config& cfg,
+        watchdog& wd,
+        std::vector<standard_benchmark_job>& standard_jobs,
+        std::vector<stress_benchmark_job>& stress_jobs);
+    void add_websocket_tcp_jobs(
+        const bench_config& cfg,
+        watchdog& wd,
+        std::vector<standard_benchmark_job>& standard_jobs,
+        std::vector<stress_benchmark_job>& stress_jobs);
+    void add_tls_websocket_tcp_jobs(
         const bench_config& cfg,
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,

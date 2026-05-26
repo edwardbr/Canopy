@@ -5,4 +5,7 @@
 # Add subdirectories for different unit test categories
 add_subdirectory(member_ptr)
 add_subdirectory(zone_address)
+add_subdirectory(blocking_executor)
+add_subdirectory(blocking_tcp_stream)
+add_subdirectory(blocking_listener)
 # add_subdirectory(passthrough)

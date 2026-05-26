@@ -66,13 +66,33 @@ int main(
 
     std::vector<standard_benchmark_job> standard_jobs;
     std::vector<stress_benchmark_job> stress_jobs;
-    add_spsc_jobs(cfg, wd, standard_jobs, stress_jobs);
     add_tcp_jobs(cfg, wd, standard_jobs, stress_jobs);
+#ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
+    add_tls_tcp_jobs(cfg, wd, standard_jobs, stress_jobs);
+#endif
+#ifdef CANOPY_BUILD_WEBSOCKET
+    add_websocket_tcp_jobs(cfg, wd, standard_jobs, stress_jobs);
+#  ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
+    add_tls_websocket_tcp_jobs(cfg, wd, standard_jobs, stress_jobs);
+#  endif
+#endif
+
+#ifdef CANOPY_BUILD_COROUTINE
+    add_spsc_jobs(cfg, wd, standard_jobs, stress_jobs);
+#  ifdef CANOPY_STREAMING_BENCHMARK_HAS_IO_URING
     add_io_uring_jobs(cfg, wd, standard_jobs, stress_jobs);
     add_sgx_io_uring_jobs(cfg, wd, standard_jobs, stress_jobs);
+#  endif
+#  ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
     add_tls_spsc_jobs(cfg, wd, standard_jobs, stress_jobs);
+#  endif
+#  ifdef CANOPY_BUILD_WEBSOCKET
     add_websocket_spsc_jobs(cfg, wd, standard_jobs, stress_jobs);
+#    ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
     add_tls_websocket_spsc_jobs(cfg, wd, standard_jobs, stress_jobs);
+#    endif
+#  endif
+#endif
 
     if (standard_jobs.empty() && stress_jobs.empty())
     {

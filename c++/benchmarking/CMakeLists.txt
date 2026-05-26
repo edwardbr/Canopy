@@ -5,6 +5,4 @@
 
 add_subdirectory(fullstack)
 add_subdirectory(serialisation)
-if(CANOPY_BUILD_COROUTINE)
-  add_subdirectory(streaming)
-endif()
+add_subdirectory(streaming)

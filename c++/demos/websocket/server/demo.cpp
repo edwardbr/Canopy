@@ -6,7 +6,9 @@
 
 #include <rpc/rpc.h>
 
-#include "video_session.h"
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  include "video_session.h"
+#endif
 #include "websocket_demo/websocket_demo.h"
 
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
@@ -36,7 +38,9 @@ namespace websocket_demo
             std::shared_ptr<secret_llama::v1_0::context> context_;
 #endif
             rpc::shared_ptr<i_context_event> event_;
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
             video_session video_;
+#endif
 
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
             std::shared_ptr<rpc::service> service_;
@@ -155,7 +159,7 @@ namespace websocket_demo
             {
                 std::ignore = prompt;
                 if (event_)
-                    co_await event_->piece("LLM support is not enabled in the enclave websocket demo.");
+                    CO_AWAIT event_->piece("LLM support is not enabled in the enclave websocket demo.");
                 CO_RETURN rpc::error::NOT_IMPLEMENTED();
             }
 #endif
@@ -171,7 +175,9 @@ namespace websocket_demo
 #endif
 
                 event_ = event;
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
                 video_.set_sink(event);
+#endif
 
                 CO_RETURN rpc::error::OK();
             }
@@ -183,19 +189,32 @@ namespace websocket_demo
                 uint32_t flags,
                 const std::vector<uint8_t>& payload) override
             {
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+                (void)seq; (void)pts_us; (void)flags; (void)payload;
+                CO_RETURN rpc::error::NOT_IMPLEMENTED();
+#else
                 CO_RETURN CO_AWAIT video_.forward_frame(seq, pts_us, flags, payload);
+#endif
             }
 
             CORO_TASK(int) set_video_effects(uint32_t effects) override
             {
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+                (void)effects;
+#else
                 video_.set_effects(effects);
+#endif
                 CO_RETURN rpc::error::OK();
             }
 
             CORO_TASK(int)
             set_video_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used) override
             {
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+                (void)brightness; (void)bitrate_kbps; (void)cpu_used;
+#else
                 video_.set_params(brightness, bitrate_kbps, cpu_used);
+#endif
                 CO_RETURN rpc::error::OK();
             }
         };

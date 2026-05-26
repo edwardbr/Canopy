@@ -65,10 +65,10 @@ namespace websocket_protocol
         // generate a zone id for the client
         rpc::get_new_zone_id_params params;
         params.protocol_version = rpc::get_version();
-        auto result = co_await service->get_new_zone_id(std::move(params));
+        auto result = CO_AWAIT service->get_new_zone_id(std::move(params));
         if (result.error_code != rpc::error::OK())
         {
-            co_return nullptr;
+            CO_RETURN nullptr;
         }
         rpc::zone client_zone_id = result.zone_id;
 
@@ -76,12 +76,17 @@ namespace websocket_protocol
 
         transpt->set_status(rpc::transport_status::CONNECTED);
 
-        service->spawn(transpt->receive_consumer_loop(std::make_unique<activity_tracker>(transpt, service)));
+        if (!service->SPAWN(transpt->receive_consumer_loop(std::make_unique<activity_tracker>(transpt, service))))
+        {
+            RPC_ERROR("[WS] failed to spawn receive loop");
+            transpt->set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN nullptr;
+        }
 
-        co_return transpt;
+        CO_RETURN transpt;
     }
 
-    bool transport::is_valid(coro::net::io_status status)
+    bool transport::is_valid(rpc::io_status status)
     {
         if (!stream_)
         {
@@ -114,17 +119,17 @@ namespace websocket_protocol
         rpc::mutable_byte_span received_span;
         while (get_status() < rpc::transport_status::DISCONNECTED)
         {
-            auto [status, span] = co_await stream_->receive(buf);
+            auto [status, span] = CO_AWAIT stream_->receive(buf);
 
             if (!is_valid(status))
             {
                 if (status.is_timeout())
                 {
-                    if (auto scheduler = svc->get_scheduler())
+                    if (auto scheduler = svc->get_executor())
                         CO_AWAIT scheduler->schedule_after(idle_retry_delay);
                     continue;
                 }
-                co_return;
+                CO_RETURN;
             }
 
             if (!span.empty())
@@ -136,7 +141,7 @@ namespace websocket_protocol
 
         if (get_status() >= rpc::transport_status::DISCONNECTED)
         {
-            co_return;
+            CO_RETURN;
         }
 
         // decode the outer envelope
@@ -145,12 +150,12 @@ namespace websocket_protocol
         if (!env_parse_err.empty())
         {
             RPC_ERROR("[WS] invalid handshake envelope: {}", env_parse_err);
-            co_return;
+            CO_RETURN;
         }
         if (handshake_env.type != websocket_protocol::v1::message_type::handshake)
         {
             RPC_ERROR("[WS] expected connect_request envelope type, got {}", static_cast<uint8_t>(handshake_env.type));
-            co_return;
+            CO_RETURN;
         }
 
         // decode connect_request from envelope data
@@ -159,7 +164,7 @@ namespace websocket_protocol
         if (!parse_err.empty())
         {
             RPC_ERROR("[WS] invalid connect_request: {}", parse_err);
-            co_return;
+            CO_RETURN;
         }
 
         // make a client object id from the client-supplied object id and the server-assigned zone id
@@ -167,7 +172,7 @@ namespace websocket_protocol
         if (!client_object_r)
         {
             RPC_ERROR("[WS] with_object failed: {}", client_object_r.error());
-            co_return;
+            CO_RETURN;
         }
         auto client_object = std::move(*client_object_r);
 
@@ -194,7 +199,7 @@ namespace websocket_protocol
 
             if (!is_valid(initial_send_status))
             {
-                co_return;
+                CO_RETURN;
             }
         }
 
@@ -204,7 +209,7 @@ namespace websocket_protocol
         if (handler_ret.error_code != rpc::error::OK())
         {
             RPC_ERROR("[WS] handler failed: {}", rpc::error::to_string(handler_ret.error_code));
-            co_return;
+            CO_RETURN;
         }
         auto output_descr = std::move(handler_ret.output_descriptor);
 
@@ -221,7 +226,7 @@ namespace websocket_protocol
         auto send_status = CO_AWAIT stream_->send(rpc::byte_span{resp_complete});
         if (!is_valid(send_status))
         {
-            co_return;
+            CO_RETURN;
         }
 
         RPC_INFO("[WS] connect_response sent, entering dispatch loop");
@@ -237,7 +242,7 @@ namespace websocket_protocol
                 if (!env_err.empty())
                 {
                     RPC_ERROR("[WS] envelope parse error: {}", env_err);
-                    co_return;
+                    CO_RETURN;
                 }
                 CO_AWAIT stub_handle_send(std::move(env));
             }
@@ -246,7 +251,7 @@ namespace websocket_protocol
             {
                 if (recv_status.is_timeout())
                 {
-                    if (auto scheduler = svc->get_scheduler())
+                    if (auto scheduler = svc->get_executor())
                         CO_AWAIT scheduler->schedule_after(idle_retry_delay);
                     continue;
                 }
@@ -272,13 +277,13 @@ namespace websocket_protocol
             CO_AWAIT transport->stream_->set_closed();
             transport->stream_.reset();
         }
-        rpc::transport_down_params params{.protocol_version = rpc::get_version(),
-            .destination_zone_id = transport->get_zone_id(),
-            .caller_zone_id = transport->get_adjacent_zone_id(),
-            .in_back_channel = {},
-            .payload = {}};
-        co_await svc->transport_down(params);
-        co_return;
+        rpc::transport_down_params params{FLD(protocol_version) rpc::get_version(),
+            FLD(destination_zone_id) transport->get_zone_id(),
+            FLD(caller_zone_id) transport->get_adjacent_zone_id(),
+            FLD(in_back_channel){},
+            FLD(payload){}};
+        CO_AWAIT svc->transport_down(params);
+        CO_RETURN;
     }
 
     // Outbound i_marshaller interface - sends from child to parent
@@ -325,7 +330,7 @@ namespace websocket_protocol
         if (!status.is_ok())
         {
             RPC_ERROR("Unable to send data to stream");
-            co_await stream_->set_closed();
+            CO_AWAIT stream_->set_closed();
             CO_RETURN rpc::send_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
         }
         CO_RETURN rpc::send_result{rpc::error::OK(), {}, {}};
@@ -373,7 +378,7 @@ namespace websocket_protocol
         if (!is_valid(status))
         {
             RPC_ERROR("Unable to post data to stream");
-            co_await stream_->set_closed();
+            CO_AWAIT stream_->set_closed();
         }
         CO_RETURN;
     }
@@ -430,22 +435,22 @@ namespace websocket_protocol
         if (error.length())
         {
             RPC_DEBUG("Received message ({} bytes) parsing error: {}", envelope.data.size(), error);
-            co_await stream_->set_closed();
+            CO_AWAIT stream_->set_closed();
             CO_RETURN; // no reply.
         }
 
         auto send_result = CO_AWAIT inbound_send(
             rpc::send_params{
-                .protocol_version = rpc::get_version(),
-                .encoding_type = request.encoding,
-                .tag = request.tag,
-                .caller_zone_id = get_adjacent_zone_id(),
-                .remote_object_id = rpc::remote_object(to_zone_address(request.destination_zone_id)),
-                .interface_id = request.interface_id,
-                .method_id = request.method_id,
-                .in_data = request.data,
-                .in_back_channel = {},
-                .request_id = 0,
+                FLD(protocol_version) rpc::get_version(),
+                FLD(encoding_type) request.encoding,
+                FLD(tag) request.tag,
+                FLD(caller_zone_id) get_adjacent_zone_id(),
+                FLD(remote_object_id) rpc::remote_object(to_zone_address(request.destination_zone_id)),
+                FLD(interface_id) request.interface_id,
+                FLD(method_id) request.method_id,
+                FLD(in_data) request.data,
+                FLD(in_back_channel){},
+                FLD(request_id) 0,
             });
 
         if (send_result.error_code != rpc::error::OK())

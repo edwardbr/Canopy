@@ -5,8 +5,6 @@
 
 #include "benchmark_common.h"
 
-#include <streaming/tcp/stream.h>
-
 namespace stream_bench
 {
     namespace
@@ -18,69 +16,21 @@ namespace stream_bench
             bench_stats& out_unidirectional,
             bench_stats& out_send_reply)
         {
-            const std::vector<uint8_t> payload(blob_size, 0xab);
-            const coro::net::socket_address endpoint{"127.0.0.1", allocate_loopback_port()};
-            auto sched_server = make_scheduler();
-            auto sched_client = make_scheduler();
-
             if (cfg.run_unidirectional)
             {
-                std::atomic<bool> stop{false};
-                rpc::event server_ready;
-                coro::sync_wait(
-                    coro::when_all(
-                        [&]() -> coro::task<void>
-                        {
-                            auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                            server_ready.set();
-                            auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                            if (!accepted)
-                                co_return;
-                            auto stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                            co_await run_drain(stream, stop, wd);
-                        }(),
-                        [&]() -> coro::task<void>
-                        {
-                            co_await server_ready.wait();
-                            coro::net::tcp::client client(sched_client, endpoint);
-                            if (co_await client.connect(std::chrono::milliseconds{5000})
-                                != coro::net::connect_status::connected)
-                                co_return;
-                            auto stream = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                            out_unidirectional = co_await run_unidirectional_sender(stream, payload, stop, cfg, wd);
-                        }()));
+                tcp_stream_pair pair;
+                if (make_tcp_stream_pair(pair))
+                    run_stream_unidirectional_bench(pair.side_a, pair.side_b, cfg, wd, blob_size, out_unidirectional);
+                pair.shutdown();
             }
 
             if (cfg.run_send_reply)
             {
-                std::atomic<bool> stop{false};
-                rpc::event server_ready;
-                coro::sync_wait(
-                    coro::when_all(
-                        [&]() -> coro::task<void>
-                        {
-                            auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                            server_ready.set();
-                            auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                            if (!accepted)
-                                co_return;
-                            auto stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                            co_await run_echo(stream, stop, wd);
-                        }(),
-                        [&]() -> coro::task<void>
-                        {
-                            co_await server_ready.wait();
-                            coro::net::tcp::client client(sched_client, endpoint);
-                            if (co_await client.connect(std::chrono::milliseconds{5000})
-                                != coro::net::connect_status::connected)
-                                co_return;
-                            auto stream = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                            out_send_reply = co_await run_send_reply(stream, payload, stop, cfg, wd);
-                        }()));
+                tcp_stream_pair pair;
+                if (make_tcp_stream_pair(pair))
+                    run_stream_send_reply_bench(pair.side_a, pair.side_b, cfg, wd, blob_size, out_send_reply);
+                pair.shutdown();
             }
-
-            sched_server->shutdown();
-            sched_client->shutdown();
         }
 
         void run_stress_tcp(
@@ -90,37 +40,10 @@ namespace stream_bench
             stress_stats& out_send,
             stress_stats& out_recv)
         {
-            const std::vector<uint8_t> payload(blob_size, 0xab);
-            const coro::net::socket_address endpoint{"127.0.0.1", allocate_loopback_port()};
-            auto sched_server = make_scheduler();
-            auto sched_client = make_scheduler();
-            std::atomic<bool> stop{false};
-            rpc::event server_ready;
-
-            coro::sync_wait(
-                coro::when_all(
-                    [&]() -> coro::task<void>
-                    {
-                        auto server = std::make_shared<coro::net::tcp::server>(sched_server, endpoint);
-                        server_ready.set();
-                        auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                        if (!accepted)
-                            co_return;
-                        auto stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), sched_server);
-                        out_recv = co_await run_stress_drain(stream, stop, cfg, wd);
-                    }(),
-                    [&]() -> coro::task<void>
-                    {
-                        co_await server_ready.wait();
-                        coro::net::tcp::client client(sched_client, endpoint);
-                        if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                            co_return;
-                        auto stream = std::make_shared<streaming::tcp::stream>(std::move(client), sched_client);
-                        out_send = co_await run_stress_sender(stream, payload, stop, cfg, wd);
-                    }()));
-
-            sched_server->shutdown();
-            sched_client->shutdown();
+            tcp_stream_pair pair;
+            if (make_tcp_stream_pair(pair))
+                run_paired_stream_stress_bench(pair.side_a, pair.side_b, cfg, wd, blob_size, out_send, out_recv);
+            pair.shutdown();
         }
     } // namespace
 

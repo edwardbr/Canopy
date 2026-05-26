@@ -130,10 +130,10 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 
 ## Current Limitations
 
-Some advanced features still require backend-specific integration work:
+Some advanced coroutine features still require backend-specific integration work:
 
-- **Scheduler integration** - Currently tied to the active C++ coroutine backend for TCP and streaming transports
-- **Network primitives** - TCP client/server abstractions are libcoro-specific
+- **Scheduler integration** - Coroutine TCP and streaming paths are still tied to the active C++ coroutine backend
+- **Network primitives** - Coroutine TCP client/server abstractions are libcoro-specific; blocking TCP has a separate POSIX path
 - **Channel/back-channel support** - May require adaptation for sender/receiver models
 
 ## Migration Plan

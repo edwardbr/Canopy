@@ -68,10 +68,11 @@ namespace comprehensive::v1
         std::vector<int64_t>& durations_ns,
         size_t warmup_count = 0);
 
+    uint16_t allocate_loopback_port();
+
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count = 2);
     void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler);
-    uint16_t allocate_loopback_port();
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -103,10 +104,6 @@ namespace comprehensive::v1
     benchmark_result run_spsc_benchmark(
         rpc::encoding enc,
         size_t blob_size);
-    benchmark_result run_tcp_benchmark(
-        rpc::encoding enc,
-        size_t blob_size,
-        uint16_t port);
     benchmark_result run_io_uring_benchmark(
         rpc::encoding enc,
         size_t blob_size,
@@ -135,6 +132,22 @@ namespace comprehensive::v1
         rpc::encoding enc,
         size_t blob_size);
 #endif
+    benchmark_result run_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_tls_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_websocket_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_tls_websocket_tcp_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
 
     void print_header();
     void print_footer();

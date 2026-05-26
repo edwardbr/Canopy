@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <rpc/internal/executor/executor.h>
+
 #include <string>
 #include <memory>
 #include <list>
@@ -177,9 +179,13 @@ namespace rpc
         mutable std::mutex service_events_control_;
         std::set<std::weak_ptr<service_event>, std::owner_less<std::weak_ptr<service_event>>> service_events_;
 
-#ifdef CANOPY_BUILD_COROUTINE
-        std::shared_ptr<coro::scheduler> io_scheduler_;
-#endif
+        // Executor (thread pool / coroutine scheduler) used to dispatch
+        // streaming I/O loops and other long-running tasks. In coroutine
+        // builds this is rpc::coro::scheduler (libcoro). In blocking builds
+        // it is rpc::blocking_executor and is OPTIONAL — non-streaming
+        // users leave it null; streaming users opt in by passing one to a
+        // service constructor. See project_executor_is_optional_in_blocking.md.
+        rpc::executor_ptr executor_;
 
         std::shared_ptr<rpc::event> on_shutdown_;
 
@@ -245,12 +251,24 @@ namespace rpc
             const std::shared_ptr<coro::scheduler>& scheduler,
             child_service_tag);
 #else
+        // Blocking-mode constructors. The no-executor variants preserve the
+        // pre-existing synchronous experience for users that do not need
+        // streaming. The executor-taking variants are opt-in for streaming.
         explicit service(
             const char* name,
             zone zone_id);
         explicit service(
             const char* name,
             zone zone_id,
+            child_service_tag);
+        explicit service(
+            const char* name,
+            zone zone_id,
+            const rpc::executor_ptr& executor);
+        explicit service(
+            const char* name,
+            zone zone_id,
+            const rpc::executor_ptr& executor,
             child_service_tag);
 #endif
 
@@ -279,20 +297,33 @@ namespace rpc
         template<typename Callable> auto schedule(Callable&& callable)
         {
             // Forwards the lambda (or any other callable) to the real scheduler
-            return io_scheduler_->schedule(std::forward<Callable>(callable));
+            return executor_->schedule(std::forward<Callable>(callable));
         }
 
-        coro::scheduler::schedule_operation schedule() { return io_scheduler_->schedule(); }
+        coro::scheduler::schedule_operation schedule() { return executor_->schedule(); }
 
         bool spawn(coro::task<void>&& callable)
         {
             // Forwards the lambda (or any other callable) to the real scheduler
-            return io_scheduler_->spawn_detached(std::forward<coro::task<void>>(callable));
+            return executor_->spawn_detached(std::forward<coro::task<void>>(callable));
         }
-        auto get_scheduler() const { return io_scheduler_; }
+        auto get_scheduler() const { return executor_; }
 
         void set_shutdown_event(const std::shared_ptr<rpc::event>& e) { on_shutdown_ = e; }
+#else
+        // Blocking-mode spawn dispatches a callable to the executor's pool.
+        // Returns false if no executor is configured (non-streaming setup).
+        bool spawn(std::function<void()> fn)
+        {
+            if (!executor_)
+                return false;
+            return executor_->post(std::move(fn));
+        }
 #endif
+
+        // Unified accessor available in both modes. May return nullptr in
+        // blocking mode when the service was constructed without an executor.
+        auto get_executor() const { return executor_; }
 
         /**
          * @brief Get the current service for this thread
@@ -797,6 +828,14 @@ namespace rpc
         static std::shared_ptr<root_service> create(
             const char* name,
             const service_config& config);
+        static std::shared_ptr<root_service> create(
+            const char* name,
+            zone zone_id,
+            const rpc::executor_ptr& executor);
+        static std::shared_ptr<root_service> create(
+            const char* name,
+            const service_config& config,
+            const rpc::executor_ptr& executor);
 
         explicit root_service(
             const char* name,
@@ -804,6 +843,14 @@ namespace rpc
         explicit root_service(
             const char* name,
             const service_config& config);
+        explicit root_service(
+            const char* name,
+            zone zone_id,
+            const rpc::executor_ptr& executor);
+        explicit root_service(
+            const char* name,
+            const service_config& config,
+            const rpc::executor_ptr& executor);
 #endif
 
         ~root_service() override = default;

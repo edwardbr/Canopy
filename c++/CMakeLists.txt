@@ -13,18 +13,29 @@ add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
 
-if(CANOPY_BUILD_COROUTINE)
-  add_subdirectory(streaming)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_subdirectory(subcomponents/io_uring)
-    add_subdirectory(subcomponents/file_system)
-  endif()
-  if(CANOPY_BUILD_WEBSOCKET)
-    add_subdirectory(subcomponents/http_server)
-  endif()
-  if(CANOPY_BUILD_ENCLAVE)
-    add_subdirectory(transports/sgx_coroutine/edl)
-  endif()
+# The abstract streaming::stream interface is dual-mode; concrete impls inside
+# c++/streaming (tcp, tls, mbedtls, spsc, attestation, websocket) gate
+# themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
+add_subdirectory(streaming)
+
+# io_uring is coroutine-only by design (see project memory). file_system is
+# dual-mode: coroutine builds use the io_uring controller, blocking builds
+# use plain POSIX ::open/::read/::write/::close.
+if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_subdirectory(subcomponents/io_uring)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_subdirectory(subcomponents/file_system)
+endif()
+
+# canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes;
+# mbedtls secure streams remain coroutine-only in streaming/mbedtls.
+if(CANOPY_BUILD_WEBSOCKET)
+  add_subdirectory(subcomponents/http_server)
+endif()
+
+if(CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_ENCLAVE)
+  add_subdirectory(transports/sgx_coroutine/edl)
 endif()
 
 add_subdirectory(transports)

@@ -29,7 +29,12 @@ target_compile_definitions(canopy_file_system PRIVATE ${CANOPY_DEFINES})
 target_compile_options(canopy_file_system PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(canopy_file_system PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-target_link_libraries(canopy_file_system PUBLIC file_system_idl canopy_io_uring rpc::rpc)
+if(CANOPY_BUILD_COROUTINE)
+  target_link_libraries(canopy_file_system PUBLIC file_system_idl canopy_io_uring rpc::rpc)
+else()
+  # Blocking-mode posix backend: no io_uring controller.
+  target_link_libraries(canopy_file_system PUBLIC file_system_idl rpc::rpc)
+endif()
 
 set_property(TARGET canopy_file_system PROPERTY COMPILE_PDB_NAME canopy_file_system)
 
@@ -37,7 +42,7 @@ if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(canopy_file_system PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
-if(CANOPY_BUILD_ENCLAVE)
+if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE AND TARGET canopy_io_uring_enclave)
   add_library(canopy_file_system_enclave STATIC src/file_system_manager.cpp)
 
   target_include_directories(

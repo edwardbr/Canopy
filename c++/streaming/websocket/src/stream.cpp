@@ -20,7 +20,8 @@ namespace streaming::websocket
             if (now >= deadline)
                 return std::chrono::milliseconds{0};
 
-            return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            return remaining.count() > 0 ? remaining : std::chrono::milliseconds{1};
         }
     } // namespace
 
@@ -45,6 +46,7 @@ namespace streaming::websocket
 
     stream::~stream()
     {
+        std::lock_guard<std::mutex> lock(mtx_);
         if (wslay_ctx_ != nullptr)
         {
             wslay_event_context_free(wslay_ctx_);
@@ -54,86 +56,109 @@ namespace streaming::websocket
 
     auto stream::receive(
         rpc::mutable_byte_span buffer,
-        std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>>
+        std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
     {
-        if (!decoded_messages_.empty())
-            co_return serve_decoded(buffer);
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (!decoded_messages_.empty())
+                CO_RETURN serve_decoded_locked(buffer);
+        }
 
         auto deadline = std::chrono::steady_clock::now() + timeout;
         bool single_attempt = timeout <= std::chrono::milliseconds{0};
 
         while (true)
         {
-            if (!co_await drive_send())
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+            if (!CO_AWAIT drive_send())
+                CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
 
-            auto [status, span] = co_await underlying_->receive(
+            auto [status, span] = CO_AWAIT underlying_->receive(
                 rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
                 single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
             if (status.is_closed())
             {
+                std::lock_guard<std::mutex> lock(mtx_);
                 closed_ = true;
-                co_return {status, {}};
+                CO_RETURN{status, {}};
             }
             if (status.is_ok() && !span.empty())
             {
-                raw_recv_pos_ = 0;
-                raw_recv_size_ = span.size();
-                wslay_event_recv(wslay_ctx_);
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    if (closed_ || !wslay_ctx_)
+                        CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                    raw_recv_pos_ = 0;
+                    raw_recv_size_ = span.size();
+                    wslay_event_recv(wslay_ctx_);
+                }
 
-                if (!co_await drive_send())
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                if (!CO_AWAIT drive_send())
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
 
-                if (!decoded_messages_.empty())
-                    co_return serve_decoded(buffer);
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    if (!decoded_messages_.empty())
+                        CO_RETURN serve_decoded_locked(buffer);
+                }
             }
             else if (status.is_timeout() || span.empty())
             {
                 if (single_attempt || std::chrono::steady_clock::now() >= deadline)
-                    co_return {status, {}};
+                    CO_RETURN{status, {}};
             }
             else
             {
-                co_return {status, {}};
+                CO_RETURN{status, {}};
             }
 
             if (single_attempt)
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::timeout}, {}};
         }
     }
 
-    auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
+    auto stream::send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status)
     {
-        if (closed_)
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+#ifdef CANOPY_BUILD_COROUTINE
+        auto send_lock = CO_AWAIT send_mtx_.scoped_lock();
+#else
+        std::unique_lock<std::mutex> send_lock(send_mtx_);
+#endif
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            if (closed_ || !wslay_ctx_)
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
 
-        // wslay copies the payload internally so we can pass the span directly.
-        wslay_event_msg msg{};
-        msg.opcode = WSLAY_BINARY_FRAME;
-        msg.msg = reinterpret_cast<const uint8_t*>(buffer.data());
-        msg.msg_length = buffer.size();
-        if (wslay_event_queue_msg(wslay_ctx_, &msg) != 0)
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+            // wslay copies the payload internally so we can pass the span directly.
+            wslay_event_msg msg{};
+            msg.opcode = WSLAY_BINARY_FRAME;
+            msg.msg = reinterpret_cast<const uint8_t*>(buffer.data());
+            msg.msg_length = buffer.size();
+            if (wslay_event_queue_msg(wslay_ctx_, &msg) != 0)
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
+        }
 
-        if (!co_await drive_send())
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
-        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+        if (!CO_AWAIT drive_send_locked())
+            CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
+        CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::ok};
     }
 
     bool stream::is_closed() const
     {
+        std::lock_guard<std::mutex> lock(mtx_);
         return closed_;
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    auto stream::set_closed() -> CORO_TASK(void)
     {
-        closed_ = true;
-        if (underlying_)
-            co_await underlying_->set_closed();
-        co_return;
+        std::shared_ptr<::streaming::stream> underlying;
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            closed_ = true;
+            underlying = underlying_;
+        }
+        if (underlying)
+            CO_AWAIT underlying->set_closed();
+        CO_RETURN;
     }
 
     auto stream::get_peer_info() const -> peer_info
@@ -142,7 +167,15 @@ namespace streaming::websocket
     }
 
     auto stream::serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<
-        coro::net::io_status,
+        rpc::io_status,
+        rpc::mutable_byte_span>
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        return serve_decoded_locked(buffer);
+    }
+
+    auto stream::serve_decoded_locked(rpc::mutable_byte_span buffer) -> std::pair<
+        rpc::io_status,
         rpc::mutable_byte_span>
     {
         auto& msg = decoded_messages_.front();
@@ -155,48 +188,65 @@ namespace streaming::websocket
             decoded_messages_.pop();
             current_msg_offset_ = 0;
         }
-        return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+        return {rpc::io_status{FLD(type) rpc::io_status::kind::ok}, buffer.subspan(0, to_copy)};
     }
 
-    auto stream::drive_send() -> coro::task<bool>
+    auto stream::drive_send() -> CORO_TASK(bool)
     {
-
-        if (closed_)
-            co_return false;
-        if (!wslay_ctx_)
-        {
-            assert(false);
-            co_return false;
-        }
-        while (wslay_event_want_write(wslay_ctx_))
-        {
-            outgoing_raw_.clear();
-            int r = wslay_event_send(wslay_ctx_);
-            if (r != 0)
-            {
-                RPC_ERROR("wslay_event_send error: {}", r);
-                co_return false;
-            }
-            if (!co_await flush_outgoing_raw())
-                co_return false;
-        }
-        co_return true;
+#ifdef CANOPY_BUILD_COROUTINE
+        auto send_lock = CO_AWAIT send_mtx_.scoped_lock();
+#else
+        std::unique_lock<std::mutex> send_lock(send_mtx_);
+#endif
+        CO_RETURN CO_AWAIT drive_send_locked();
     }
 
-    auto stream::flush_outgoing_raw() -> coro::task<bool>
+    auto stream::drive_send_locked() -> CORO_TASK(bool)
+    {
+        while (true)
+        {
+            {
+                std::vector<uint8_t> raw;
+                {
+                    std::lock_guard<std::mutex> lock(mtx_);
+                    if (closed_)
+                        CO_RETURN false;
+                    if (!wslay_ctx_)
+                    {
+                        assert(false);
+                        CO_RETURN false;
+                    }
+                    if (!wslay_event_want_write(wslay_ctx_))
+                        CO_RETURN true;
+                    outgoing_raw_.clear();
+                    int r = wslay_event_send(wslay_ctx_);
+                    if (r != 0)
+                    {
+                        RPC_ERROR("wslay_event_send error: {}", r);
+                        CO_RETURN false;
+                    }
+                    raw.swap(outgoing_raw_);
+                }
+
+                if (!CO_AWAIT flush_outgoing_raw(std::move(raw)))
+                    CO_RETURN false;
+            }
+        }
+    }
+
+    auto stream::flush_outgoing_raw(std::vector<uint8_t> raw) -> CORO_TASK(bool)
     {
         size_t offset = 0;
-        while (offset < outgoing_raw_.size())
+        while (offset < raw.size())
         {
-            size_t chunk_size = std::min(io_chunk_size, outgoing_raw_.size() - offset);
-            auto status = co_await underlying_->send(
-                rpc::byte_span(reinterpret_cast<const char*>(outgoing_raw_.data() + offset), chunk_size));
+            size_t chunk_size = std::min(io_chunk_size, raw.size() - offset);
+            auto status = CO_AWAIT underlying_->send(
+                rpc::byte_span(reinterpret_cast<const char*>(raw.data() + offset), chunk_size));
             if (!status.is_ok())
-                co_return false;
+                CO_RETURN false;
             offset += chunk_size;
         }
-        outgoing_raw_.clear();
-        co_return true;
+        CO_RETURN true;
     }
 
     // -----------------------------------------------------------------------

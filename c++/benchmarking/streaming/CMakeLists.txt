@@ -2,8 +2,8 @@
    Copyright (c) 2026 Edward Boggis-Rolfe
    All rights reserved.
 ]]
-# Measures raw stream throughput and round-trip latency for each stream type: spsc, tcp, io_uring (Linux), tls+spsc,
-# ws+spsc, and tls+ws+spsc. No transport or service layer is exercised.
+# Measures raw stream throughput and round-trip latency. TCP-backed streams are available in blocking and coroutine
+# builds; SPSC and io_uring variants are coroutine-only. No transport or service layer is exercised.
 
 cmake_minimum_required(VERSION 3.24)
 project(
@@ -11,60 +11,60 @@ project(
   VERSION 1.0.0
   LANGUAGES CXX)
 
-if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
-  set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
-elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+set(STREAMING_BENCHMARK_SOURCES benchmark.cpp benchmark_common.cpp stream_tcp.cpp stream_tcp_wrapped.cpp)
+set(STREAMING_BENCHMARK_LIBS streaming streaming_tcp rpc fmt::fmt-header-only ${CANOPY_LIBRARIES} rpc_log)
+set(
+  STREAMING_BENCHMARK_DEFINES
+  ${CANOPY_DEFINES}
+  # Local fixture credentials keep the benchmark independent of demos and avoid using OpenSSL just to generate
+  # throwaway certificates when the selected secure-stream backend is mbedTLS.
+  CANOPY_STREAMING_BENCHMARK_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
+
+set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL" AND TARGET streaming_tls)
   set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_tls)
-else()
-  message(
-    FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND for streaming_benchmark: ${CANOPY_SECURE_STREAM_BACKEND}")
+elseif(CANOPY_BUILD_COROUTINE
+       AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
+       AND TARGET streaming_mbedtls)
+  set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
 endif()
 
-if(NOT TARGET ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET})
-  message(
-    FATAL_ERROR
-      "streaming_benchmark requires ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET}; check CANOPY_SECURE_STREAM_BACKEND")
+if(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
+  list(APPEND STREAMING_BENCHMARK_LIBS ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET})
+  list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_STREAMING_BENCHMARK_HAS_TLS)
 endif()
 
-add_executable(
-  streaming_benchmark
-  benchmark.cpp
-  benchmark_common.cpp
-  stream_spsc.cpp
-  stream_tcp.cpp
-  stream_io_uring.cpp
-  stream_sgx_io_uring.cpp
-  stream_tls_spsc.cpp
-  stream_websocket_spsc.cpp
-  stream_tls_websocket_spsc.cpp)
-target_compile_definitions(
-  streaming_benchmark
-  PRIVATE ${CANOPY_DEFINES}
-          # Local fixture credentials keep the benchmark independent of demos and avoid using OpenSSL just to generate
-          # throwaway certificates when the selected secure-stream backend is mbedTLS.
-          CANOPY_STREAMING_BENCHMARK_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
-if(CANOPY_BUILD_WEBSOCKET)
-  target_compile_definitions(streaming_benchmark PRIVATE CANOPY_BUILD_WEBSOCKET)
+if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
+  list(APPEND STREAMING_BENCHMARK_LIBS streaming_websocket wslay)
+  list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_BUILD_WEBSOCKET)
 endif()
+
+if(CANOPY_BUILD_COROUTINE)
+  list(APPEND STREAMING_BENCHMARK_SOURCES stream_spsc.cpp)
+  list(APPEND STREAMING_BENCHMARK_LIBS streaming_spsc_queue)
+
+  if(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
+    list(APPEND STREAMING_BENCHMARK_SOURCES stream_tls_spsc.cpp)
+  endif()
+
+  if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
+    list(APPEND STREAMING_BENCHMARK_SOURCES stream_websocket_spsc.cpp)
+    if(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
+      list(APPEND STREAMING_BENCHMARK_SOURCES stream_tls_websocket_spsc.cpp)
+    endif()
+  endif()
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET streaming_io_uring)
+    list(APPEND STREAMING_BENCHMARK_SOURCES stream_io_uring.cpp stream_sgx_io_uring.cpp)
+    list(APPEND STREAMING_BENCHMARK_LIBS streaming_io_uring)
+    list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_STREAMING_BENCHMARK_HAS_IO_URING)
+  endif()
+endif()
+
+add_executable(streaming_benchmark ${STREAMING_BENCHMARK_SOURCES})
+target_compile_definitions(streaming_benchmark PRIVATE ${STREAMING_BENCHMARK_DEFINES})
 target_include_directories(streaming_benchmark PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(
-  streaming_benchmark
-  PUBLIC streaming
-         streaming_tcp
-         ${STREAMING_BENCHMARK_SECURE_STREAM_TARGET}
-         streaming_spsc_queue
-         rpc
-         fmt::fmt-header-only
-         ${CANOPY_LIBRARIES}
-         rpc_log)
-
-if(CANOPY_BUILD_WEBSOCKET)
-  target_link_libraries(streaming_benchmark PUBLIC streaming_websocket wslay)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  target_link_libraries(streaming_benchmark PUBLIC streaming_io_uring)
-endif()
+target_link_libraries(streaming_benchmark PUBLIC ${STREAMING_BENCHMARK_LIBS})
 
 if(CANOPY_BUILD_ENCLAVE
    AND CANOPY_BUILD_COROUTINE

@@ -27,6 +27,7 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_BUILD_TEST "Build test code" OFF)
   option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
   option(CANOPY_BUILD_BENCHMARKING "Build benchmarking code" OFF)
+  option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)
   option(CANOPY_BUILD_COROUTINE "Include coroutine support" OFF)
   option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include Protocol Buffers support" ON)
   option(CANOPY_BUILD_NANOPB "Include Nanopb support" ON)
@@ -41,7 +42,7 @@ if(NOT DEPENDENCIES_LOADED)
   # SGX Enclave support(disabled by default - most users don't need this)
   option(CANOPY_BUILD_ENCLAVE "Build SGX enclave code" OFF)
   set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_DEFAULT OFF)
-  if(CANOPY_BUILD_ENCLAVE)
+  if(CANOPY_BUILD_ENCLAVE OR NOT CANOPY_BUILD_COROUTINE)
     set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_DEFAULT ON)
   endif()
   option(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
@@ -160,9 +161,11 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_BUILD_SGX_ATTESTATION_TESTS ON)
   endif()
 
-  if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
-    message(FATAL_ERROR "CANOPY_BUILD_WEBSOCKET requires CANOPY_BUILD_COROUTINE=ON")
-  endif()
+  # CANOPY_BUILD_WEBSOCKET works in both coroutine and blocking builds; the
+  # WS framing stream (streaming_websocket) operates over a dual-mode
+  # streaming::stream and wraps the pure-C wslay library. transport_websocket
+  # and higher layers (TLS, http_server, the WS demo) may still gate on
+  # CANOPY_BUILD_COROUTINE individually until their own dual-mode work lands.
 
   set(CANOPY_SECURE_STREAM_BACKEND
       "OPENSSL"
@@ -669,8 +672,14 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_IO_URING_SQPOLL_FLAG)
   endif()
 
+  # OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the
+  # dual-mode streaming::stream interface). mbedtls is still coroutine-only.
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
-    set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+    if(CANOPY_BUILD_COROUTINE)
+      set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+    else()
+      set(CANOPY_SECURE_STREAM_BACKEND_FLAG)
+    endif()
   else()
     set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
   endif()

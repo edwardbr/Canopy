@@ -16,6 +16,7 @@ add_subdirectory(idl)
 
 # Find all demo source files
 file(GLOB_RECURSE DEMO_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*/*.cpp)
+set(COMPREHENSIVE_DEMO_TARGETS)
 
 # Create executables for each demo category Note: These require the generated websocket_demo.h header which is created
 # by generator
@@ -24,6 +25,7 @@ file(GLOB_RECURSE DEMO_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src
 # local
 
 add_executable(local_transport_demo src/transport/local_transport_demo.cpp)
+list(APPEND COMPREHENSIVE_DEMO_TARGETS local_transport_demo)
 target_compile_definitions(local_transport_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   local_transport_demo
@@ -47,6 +49,7 @@ if(CANOPY_BUILD_COROUTINE)
   # tcp
 
   add_executable(tcp_transport_demo src/transport/tcp/tcp_transport_demo.cpp)
+  list(APPEND COMPREHENSIVE_DEMO_TARGETS tcp_transport_demo)
   target_compile_definitions(tcp_transport_demo PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
     tcp_transport_demo
@@ -70,6 +73,7 @@ if(CANOPY_BUILD_COROUTINE)
   # spsc
 
   add_executable(spsc_transport_demo src/transport/spsc_transport_demo.cpp)
+  list(APPEND COMPREHENSIVE_DEMO_TARGETS spsc_transport_demo)
   target_compile_definitions(spsc_transport_demo PRIVATE ${CANOPY_DEFINES})
   target_include_directories(
     spsc_transport_demo
@@ -92,6 +96,7 @@ endif()
 
 # Serialization demo
 add_executable(serialisation_demo src/serialisation/serialisation_demo.cpp)
+list(APPEND COMPREHENSIVE_DEMO_TARGETS serialisation_demo)
 target_compile_definitions(serialisation_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   serialisation_demo
@@ -110,6 +115,7 @@ set_property(TARGET serialisation_demo PROPERTY COMPILE_PDB_NAME serialisation_d
 
 # Pointer demos
 add_executable(shared_ptr_demo src/pointers/shared_ptr_demo.cpp)
+list(APPEND COMPREHENSIVE_DEMO_TARGETS shared_ptr_demo)
 target_compile_definitions(shared_ptr_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   shared_ptr_demo
@@ -126,6 +132,7 @@ target_compile_options(shared_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOP
 target_link_options(shared_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 add_executable(optimistic_ptr_demo src/pointers/optimistic_ptr_demo.cpp)
+list(APPEND COMPREHENSIVE_DEMO_TARGETS optimistic_ptr_demo)
 target_compile_definitions(optimistic_ptr_demo PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   optimistic_ptr_demo
@@ -143,25 +150,24 @@ target_link_options(optimistic_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET optimistic_ptr_demo PROPERTY COMPILE_PDB_NAME optimistic_ptr_demo)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
-  set_target_properties(
-    local_transport_demo
-    tcp_transport_demo
-    spsc_transport_demo
-    serialisation_demo
-    shared_ptr_demo
-    optimistic_ptr_demo
-    PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  set_target_properties(${COMPREHENSIVE_DEMO_TARGETS} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
 message(STATUS "Comprehensive demos configured")
 message(STATUS "Demo sources: ${DEMO_SOURCES}")
 message(STATUS "")
-message(STATUS "To build these demos ensure Canopy is built with: cmake --preset Debug_Coroutine")
+if(CANOPY_BUILD_COROUTINE)
+  message(STATUS "Coroutine-only comprehensive demos are enabled in this build")
+else()
+  message(STATUS "TCP and SPSC comprehensive demos are coroutine-only and are not configured in this build")
+endif()
 message(STATUS "")
 message(STATUS "Available demos:")
 message(STATUS "  - local_transport_demo (in-process communication)")
-message(STATUS "  - tcp_transport_demo (network transport, requires coroutines)")
-message(STATUS "  - spsc_transport_demo (IPC, requires coroutines)")
+if(CANOPY_BUILD_COROUTINE)
+  message(STATUS "  - tcp_transport_demo (network transport, coroutine demo)")
+  message(STATUS "  - spsc_transport_demo (IPC, coroutine demo)")
+endif()
 message(STATUS "  - serialisation_demo (serialization formats)")
 message(STATUS "  - shared_ptr_demo (rpc::shared_ptr reference counting)")
 message(STATUS "  - optimistic_ptr_demo (rpc::optimistic_ptr lifecycle)")

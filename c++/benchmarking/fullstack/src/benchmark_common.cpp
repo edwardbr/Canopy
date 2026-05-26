@@ -13,12 +13,10 @@
 
 #include <fmt/format.h>
 
-#ifdef CANOPY_BUILD_COROUTINE
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <sys/socket.h>
-#  include <unistd.h>
-#endif
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace comprehensive::v1
 {
@@ -144,25 +142,6 @@ namespace comprehensive::v1
         CO_RETURN rpc::error::OK();
     }
 
-#ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count)
-    {
-        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-                .pool = coro::thread_pool::options{.thread_count = thread_count},
-                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
-    }
-
-    void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler)
-    {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-        while (!scheduler.expired() && std::chrono::steady_clock::now() < deadline)
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
-        if (!scheduler.expired())
-            std::cerr << "benchmark: scheduler cleanup timed out\n";
-    }
-
     uint16_t allocate_loopback_port()
     {
         int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -183,6 +162,25 @@ namespace comprehensive::v1
 
         ::close(fd);
         return ntohs(bound_addr.sin_port);
+    }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count)
+    {
+        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                .pool = coro::thread_pool::options{.thread_count = thread_count},
+                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+    }
+
+    void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (!scheduler.expired() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        if (!scheduler.expired())
+            std::cerr << "benchmark: scheduler cleanup timed out\n";
     }
 #endif
 
@@ -209,9 +207,10 @@ namespace comprehensive::v1
             io_uring_warmup_calls);
 #else
         fmt::print(
-            "Warmup: local={} calls, dynamic_library={} calls (not included in timing)\n",
+            "Warmup: local={} calls, dynamic_library={} calls, tcp={} calls (not included in timing)\n",
             local_warmup_calls,
-            dll_warmup_calls);
+            dll_warmup_calls,
+            tcp_warmup_calls);
 #endif
         fmt::print("Note: Timings are sampled in nanoseconds and displayed in microseconds\n");
         fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");

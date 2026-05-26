@@ -108,6 +108,7 @@ All presets inherit these defaults:
 CANOPY_BUILD_COROUTINE=OFF              # Coroutines disabled by default
 CANOPY_BUILD_ENCLAVE=OFF                # SGX enclave support disabled
 CANOPY_BUILD_TEST=ON                    # Test building enabled
+CANOPY_BUILD_RUST=OFF                   # Rust workspace disabled by default
 CANOPY_VERBOSE_GENERATOR=OFF                # Debug code generation disabled
 CMAKE_EXPORT_COMPILE_COMMANDS=ON # Export compile commands
 ```
@@ -263,6 +264,7 @@ cmake --preset Debug -DCANOPY_DEBUG_LEAK=ON/OFF
 option(CANOPY_BUILD_COROUTINE "Enable C++20 coroutine support" OFF)
 option(CANOPY_BUILD_ENCLAVE "Enable SGX enclave support" OFF)
 option(CANOPY_BUILD_TEST "Build tests" ON)
+option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)
 option(CANOPY_BUILD_DEMOS "Build demos" ON)
 option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include full Google C++ Protocol Buffers support" ON)
 option(CANOPY_BUILD_NANOPB "Include Nanopb protobuf-compatible support" ON)
@@ -354,13 +356,17 @@ cmake --build build_debug --target generator  # IDL code generator
 cmake --build build_debug --target transport_local                # Local transport
 cmake --build build_debug --target transport_dynamic_library      # Blocking DLL transport
 cmake --build build_debug --target transport_c_abi                # C ABI DLL transport
-cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport
+cmake --build build_debug --target transport_streaming            # Stream-backed transport, blocking mode
+cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport, coroutine mode
 cmake --build build_debug_coroutine --target transport_ipc_transport
 cmake --build build_debug_coroutine --target transport_libcoro_host_scheduled_dynamic_library
 cmake --build build_debug_coroutine --target transport_libcoro_dll_scheduled_dynamic_library
 ```
 
 ### Tests
+
+These targets are available only when `CANOPY_BUILD_TEST=ON`; turning that
+option off also skips the fuzz test subdirectory.
 
 ```bash
 cmake --build build_debug --target rpc_test
@@ -375,7 +381,8 @@ cmake --build build_debug --target zone_address_test
 ### Demos
 
 ```bash
-cmake --build build_debug_coroutine --target websocket_server   # WebSocket demo server
+cmake --build build_debug --target websocket_server             # Blocking calculator-only WebSocket demo
+cmake --build build_debug_coroutine --target websocket_server   # Coroutine WebSocket demo server
 ```
 
 ## 7. AddressSanitizer Support

@@ -15,19 +15,19 @@ namespace streaming::io_uring
 {
     namespace
     {
-        static inline coro::net::io_status ok_status() noexcept
+        static inline rpc::io_status ok_status() noexcept
         {
-            return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+            return rpc::io_status{.type = rpc::io_status::kind::ok};
         }
 
-        static inline coro::net::io_status closed_status() noexcept
+        static inline rpc::io_status closed_status() noexcept
         {
-            return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+            return rpc::io_status{.type = rpc::io_status::kind::closed};
         }
 
-        static inline coro::net::io_status timeout_status() noexcept
+        static inline rpc::io_status timeout_status() noexcept
         {
-            return coro::net::io_status{.type = coro::net::io_status::kind::timeout};
+            return rpc::io_status{.type = rpc::io_status::kind::timeout};
         }
 
         static inline int32_t native_error_code(int32_t native_result) noexcept
@@ -35,10 +35,9 @@ namespace streaming::io_uring
             return native_result < 0 ? -native_result : EIO;
         }
 
-        static inline coro::net::io_status native_status(int32_t native_result) noexcept
+        static inline rpc::io_status native_status(int32_t native_result) noexcept
         {
-            return coro::net::io_status{
-                .type = coro::net::io_status::kind::native, .native_code = native_error_code(native_result)};
+            return rpc::io_status{.type = rpc::io_status::kind::native, .native_code = native_error_code(native_result)};
         }
 
         static inline bool is_retryable_native_result(int32_t native_result) noexcept
@@ -75,10 +74,7 @@ namespace streaming::io_uring
 
     auto stream::receive(
         rpc::mutable_byte_span buffer,
-        std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>>
+        std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
     {
         auto descriptor = descriptor_;
         if (closed_.load(std::memory_order_acquire) || !descriptor || !descriptor->is_open())
@@ -172,7 +168,7 @@ namespace streaming::io_uring
         }
     }
 
-    auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
+    auto stream::send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status)
     {
         auto descriptor = descriptor_;
         if (closed_.load(std::memory_order_acquire) || !descriptor || !descriptor->is_open())
@@ -228,7 +224,7 @@ namespace streaming::io_uring
         return closed_.load(std::memory_order_acquire) || !descriptor || !descriptor->is_open();
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    auto stream::set_closed() -> CORO_TASK(void)
     {
         auto descriptor = descriptor_;
         if (!closed_.exchange(true, std::memory_order_acq_rel) && descriptor)

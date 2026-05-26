@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <limits>
+#include <mutex>
 #include <utility>
 
 #include <openssl/err.h>
@@ -323,7 +324,7 @@ namespace streaming::tls
 
     // TLS client context implementation
     client_context::client_context(bool verify_peer)
-        : client_context(client_context_options{.verify_peer = verify_peer})
+        : client_context(client_context_options{FLD(verify_peer) verify_peer})
     {
     }
 
@@ -349,7 +350,7 @@ namespace streaming::tls
         bool verify_peer)
         : client_context(
               std::move(trust_anchor),
-              client_context_options{.verify_peer = verify_peer})
+              client_context_options{FLD(verify_peer) verify_peer})
     {
     }
 
@@ -415,7 +416,7 @@ namespace streaming::tls
     {
         if (ssl_)
         {
-            if (handshake_complete_ && !closed_)
+            if (handshake_complete_ && !closed_.load(std::memory_order_acquire))
             {
                 // Queue the TLS close_notify alert into wbio; the bytes are
                 // dropped here since we cannot await in a destructor. The
@@ -430,74 +431,112 @@ namespace streaming::tls
     // Private helpers
     // -----------------------------------------------------------------------
 
-    auto stream::feed_rbio(std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>
+    auto stream::feed_rbio(std::chrono::milliseconds timeout) -> CORO_TASK(rpc::io_status)
     {
         std::array<char, 4096> buf;
-        auto [status, span] = co_await underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
+        auto [status, span] = CO_AWAIT underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
         if (status.is_ok() && !span.empty())
         {
             if (!fits_openssl_int(span.size()))
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::native, FLD(native_code) SSL_ERROR_SSL};
+#ifdef CANOPY_BUILD_COROUTINE
+            auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+            std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
             const auto written = BIO_write(rbio_, span.data(), static_cast<int>(span.size()));
             if (written != static_cast<int>(span.size()))
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::native, FLD(native_code) SSL_ERROR_SSL};
         }
-        co_return status;
+        CO_RETURN status;
     }
 
-    auto stream::drain_wbio() -> coro::task<bool>
+    auto stream::drain_wbio() -> CORO_TASK(bool)
     {
         std::array<char, 4096> buf;
-        int len = 0;
-        while ((len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()))) > 0)
+        while (true)
         {
-            auto status = co_await underlying_->send(rpc::byte_span{buf.data(), static_cast<size_t>(len)});
+            int len = 0;
+            {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+                len = BIO_read(wbio_, buf.data(), static_cast<int>(buf.size()));
+            }
+            if (len <= 0)
+                break;
+
+            auto status = CO_AWAIT underlying_->send(rpc::byte_span{buf.data(), static_cast<size_t>(len)});
             if (!status.is_ok())
-                co_return false;
+                CO_RETURN false;
         }
-        co_return true;
+        CO_RETURN true;
     }
 
     // -----------------------------------------------------------------------
     // Handshake
     // -----------------------------------------------------------------------
 
-    auto stream::handshake() -> coro::task<bool>
+    auto stream::handshake() -> CORO_TASK(bool)
     {
-        if (!ssl_)
         {
-            RPC_ERROR("TLS handshake failed: SSL not initialized");
-            co_return false;
+#ifdef CANOPY_BUILD_COROUTINE
+            auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+            std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+            if (!ssl_)
+            {
+                RPC_ERROR("TLS handshake failed: SSL not initialized");
+                CO_RETURN false;
+            }
         }
 
         while (true)
         {
-            int result = SSL_accept(ssl_);
+            int result = 0;
+            int ssl_error = 0;
+            {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+                result = SSL_accept(ssl_);
+                if (result != 1)
+                    ssl_error = SSL_get_error(ssl_, result);
+            }
 
             // Always flush any handshake data SSL wants to send to the peer.
-            if (!co_await drain_wbio())
+            if (!CO_AWAIT drain_wbio())
             {
                 RPC_ERROR("TLS handshake: drain_wbio failed");
-                co_return false;
+                CO_RETURN false;
             }
 
             if (result == 1)
             {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
                 handshake_complete_ = true;
                 RPC_DEBUG("TLS handshake completed successfully");
-                co_return true;
+                CO_RETURN true;
             }
 
-            int ssl_error = SSL_get_error(ssl_, result);
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
-                auto feed_status = co_await feed_rbio(handshake_receive_timeout);
+                auto feed_status = CO_AWAIT feed_rbio(handshake_receive_timeout);
                 if (feed_status.is_ok())
                     continue; // data fed; let SSL have another go
                 if (feed_status.is_timeout())
                     RPC_WARNING("TLS handshake: underlying stream timed out while waiting for peer data");
                 RPC_WARNING("TLS handshake: peer closed or error while reading");
-                co_return false;
+                CO_RETURN false;
             }
             else if (ssl_error == SSL_ERROR_WANT_WRITE)
             {
@@ -514,47 +553,69 @@ namespace streaming::tls
                 {
                     RPC_WARNING("TLS handshake rejected by peer (ssl_error={})", ssl_error);
                 }
-                co_return false;
+                CO_RETURN false;
             }
         }
     }
 
-    auto stream::client_handshake() -> coro::task<bool>
+    auto stream::client_handshake() -> CORO_TASK(bool)
     {
-        if (!ssl_)
         {
-            RPC_ERROR("TLS client handshake failed: SSL not initialized");
-            co_return false;
+#ifdef CANOPY_BUILD_COROUTINE
+            auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+            std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+            if (!ssl_)
+            {
+                RPC_ERROR("TLS client handshake failed: SSL not initialized");
+                CO_RETURN false;
+            }
         }
 
         while (true)
         {
-            int result = SSL_connect(ssl_);
+            int result = 0;
+            int ssl_error = 0;
+            {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+                result = SSL_connect(ssl_);
+                if (result != 1)
+                    ssl_error = SSL_get_error(ssl_, result);
+            }
 
             // Always flush any handshake data SSL wants to send to the peer.
-            if (!co_await drain_wbio())
+            if (!CO_AWAIT drain_wbio())
             {
                 RPC_ERROR("TLS client handshake: drain_wbio failed");
-                co_return false;
+                CO_RETURN false;
             }
 
             if (result == 1)
             {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
                 handshake_complete_ = true;
                 RPC_DEBUG("TLS client handshake completed successfully");
-                co_return true;
+                CO_RETURN true;
             }
 
-            int ssl_error = SSL_get_error(ssl_, result);
             if (ssl_error == SSL_ERROR_WANT_READ)
             {
-                auto feed_status = co_await feed_rbio(handshake_receive_timeout);
+                auto feed_status = CO_AWAIT feed_rbio(handshake_receive_timeout);
                 if (feed_status.is_ok())
                     continue;
                 if (feed_status.is_timeout())
                     RPC_WARNING("TLS client handshake: underlying stream timed out while waiting for peer data");
                 RPC_WARNING("TLS client handshake: peer closed or error while reading");
-                co_return false;
+                CO_RETURN false;
             }
             else if (ssl_error == SSL_ERROR_WANT_WRITE)
             {
@@ -564,7 +625,7 @@ namespace streaming::tls
             {
                 RPC_WARNING("TLS client handshake failed (ssl_error={})", ssl_error);
                 log_ssl_errors();
-                co_return false;
+                CO_RETURN false;
             }
         }
     }
@@ -575,87 +636,109 @@ namespace streaming::tls
 
     auto stream::receive(
         rpc::mutable_byte_span buffer,
-        std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>>
+        std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
     {
-        if (!ssl_ || !handshake_complete_ || closed_)
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
         if (!fits_openssl_int(buffer.size()))
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL}, {}};
+            CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::native, FLD(native_code) SSL_ERROR_SSL}, {}};
 
         while (true)
         {
-            // Try to decrypt whatever is already in rbio.
-            int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
-            if (bytes_read > 0)
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok},
-                    rpc::mutable_byte_span{buffer.data(), static_cast<size_t>(bytes_read)}};
+            {
+#ifdef CANOPY_BUILD_COROUTINE
+                auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+                std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+                if (!ssl_ || !handshake_complete_ || closed_.load(std::memory_order_acquire))
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
 
-            int ssl_error = SSL_get_error(ssl_, bytes_read);
-            if (ssl_error == SSL_ERROR_ZERO_RETURN)
-            {
-                closed_ = true;
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
-            }
-            if (ssl_error != SSL_ERROR_WANT_READ && ssl_error != SSL_ERROR_WANT_WRITE)
-            {
-                closed_ = true;
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                // Try to decrypt whatever is already in rbio.
+                int bytes_read = SSL_read(ssl_, buffer.data(), static_cast<int>(buffer.size()));
+                if (bytes_read > 0)
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::ok},
+                        rpc::mutable_byte_span{buffer.data(), static_cast<size_t>(bytes_read)}};
+
+                int ssl_error = SSL_get_error(ssl_, bytes_read);
+                if (ssl_error == SSL_ERROR_ZERO_RETURN)
+                {
+                    closed_.store(true, std::memory_order_release);
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                }
+                if (ssl_error != SSL_ERROR_WANT_READ && ssl_error != SSL_ERROR_WANT_WRITE)
+                {
+                    closed_.store(true, std::memory_order_release);
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                }
             }
 
             // Need more raw bytes — wait on the underlying stream with the caller's timeout.
-            auto feed_status = co_await feed_rbio(timeout);
+            auto feed_status = CO_AWAIT feed_rbio(timeout);
             if (!feed_status.is_ok())
             {
                 if (feed_status.is_closed())
-                    closed_ = true;
-                co_return {feed_status, {}};
+                    closed_.store(true, std::memory_order_release);
+                CO_RETURN{feed_status, {}};
             }
         }
     }
 
-    auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
+    auto stream::send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status)
     {
-        if (!ssl_ || !handshake_complete_ || closed_)
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
         if (!fits_openssl_int(buffer.size()))
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = SSL_ERROR_SSL};
+            CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::native, FLD(native_code) SSL_ERROR_SSL};
 
-        int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
-        if (bytes_written <= 0)
         {
-            int ssl_error = SSL_get_error(ssl_, bytes_written);
-            if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::would_block_or_try_again};
-            closed_ = true;
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+#ifdef CANOPY_BUILD_COROUTINE
+            auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+            std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+            if (!ssl_ || !handshake_complete_ || closed_.load(std::memory_order_acquire))
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
+
+            int bytes_written = SSL_write(ssl_, buffer.data(), static_cast<int>(buffer.size()));
+            if (bytes_written <= 0)
+            {
+                int ssl_error = SSL_get_error(ssl_, bytes_written);
+                if (ssl_error == SSL_ERROR_WANT_WRITE || ssl_error == SSL_ERROR_WANT_READ)
+                    CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::would_block_or_try_again};
+                closed_.store(true, std::memory_order_release);
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
+            }
         }
 
-        if (!co_await drain_wbio())
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+        if (!CO_AWAIT drain_wbio())
+            CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
 
-        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+        CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::ok};
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    auto stream::set_closed() -> CORO_TASK(void)
     {
-        if (closed_)
-            co_return;
+        if (closed_.exchange(true, std::memory_order_acq_rel))
+            CO_RETURN;
 
-        closed_ = true;
-
-        if (ssl_ && handshake_complete_)
+        bool drain_close_notify = false;
         {
-            SSL_shutdown(ssl_);
-            (void)co_await drain_wbio();
+#ifdef CANOPY_BUILD_COROUTINE
+            auto tls_lock = CO_AWAIT tls_mtx_.scoped_lock();
+#else
+            std::unique_lock<std::mutex> tls_lock(tls_mtx_);
+#endif
+            if (ssl_ && handshake_complete_)
+            {
+                SSL_shutdown(ssl_);
+                drain_close_notify = true;
+            }
         }
 
-        if (underlying_)
-            co_await underlying_->set_closed();
+        if (drain_close_notify)
+            (void)CO_AWAIT drain_wbio();
 
-        co_return;
+        if (underlying_)
+            CO_AWAIT underlying_->set_closed();
+
+        CO_RETURN;
     }
 
 } // namespace streaming::tls

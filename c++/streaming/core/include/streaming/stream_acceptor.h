@@ -18,9 +18,15 @@ namespace streaming
     public:
         virtual ~stream_acceptor() = default;
 
-        virtual bool init(std::shared_ptr<rpc::coro::scheduler> scheduler)
+        // init(executor) replaces init(scheduler). In coroutine builds the
+        // type is identical (rpc::executor is an alias of rpc::coro::scheduler);
+        // in blocking builds the executor wraps a std::thread pool. Concrete
+        // acceptors that need to interrupt a blocked syscall should implement
+        // that in stop(); the executor is the progress engine, not a hook
+        // registry.
+        virtual bool init(std::shared_ptr<rpc::executor> executor)
         {
-            (void)scheduler;
+            (void)executor;
             return true;
         }
 

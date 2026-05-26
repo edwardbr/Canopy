@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// tcp stream implementation
+// tcp stream implementation — identical source in coroutine and blocking
+// builds. Mode-specific I/O behaviour lives in streaming::tcp::socket.
+
 #include <streaming/tcp/stream.h>
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -11,46 +14,73 @@
 
 namespace streaming::tcp
 {
-    stream::stream(
-        coro::net::tcp::client&& client,
-        std::shared_ptr<coro::scheduler> scheduler)
-        : client_(std::move(client))
-        , scheduler_(std::move(scheduler))
+    namespace
+    {
+        rpc::io_status status_ok() noexcept
+        {
+            rpc::io_status s;
+            s.type = rpc::io_status::kind::ok;
+            return s;
+        }
+        rpc::io_status status_closed() noexcept
+        {
+            rpc::io_status s;
+            s.type = rpc::io_status::kind::closed;
+            return s;
+        }
+        rpc::io_status status_native(int err) noexcept
+        {
+            rpc::io_status s;
+            s.type = rpc::io_status::kind::native;
+            s.native_code = err;
+            return s;
+        }
+    }
+
+    stream::stream(socket sock)
+        : socket_(std::move(sock))
     {
         // Disable Nagle's algorithm so small RPC packets are sent immediately.
-        // Without this, Nagle + delayed-ACK interaction causes ~40-80ms stalls per
-        // round-trip for payloads smaller than one TCP segment.
+        // Without this, Nagle + delayed-ACK interaction causes ~40-80ms stalls
+        // per round-trip for payloads smaller than one TCP segment.
         int flag = 1;
         ::setsockopt(
-            client_.socket().native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+            socket_.native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    stream::stream(coro::net::tcp::client&& client, std::shared_ptr<rpc::executor> executor)
+        : stream(socket(std::move(client), std::move(executor)))
+    {
+    }
+#endif
 
     auto stream::receive(
         rpc::mutable_byte_span buffer,
-        std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>>
+        std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
     {
-        auto [status, s] = co_await client_.read_some(buffer, timeout);
-        if (status.is_closed())
+        auto result = CO_AWAIT socket_.read_some(buffer, timeout);
+        if (result.first.is_closed())
             closed_ = true;
-        co_return {status, rpc::mutable_byte_span(s.data(), s.size())};
+        CO_RETURN result;
     }
 
-    auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
+    auto stream::send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status)
     {
-        // Use direct ::send() syscalls rather than libcoro's poll-based write path.
-        // libcoro's write_some() uses epoll (EPOLL_CTL_ADD) to wait for write-readiness,
-        // but the same socket fd is already registered in epoll by receive_consumer_loop for
-        // reads. A second EPOLL_CTL_ADD for the same fd fails with EEXIST, which would leave
-        // send_producer_loop permanently stuck. Bypassing libcoro's poll for writes avoids
-        // this concurrent-registration conflict entirely. When the send buffer is full
-        // (EAGAIN/EWOULDBLOCK), we yield via schedule() and retry.
+        // Use direct ::send() syscalls rather than libcoro's poll-based write
+        // path. libcoro's write_some() uses epoll (EPOLL_CTL_ADD) to wait for
+        // write-readiness, but the same socket fd is already registered in
+        // epoll by receive_consumer_loop for reads. A second EPOLL_CTL_ADD
+        // for the same fd fails with EEXIST, which would leave
+        // send_producer_loop permanently stuck. Bypassing libcoro's poll
+        // for writes avoids this concurrent-registration conflict entirely.
+        // On EAGAIN/EWOULDBLOCK we delegate to socket_.wait_writable: in
+        // coroutine mode that yields to the scheduler (cooperative retry);
+        // in blocking mode it does poll(POLLOUT) so we don't burn a core.
         while (!buffer.empty())
         {
             ssize_t bytes_sent
-                = ::send(client_.socket().native_handle(), buffer.data(), buffer.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+                = ::send(socket_.native_handle(), buffer.data(), buffer.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
             if (bytes_sent > 0)
             {
                 buffer = buffer.subspan(bytes_sent);
@@ -58,7 +88,7 @@ namespace streaming::tcp
             else if (bytes_sent == 0)
             {
                 closed_ = true;
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+                CO_RETURN status_closed();
             }
             else
             {
@@ -67,15 +97,20 @@ namespace streaming::tcp
                     RPC_WARNING(
                         "tcp::stream::send EAGAIN: {} bytes remaining, fd={}",
                         buffer.size(),
-                        client_.socket().native_handle());
-                    co_await scheduler_->schedule();
+                        socket_.native_handle());
+                    auto wstatus = CO_AWAIT socket_.wait_writable(std::chrono::seconds(30));
+                    if (!wstatus.is_ok())
+                    {
+                        closed_ = true;
+                        CO_RETURN wstatus;
+                    }
                     continue;
                 }
                 closed_ = true;
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::native, .native_code = errno};
+                CO_RETURN status_native(errno);
             }
         }
-        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+        CO_RETURN status_ok();
     }
 
     bool stream::is_closed() const
@@ -83,21 +118,20 @@ namespace streaming::tcp
         return closed_;
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    auto stream::set_closed() -> CORO_TASK(void)
     {
-        closed_ = true;
-        if (!socket_closed_)
+        closed_.store(true, std::memory_order_release);
+        // CAS the close-once flag so concurrent set_closed()/send()/receive()
+        // calls only invoke ::shutdown + ::close on the underlying socket
+        // once. Without the CAS, two threads could both pass the !flag
+        // check and double-close.
+        bool expected = false;
+        if (socket_closed_.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
         {
-            socket_closed_ = true;
-            client_.socket().shutdown();
-            client_.socket().close();
+            socket_.shutdown();
+            socket_.close();
         }
-        co_return;
-    }
-
-    auto stream::client() -> coro::net::tcp::client&
-    {
-        return client_;
+        CO_RETURN;
     }
 
     auto stream::get_peer_info() const -> peer_info
@@ -105,7 +139,7 @@ namespace streaming::tcp
         peer_info info{};
         sockaddr_storage ss{};
         socklen_t len = sizeof(ss);
-        if (::getpeername(client_.socket().native_handle(), reinterpret_cast<sockaddr*>(&ss), &len) != 0)
+        if (::getpeername(socket_.native_handle(), reinterpret_cast<sockaddr*>(&ss), &len) != 0)
             return info;
 
         if (ss.ss_family == AF_INET)

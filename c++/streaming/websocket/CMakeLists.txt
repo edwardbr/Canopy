@@ -12,10 +12,19 @@ target_include_directories(
 target_compile_definitions(streaming_websocket PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_websocket PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_websocket PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(
-  streaming_websocket
-  PUBLIC streaming
-  PRIVATE wslay rpc libcoro)
+if(CANOPY_BUILD_COROUTINE)
+  target_link_libraries(
+    streaming_websocket
+    PUBLIC streaming
+    PRIVATE wslay rpc libcoro)
+else()
+  # Blocking-mode WS stream operates over a dual-mode streaming::stream and
+  # the pure-C wslay library; no libcoro link.
+  target_link_libraries(
+    streaming_websocket
+    PUBLIC streaming
+    PRIVATE wslay rpc)
+endif()
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_websocket PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

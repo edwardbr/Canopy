@@ -3,10 +3,15 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <rpc/rpc.h>
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <rpc/internal/coro_runtime/mutex.h>
+#endif
 
 #include <streaming/stream.h>
 
@@ -101,19 +106,17 @@ namespace streaming::tls
         stream(const stream&) = delete;
         auto operator=(const stream&) -> stream& = delete;
 
-        auto handshake() -> coro::task<bool>;
-        auto client_handshake() -> coro::task<bool>;
+        auto handshake() -> CORO_TASK(bool);
+        auto client_handshake() -> CORO_TASK(bool);
 
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override;
+            -> CORO_TASK(::streaming::receive_result) override;
 
-        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
-        [[nodiscard]] auto is_closed() const -> bool override { return closed_; }
-        auto set_closed() -> coro::task<void> override;
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
+        [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
+        auto set_closed() -> CORO_TASK(void) override;
 
         [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
 
@@ -124,10 +127,15 @@ namespace streaming::tls
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr};
         BIO* wbio_{nullptr};
-        bool closed_{false};
+        std::atomic<bool> closed_{false};
         bool handshake_complete_{false};
+#ifdef CANOPY_BUILD_COROUTINE
+        rpc::coro::mutex tls_mtx_;
+#else
+        std::mutex tls_mtx_;
+#endif
 
-        auto feed_rbio(std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>;
-        auto drain_wbio() -> coro::task<bool>;
+        auto feed_rbio(std::chrono::milliseconds timeout) -> CORO_TASK(rpc::io_status);
+        auto drain_wbio() -> CORO_TASK(bool);
     };
 } // namespace streaming::tls

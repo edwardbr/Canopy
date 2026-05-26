@@ -263,7 +263,7 @@ namespace rpc
         const std::shared_ptr<coro::scheduler>& scheduler)
         : zone_id_(zone_id)
         , name_(name)
-        , io_scheduler_(scheduler)
+        , executor_(scheduler)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
@@ -274,7 +274,7 @@ namespace rpc
         child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
-        , io_scheduler_(scheduler)
+        , executor_(scheduler)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
         // No telemetry call for child services
@@ -295,6 +295,28 @@ namespace rpc
         child_service_tag)
         : zone_id_(zone_id)
         , name_(name)
+    {
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
+        // No telemetry call for child services
+    }
+    service::service(
+        const char* name,
+        zone zone_id,
+        const rpc::executor_ptr& executor)
+        : zone_id_(zone_id)
+        , name_(name)
+        , executor_(executor)
+    {
+        RPC_ASSERT(zone_id_.get_subnet() != 0);
+    }
+    service::service(
+        const char* name,
+        zone zone_id,
+        const rpc::executor_ptr& executor,
+        child_service_tag)
+        : zone_id_(zone_id)
+        , name_(name)
+        , executor_(executor)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
         // No telemetry call for child services
@@ -385,6 +407,50 @@ namespace rpc
         : root_service(
               name,
               config.initial_zone)
+    {
+    }
+
+    std::shared_ptr<root_service> root_service::create(
+        const char* name,
+        zone zone_id,
+        const rpc::executor_ptr& executor)
+    {
+        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id, executor));
+#  ifdef CANOPY_USE_TELEMETRY
+        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+#  endif
+        return service;
+    }
+
+    std::shared_ptr<root_service> root_service::create(
+        const char* name,
+        const service_config& config,
+        const rpc::executor_ptr& executor)
+    {
+        return create(name, config.initial_zone, executor);
+    }
+
+    root_service::root_service(
+        const char* name,
+        zone zone_id,
+        const rpc::executor_ptr& executor)
+        : service(
+              name,
+              zone_id,
+              executor)
+        , zone_allocator_(zone_id.get_address())
+    {
+    }
+
+    root_service::root_service(
+        const char* name,
+        const service_config& config,
+        const rpc::executor_ptr& executor)
+        : root_service(
+              name,
+              config.initial_zone,
+              executor)
     {
     }
 #endif
@@ -1154,8 +1220,8 @@ namespace rpc
                     or_params.caller_zone_id = caller_zone_id;
 #ifdef CANOPY_BUILD_COROUTINE
                     auto async_params = or_params;
-                    if (io_scheduler_
-                        && io_scheduler_->spawn_detached(
+                    if (executor_
+                        && executor_->spawn_detached(
                             notify_object_released_on_transport(shared_from_this(), transport, std::move(async_params))))
                     {
                         continue;

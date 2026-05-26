@@ -40,7 +40,7 @@ namespace canopy::http_server
 
             std::string path{root_path};
             bool appended = false;
-            size_t start = relative_path.starts_with("/") ? 1U : 0U;
+            size_t start = (!relative_path.empty() && relative_path.front() == '/') ? 1U : 0U;
             while (start <= relative_path.size())
             {
                 const auto separator = relative_path.find('/', start);

@@ -83,8 +83,9 @@ project(
   LANGUAGES C CXX)          # C is required — Canopy submodules need it
 
 # --- Canopy options (set BEFORE add_subdirectory) ---
-set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)  # TCP requires coroutines
+set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)  # TCP examples below use coroutines
 set(CANOPY_BUILD_TEST       OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
 

@@ -51,13 +51,10 @@ namespace streaming::spsc_queue
 
     auto stream::receive(
         rpc::mutable_byte_span buffer,
-        std::chrono::milliseconds timeout)
-        -> coro::task<std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>>
+        std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
     {
         if (closed_.load(std::memory_order_acquire))
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+            co_return {rpc::io_status{.type = rpc::io_status::kind::closed}, {}};
 
         // Serve any bytes left over from a previous blob first.
         if (leftover_offset_ < leftover_.size())
@@ -71,7 +68,7 @@ namespace streaming::spsc_queue
                 leftover_.clear();
                 leftover_offset_ = 0;
             }
-            co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+            co_return {rpc::io_status{.type = rpc::io_status::kind::ok}, buffer.subspan(0, to_copy)};
         }
 
         auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -86,11 +83,11 @@ namespace streaming::spsc_queue
                 std::memcpy(&len, blob.data(), header_size);
 
                 if (len == 0)
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                    co_return {rpc::io_status{.type = rpc::io_status::kind::closed}, {}};
                 if (len > max_payload)
                 {
                     closed_.store(true, std::memory_order_release);
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::message_too_big}, {}};
+                    co_return {rpc::io_status{.type = rpc::io_status::kind::message_too_big}, {}};
                 }
 
                 size_t to_copy = std::min(static_cast<size_t>(len), buffer.size());
@@ -103,37 +100,37 @@ namespace streaming::spsc_queue
                     leftover_offset_ = 0;
                 }
 
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buffer.subspan(0, to_copy)};
+                co_return {rpc::io_status{.type = rpc::io_status::kind::ok}, buffer.subspan(0, to_copy)};
             }
 
             if (single_attempt)
             {
                 auto scheduler = scheduler_.lock();
                 if (!scheduler)
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                    co_return {rpc::io_status{.type = rpc::io_status::kind::closed}, {}};
                 co_await scheduler->schedule();
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                co_return {rpc::io_status{.type = rpc::io_status::kind::timeout}, {}};
             }
 
             auto remaining = remaining_timeout(deadline);
             if (remaining <= std::chrono::milliseconds{0})
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::timeout}, {}};
+                co_return {rpc::io_status{.type = rpc::io_status::kind::timeout}, {}};
 
             auto scheduler = scheduler_.lock();
             if (!scheduler)
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                co_return {rpc::io_status{.type = rpc::io_status::kind::closed}, {}};
 
             co_await scheduler->yield_for(std::min(poll_interval, remaining));
 
             if (closed_.load(std::memory_order_acquire))
-                co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
+                co_return {rpc::io_status{.type = rpc::io_status::kind::closed}, {}};
         }
     }
 
-    auto stream::send(rpc::byte_span buffer) -> coro::task<coro::net::io_status>
+    auto stream::send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status)
     {
         if (closed_.load(std::memory_order_acquire))
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+            co_return rpc::io_status{.type = rpc::io_status::kind::closed};
 
         while (!buffer.empty())
         {
@@ -148,7 +145,7 @@ namespace streaming::spsc_queue
             {
                 auto scheduler = scheduler_.lock();
                 if (!scheduler)
-                    co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
+                    co_return rpc::io_status{.type = rpc::io_status::kind::closed};
                 co_await scheduler->schedule();
                 continue;
             }
@@ -156,7 +153,7 @@ namespace streaming::spsc_queue
             buffer = buffer.subspan(to_send);
         }
 
-        co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
+        co_return rpc::io_status{.type = rpc::io_status::kind::ok};
     }
 
     bool stream::is_closed() const
@@ -169,7 +166,7 @@ namespace streaming::spsc_queue
         closed_.store(true, std::memory_order_release);
     }
 
-    auto stream::set_closed() -> coro::task<void>
+    auto stream::set_closed() -> CORO_TASK(void)
     {
         close_now();
         co_return;

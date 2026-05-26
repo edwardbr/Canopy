@@ -51,6 +51,52 @@ if(DEFINED NLOHMANN_JSON_CONFIG_INSTALL_DIR)
   add_subdirectory(json-schema-validator)
 endif()
 
+# wslay + llhttp are both needed by the dual-mode WebSocket framing stream
+# (streaming_websocket) and the dual-mode canopy_http_server. In coroutine
+# builds they're also pulled in by the WS transport block below; in
+# blocking builds these are the host-side consumers, so we add them eagerly
+# when websocket is enabled regardless of coroutine mode.
+if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
+  add_subdirectory(wslay)
+
+  set(CANOPY_LLHTTP_GENERATED_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c")
+  set(CANOPY_LLHTTP_GENERATED_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h")
+  option(CANOPY_LLHTTP_GENERATE_FROM_TYPESCRIPT "Regenerate llhttp C sources from TypeScript" OFF)
+
+  if(CANOPY_LLHTTP_GENERATE_FROM_TYPESCRIPT
+     OR NOT EXISTS "${CANOPY_LLHTTP_GENERATED_SOURCE}"
+     OR NOT EXISTS "${CANOPY_LLHTTP_GENERATED_HEADER}")
+    find_program(NODE_EXECUTABLE node)
+    find_program(NPM_EXECUTABLE npm)
+    if(NOT NODE_EXECUTABLE OR NOT NPM_EXECUTABLE)
+      message(FATAL_ERROR "llhttp generation requires node and npm")
+    endif()
+    add_custom_target(
+      llhttp_install_deps
+      COMMAND ${CMAKE_COMMAND} -E env NPM_CONFIG_LOGLEVEL=error ${NPM_EXECUTABLE} install --ignore-scripts
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+      COMMENT "Installing llhttp dependencies")
+    add_custom_command(
+      OUTPUT ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CANOPY_LLHTTP_GENERATED_HEADER}
+      COMMAND ${CMAKE_COMMAND} -E env NODE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/llhttp/node_modules ${NODE_EXECUTABLE}
+              --import tsx bin/generate.ts
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llhttp
+      DEPENDS llhttp_install_deps
+      COMMENT "Generating llhttp.c and llhttp.h")
+    add_custom_target(llhttp_generate DEPENDS ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CANOPY_LLHTTP_GENERATED_HEADER})
+  else()
+    add_custom_target(llhttp_generate)
+  endif()
+
+  add_library(
+    llhttp_static STATIC
+    ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
+  add_dependencies(llhttp_static llhttp_generate)
+  target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
+                                                  ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
+endif()
+
 if(CANOPY_BUILD_COROUTINE)
   set(CARES_STATIC
       $<NOT:${LIBCORO_BUILD_SHARED_LIBS}>

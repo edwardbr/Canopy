@@ -74,13 +74,80 @@ namespace canopy::http_server
             BIO_free_all(bio);
             return result;
 #else
-#  error "Select exactly one secure stream backend"
+            // No TLS / mbedtls backend available (blocking-mode build before
+            // streaming::secure becomes dual-mode). The WS handshake's
+            // Sec-WebSocket-Accept header is just SHA-1 of the client key
+            // concatenated with the RFC 6455 GUID, base64-encoded —
+            // neither operation is sensitive crypto, so an inline
+            // implementation is sufficient until the secure-stream layer
+            // is dual-moded.
+            auto rotl = [](uint32_t v, int s) -> uint32_t { return (v << s) | (v >> (32 - s)); };
+            std::vector<uint8_t> msg(combined.begin(), combined.end());
+            uint64_t orig_bits = static_cast<uint64_t>(msg.size()) * 8;
+            msg.push_back(0x80);
+            while (msg.size() % 64 != 56)
+                msg.push_back(0);
+            for (int i = 7; i >= 0; --i)
+                msg.push_back(static_cast<uint8_t>((orig_bits >> (i * 8)) & 0xff));
+
+            uint32_t h[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
+            for (size_t chunk = 0; chunk < msg.size(); chunk += 64)
+            {
+                uint32_t w[80];
+                for (int i = 0; i < 16; ++i)
+                {
+                    w[i] = (uint32_t(msg[chunk + i * 4]) << 24) | (uint32_t(msg[chunk + i * 4 + 1]) << 16)
+                           | (uint32_t(msg[chunk + i * 4 + 2]) << 8) | uint32_t(msg[chunk + i * 4 + 3]);
+                }
+                for (int i = 16; i < 80; ++i)
+                    w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+                uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
+                for (int i = 0; i < 80; ++i)
+                {
+                    uint32_t f, k;
+                    if (i < 20) { f = (b & c) | ((~b) & d); k = 0x5a827999; }
+                    else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+                    else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+                    else { f = b ^ c ^ d; k = 0xca62c1d6; }
+                    uint32_t t = rotl(a, 5) + f + e + k + w[i];
+                    e = d; d = c; c = rotl(b, 30); b = a; a = t;
+                }
+                h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
+            }
+            uint8_t digest[20];
+            for (int i = 0; i < 5; ++i)
+            {
+                digest[i * 4 + 0] = static_cast<uint8_t>((h[i] >> 24) & 0xff);
+                digest[i * 4 + 1] = static_cast<uint8_t>((h[i] >> 16) & 0xff);
+                digest[i * 4 + 2] = static_cast<uint8_t>((h[i] >> 8) & 0xff);
+                digest[i * 4 + 3] = static_cast<uint8_t>(h[i] & 0xff);
+            }
+
+            static constexpr char b64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            std::string result;
+            result.reserve(28);
+            for (int i = 0; i < 18; i += 3)
+            {
+                uint32_t v = (uint32_t(digest[i]) << 16) | (uint32_t(digest[i + 1]) << 8) | uint32_t(digest[i + 2]);
+                result.push_back(b64chars[(v >> 18) & 0x3f]);
+                result.push_back(b64chars[(v >> 12) & 0x3f]);
+                result.push_back(b64chars[(v >> 6) & 0x3f]);
+                result.push_back(b64chars[v & 0x3f]);
+            }
+            // Final group: digest bytes 18, 19, then pad with 0x00 and '='.
+            uint32_t v = (uint32_t(digest[18]) << 16) | (uint32_t(digest[19]) << 8);
+            result.push_back(b64chars[(v >> 18) & 0x3f]);
+            result.push_back(b64chars[(v >> 12) & 0x3f]);
+            result.push_back(b64chars[(v >> 6) & 0x3f]);
+            result.push_back('=');
+            return result;
 #endif
         }
 
         auto default_is_rest_request(const request& request) -> bool
         {
-            return request_path(request.url).starts_with("/api/");
+            auto path = request_path(request.url);
+            return path.size() >= 5 && path.compare(0, 5, "/api/") == 0;
         }
     } // namespace
 
@@ -245,30 +312,30 @@ namespace canopy::http_server
         if (key_it == request.headers.end())
         {
             RPC_ERROR("Missing Sec-WebSocket-Key header");
-            co_return nullptr;
+            CO_RETURN nullptr;
         }
 
         if (!handlers_.websocket_upgrade_handler)
         {
             RPC_ERROR("No websocket upgrade handler configured");
             auto error_response = build_http_response(make_text_response(501, "Not Implemented"), false);
-            co_await stream_->send(rpc::byte_span{error_response});
-            co_return nullptr;
+            CO_AWAIT stream_->send(rpc::byte_span{error_response});
+            CO_RETURN nullptr;
         }
 
         std::string accept_key = calculate_ws_accept(key_it->second);
         auto handshake_response = build_websocket_handshake_response(accept_key);
 
-        auto wsstatus = co_await stream_->send(rpc::byte_span{handshake_response});
+        auto wsstatus = CO_AWAIT stream_->send(rpc::byte_span{handshake_response});
         if (!wsstatus.is_ok())
         {
             RPC_ERROR("Failed to send WebSocket handshake response");
-            co_return nullptr;
+            CO_RETURN nullptr;
         }
 
         RPC_INFO("WebSocket handshake completed");
         auto ws_stream = std::make_shared<streaming::websocket::stream>(stream_);
-        co_return CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
+        CO_RETURN CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
     }
 
     auto client_connection::handle() -> CORO_TASK(std::shared_ptr<rpc::transport>)
@@ -303,7 +370,7 @@ namespace canopy::http_server
                 {
                     if (pending_input.empty())
                     {
-                        auto [read_status, read_span] = co_await stream_->receive(
+                        auto [read_status, read_span] = CO_AWAIT stream_->receive(
                             rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()});
                         if (!read_status.is_ok() || read_span.empty())
                         {
@@ -318,7 +385,7 @@ namespace canopy::http_server
                                     read_status.message(),
                                     read_status.native_code);
                             }
-                            co_return nullptr;
+                            CO_RETURN nullptr;
                         }
 
                         std::string preview;
@@ -356,8 +423,8 @@ namespace canopy::http_server
                     {
                         RPC_ERROR("HTTP parse error: {}", llhttp_errno_name(err));
                         auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
-                        co_await stream_->send(rpc::byte_span{error_response});
-                        co_return nullptr;
+                        CO_AWAIT stream_->send(rpc::byte_span{error_response});
+                        CO_RETURN nullptr;
                     }
 
                     pending_input.erase(0, consumed);
@@ -367,7 +434,7 @@ namespace canopy::http_server
 
                 if (is_websocket_upgrade)
                 {
-                    co_return CO_AWAIT handle_websocket_upgrade(ctx.parsed_request);
+                    CO_RETURN CO_AWAIT handle_websocket_upgrade(ctx.parsed_request);
                 }
 
                 auto method_name = llhttp_method_name(static_cast<llhttp_method_t>(parser.method));
@@ -383,16 +450,16 @@ namespace canopy::http_server
                     = (CO_AWAIT dispatch_request(ctx.parsed_request)).value_or(make_text_response(404, "Not Found"));
                 auto wire_response = build_http_response(response, ctx.parsed_request.keep_alive);
 
-                auto send_status = co_await stream_->send(rpc::byte_span{wire_response});
+                auto send_status = CO_AWAIT stream_->send(rpc::byte_span{wire_response});
                 if (!send_status.is_ok())
                 {
                     RPC_ERROR("Failed to send HTTP response for: {}", path);
-                    co_return nullptr;
+                    CO_RETURN nullptr;
                 }
 
                 if (!ctx.parsed_request.keep_alive)
                 {
-                    co_return nullptr;
+                    CO_RETURN nullptr;
                 }
             }
         }
@@ -401,7 +468,7 @@ namespace canopy::http_server
             RPC_ERROR("Exception in client_connection::handle: {}", e.what());
         }
 
-        co_return nullptr;
+        CO_RETURN nullptr;
     }
 
     auto status_text(int status_code) -> std::string

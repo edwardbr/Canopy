@@ -447,6 +447,7 @@ CANOPY_BUILD_COROUTINE=ON    # Enable async/await support (requires C++20)
 # Features
 CANOPY_BUILD_ENCLAVE=ON          # SGX enclave support
 CANOPY_BUILD_TEST=ON             # Test suite
+CANOPY_BUILD_RUST=OFF            # Rust workspace build, disabled by default
 CANOPY_BUILD_DEMOS=ON            # Demo applications
 CANOPY_BUILD_PROTOCOL_BUFFERS=ON # Full Google C++ protobuf runtime support
 CANOPY_BUILD_NANOPB=ON           # Nanopb protobuf-compatible runtime support
@@ -572,7 +573,7 @@ For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_de
 | **DLL (`rpc::libcoro_dynamic_library`)** | In-process DLL-loaded child zone in coroutine builds | `CANOPY_BUILD_COROUTINE=ON` |
 | **IPC (`rpc::ipc_transport`)** | Child-process transport hosting a direct `stream_transport` service | `CANOPY_BUILD_COROUTINE=ON` |
 | **IPC + DLL (`rpc::ipc_transport` + `rpc::libcoro_spsc_dynamic_dll`)** | Child-process transport hosting a DLL-backed zone over SPSC streams | `CANOPY_BUILD_COROUTINE=ON` |
-| **TCP** | Network communication between machines | Coroutines |
+| **TCP** | Network communication between machines | Coroutine scheduler or blocking executor |
 | **SPSC** | Single-producer single-consumer queues | Coroutines |
 | **SGX Enclave** | Secure enclave communication | SGX SDK |
 | **Custom** | User-defined transport implementations | Custom implementation |
@@ -628,7 +629,7 @@ canopy/
 │   ├── tests/              # Test suite
 │   ├── demos/              # Example applications
 │   ├── telemetry/          # Telemetry and logging
-│   ├── streaming/          # Coroutine streaming stack
+│   ├── streaming/          # Streaming stack; TCP/WebSocket/OpenSSL TLS are dual-mode
 │   ├── subcomponents/      # Network config, SPSC queue, HTTP server, etc.
 │   ├── benchmarking/       # Benchmark targets
 │   └── submodules/         # C++ third-party dependencies

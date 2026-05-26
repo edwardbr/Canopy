@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
+#include "demo_zone.h"
 #include "http_client_connection.h"
 
 #include <csignal>
@@ -13,11 +14,14 @@
 
 #include <canopy/network_config/network_args.h>
 #include <canopy/http_server/http_acceptor.h>
-#include <coro/coro.hpp>
 #include <file_system/file_system_manager.h>
-#include <io_uring/linux_io_uring_handle.h>
 #include <rpc/rpc.h>
 #include <streaming/secure_stream.h>
+
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <coro/coro.hpp>
+#  include <io_uring/linux_io_uring_handle.h>
+#endif
 
 #ifndef CANOPY_WEBSOCKET_DEMO_STATIC_ROOT
 #  define CANOPY_WEBSOCKET_DEMO_STATIC_ROOT "www"
@@ -106,29 +110,34 @@ namespace
         return result;
     }
 
-    auto make_scheduler() -> std::shared_ptr<coro::scheduler>
+    auto make_executor() -> rpc::executor_ptr
     {
-        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+#ifdef CANOPY_BUILD_COROUTINE
+        return rpc::executor_ptr(coro::scheduler::make_unique(
             coro::scheduler::options{
-                .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-                .on_io_thread_start_functor = []
+                FLD(thread_strategy)  coro::scheduler::thread_strategy_t::spawn,
+                FLD(on_io_thread_start_functor) []
                 { RPC_DEBUG("process event thread start"); },
-                .on_io_thread_stop_functor = []
+                FLD(on_io_thread_stop_functor) []
                 { RPC_DEBUG("io_scheduler::process event thread stop"); },
-                .pool = coro::thread_pool::options{
-                    .thread_count = std::thread::hardware_concurrency(),
-                    .on_thread_start_functor = [](size_t i)
+                FLD(pool) coro::thread_pool::options{
+                    FLD(thread_count) std::thread::hardware_concurrency(),
+                    FLD(on_thread_start_functor) [](size_t i)
                     { RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i); },
-                    .on_thread_stop_functor = [](size_t i)
+                    FLD(on_thread_stop_functor) [](size_t i)
                     { RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i); },
                 },
-                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
+                FLD(execution_strategy) coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));
+#else
+        return std::make_shared<rpc::blocking_executor>();
+#endif
     }
 
-    auto create_static_file_manager(std::shared_ptr<coro::scheduler> scheduler)
+    auto create_static_file_manager(rpc::executor_ptr executor)
         -> rpc::shared_ptr<rpc::file_system::i_manager>
     {
+#ifdef CANOPY_BUILD_COROUTINE
         rpc::io_uring::linux_io_uring_handle::options handle_options;
         handle_options.queue_depth = 256;
         handle_options.buffer_count = 64;
@@ -138,7 +147,7 @@ namespace
         handle_options.use_sqpoll = true;
 
         std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
-        auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, scheduler);
+        auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, executor);
         if (error != rpc::error::OK())
         {
             RPC_ERROR("failed to create websocket static file io_uring handle error={}", error);
@@ -150,81 +159,47 @@ namespace
         controller_options.use_caller_buffers_for_transfers = true;
 
         auto controller
-            = std::make_shared<rpc::io_uring::controller>(std::move(handle), scheduler.get(), controller_options);
+            = std::make_shared<rpc::io_uring::controller>(std::move(handle), executor.get(), controller_options);
         return rpc::file_system::create_factory(std::move(controller));
+#else
+        (void)executor;
+        return rpc::file_system::create_factory();
+#endif
     }
 
-    struct tls_credentials_result
-    {
-        int error_code{rpc::error::OK()};
-        streaming::secure::pem_credentials credentials;
-    };
-
-    auto bytes_to_string(const std::vector<uint8_t>& data) -> std::string
-    {
-        return std::string(reinterpret_cast<const char*>(data.data()), data.size());
-    }
-
-    auto load_tls_credentials(
-        rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager,
-        const std::string& cert_path,
-        const std::string& key_path) -> coro::task<tls_credentials_result>
-    {
-        if (!file_system_manager || cert_path.empty() || key_path.empty())
-        {
-            CO_RETURN tls_credentials_result{rpc::error::INVALID_DATA(), {}};
-        }
-
-        std::vector<uint8_t> certificate;
-        auto error_code = CO_AWAIT file_system_manager->read_file(cert_path, certificate);
-        if (error_code != rpc::error::OK())
-        {
-            RPC_ERROR("failed to read TLS certificate {} error={}", cert_path, error_code);
-            CO_RETURN tls_credentials_result{error_code, {}};
-        }
-
-        std::vector<uint8_t> private_key;
-        error_code = CO_AWAIT file_system_manager->read_file(key_path, private_key);
-        if (error_code != rpc::error::OK())
-        {
-            RPC_ERROR("failed to read TLS private key {} error={}", key_path, error_code);
-            CO_RETURN tls_credentials_result{error_code, {}};
-        }
-
-        if (certificate.empty() || private_key.empty())
-        {
-            CO_RETURN tls_credentials_result{rpc::error::INVALID_DATA(), {}};
-        }
-
-        tls_credentials_result result;
-        result.credentials.certificate = bytes_to_string(certificate);
-        result.credentials.private_key = bytes_to_string(private_key);
-        CO_RETURN result;
-    }
+    // (Previous async load_tls_credentials helper removed — the
+    // streaming::secure::context(cert_path, key_path) constructor reads
+    // the PEM files synchronously and works in both modes.)
 }
 
 auto run_http_server(
-    std::shared_ptr<coro::scheduler> scheduler,
-    coro::net::ip_address bind_address,
-    uint16_t port,
+    rpc::executor_ptr executor,
+    canopy::http_server::endpoint ep,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
     rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager,
     std::string static_root_path,
-    std::shared_ptr<streaming::secure::context> tls_ctx) -> coro::task<void>
+    std::shared_ptr<streaming::secure::context> tls_ctx) -> CORO_TASK(void)
 {
     auto stream_handler
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         = [service, file_system_manager, static_root_path = std::move(static_root_path)](
-              std::shared_ptr<streaming::stream> stream) -> coro::task<std::shared_ptr<rpc::transport>>
+              std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+        // Calculator-only build path uses the 5-arg constructor with an
+        // explicit calculator factory pulled from the websocket service.
+        auto factory = [service]() { return service->get_demo_instance(); };
+        websocket_demo::v1::http_client_connection connection(
+            std::move(stream), service, factory, file_system_manager, static_root_path);
+#else
         websocket_demo::v1::http_client_connection connection(
             std::move(stream), service, file_system_manager, static_root_path);
-        co_return CO_AWAIT connection.handle();
+#endif
+        CO_RETURN CO_AWAIT connection.handle();
     };
 
     CO_AWAIT canopy::http_server::run_server(
-        bind_address, port, scheduler, std::move(stream_handler), tls_ctx, [] { return stop_requested(); });
-    co_return;
+        ep, executor, std::move(stream_handler), tls_ctx, [] { return stop_requested(); });
+    CO_RETURN;
 }
 
 auto main(
@@ -288,29 +263,25 @@ auto main(
         return 1;
     }
 
-    auto scheduler = make_scheduler();
-    auto file_system_manager = create_static_file_manager(scheduler);
+    auto executor = make_executor();
+    auto file_system_manager = create_static_file_manager(executor);
     if (!file_system_manager)
     {
-        scheduler->shutdown();
+        executor->shutdown();
         return 1;
     }
 
     std::shared_ptr<streaming::secure::context> tls_ctx;
     if (!cert_path.empty() && !key_path.empty())
     {
-        auto credentials = coro::sync_wait(load_tls_credentials(file_system_manager, cert_path, key_path));
-        if (credentials.error_code != rpc::error::OK())
-        {
-            scheduler->shutdown();
-            return 1;
-        }
-
-        tls_ctx = std::make_shared<streaming::secure::context>(credentials.credentials);
+        // Direct file-load path works in both modes; file_system_manager is
+        // dual-mode and streaming::secure::context only needs the PEM bytes.
+        tls_ctx = std::make_shared<streaming::secure::context>(
+            cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");
-            scheduler->shutdown();
+            executor->shutdown();
             return 1;
         }
         RPC_INFO("TLS enabled with certificate: {}", cert_path);
@@ -318,23 +289,26 @@ auto main(
     else if (!cert_path.empty() || !key_path.empty())
     {
         RPC_ERROR("Both --cert and --key must be provided for TLS");
-        scheduler->shutdown();
+        executor->shutdown();
         return 1;
     }
 
     auto address = canopy::network_config::get_zone_address(cfg);
     std::ignore = address.set_subnet(1);
 
-    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, scheduler);
+    auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, executor);
 
-    const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? coro::net::domain_t::ipv6
-                                                                                            : coro::net::domain_t::ipv4;
-    auto bind_address = coro::net::ip_address::from_string(listen_ep.to_string(), domain);
+    canopy::http_server::endpoint http_ep;
+    http_ep.host = listen_ep.to_string();
+    http_ep.port = listen_ep.port;
+    http_ep.ipv6 = listen_ep.family == canopy::network_config::ip_address_family::ipv6;
 
-    coro::sync_wait(
-        coro::when_all(run_http_server(
-            scheduler, bind_address, listen_ep.port, root_service, file_system_manager, static_root_path, tls_ctx)));
+    // SYNC_WAIT collapses to coro::sync_wait in coroutine builds and to the
+    // raw expression in blocking builds (where run_http_server returns void
+    // and runs the accept loop synchronously on this thread).
+    SYNC_WAIT(run_http_server(
+        executor, http_ep, root_service, file_system_manager, static_root_path, tls_ctx));
     root_service.reset();
-    scheduler->shutdown();
+    executor->shutdown();
     return 0;
 }

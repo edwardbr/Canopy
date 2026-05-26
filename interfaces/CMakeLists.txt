@@ -118,20 +118,20 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR} no_include_rpc_headers ON)
 
-if(CANOPY_BUILD_COROUTINE)
-  CanopyGenerate(
-    streaming_transport
-    streaming/stream_transport.idl
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_BINARY_DIR}/generated
-    ""
-    yas_binary
-    yas_compressed_binary
-    yas_json
-    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-    dependencies rpc_types_idl
-    install_dir ${GENERATED_INSTALL_DIR})
+CanopyGenerate(
+  streaming_transport
+  streaming/stream_transport.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  dependencies rpc_types_idl
+  install_dir ${GENERATED_INSTALL_DIR})
 
+if(CANOPY_BUILD_WEBSOCKET)
   CanopyGenerate(
     websocket_protocol
     websocket/websocket_protocol.idl
