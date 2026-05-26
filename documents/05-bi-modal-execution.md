@@ -302,8 +302,8 @@ Cons
 - `executor->schedule()` is a no-op — calling code can't rely on a
   cooperative yield to give peers a chance; callers must do their own
   blocking wait (poll, cv) where required
-- TLS via libcoro is unavailable; secure streams still need their
-  own dual-mode treatment (planned)
+- Blocking mode does not use libcoro TLS; the OpenSSL secure-stream path is
+  dual-mode, while mbedtls remains coroutine-only.
 
 ## 5. Best Practices
 
@@ -315,6 +315,9 @@ Cons
 - Use blocking mode for debugging
 - Ensure no runtime locks remain held across marshaller, transport, or other I/O
   boundaries
+- Keep mode-specific data members behind `#ifdef CANOPY_BUILD_COROUTINE` or
+  `#ifndef CANOPY_BUILD_COROUTINE`, so coroutine builds do not carry
+  blocking-only state and blocking builds do not carry coroutine-only state
 
 ### Don't
 

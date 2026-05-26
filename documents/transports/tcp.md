@@ -25,7 +25,8 @@ Network communication between different machines or processes.
 
 - Coroutine build with `rpc::coro::scheduler`, or blocking build with an
   `rpc::blocking_executor` attached to the service
-- TCP server/listener use still requires an executor in both modes
+- TCP stream transports require an executor on the owning service in both
+  modes; plain synchronous non-streaming RPC does not
 
 ## See Also
 
@@ -58,7 +59,7 @@ listener->start_listening(peer_service);
 The listener and stream objects are streaming-layer components. The RPC
 transport is `rpc::stream_transport::transport`.
 
-## Client Connection
+## Coroutine Client Connection
 
 ```cpp
 auto scheduler = coro::scheduler::make_unique(
@@ -87,6 +88,54 @@ auto connect_result = CO_AWAIT root_service->connect_to_zone<i_foo, i_foo>(
     "client", client_transport, input_interface);
 auto output_interface = std::move(connect_result.output_interface);
 auto error = connect_result.error_code;
+```
+
+## Blocking Setup Notes
+
+Blocking TCP uses the same `streaming::listener`, `streaming::tcp::acceptor`,
+`streaming::tcp::stream`, and `rpc::stream_transport` layers. The differences
+are at the I/O boundary:
+
+- construct the service with an `rpc::blocking_executor` when a listener or
+  stream transport will spawn receive/send loops
+- construct listeners with `streaming::tcp::endpoint`, not libcoro socket types
+- wrap a connected POSIX file descriptor with `streaming::tcp::socket(fd)` for
+  client streams
+- the blocking TCP socket owns the descriptor, switches it to non-blocking mode,
+  and waits with `poll()` around POSIX `recv`/`send`
+
+Server-side setup:
+
+```cpp
+auto exec = std::make_shared<rpc::blocking_executor>();
+auto service = rpc::root_service::create("server", server_zone, exec);
+
+streaming::tcp::endpoint endpoint;
+endpoint.host = "127.0.0.1";
+endpoint.port = 8080;
+
+auto listener = std::make_shared<streaming::listener>(
+    "responder_transport",
+    std::make_shared<streaming::tcp::acceptor>(endpoint),
+    rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
+        interface_factory));
+
+if (!listener->start_listening(service))
+{
+    // Handle missing executor, bind failure, or spawn failure.
+}
+```
+
+Client-side stream creation after a successful `::connect()`:
+
+```cpp
+auto client_stream = std::make_shared<streaming::tcp::stream>(
+    streaming::tcp::socket(connected_fd));
+auto client_transport =
+    rpc::stream_transport::make_client("client", root_service, client_stream);
+
+auto connect_result = root_service->connect_to_zone<i_foo, i_foo>(
+    "server", client_transport, rpc::shared_ptr<i_foo>());
 ```
 
 ## Transport Layering

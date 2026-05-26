@@ -85,12 +85,13 @@ project(
   LANGUAGES C CXX)          # C is required — Canopy submodules need it
 
 # --- Canopy options (set BEFORE add_subdirectory) ---
-set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)  # TCP examples below use coroutines
+# Set ON for the coroutine TCP examples below. Set OFF, or omit this line, for
+# blocking builds that attach an rpc::blocking_executor to stream-backed services.
+set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_TEST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
-set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 
 # Optional serialization choices. Full protobuf is useful for host interop.
 # Nanopb is protobuf-compatible and is the preferred SGX/small-runtime path.
@@ -365,8 +366,8 @@ CORO_TASK(int) run_client(
     std::shared_ptr<coro::scheduler> scheduler,
     const canopy::network_config::network_config& cfg)
 {
-    const auto* remote = cfg.first_connect();
-    if (!remote)
+    const auto* remote_cfg = cfg.first_connect();
+    if (!remote_cfg)
         CO_RETURN 1;
 
     auto allocator = canopy::network_config::make_allocator(cfg);
@@ -379,12 +380,12 @@ CORO_TASK(int) run_client(
     auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
 
-    const auto domain = remote->family == canopy::network_config::ip_address_family::ipv6
+    const auto domain = remote_cfg->family == canopy::network_config::ip_address_family::ipv6
         ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
 
     coro::net::tcp::client tcp_client(scheduler,
         coro::net::socket_address{
-            coro::net::ip_address::from_string(remote->to_string(), domain), remote->port});
+            coro::net::ip_address::from_string(remote_cfg->to_string(), domain), remote_cfg->port});
 
     auto status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds(5000));
     if (status != coro::net::connect_status::connected)
@@ -401,12 +402,12 @@ CORO_TASK(int) run_client(
     if (result.error_code != rpc::error::OK())
         CO_RETURN 1;
 
-    auto remote = result.output_interface;
+    auto remote_service = result.output_interface;
 
     std::string output;
-    CO_AWAIT remote->my_method("hello", output);
+    CO_AWAIT remote_service->my_method("hello", output);
 
-    remote.reset();
+    remote_service.reset();
     CO_RETURN 0;
 }
 ```
@@ -429,6 +430,53 @@ target_link_libraries(my_exe PRIVATE
 
 For non-TCP (local/in-process) builds replace `transport_streaming streaming_tcp`
 with `transport_local`.
+
+## Blocking TCP Variant
+
+For a blocking external project, keep `CANOPY_BUILD_COROUTINE=OFF` and use C++17.
+Plain in-process RPC does not need a thread pool, but stream-backed TCP, TLS, and
+WebSocket transports do. Construct the owning service with an
+`rpc::blocking_executor` and use the mode-neutral TCP endpoint API:
+
+```cpp
+auto exec = std::make_shared<rpc::blocking_executor>();
+auto service = rpc::root_service::create("my_server", server_zone, exec);
+
+streaming::tcp::endpoint endpoint;
+endpoint.host = "127.0.0.1";
+endpoint.port = 8080;
+
+auto listener = std::make_shared<streaming::listener>(
+    "server_transport",
+    std::make_shared<streaming::tcp::acceptor>(endpoint),
+    rpc::stream_transport::make_connection_callback<my_app::i_my_service, my_app::i_my_service>(
+        interface_factory));
+
+if (!listener->start_listening(service))
+    return 1;
+
+// On shutdown:
+listener->stop_listening();
+exec->shutdown();
+```
+
+Blocking client code wraps an already-connected POSIX file descriptor in the
+same stream transport:
+
+```cpp
+auto stream = std::make_shared<streaming::tcp::stream>(
+    streaming::tcp::socket(connected_fd));
+auto transport = rpc::stream_transport::make_client(
+    "client_transport", client_service, std::move(stream));
+
+auto result = client_service->connect_to_zone<
+    my_app::i_my_service, my_app::i_my_service>(
+        "my_server", transport, rpc::shared_ptr<my_app::i_my_service>());
+```
+
+The blocking TCP socket takes ownership of the descriptor, switches it to
+non-blocking mode internally, and uses `poll()`/POSIX `recv`/`send` behind the
+same `streaming::stream` interface used by coroutine builds.
 
 ---
 

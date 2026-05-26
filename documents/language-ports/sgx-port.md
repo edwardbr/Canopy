@@ -657,8 +657,10 @@ tests should pass. Performance and attestation tests are deferred to a real Inte
 ## Notes
 
 - `CORO_TASK` / `CO_AWAIT` / `CO_RETURN` macros collapse to synchronous equivalents in
-  non-coroutine builds. The SGX transport is non-coroutine only (enclaves don't support
-  coroutines). `CORO_TASK(send_result) outbound_send(...)` expands to a plain function.
+  non-coroutine builds. The legacy SGX port path described by this checklist is
+  non-coroutine. Current C++ coroutine SGX transport/runtime work is separate
+  from this legacy port plan. `CORO_TASK(send_result) outbound_send(...)`
+  expands to a plain function in a non-coroutine build.
 
 - In enclave builds, include `<fmt/format-inl.h>` (not `<fmt/format.h>`) when `FOR_SGX`
   is defined. Pattern is in existing `c++/rpc/src/service.cpp`.

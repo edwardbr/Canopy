@@ -102,16 +102,21 @@ Example local preset names from the template:
 
 ### Base Configuration
 
-All presets inherit these defaults:
+The tracked repository presets inherit these defaults from `Base`:
 
 ```cmake
 CANOPY_BUILD_COROUTINE=OFF              # Coroutines disabled by default
 CANOPY_BUILD_ENCLAVE=OFF                # SGX enclave support disabled
 CANOPY_BUILD_TEST=ON                    # Test building enabled
+CANOPY_BUILD_DEMOS=ON                   # Demo building enabled in repository presets
+CANOPY_BUILD_BENCHMARKING=ON            # Benchmark building enabled in repository presets
 CANOPY_BUILD_RUST=OFF                   # Rust workspace disabled by default
-CANOPY_VERBOSE_GENERATOR=OFF                # Debug code generation disabled
-CMAKE_EXPORT_COMPILE_COMMANDS=ON # Export compile commands
+CANOPY_VERBOSE_GENERATOR=OFF            # Debug code generation disabled
+CMAKE_EXPORT_COMPILE_COMMANDS=ON        # Export compile commands
 ```
+
+These are repository preset values. The raw CMake option defaults are listed
+below and are more conservative for downstream `add_subdirectory()` consumers.
 
 ### CMake Module Structure
 
@@ -242,6 +247,8 @@ cmake --preset Debug -DCANOPY_BUILD_COROUTINE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_ENCLAVE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_TEST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_DEMOS=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_BENCHMARKING=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_RUST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_PROTOCOL_BUFFERS=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_NANOPB=ON/OFF
 
@@ -300,6 +307,10 @@ option(CANOPY_BUILD_MBEDTLS "Build bundled Mbed TLS support" ${CANOPY_BUILD_MBED
 option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from submodule source when missing" OFF)
 option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 ```
+
+`CANOPY_BUILD_WEBSOCKET` can be explicitly enabled in both blocking and
+coroutine builds. Its default remains tied to coroutine demo/test presets, so
+blocking consumers should set it to `ON` when they need WebSocket support.
 
 ### Protobuf-Compatible Serialization Options
 
@@ -388,6 +399,38 @@ cmake --build build_debug --target member_ptr_test
 cmake --build build_debug --target passthrough_test
 cmake --build build_debug --target zone_address_test
 ```
+
+### Benchmarks
+
+Benchmark targets are available when `CANOPY_BUILD_BENCHMARKING=ON`. The main
+fullstack executable is `benchmark`:
+
+```bash
+cmake --build build_debug --target benchmark
+cmake --build build_debug_coroutine --target benchmark
+
+./build_debug/output/benchmark --html-report build_debug/blocking-fullstack.html
+./build_debug_coroutine/output/benchmark --html-report build_debug_coroutine/coroutine-fullstack.html
+```
+
+The fullstack benchmark can be filtered with:
+
+```bash
+./build_debug/output/benchmark \
+  --transport local,tcp,dll \
+  --size 64,4096 \
+  --format yas_binary,protocol_buffers \
+  --passes 5 \
+  --html-report report.html
+```
+
+Blocking fullstack builds cover `local`, `dll`, `tcp`, and, when the relevant
+features are enabled, `tls+tcp`, `ws+tcp`, and `tls+ws+tcp`.
+
+Coroutine fullstack builds cover `local`, TCP/TLS/WebSocket stream transports,
+`libcoro_dll_scheduled`, `libcoro_host_scheduled`, `ipc_direct`, `ipc_dll`,
+`spsc`, the `io_uring_*` variants, and SGX io_uring variants when enclave
+support is enabled.
 
 ### Demos
 
@@ -571,7 +614,7 @@ ctest --test-dir build_debug --tests-regex fuzz
 | JSON schema tests | Metadata extraction | `json_schema_metadata_test` |
 | Serializer tests | Serialization-focused checks | `serialiser_test` |
 | Fuzz harness | Iterative fuzz-style runner, when `CANOPY_BUILD_TEST=ON` | `fuzz_test_main` |
-| Fuzz gtests | Discoverable fuzz scenarios, when `CANOPY_BUILD_TEST=ON`; Rust child parity requires `CANOPY_BUILD_RUST=ON` | `fuzz_test_gtest` |
+| Fuzz gtests | Discoverable fuzz scenarios, when `CANOPY_BUILD_TEST=ON`; Rust child parity is wired only for non-coroutine protobuf builds with `CANOPY_BUILD_RUST=ON` and `cargo` available | `fuzz_test_gtest` |
 | Unit tests | Focused standalone executables | `member_ptr_test`, `passthrough_test`, `zone_address_test` |
 
 ## 9. Build Output

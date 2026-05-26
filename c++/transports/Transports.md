@@ -24,7 +24,10 @@ small child-process runtimes that exist to support those transports.
   - Coroutine in-process DLL transport with a DLL-owned scheduler and
     begin/complete dispatch ABI.
 - `streaming/`
-  - Stream-based transport for coroutine builds.
+  - Stream-backed RPC transport used by TCP, TLS, WebSocket, SPSC, IPC, and
+    io_uring compositions. The core stream transport, TCP, OpenSSL TLS, and
+    WebSocket paths are dual-mode; SPSC, IPC, io_uring, and SGX stream
+    compositions remain coroutine-only or conditionally built.
 - `ipc_transport/`
   - Process-owning coroutine transport built on top of `stream_transport`. It
     creates a shared-memory SPSC queue pair, spawns a child process, and reaps
