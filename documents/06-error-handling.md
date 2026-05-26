@@ -128,25 +128,26 @@ else
 }
 ```
 
-### Switch on Error
+### Branch on Error
 
 ```cpp
 auto error = CO_AWAIT calculator_->divide(a, b, result);
 
-switch (error)
+if (error == rpc::error::OK())
 {
-    case rpc::error::OK():
-        std::cout << "Result: " << result << "\n";
-        break;
-    case rpc::error::INVALID_DATA():
-        std::cerr << "Invalid input\n";
-        break;
-    case rpc::error::OBJECT_GONE():
-        std::cerr << "Optimistic target was released\n";
-        break;
-    default:
-        std::cerr << "Unknown error: " << static_cast<int>(error) << "\n";
-        break;
+    std::cout << "Result: " << result << "\n";
+}
+else if (error == rpc::error::INVALID_DATA())
+{
+    std::cerr << "Invalid input\n";
+}
+else if (error == rpc::error::OBJECT_GONE())
+{
+    std::cerr << "Optimistic target was released\n";
+}
+else
+{
+    std::cerr << "Unknown error: " << static_cast<int>(error) << "\n";
 }
 ```
 
@@ -279,13 +280,9 @@ RPC_ASSERT(error == rpc::error::OK());
         std::abort();
 ```
 
-**With thread-local logging** (dumps logs before abort):
-```cpp
-#define RPC_ASSERT(x) \
-    if (!(x))         \
-        rpc::thread_local_dump_on_assert("RPC_ASSERT failed: " #x, __FILE__, __LINE__); \
-        std::abort();
-```
+For assertion investigations, configure with
+`-DCANOPY_HANG_ON_FAILED_ASSERT=ON` so the failed assertion path calls
+`rpc::hang()` before aborting.
 
 ## 6. Transport Status Handling
 

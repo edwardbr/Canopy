@@ -12,7 +12,7 @@
  * - Bidirectional communication (inbound and outbound methods)
  * - Reference counting across zone boundaries
  * - Passthrough routing to non-adjacent zones
- * - Connection lifecycle (CONNECTING → CONNECTED → DISCONNECTED)
+ * - Connection lifecycle (CONNECTING → CONNECTED → DISCONNECTING → DISCONNECTED)
  *
  * Transport Ownership Model:
  * - Service proxies own transports (strong member_ptr reference)

@@ -38,8 +38,10 @@ projects/
 
 ## CMakePresets.json
 
-Your project needs its own presets. The only mandatory cache variable alongside
-`CMAKE_BUILD_TYPE` is the compiler pair. 
+Your project should define its own presets. At minimum, set `CMAKE_BUILD_TYPE`
+and the compiler pair. Set Canopy build options before `add_subdirectory()` so
+the embedded Canopy build does not enable tests, demos, benchmarks, or language
+workspaces that the consuming project does not need.
 
 ```json
 {
@@ -88,6 +90,7 @@ set(CANOPY_BUILD_TEST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 
 # Optional serialization choices. Full protobuf is useful for host interop.
 # Nanopb is protobuf-compatible and is the preferred SGX/small-runtime path.
@@ -141,17 +144,6 @@ Canopy has two protobuf-compatible C++ backends:
 - `CANOPY_BUILD_NANOPB=ON` enables the Nanopb-backed runtime.
 
 Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For SGX enclaves or other small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
-
-The two build options are independent.  `CanopyGenerate(... protocol_buffers
-...)` requests protobuf-compatible schema/wire support for that IDL target.  If
-full protobuf is enabled, Canopy generates the Google C++ protobuf backend; if
-Nanopb is enabled, Canopy generates the Nanopb backend.  Both can be generated
-from the same IDL target.
-
-When only one protobuf-compatible backend is enabled, Canopy maps the other
-encoding to it.  `rpc::encoding::protocol_buffers` uses Nanopb when full
-protobuf is disabled, and `rpc::encoding::nanopb` uses the full protobuf backend
-when Nanopb is disabled.
 
 The two build options are independent.  `CanopyGenerate(... protocol_buffers
 ...)` requests protobuf-compatible schema/wire support for that IDL target.  If
@@ -297,7 +289,11 @@ CORO_TASK(int) run_server(
         coro::net::ip_address::from_string(listen->to_string(), domain), listen->port};
 
     auto allocator = canopy::network_config::make_allocator(cfg);
-    auto server_zone = allocator.allocate_zone();
+    rpc::zone_address server_zone_addr;
+    auto zone_error = allocator.allocate_zone(server_zone_addr);
+    if (zone_error != rpc::error::OK())
+        CO_RETURN zone_error;
+    rpc::zone server_zone{server_zone_addr};
 
     auto on_shutdown = std::make_shared<rpc::event>();
     auto service = rpc::root_service::create(
@@ -374,7 +370,11 @@ CORO_TASK(int) run_client(
         CO_RETURN 1;
 
     auto allocator = canopy::network_config::make_allocator(cfg);
-    auto client_zone = allocator.allocate_zone();
+    rpc::zone_address client_zone_addr;
+    auto zone_error = allocator.allocate_zone(client_zone_addr);
+    if (zone_error != rpc::error::OK())
+        CO_RETURN zone_error;
+    rpc::zone client_zone{client_zone_addr};
 
     auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
@@ -482,11 +482,12 @@ visible to `my_exe`. No additional `add_dependencies()` calls are needed.
 
 ---
 
-## Working Example
+## Working Example Structure
 
-A complete working example lives at `/var/home/edward/projects/test_app/`.
-It implements a `server` and `client` communicating over TCP using the
-`greeting_app::i_greeter` interface. The five essential files are:
+A complete external application should mirror the structure shown in this
+guide: a root build file, presets, an IDL subdirectory, one IDL file, and the
+server/client sources. For a TCP greeter-style application, the essential files
+are:
 
 - `CMakeLists.txt` — root build
 - `CMakePresets.json` — Coroutine and Release_Coroutine presets

@@ -118,27 +118,32 @@ Canopy uses specialized types for different routing scenarios, all wrapping a `z
 ### Zone ID Generation Strategies
 
 Zone IDs are really subnet allocations. In the C++ runtime, the
-`rpc::root_service` obtains new subnets from the `zone_address_allocator`, and
-each zone service then allocates object addresses within its own subnet. This
+`rpc::root_service` obtains new subnets from `rpc::zone_id_allocator`, and each
+zone service then allocates object addresses within its own subnet. This
 ensures uniqueness within the node's allocated subnet range.
 
 **CLI Configuration**:
-Nodes can be configured via CLI arguments to use specific network ranges:
+Nodes that use `canopy_network_config` can be configured via CLI arguments to
+use named virtual addresses and physical endpoints:
 ```bash
-# Local-only mode (default)
-./my_app
+# Local virtual address
+./my_app --va-name local --va-type local
 
-# Use IPv4 192.168.1.1 as routing prefix, with a specific subnet range
-./my_app -4 --routing-prefix 192.168.1.1 --subnet-base=0x10000 --subnet-range=0xFFFF
+# IPv4 virtual address plus a listen endpoint
+./my_app --va-name server --va-type ipv4 --va-prefix 192.168.1.0 \
+         --listen server:0.0.0.0:8080
 
-# Use IPv6 prefix
-./my_app -6 --routing-prefix 2001:db8::1 --subnet-base=0x10000
+# IPv6 virtual address plus a connect endpoint
+./my_app --va-name client --va-type ipv6 --va-prefix 2001:db8:: \
+         --connect server:[2001:db8::10]:8080
 ```
 
-**Address-family flags** (mutually exclusive):
-- `-4`: `--routing-prefix` is an IPv4 address in dotted-decimal notation
-- `-6`: `--routing-prefix` is an IPv6 address in colon-hex notation
-- *(neither)*: Local-only mode: `routing_prefix=0`, inter-node routing disabled
+Key network-config flags:
+- `--va-name`: virtual-address name
+- `--va-type`: `local`, `ipv4`, `ipv6`, or `ipv6_tun`
+- `--va-prefix`: optional routing prefix; auto-detected when omitted where possible
+- `--va-subnet-bits` / `--va-object-id-bits`: address field widths
+- `--listen` / `--connect`: physical endpoints mapped to a virtual address name
 
 **IPv4 → routing_prefix conversion** (6to4-inspired, RFC 3056):
 ```
@@ -184,40 +189,44 @@ Zone 2 can create:
 
 ### Root Zone
 
-The root zone is typically created using a `zone_address_allocator` configured via network arguments.
+The root zone is typically created using `rpc::zone_id_allocator`, either from
+`rpc::DEFAULT_PREFIX` for local-only work or from `canopy_network_config` for
+named virtual addresses.
 
 ```cpp
 #include <canopy/network_config/network_args.h>
 
 // ... in main()
 args::ArgumentParser parser("My App");
-canopy::network_config::add_network_args(parser);
+auto net = canopy::network_config::add_network_args(parser);
 parser.ParseCLI(argc, argv);
 
-auto cfg = canopy::network_config::get_network_config(parser);
+auto cfg = canopy::network_config::get_network_config(net);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
-auto root_service = rpc::root_service::create(
-    "root_service",
-    allocator.allocate_zone(),
-    scheduler
-);
+rpc::zone_address root_addr;
+auto zone_error = allocator.allocate_zone(root_addr);
+if (zone_error != rpc::error::OK())
+    return zone_error;
+
+#ifdef CANOPY_BUILD_COROUTINE
+auto root_service = rpc::root_service::create("root_service", rpc::zone{root_addr}, scheduler);
+#else
+auto root_service = rpc::root_service::create("root_service", rpc::zone{root_addr});
+#endif
 ```
 
-**Default behavior**: In the C++ network-config path, if no `--routing-prefix`
-is provided, the runtime chooses a routing prefix according to the configured
-network mode.
+**Default behavior**: In the C++ network-config path, if no `--va-prefix` is
+provided, the runtime chooses a routing prefix according to the configured
+virtual-address type and available network interfaces.
 
 ### Child Zone (Hierarchical)
 
 Child zones are created through transport connections:
 
 ```cpp
-// rpc::local::child_transport is mainly used for testing, but it shows the
-// same connect_to_zone pattern used by the current demos.
-
 // From parent zone
-auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service, new_zone);
+auto child_transport = std::make_shared<rpc::local::child_transport>("example_zone", this_service);
 
 child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
     [](const rpc::shared_ptr<yyy::i_host>& host,
@@ -241,7 +250,7 @@ Peer zones connect via TCP or other network transports, this example uses corout
 
 ```cpp
 // Server side
-auto server_service = rpc::root_service::create("server", get_next_zone_id(), io_scheduler_);
+auto server_service = rpc::root_service::create("server", server_zone, io_scheduler_);
 
 // Create a streaming listener; the connection callback is invoked for each new client
 const coro::net::socket_address endpoint{
@@ -266,7 +275,7 @@ if (!listener->start_listening(server_service))
 }
 
 // Client side
-auto client_service = rpc::root_service::create("client", get_next_zone_id(), io_scheduler_);
+auto client_service = rpc::root_service::create("client", client_zone, io_scheduler_);
 
 coro::net::tcp::client tcp_client(io_scheduler_,
     coro::net::socket_address{

@@ -257,26 +257,31 @@ cmake --preset Debug -DCANOPY_DEBUG_UNDEFINED=ON/OFF
 cmake --preset Debug -DCANOPY_DEBUG_LEAK=ON/OFF
 ```
 
-### Full Option List
+### Common Active Options
+
+The raw CMake option defaults are conservative for downstream consumers.
+Repository presets may override these values for local development builds.
 
 ```cmake
 # Core options
 option(CANOPY_BUILD_COROUTINE "Enable C++20 coroutine support" OFF)
 option(CANOPY_BUILD_ENCLAVE "Enable SGX enclave support" OFF)
-option(CANOPY_BUILD_TEST "Build tests" ON)
+option(CANOPY_BUILD_TEST "Build test code" OFF)
+option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
+option(CANOPY_BUILD_BENCHMARKING "Build benchmarking code" OFF)
 option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)
-option(CANOPY_BUILD_DEMOS "Build demos" ON)
 option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include full Google C++ Protocol Buffers support" ON)
 option(CANOPY_BUILD_NANOPB "Include Nanopb protobuf-compatible support" ON)
-option(BUILD_GENERATOR "Build IDL generator" ON)
+option(CANOPY_BUILD_CANONICAL_CRYPTO "Include deterministic canonical_crypto serialization support" ON)
+option(CANOPY_BUILD_WEBSOCKET "Include websocket support" ${CANOPY_BUILD_WEBSOCKET_DEFAULT})
 
 # Debug options
 option(CANOPY_VERBOSE_GENERATOR "Enable debug output for code generation" OFF)
 option(CANOPY_USE_LOGGING "Enable RPC logging" OFF)
 option(CANOPY_USE_TELEMETRY "Enable RPC telemetry" OFF)
 option(CANOPY_USE_CONSOLE_TELEMETRY "Enable console telemetry output" OFF)
-option(CANOPY_USE_THREAD_LOCAL_LOGGING "Enable thread-local logging" OFF)
 option(CANOPY_USE_TELEMETRY_RAII_LOGGING "Enable RAII telemetry logging" OFF)
+option(CANOPY_HANG_ON_FAILED_ASSERT "Hang on failed assert" OFF)
 
 # Sanitizers
 option(CANOPY_DEBUG_ADDRESS "Enable address sanitizer" OFF)
@@ -289,6 +294,9 @@ option(CANOPY_DEBUG_ALL "Enable all sanitizers" OFF)
 set(SGX_MODE "debug" CACHE STRING "SGX mode: debug or release")
 set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
 set(CANOPY_SGX_BACKEND "Intel" CACHE STRING "SGX backend: Intel or Fake")
+set(CANOPY_ATTESTATION_BACKEND "NULL" CACHE STRING "Attestation backend")
+set(CANOPY_SECURE_STREAM_BACKEND "OPENSSL" CACHE STRING "Secure stream backend")
+option(CANOPY_BUILD_MBEDTLS "Build bundled Mbed TLS support" ${CANOPY_BUILD_MBEDTLS_DEFAULT})
 option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from submodule source when missing" OFF)
 option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 ```
@@ -366,7 +374,10 @@ cmake --build build_debug_coroutine --target transport_libcoro_dll_scheduled_dyn
 ### Tests
 
 These targets are available only when `CANOPY_BUILD_TEST=ON`; turning that
-option off also skips the fuzz test subdirectory.
+option off also skips the integration fuzz test subdirectory. The optional Rust
+child used by some fuzz parity scenarios is only wired into `fuzz_test_gtest`
+when `CANOPY_BUILD_RUST=ON`, Protocol Buffers are enabled, the build is
+non-coroutine, and `cargo` is found.
 
 ```bash
 cmake --build build_debug --target rpc_test
@@ -559,8 +570,8 @@ ctest --test-dir build_debug --tests-regex fuzz
 | Main typed host tests | Core C++ RPC transport and type suites | `rpc_test` |
 | JSON schema tests | Metadata extraction | `json_schema_metadata_test` |
 | Serializer tests | Serialization-focused checks | `serialiser_test` |
-| Fuzz harness | Iterative fuzz-style runner | `fuzz_test_main` |
-| Fuzz gtests | Discoverable fuzz scenarios | `fuzz_test_gtest` |
+| Fuzz harness | Iterative fuzz-style runner, when `CANOPY_BUILD_TEST=ON` | `fuzz_test_main` |
+| Fuzz gtests | Discoverable fuzz scenarios, when `CANOPY_BUILD_TEST=ON`; Rust child parity requires `CANOPY_BUILD_RUST=ON` | `fuzz_test_gtest` |
 | Unit tests | Focused standalone executables | `member_ptr_test`, `passthrough_test`, `zone_address_test` |
 
 ## 9. Build Output
@@ -725,7 +736,7 @@ target_include_directories(
 # Link libraries - order matters for static linking
 target_link_libraries(my_demo
     PUBLIC
-        my_idl_host              # Your generated IDL library
+        my_idl                   # Your generated IDL library
         transport_local          # Local transport (if using)
         transport_streaming      # Stream transport (if using)
         rpc::rpc                 # Core RPC library
@@ -734,7 +745,7 @@ target_link_libraries(my_demo
 
 # Compiler and linker options
 target_compile_options(my_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_options(my_demo PRIVATE ${HOST_LINK_EXE_OPTIONS})
+target_link_options(my_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 # Set PDB name for debugging
 set_property(TARGET my_demo PROPERTY COMPILE_PDB_NAME my_demo)
@@ -767,7 +778,7 @@ endif()
 ```cmake
 target_link_libraries(my_demo
     PUBLIC
-        my_idl_host
+        my_idl
         transport_local  # Required for local transport
         rpc::rpc
         ${CANOPY_LIBRARIES}
@@ -780,11 +791,10 @@ target_link_libraries(my_demo
 
 **Cause**: Missing transport include path
 
-**Solution**: CMake's `${CANOPY_INCLUDES}` should include transport paths. If manual configuration is needed:
+**Solution**: Link the transport target and include `${CANOPY_INCLUDES}`:
 ```cmake
-target_include_directories(my_demo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include
-)
+target_include_directories(my_demo PRIVATE ${CANOPY_INCLUDES})
+target_link_libraries(my_demo PRIVATE transport_local)
 ```
 
 ## 14. Next Steps

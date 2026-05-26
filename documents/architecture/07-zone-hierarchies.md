@@ -51,11 +51,13 @@ class my_child_service : public rpc::child_service
 
 public:
     my_child_service(const char* name, rpc::zone zone_id,
+                     rpc::destination_zone parent_zone_id,
                      std::shared_ptr<rpc::transport> parent_transport,
                      rpc::shared_ptr<yyy::i_host> host)
-        : rpc::child_service(name, zone_id, std::move(parent_transport))
+        : rpc::child_service(name, zone_id, parent_zone_id)
         , host_(host)
     {
+        set_parent_transport(parent_transport);
     }
 };
 ```
@@ -96,10 +98,13 @@ auto transport = rpc::stream_transport::streaming_transport::create(
 
 // Retrieve an interface from Node B's root zone
 rpc::shared_ptr<i_factory> input_factory;
-auto [err, remote_factory] = CO_AWAIT root_service->connect_to_zone<i_factory>(
+auto connect_result = CO_AWAIT root_service->connect_to_zone<i_factory, i_factory>(
     "node_b",
     transport,
     input_factory);
+if (connect_result.error_code != rpc::error::OK())
+    CO_RETURN connect_result.error_code;
+auto remote_factory = connect_result.output_interface;
 ```
 
 ### Peer Zone Lifetime

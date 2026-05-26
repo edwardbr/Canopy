@@ -5,9 +5,18 @@ All rights reserved.
 
 # Nanopb Protocol Buffers Implementation Notes
 
-This document records design notes for the Nanopb-backed Protocol Buffers path in Canopy. For current user-facing
-behavior, see [Nanopb](nanopb.md). The implementation goal is C++ serialization/deserialization compatibility with
-standard Protocol Buffers wire format while avoiding the Google C++ protobuf runtime in SGX enclaves.
+Status note: this is a historical implementation plan. Many of the items below
+are now implemented, including `rpc::encoding::nanopb`, generated
+`nanopb_serialise` / `nanopb_deserialise` methods, CMake backend selection, and
+the generic `to_nanopb` / `from_nanopb` serializer helpers. For current
+user-facing behavior, see [Nanopb](nanopb.md); for source-of-truth behavior, see
+`cmake/CanopyGenerate.cmake`, `generator/src/nanopb_generator.cpp`, and
+`c++/rpc/include/rpc/internal/serialiser.h`.
+
+This document records design notes for the Nanopb-backed Protocol Buffers path
+in Canopy. The implementation goal is C++ serialization/deserialization
+compatibility with standard Protocol Buffers wire format while avoiding the
+Google C++ protobuf runtime in SGX enclaves.
 
 ## Goals
 

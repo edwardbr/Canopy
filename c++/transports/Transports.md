@@ -56,11 +56,15 @@ Those are implemented as:
 ## Child process runtimes under `ipc_transport/`
 
 - `ipc_transport/ipc_child_host_process/`
-  - Maps the shared SPSC queue pair, loads a DLL, and forwards the queues into
+  - Builds the `canopy_ipc_child_host_process` executable. It maps the shared
+    SPSC queue pair, loads a DLL, and forwards the queues into
     `libcoro_spsc_dynamic_dll`.
 - `ipc_transport/ipc_child_process/`
   - Maps the shared SPSC queue pair and hosts a `rpc::stream_transport`
     directly in the child process executable.
+  - The direct executable target is currently disabled in CMake pending rework;
+    only interface/header support is configured, and the disabled source still
+    hardcodes the example test interfaces.
 
 These are helper executables, not transports in their own right.
 
@@ -70,6 +74,6 @@ These are helper executables, not transports in their own right.
   - `dynamic_library/`, `libcoro_host_scheduled_dynamic_library/`, or
     `libcoro_dll_scheduled_dynamic_library/`
 - Out-of-process DLL zone:
-  - `ipc_transport/` + `ipc_child_host_process/` + `libcoro_spsc_dynamic_dll/`
+  - `ipc_transport/` + `canopy_ipc_child_host_process` + `libcoro_spsc_dynamic_dll/`
 - Out-of-process direct child service:
-  - `ipc_transport/` + `ipc_child_process/`
+  - `ipc_transport/` + `canopy_ipc_child_process` once the direct executable is reworked and re-enabled

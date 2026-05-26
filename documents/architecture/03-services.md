@@ -202,8 +202,7 @@ public:
 };
 
 // Creation
-std::atomic<uint64_t> zone_gen{0};
-auto service = std::make_shared<my_service>("my_service", rpc::zone{++zone_gen});
+auto service = std::make_shared<my_service>("my_service", rpc::DEFAULT_PREFIX);
 ```
 
 ### Destructor Behavior
@@ -412,11 +411,11 @@ outbound virtuals before reaching the transport.
 
 ### Pattern 1: Peer-to-Peer Services
 
-Peer services connect via a streaming transport (TCP or SPSC). The server side registers a connection callback; the client side wraps a connected stream and calls `connect_to_zone`:
+Peer services connect via a streaming transport (TCP or SPSC). The server side registers a connection callback; the client side wraps a connected stream and calls `connect_to_zone`. The `server_zone` and `client_zone` values should come from application or network configuration, not fixed integer zone IDs:
 
 ```cpp
 // Server side — streaming listener with per-connection callback
-auto server_service = rpc::root_service::create("service1", get_next_zone_id());
+auto server_service = rpc::root_service::create("service1", server_zone);
 
 auto listener = std::make_shared<streaming::listener>("server",
     std::make_shared<streaming::tcp::acceptor>(endpoint),
@@ -432,7 +431,7 @@ auto listener = std::make_shared<streaming::listener>("server",
 listener->start_listening(server_service);
 
 // Client side — connect and obtain the remote interface
-auto client_service = rpc::root_service::create("service2", get_next_zone_id());
+auto client_service = rpc::root_service::create("service2", client_zone);
 auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
 auto client_transport = rpc::stream_transport::make_client("client", client_service, std::move(tcp_stm));
 
@@ -449,20 +448,11 @@ auto example = connect_result.output_interface;
 
 ```cpp
 // Parent service
-auto parent_service = rpc::root_service::create("parent", rpc::zone{1});
-
-// Create child zone
-auto new_zone_result = CO_AWAIT parent_service->get_new_zone_id({});
-if (new_zone_result.error_code != rpc::error::OK())
-{
-    CO_RETURN new_zone_result.error_code;
-}
-auto new_zone_id = new_zone_result.zone_id;
+auto parent_service = rpc::root_service::create("parent", rpc::DEFAULT_PREFIX);
 
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child",
-    parent_service,
-    new_zone_id);
+    parent_service);
 
 child_transport->set_child_entry_point<i_example_parent, i_example_child>(
     [](const rpc::shared_ptr<i_example_parent>& parent_interface,
@@ -482,12 +472,12 @@ child_transport->set_child_entry_point<i_example_parent, i_example_child>(
 ### Pattern 3: Service with Multiple Transports
 
 ```cpp
-auto service = rpc::root_service::create("hub", rpc::zone{1});
+auto service = rpc::root_service::create("hub", hub_zone);
 
-// Connect to multiple zones
-service->add_transport(rpc::destination_zone{2}, tcp_transport1);
-service->add_transport(rpc::destination_zone{3}, tcp_transport2);
-service->add_transport(rpc::destination_zone{4}, local_transport);
+// Register already-connected transports by their adjacent zone IDs.
+service->add_transport(tcp_transport1->get_adjacent_zone_id(), tcp_transport1);
+service->add_transport(tcp_transport2->get_adjacent_zone_id(), tcp_transport2);
+service->add_transport(local_transport->get_adjacent_zone_id(), local_transport);
 
 // Service acts as hub for communication
 ```

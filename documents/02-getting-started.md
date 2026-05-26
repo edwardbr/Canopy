@@ -105,6 +105,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CANOPY_BUILD_TEST OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_RUST OFF CACHE BOOL "" FORCE)
 add_subdirectory(../Canopy canopy_build)
 
 # Generate code from IDL
@@ -213,10 +214,9 @@ int main()
     std::cout << "Starting Canopy Calculator Demo\n";
 
     // Create root service
-    std::atomic<uint64_t> zone_gen = 0;
     auto root_service = rpc::root_service::create(
         "root",
-        rpc::zone{++zone_gen});
+        rpc::DEFAULT_PREFIX);
 
     // Create calculator instance
     auto calculator = create_calculator_instance();
@@ -273,20 +273,22 @@ Division by zero correctly returned error: 4
 Demo completed successfully!
 ```
 
-## 7. Tutorial: Cross-Zone Communication
+## 7. Tutorial: Local Child-Zone Communication
 
-This tutorial extends the calculator to support two zones communicating via the local transport.
+This tutorial extends the calculator to support two zones communicating via the
+local transport. The root service creates a child zone and receives a proxy to
+the calculator object created in that child.
 
-### Client-Server Architecture
+### Parent-Child Architecture
 
 ```
 ┌─────────────────────┐         ┌─────────────────────┐
-│      Client Zone    │         │     Server Zone     │
+│      Parent Zone    │         │      Child Zone     │
 │                     │  local  │                     │
-│  client_service     │◄───────►│  server_service     │
+│  root_service       │◄───────►│  child_service      │
 │         │           │ transport│         │          │
 │         ▼           │         │         ▼          │
-│  client_proxy       │         │  calculator_impl   │
+│  child_proxy        │         │  calculator_impl   │
 └─────────────────────┘         └─────────────────────┘
 ```
 
@@ -297,7 +299,6 @@ This tutorial extends the calculator to support two zones communicating via the 
 #include <iostream>
 #include <memory>
 #include <thread>
-#include <atomic>
 
 #ifdef CANOPY_BUILD_COROUTINE
 #include <coro/scheduler.hpp>
@@ -307,81 +308,64 @@ using namespace calculator;
 
 int main()
 {
-    std::cout << "Starting Cross-Zone Calculator Demo\n";
+    std::cout << "Starting Local Child-Zone Calculator Demo\n";
 
-    std::atomic<uint64_t> zone_gen = 0;
+    auto root_service = rpc::root_service::create(
+        "root",
+        rpc::DEFAULT_PREFIX);
 
-    // === SERVER SIDE ===
-
-    // Create server service
-    auto server_service = rpc::root_service::create(
-        "server",
-        rpc::zone{++zone_gen});
-
-    // Register calculator implementation
-    auto calculator = create_calculator_instance();
-
-    std::cout << "Server zone ID: " << server_service->get_zone_id().get_subnet() << "\n";
-
-    // === CLIENT SIDE ===
-
-    // Create client service
-    auto client_service = rpc::root_service::create(
-        "client",
-        rpc::zone{++zone_gen});
-
-    std::cout << "Client zone ID: " << client_service->get_zone_id().get_subnet() << "\n";
-
-    // Create child transport connecting client to server
     auto child_transport = std::make_shared<rpc::local::child_transport>(
-        "server",
-        server_service,
-        client_service->get_zone_id());
+        "calculator_child",
+        root_service);
 
     child_transport->set_child_entry_point<v1::i_calculator, v1::i_calculator>(
-        [&](const rpc::shared_ptr<v1::i_calculator>& /* host */,
-            rpc::shared_ptr<v1::i_calculator>& calculator_out,
-            const std::shared_ptr<rpc::child_service>& child_service) -> CORO_TASK(int)
+        [](rpc::shared_ptr<v1::i_calculator> parent_calculator,
+           std::shared_ptr<rpc::child_service> child_service)
+            -> CORO_TASK(rpc::service_connect_result<v1::i_calculator>)
         {
-            calculator_out = calculator;
-            CO_RETURN rpc::error::OK();
+            (void)parent_calculator;
+            (void)child_service;
+            CO_RETURN rpc::service_connect_result<v1::i_calculator>{
+                rpc::error::OK(), create_calculator_instance()};
         });
 
-    // Connect client to server
-    rpc::shared_ptr<v1::i_calculator> input_calculator;  // Input to child zone (unused in this example)
-    auto [error, remote_calculator]
-        = CO_AWAIT client_service->connect_to_zone<v1::i_calculator>(
-            "server",
+    // Connect to the child zone
+    rpc::shared_ptr<v1::i_calculator> input_calculator;  // Optional input to the child zone
+    auto connect_result
+        = CO_AWAIT root_service->connect_to_zone<v1::i_calculator, v1::i_calculator>(
+            "calculator_child",
             child_transport,
             input_calculator);
 
-    if (error != rpc::error::OK())
+    if (connect_result.error_code != rpc::error::OK())
     {
-        std::cerr << "Failed to connect: " << static_cast<int>(error) << "\n";
+        std::cerr << "Failed to connect: "
+                  << static_cast<int>(connect_result.error_code) << "\n";
         return 1;
     }
 
-    std::cout << "Connected to server!\n";
+    auto remote_calculator = connect_result.output_interface;
+    std::cout << "Connected to child zone!\n";
 
     // === MAKE REMOTE CALLS ===
 
     int result;
 
-    // Call add on server
-    error = CO_AWAIT remote_calculator->add(100, 200, result);
+    // Call add on the child-zone calculator
+    auto error = CO_AWAIT remote_calculator->add(100, 200, result);
     if (error == rpc::error::OK())
     {
         std::cout << "100 + 200 = " << result << " (remote call)\n";
     }
 
-    // Call multiply on server
+    // Call multiply on the child-zone calculator
     error = CO_AWAIT remote_calculator->multiply(7, 8, result);
     if (error == rpc::error::OK())
     {
         std::cout << "7 * 8 = " << result << " (remote call)\n";
     }
 
-    std::cout << "Cross-zone demo completed!\n";
+    std::cout << "Local child-zone demo completed!\n";
     return 0;
 }
 ```
@@ -403,6 +387,7 @@ cmake --build build_debug_coroutine
 #include "calculator_impl.h"
 #include <iostream>
 #include <memory>
+#include <thread>
 #include <coro/scheduler.hpp>
 
 using namespace calculator;
@@ -412,20 +397,19 @@ int main()
     std::cout << "Coroutine Calculator Demo\n";
 
     // Create IO scheduler for coroutines
-    auto scheduler = coro::scheduler::make_unique(
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
         coro::scheduler::options{
             .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
             .pool = coro::thread_pool::options{
                 .thread_count = std::thread::hardware_concurrency(),
             },
             .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool
-        });
+        }));
 
     // Create service with scheduler
-    std::atomic<uint64_t> zone_gen = 0;
     auto service = rpc::root_service::create(
         "coro_service",
-        rpc::zone{++zone_gen},
+        rpc::DEFAULT_PREFIX,
         scheduler);
 
     // Create calculator
@@ -479,20 +463,21 @@ int main()
 ```cpp
 auto error = CO_AWAIT calculator->add(a, b, result);
 
-switch (error)
+if (error == rpc::error::OK())
 {
-    case rpc::error::OK():
-        // Success
-        break;
-    case rpc::error::INVALID_DATA():
-        // Handle invalid input
-        break;
-    case rpc::error::OBJECT_GONE():
-        // Object was destroyed
-        break;
-    default:
-        // Other error
-        break;
+    // Success
+}
+else if (error == rpc::error::INVALID_DATA())
+{
+    // Handle invalid input
+}
+else if (error == rpc::error::OBJECT_GONE())
+{
+    // Object was destroyed
+}
+else
+{
+    // Other error
 }
 ```
 
@@ -516,8 +501,11 @@ For objects with independent lifetimes (like database connections or services ma
 auto db_service = database_manager->get_connection();
 
 // Create optimistic (non-RAII) reference
-rpc::optimistic_ptr<xxx::i_database> opt_db;
-auto error = CO_AWAIT rpc::make_optimistic(db_service, opt_db);
+auto [error, opt_db] = CO_AWAIT rpc::make_optimistic(db_service);
+if (error != rpc::error::OK())
+{
+    CO_RETURN error;
+}
 
 // If database is shut down, returns OBJECT_GONE (expected for independent lifetime)
 // If using shared_ptr, would return OBJECT_NOT_FOUND (serious error)

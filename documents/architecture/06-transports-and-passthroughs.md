@@ -50,8 +50,10 @@ Transports provide the communication channels between adjacent zones. Each trans
 In the primary C++ implementation, transports inherit from `rpc::transport`,
 which defines the interface for:
 
-- **Connection establishment** via the `connect()` virtual method
-- **Message sending** with `send()` for request-response and `post()` for fire-and-forget operations
+- **Connection establishment** through `connect()` / `accept()`, which delegate
+  to transport-specific `inner_connect()` / `inner_accept()` implementations
+- **Message sending** with `outbound_send()` for request-response and
+  `outbound_post()` for fire-and-forget operations
 - **Reference counting** through `add_ref()` and `release()` for distributed object lifecycle management
 - **Interface queries** using `try_cast()` to support dynamic interface resolution
 
@@ -199,20 +201,22 @@ This handshake establishes zone identity, object routing, and confirms the conne
 Transports track references between **adjacent zones only**:
 
 ```cpp
-class transport
+struct remote_service_count
 {
-    std::atomic<uint64_t> shared_count_{0};      // Shared references
-    std::atomic<uint64_t> optimistic_count_{0};  // Optimistic references
-
-public:
-    // Incremented by: Normal add_ref (options=0)
-    // Decremented by: Normal release (options=0)
-    void add_ref(rpc::object obj, uint64_t count = 1);
-    void release(rpc::object obj, uint64_t count = 1);
+    std::atomic<uint64_t> proxy_count{0};
+    std::atomic<uint64_t> stub_count{0};
+    std::atomic<uint64_t> outbound_passthrough_count{0};
+    std::atomic<uint64_t> inbound_passthrough_count{0};
 };
 ```
 
-**Critical**: Relay operations (options=3) do NOT affect transport ref counts. See Part 2: Passthroughs for details.
+The transport keeps these counts per remote zone. Normal proxy/stub references
+and passthrough references are tracked separately so routed references can keep
+the correct route alive without pretending the adjacent transport itself owns a
+direct object reference.
+
+**Critical**: Relay operations (options=3) do NOT affect adjacent-zone proxy or
+stub counts. See Part 2: Passthroughs for details.
 
 ### Passthrough Add-Ref Ordering
 
@@ -326,10 +330,10 @@ Rules:
 Attach transports to service:
 ```cpp
 // Attach transport to service
-service_->add_transport(destination_zone{2}, transport_);
+service_->add_transport(transport_->get_adjacent_zone_id(), transport_);
 
 // Get transport for zone
-auto transport = service_->get_transport(destination_zone{2});
+auto transport = service_->get_transport(transport_->get_adjacent_zone_id());
 ```
 
 See `02-zones.md` for comprehensive zone architecture details.

@@ -36,8 +36,11 @@ The current split is:
   owns process lifetime
 - `rpc::libcoro_spsc_dynamic_dll` consumes an already-created queue pair and
   hosts a DLL zone behind a `stream_transport`
-- `ipc_child_process` consumes an already-created queue pair and hosts a direct
-  child service behind a `stream_transport`
+- `canopy_ipc_child_host_process` consumes an already-created queue pair and
+  hosts a DLL-backed child service behind a `stream_transport`
+- direct child-process bootstrap support exists, but the in-tree
+  `canopy_ipc_child_process` executable is currently disabled pending rework and
+  still hardcodes the example test interfaces in its source
 
 So the SPSC layer is the message pipe; it is not the process manager, it is not
 the DLL loader, and it is not itself a hierarchical transport.

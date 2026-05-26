@@ -24,11 +24,15 @@ bootstrap helpers, not transports.
 ## Child runtime options
 
 - `ipc_child_host_process/`
+  - builds the `canopy_ipc_child_host_process` executable
   - maps the queue pair and loads a DLL which uses
     `../libcoro_spsc_dynamic_dll/`
 - `ipc_child_process/`
   - maps the queue pair and hosts a `rpc::stream_transport` directly in the
     child process executable
+  - currently only builds interface/header support; the
+    `canopy_ipc_child_process` executable is disabled in CMake pending rework
+  - the disabled source still hardcodes the example test interfaces
 
 ## Options
 
@@ -39,7 +43,8 @@ bootstrap helpers, not transports.
 - `dll_zone`
 - `process_kind`
   - `host_dll`
-  - `direct_service`
+  - `direct_service` (API present, but the in-tree direct-service executable is
+    currently disabled)
 - `kill_child_on_parent_death`
 
 On Linux, `kill_child_on_parent_death` uses `PR_SET_PDEATHSIG(SIGKILL)`.

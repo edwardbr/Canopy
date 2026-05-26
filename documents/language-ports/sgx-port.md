@@ -1,5 +1,11 @@
 # SGX Transport Port Plan
 
+Status: historical port plan. This document preserves the work plan and some
+old before/after examples from the SGX transport port. It is not the current
+SGX transport API reference. For current usage, start with
+`documents/transports/sgx.md` and the active transport headers under
+`c++/transports/sgx/` and `c++/transports/sgx_coroutine/`.
+
 Goal: get `cmake --preset Debug_SGX_Sim` building and `marshal_test_enclave` running on a
 non-Intel (simulation) machine, with full correctness on real SGX hardware deferred to a
 later session on an Intel machine.
@@ -142,7 +148,7 @@ present from the normal Canopy build environment.)
 Then build the SDK and install it:
 
 ```bash
-cd /var/home/edward/projects/Canopy_gitlab/submodules/confidential-computing.sgx
+cd submodules/confidential-computing.sgx
 make sdk_no_mitigation SGX_DEBUG=1
 # Produces an installer at linux/installer/bin/sgx_linux_x64_sdk_*.bin
 ./linux/installer/bin/sgx_linux_x64_sdk_*.bin --prefix=/home/edward/sgx
@@ -378,30 +384,30 @@ rpc::child_service::create_child_zone<rpc::host_service_proxy, i_host, i_example
 New pattern (transport-based):
 ```cpp
 int marshal_test_init_enclave(uint64_t host_zone_id, uint64_t host_id,
-                               uint64_t child_zone_id, uint64_t* example_object_id)
+                              uint64_t child_zone_id, uint64_t* example_object_id)
 {
     rpc::connection_settings input_descr{{host_id}, {host_zone_id}};
 
     g_host_transport = std::make_shared<rpc::sgx::host_transport>(
-        "test_enclave", rpc::zone{child_zone_id}, rpc::zone{host_zone_id});
+        "test_enclave", enclave_id, rpc::zone{child_zone_id}, rpc::zone{host_zone_id});
 
-    auto result = child_service::create_child_zone<yyy::i_host, yyy::i_example>(
+    auto result = rpc::child_service::create_child_zone<yyy::i_host, yyy::i_example>(
         "test_enclave",
         g_host_transport,
         input_descr,
         [](const rpc::shared_ptr<yyy::i_host>& host,
-           std::shared_ptr<rpc::child_service> child_svc)
+           std::shared_ptr<rpc::child_service> child_svc) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
         {
             rpc_server = child_svc;
             rpc::shared_ptr<yyy::i_example> new_example(
                 new marshalled_tests::example(child_svc, host));
-            return service_connect_result<yyy::i_example>{rpc::error::OK(), new_example};
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), new_example};
         });
 
     if (result.error_code != rpc::error::OK())
         return result.error_code;
 
-    *example_object_id = result.output_object.object_id.get_val();
+    *example_object_id = result.descriptor.get_object_id().get_val();
     return rpc::error::OK();
 }
 ```

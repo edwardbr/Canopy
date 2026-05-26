@@ -107,14 +107,14 @@ guidance, not as a universal Canopy transport capability.
 │  ┌───────────────────────────────────┐  │
 │  │         Host Application          │  │
 │  │  ┌─────────────────────────────┐  │  │
-│  │  │    host_service_proxy       │  │  │
+│  │  │ rpc::sgx::enclave_transport│  │  │
 │  │  └──────────────┬──────────────┘  │  │
 │  └─────────────────┼──────────────────┘  │
-│                    │ OCALL               │
+│                    │ ECALL / OCALL       │
 │ ┌──────────────────┴──────────────────┐ │
 │ │           Enclave Boundary          │ │
 │ │  ┌─────────────────────────────┐    │ │
-│  │  │    enclave_service_proxy   │    │ │
+│  │  │   rpc::sgx::host_transport │    │ │
 │  │  └──────────────┬──────────────┘    │ │
 │  │                 │ ECALL              │ │
 │  │  ┌─────────────────────────────┐    │ │
@@ -270,79 +270,61 @@ the host queued a message toward enclave B, but enclave B did not observe it
 before timeout. That points at queue instance selection, receive-loop progress,
 or re-entrant routing work ahead of queue consumption.
 
-## Host Setup
+## Non-Coroutine SGX Transport Setup
 
 ```cpp
-auto enclave_proxy = rpc::enclave_service_proxy::create(
-    "enclave_service",
-    rpc::destination_zone{enclave_zone_id},
-    host_service,
-    "enclave.signed.so");  // Enclave binary
+auto transport = std::make_shared<rpc::sgx::enclave_transport>(
+    "main child",
+    root_service,
+    enclave_path);
+
+auto result = SYNC_WAIT(root_service->connect_to_zone<yyy::i_host, yyy::i_example>(
+    "main child",
+    transport,
+    host_interface));
 ```
 
-## Enclave Setup
+On the enclave side, create a `rpc::sgx::host_transport` and pass it to
+`rpc::child_service::create_child_zone`:
 
 ```cpp
-// Inside enclave (illustrative test-style setup)
-int marshal_test_init_enclave(
-    uint64_t host_zone_id,
-    uint64_t host_id,
-    uint64_t child_zone_id,
-    uint64_t* example_object_id)
+int initialise_enclave_child_zone(
+    uint64_t enclave_id,
+    const init_request& request)
 {
-    auto ret = rpc::child_service::create_child_zone<
-        rpc::host_service_proxy,
-        yyy::i_host,
-        yyy::i_example>(
-        "test_enclave",
-        rpc::zone{child_zone_id},
-        rpc::destination_zone{host_zone_id},
-        input_descr,
-        output_descr,
-        [](const rpc::shared_ptr<yyy::i_host>& host,
-            rpc::shared_ptr<yyy::i_example>& new_example,
-            const std::shared_ptr<rpc::child_service>& child_service_ptr) -> int
-        {
-            new_example = rpc::make_shared<example_impl>(
-                child_service_ptr, host);
-            return rpc::error::OK();
-        },
-        rpc_server);
+    auto input_descr = from_sgx_request(request);
 
-    return ret;
+    auto parent_transport = std::make_shared<rpc::sgx::host_transport>(
+        "test_enclave",
+        enclave_id,
+        request.child_zone_id,
+        rpc::zone{request.host_remote_object.as_zone()});
+
+    auto result = rpc::child_service::create_child_zone<yyy::i_host, yyy::i_example>(
+        "test_enclave",
+        parent_transport,
+        input_descr,
+        [](const rpc::shared_ptr<yyy::i_host>& host,
+            std::shared_ptr<rpc::child_service> child_service_ptr) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            rpc::shared_ptr<yyy::i_example> new_example(new example_impl(child_service_ptr, host));
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), new_example};
+        });
+
+    return result.error_code;
 }
 ```
 
-## Enclave Service Proxy
+Current non-coroutine SGX transport classes are:
 
-```cpp
-class enclave_service_proxy : public rpc::service_proxy
-{
-public:
-    static std::shared_ptr<enclave_service_proxy> create(
-        const char* name,
-        rpc::destination_zone destination_zone_id,
-        std::weak_ptr<rpc::service> service,
-        const std::string& enclave_path);
-};
-```
-
-## Host Service Proxy (for enclave-to-host calls)
-
-```cpp
-class host_service_proxy : public rpc::service_proxy
-{
-public:
-    static std::shared_ptr<host_service_proxy> create(
-        const char* name,
-        rpc::caller_zone caller_zone_id,
-        std::weak_ptr<rpc::child_service> service);
-};
-```
+- `rpc::sgx::enclave_transport` in
+  [`transport.h`](../../c++/transports/sgx/include/transports/sgx/transport.h)
+- `rpc::sgx::host_transport` in
+  [`host_transport.h`](../../c++/transports/sgx/include/transports/sgx/host_transport.h)
 
 This page is best read together with:
 
 - [Hierarchical Transport Pattern](hierarchical.md)
 - [Zone Shutdown Sequence](../protocol/zone_shutdown_sequence.md)
-- [SGX Coroutine Transport Plan](../sgx_coroutines.md)
+- [SGX Connectivity Notes](../sgx/connectivity/README.md)
 - [Zone Hierarchies](../architecture/07-zone-hierarchies.md)

@@ -13,7 +13,7 @@ Asio provides a proactor-based async model that has been extended with C++20 cor
 
 ## Adaptation for Canopy
 
-Adapting Canopy to use Asio would require changes to `rpc/include/rpc/internal/coroutine_support.h`:
+Adapting Canopy to use Asio would require changes to `c++/rpc/include/rpc/internal/coroutine_support.h`:
 
 ```cpp
 #ifdef CANOPY_BUILD_COROUTINE

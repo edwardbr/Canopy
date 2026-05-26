@@ -24,8 +24,8 @@ Implement your own transport by inheriting from `rpc::transport`.
 
 The canonical transport surface lives in:
 
-- [transport.h](/var/home/edward/projects/Canopy/c++/rpc/include/rpc/internal/transport.h)
-- [marshaller.h](/var/home/edward/projects/Canopy/c++/rpc/include/rpc/internal/marshaller.h)
+- [transport.h](../../c++/rpc/include/rpc/internal/transport.h)
+- [marshaller.h](../../c++/rpc/include/rpc/internal/marshaller.h)
 
 ```cpp
 class my_transport : public rpc::transport

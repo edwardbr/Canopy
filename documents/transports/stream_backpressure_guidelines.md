@@ -206,8 +206,8 @@ Useful instrumentation points:
 
 ## io_uring Stream Rules
 
-These rules apply to the SGX io_uring stream work and to any future host-side
-io_uring stream implementation.
+These rules apply to both the SGX io_uring stream path and the host-side
+`streaming_io_uring` implementation.
 
 - Treat SQ capacity, CQ capacity, registered host buffers, and fixed-file slots
   as separate bounded resources.
@@ -346,25 +346,27 @@ polling.
 ### Why Priority Still Matters
 
 During debugging it became clear that ordinary outbound requests and responder
-traffic currently share the same producer path. That was not the primary cause
-of the captured stall above, but it is still an architectural concern.
+traffic needed different scheduling priority. That was not the primary cause of
+the captured stall above, but it was still an architectural concern.
 
 Responses created while handling inbound RPCs should conceptually have higher
 priority than fresh outbound requests. In particular, the following classes of
-messages are candidates for a high-priority outbound lane:
+messages now use the high-priority outbound lane in the current C++ streaming
+transport:
 
 - `call_receive`
 - `try_cast_receive`
 - `addref_receive`
 - init / channel setup responses
-- close / control acknowledgements such as `close_connection_ack`
+- close / control messages such as `close_connection_send` and
+  `close_connection_ack`
 
 The reason is simple: once a request has already been accepted and dispatched,
 its response is part of completing existing work, not starting new work.
 
-This priority split was identified as a worthwhile follow-up improvement, but
-it was not the fix that resolved the reproduced benchmark stall in this
-investigation.
+This priority split was not the fix that resolved the reproduced benchmark
+stall in this investigation, but the current implementation now has
+`high_priority_send_queue_` and drains it before the normal send queue.
 
 ### Benchmark Wiring Lesson
 

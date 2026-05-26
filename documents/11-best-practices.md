@@ -357,10 +357,10 @@ rpc::telemetry::create_sequence_diagram_telemetry_service(
 // Generates PlantUML file for visualization
 ```
 
-### Thread-Local Logging
+### Logging and Telemetry
 
 ```bash
-cmake --preset Debug -DCANOPY_USE_THREAD_LOCAL_LOGGING=ON
+cmake --preset Debug -DCANOPY_USE_LOGGING=ON -DCANOPY_USE_TELEMETRY=ON
 ```
 
 ## 11. Common Issues and Solutions
@@ -624,7 +624,7 @@ target_link_libraries(my_demo PRIVATE rpc_transport_local)  # Wrong name!
 
 **Correct**:
 ```cmake
-target_link_libraries(my_demo PRIVATE transport_local_host)  # Correct name
+target_link_libraries(my_demo PRIVATE transport_local)  # Correct name
 ```
 
 ### Mistake: Return Type Mismatch in Coroutines

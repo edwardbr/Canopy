@@ -28,11 +28,11 @@ namespace streaming
     //       std::make_shared<streaming::tcp::acceptor>(endpoint),
     //       rpc::stream_transport::make_connection_callback<i_remote, i_local>(
     //           [](const rpc::shared_ptr<i_remote>& remote,
-    //               rpc::shared_ptr<i_local>& local,
-    //               const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+    //               std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<i_local>)
     //           {
-    //               local = rpc::shared_ptr<i_local>(new my_local_impl(svc));
-    //               CO_RETURN rpc::error::OK();
+    //               CO_RETURN rpc::service_connect_result<i_local>{
+    //                   rpc::error::OK(),
+    //                   rpc::shared_ptr<i_local>(new my_local_impl(svc))};
     //           }));
     //   CO_AWAIT listener->start_listening_async(service);
 

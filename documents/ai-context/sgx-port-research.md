@@ -1,5 +1,11 @@
 # SGX Port Research Notes
 
+Status: historical research notes. This file preserves the 2026-04-10 porting
+investigation and still quotes removed `enclave_service_proxy` /
+`host_service_proxy` APIs. For current SGX transport usage, start with
+`documents/transports/sgx.md` and the headers under `c++/transports/sgx/` and
+`c++/transports/sgx_coroutine/`.
+
 Session: 2026-04-10. Goal: get `Debug_SGX_Sim` building, starting with `c++/tests/test_enclave`.
 
 ## The Core Problem

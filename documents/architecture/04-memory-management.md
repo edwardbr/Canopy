@@ -82,7 +82,7 @@ if (ptr) {
 ptr.reset();
 
 // Get underlying object
-auto raw = ptr.get_nullable();
+auto raw = ptr.get();
 if (raw) {
     raw->method();
 }
@@ -149,7 +149,7 @@ lifetimes**.
 
 It is typically obtained from:
 1. Another `rpc::optimistic_ptr` (copy)
-2. `rpc::shared_ptr` via implicit conversion or `.to_optimistic()`
+2. `rpc::shared_ptr` or `rpc::weak_ptr` via `CO_AWAIT rpc::make_optimistic(...)`
 
 **Error Behavior**:
 

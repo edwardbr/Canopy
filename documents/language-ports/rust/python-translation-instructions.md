@@ -7,8 +7,8 @@ This document describes how Canopy should be translated into Python.
 It is written after the Rust migration work and incorporates the lessons from
 that effort. It should be read together with:
 
-- [`original-translation-instructions.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/original-translation-instructions.md)
-- [`translation-retrospective.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/translation-retrospective.md)
+- [`original-translation-instructions.md`](../../../documents/language-ports/rust/original-translation-instructions.md)
+- [`translation-retrospective.md`](../../../documents/language-ports/rust/translation-retrospective.md)
 
 The goal is not to make Python "feel native" at the cost of losing Canopy
 semantics. The goal is to preserve Canopy's protocol, entity boundaries, and

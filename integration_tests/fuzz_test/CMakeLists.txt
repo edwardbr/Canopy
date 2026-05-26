@@ -71,6 +71,12 @@ if(CANOPY_BUILD_TEST)
      AND NOT CANOPY_BUILD_COROUTINE
      AND CANOPY_BUILD_PROTOCOL_BUFFERS
      AND CARGO_EXECUTABLE)
+    set(CANOPY_ENABLE_RUST_FUZZ_CHILD ON)
+  else()
+    set(CANOPY_ENABLE_RUST_FUZZ_CHILD OFF)
+  endif()
+
+  if(CANOPY_ENABLE_RUST_FUZZ_CHILD)
     set(CANOPY_RUST_FUZZ_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-fuzz-target")
     set(CANOPY_RUST_FUZZ_CHILD_LIB
         "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}/debug/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_fuzz_test_rust_child${CMAKE_SHARED_LIBRARY_SUFFIX}"
@@ -130,10 +136,7 @@ if(CANOPY_BUILD_TEST)
 
   target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)
   target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry" CANOPY_FUZZ_TEST_GTEST)
-  if(CANOPY_BUILD_RUST
-     AND NOT CANOPY_BUILD_COROUTINE
-     AND CANOPY_BUILD_PROTOCOL_BUFFERS
-     AND CARGO_EXECUTABLE)
+  if(CANOPY_ENABLE_RUST_FUZZ_CHILD)
     target_compile_definitions(fuzz_test_gtest PRIVATE CANOPY_RUST_FUZZ_TEST_DLL_PATH="${CANOPY_RUST_FUZZ_CHILD_LIB}")
     add_dependencies(fuzz_test_gtest canopy_fuzz_test_rust_child)
   endif()

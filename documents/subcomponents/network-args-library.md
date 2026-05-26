@@ -2,7 +2,11 @@
 
 ## Context
 
-All demo binaries and test hosts that create a `zone_address_allocator` need to parse address-family flags and routing-prefix arguments. Rather than duplicating this parsing logic across each binary, a shared static library (`canopy_network_config`) provides a common API. This keeps `args.hxx` boilerplate and the IPv4→IPv6 conversion in one place.
+Demo binaries that accept physical network endpoints or named virtual addresses
+use `canopy_network_config` rather than duplicating `args.hxx` parsing,
+address-family handling, and routing-prefix auto-detection. The library builds
+`rpc::zone_address` values and `rpc::zone_id_allocator` instances for callers
+that need more than the local `rpc::DEFAULT_PREFIX`.
 
 ## CMake Configuration
 
@@ -27,25 +31,25 @@ address model is:
 with the exact field widths described by the versioned address capabilities in
 `interfaces/rpc/rpc_types.idl`.
 
-## CLI Address-Family Options
-
-### Address-family flag
-
-Mutually exclusive; controls how `--routing-prefix` is parsed:
-
-| Flag | Meaning |
-|------|---------|
-| `-4` | `--routing-prefix` is an IPv4 address in dotted-decimal notation (`a.b.c.d`) |
-| `-6` | `--routing-prefix` is an IPv6 address in colon-hex notation (`2001:db8::1`) |
-| *(neither)* | Local-only mode: `routing_prefix=0`, inter-node routing disabled |
-
-### Routing and subnet options
+## CLI Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--routing-prefix <addr>` | `0` | This node's network address. Format determined by `-4`/`-6` (see conversion below). If omitted, `detect_routing_prefix()` selects the best interface address automatically. |
-| `--subnet-base <int>` | `0` | First `subnet_id` allocated by this process. |
-| `--subnet-range <int>` | `0xFFFFFFFF` | Number of `subnet_id` values reserved for this process. |
+| `--va-name <identifier>` | required | Name for a virtual zone address. Repeat once per virtual address. |
+| `--va-type <local\|ipv4\|ipv6\|ipv6_tun>` | required | Address type for the matching virtual address. |
+| `--va-prefix <addr>` | auto-detect | Routing prefix for the matching virtual address. IPv4 and IPv6 formats are inferred from `--va-type`. |
+| `--va-subnet-bits <n>` | `64` | Width of the subnet field for the matching virtual address. |
+| `--va-subnet <value>` | `0` | Initial subnet value for the matching virtual address. |
+| `--va-object-id-bits <n>` | `64` | Width of the object-id field for the matching virtual address. |
+| `--va-object-id <value>` | `0` | Initial object id for the matching virtual address. |
+| `--listen [name:]addr:port` | none | Physical endpoint to bind. The optional name maps the endpoint to a virtual address. |
+| `--connect [name:]addr:port` | none | Physical endpoint to connect to. The optional name maps the endpoint to a virtual address. |
+
+The `--va-*` options are repeatable and matched by occurrence index. `--va-name`
+and `--va-type` must have the same count. Missing trailing values for the other
+virtual-address options use their defaults. Endpoint address family is inferred
+from the endpoint string: `192.168.1.1:8080` for IPv4,
+`[2001:db8::1]:8080` for IPv6, and a bare port for `0.0.0.0:<port>`.
 
 ### Telemetry options
 
@@ -95,7 +99,7 @@ struct network_config
     std::vector<tcp_endpoint> connect_endpoints;
 };
 
-// Add the address-family group and routing/subnet args to an existing ArgumentParser.
+// Add virtual-address and endpoint args to an existing ArgumentParser.
 // Call this before parser.ParseCLI(argc, argv).
 network_args_context add_network_args(args::ArgumentParser& parser);
 
@@ -109,12 +113,19 @@ network_config parse_network_args(
     char* argv[],
     args::ArgumentParser& parser);
 
-// Build a zone_address_allocator from a network_config.
-zone_address_allocator make_allocator(const network_config& cfg);
+// Build a zone_id_allocator from the first virtual address in a network_config.
+rpc::zone_id_allocator make_allocator(const network_config& cfg);
 
-// Low-level converters (also useful in tests).
-uint64_t ipv4_to_routing_prefix(const std::string& dotted_decimal);  // 6to4 mapping
-uint64_t ipv6_to_routing_prefix(const std::string& colon_hex);       // first 64 bits
+// Build a zone_address from a named virtual address.
+rpc::zone_address get_zone_address(
+    const network_config& cfg,
+    const std::string& name = "");
+
+// Low-level endpoint and address helpers.
+tcp_endpoint parse_named_endpoint(const std::string& name_host_port);
+void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr);
+void ipv6_to_ip_address(const std::string& colon_hex, ip_address& addr);
+uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
 // Auto-detect routing-prefix candidates from the host's network interfaces.
 bool detect_routing_prefix(...);
@@ -125,18 +136,24 @@ bool detect_routing_prefix(...);
 `add_network_args` registers the following arguments:
 
 ```
--4, -6                  mutually exclusive group (address family)
---routing-prefix <addr> address in dotted-decimal (IPv4) or colon-hex (IPv6) format;
-                        if omitted, detect_routing_prefix() selects the best interface address
---subnet-base <int>
---subnet-range <int>
+--va-name <identifier>
+--va-type <local|ipv4|ipv6|ipv6_tun>
+--va-prefix <addr>
+--va-subnet-bits <n>
+--va-subnet <value>
+--va-object-id-bits <n>
+--va-object-id <value>
+--listen [name:]addr:port
+--connect [name:]addr:port
 --telemetry-console
 --console-path <path>
 ```
 
 ## Routing Prefix Auto-Detection
 
-When `--routing-prefix` is not provided, `detect_routing_prefix()` enumerates the host's network interfaces using POSIX `getifaddrs()` (Linux/macOS) and selects an address using the following priority:
+When a virtual address omits `--va-prefix`, `detect_routing_prefix()`
+enumerates the host's network interfaces using POSIX `getifaddrs()`
+(Linux/macOS) and selects an address using the following priority:
 
 | Priority | Criterion |
 |----------|-----------|
@@ -145,9 +162,9 @@ When `--routing-prefix` is not provided, `detect_routing_prefix()` enumerates th
 | 3 | Private IPv4 (RFC 1918: `10.x`, `172.16-31.x`, `192.168.x`) |
 | 4 | Returns `0` — local-only mode, no routing prefix |
 
-The address-family flag (`-4`/`-6`) constrains which address families are considered during auto-detection when `--routing-prefix` is absent. If neither flag is given, IPv6 is tried first, then IPv4.
-
-The selected address is converted to a `routing_prefix` using the same rules as explicit `--routing-prefix` (6to4 mapping for IPv4, first 64 bits for IPv6).
+The selected address is converted to a `routing_prefix` using the same rules as
+an explicit virtual-address prefix: 6to4 mapping for IPv4, first 64 bits for
+IPv6.
 
 ## Usage Pattern
 
@@ -164,12 +181,17 @@ int main(int argc, char* argv[])
     catch (args::Help&)          { std::cout << parser; return 0; }
     catch (args::ParseError& e)  { std::cerr << e.what() << "\n" << parser; return 1; }
 
-    // If --routing-prefix was not supplied, get_network_config() calls
+    // If --va-prefix was not supplied, get_network_config() calls
     // detect_routing_prefix() automatically to select the best interface address.
     auto cfg       = canopy::network_config::get_network_config(net_ctx);
     auto allocator = canopy::network_config::make_allocator(cfg);
 
-    auto service = rpc::root_service::create("server", allocator.allocate_zone(), scheduler);
+    rpc::zone_address zone_addr;
+    auto error = allocator.allocate_zone(zone_addr);
+    if (error != rpc::error::OK())
+        return 1;
+
+    auto service = rpc::root_service::create("server", rpc::zone{zone_addr}, scheduler);
     // ...
 }
 ```
@@ -184,28 +206,27 @@ c++/subcomponents/network_config/
   src/network_auto_detect.cpp    ← detect_routing_prefix() via getifaddrs()
 ```
 
-**Dependencies:** `args` (INTERFACE target from `submodules/args`), `rpc_types_idl` (for `zone_address`, `zone`, `object`).
+**Dependencies:** `args` (INTERFACE target from `submodules/args`), `rpc`
+(for `zone_address`, `zone`, `zone_id_allocator`, and related generated
+types).
 
 ## Consumers
 
-Every binary that creates a `zone_address_allocator` links `canopy_network_config`:
+Current binaries that link `canopy_network_config`:
 
 | Binary | Location | Notes |
 |--------|----------|-------|
-| `local_transport_demo` | `demos/comprehensive/src/transport/` | Replace `zone_gen` atomic counter |
-| `spsc_transport_demo` | `demos/comprehensive/src/transport/` | Replace fixed `zone{1}`/`zone{2}` |
-| `tcp_transport_demo` | `demos/comprehensive/src/transport/` | Replace split-range zone IDs; also expose `--port`/`--host` |
-| `benchmark` | `demos/comprehensive/src/transport/` | Same as tcp_transport_demo |
-| `websocket_server` | `demos/websocket/server/` | Migrate from manual arg parsing to `args.hxx` first |
-| `rpc_test` | `tests/test_host/main.cpp` | Already uses `args.hxx`; add `add_network_args()` call |
+| `tcp_transport_demo` | `c++/demos/comprehensive/src/transport/tcp/` | Uses `--listen`, optional `--connect`, and allocator-derived server/client zones. |
+| `websocket_server` | `c++/demos/websocket/server/` | Uses network args for virtual address and listen endpoint setup. |
+| `tcp_spsc_tls_demo` | `c++/demos/stream_composition/src/` | Uses network args for listen/connect endpoints and allocator-derived zones. |
 
 ## Demo Zone Strategy Updates
 
-The comprehensive transport demos (`demos/comprehensive/src/transport/`) currently hardcode all zone IDs and network parameters. Each must be updated to accept the CLI options above and delegate to `canopy_network_config`:
+The comprehensive transport demos no longer use fixed integer-zone
+constructors. Current strategy:
 
-| Demo | Current zone strategy | Change required |
-|------|-----------------------|-----------------|
-| `local_transport_demo` | `std::atomic<uint64_t> zone_gen{0}`, `++zone_gen` | Replace with `allocator.allocate_zone()` |
-| `spsc_transport_demo` | Fixed: `zone{1}`, `zone{2}` | Replace with allocator; add `main(int argc, char* argv[])` |
-| `tcp_transport_demo` | Server `zone{1}`, client `zone{100+}`; port/host hardcoded | Replace zones with allocator; expose `--port`/`--host` |
-| `benchmark` | Same split-range pattern as TCP demo | Replace zones with allocator; expose `--port` |
+| Demo | Current zone strategy |
+|------|-----------------------|
+| `local_transport_demo` | Uses `rpc::DEFAULT_PREFIX` for an in-process local root zone. |
+| `spsc_transport_demo` | Uses `rpc::zone_id_allocator{rpc::DEFAULT_PREFIX}` and allocates two local zones. |
+| `tcp_transport_demo` | Uses `canopy_network_config`, `--listen`, optional `--connect`, and allocator-derived server/client zones. |
