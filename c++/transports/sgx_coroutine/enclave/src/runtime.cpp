@@ -21,16 +21,16 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
-#include <map>
 #include <memory>
 #include <new>
 #if defined(CANOPY_FAKE_SGX)
 #  include <unistd.h>
 #endif
 #include <tuple>
+#include <map>
 #include <vector>
 #include <secure_coroutine_module/secure_coroutine_module.h>
+#include <transports/secure_coroutine_module/startup_options.h>
 
 #ifdef CANOPY_USE_TELEMETRY
 namespace rpc
@@ -50,10 +50,6 @@ namespace rpc::sgx::coro::enclave
     {
         namespace secure_module = rpc::v4::secure_coroutine_module;
         constexpr size_t max_init_request_blob_bytes = 128U * 1024U;
-        constexpr size_t max_startup_option_count = 64;
-        constexpr size_t max_startup_option_key_bytes = 128;
-        constexpr size_t max_startup_option_value_bytes = 4096;
-        constexpr size_t max_startup_options_total_bytes = 64U * 1024U;
 
         inline auto startup_store_error(
             error_code* value,
@@ -127,7 +123,7 @@ namespace rpc::sgx::coro::enclave
             // ECALL seeds it with an untrusted host bootstrap value; a later
             // attested time synchronisation path can replace that calibration
             // without changing runtime_state layout.
-            std::map<std::string, std::string> startup_options;
+            std::map<std::string, json::v1::object> startup_applications{};
         };
 
         auto runtime_storage() -> runtime_state&
@@ -230,10 +226,10 @@ namespace rpc::sgx::coro::enclave
             if (!queue_ptr)
                 return false;
 
-            if (!is_aligned(queue_ptr, alignof(streaming::spsc_queue::queue_type)))
+            if (!is_aligned(queue_ptr, alignof(::streaming::spsc_queue::queue_type)))
                 return false;
 
-            return sgx_is_outside_enclave(queue_ptr, sizeof(streaming::spsc_queue::queue_type)) != 0;
+            return sgx_is_outside_enclave(queue_ptr, sizeof(::streaming::spsc_queue::queue_type)) != 0;
         }
 
         template<typename T> auto validate_outside_word_pointer(T* pointer) -> T*
@@ -253,8 +249,8 @@ namespace rpc::sgx::coro::enclave
         struct validated_init_request
         {
             secure_module::init_request request{};
-            streaming::spsc_queue::queue_type* host_to_enclave_queue = nullptr;
-            streaming::spsc_queue::queue_type* enclave_to_host_queue = nullptr;
+            ::streaming::spsc_queue::queue_type* host_to_enclave_queue = nullptr;
+            ::streaming::spsc_queue::queue_type* enclave_to_host_queue = nullptr;
             secure_module::startup_state* startup_state = nullptr;
             error_code* startup_error_code = nullptr;
             int error_code = rpc::error::OK();
@@ -283,40 +279,12 @@ namespace rpc::sgx::coro::enclave
             if (req_sz > max_init_request_blob_bytes)
                 return rpc::error::RESOURCE_EXHAUSTED();
 
-            auto decode_error = rpc::deserialise(
-                normalise_request_encoding(request_encoding),
-                rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz},
-                request);
-            if (!decode_error.empty())
-            {
-                RPC_ERROR("sgx_coroutine init decode failed: {}", decode_error);
+            if (normalise_request_encoding(request_encoding) != rpc::encoding::yas_binary)
                 return rpc::error::INVALID_DATA();
-            }
 
-            return rpc::error::OK();
-        }
-
-        int validate_startup_options(
-            const std::map<
-                std::string,
-                std::string>& options)
-        {
-            if (options.size() > max_startup_option_count)
-                return rpc::error::RESOURCE_EXHAUSTED();
-
-            size_t total_bytes = 0;
-            for (const auto& [key, value] : options)
-            {
-                if (key.empty() || key.size() > max_startup_option_key_bytes || value.size() > max_startup_option_value_bytes)
-                {
-                    return rpc::error::INVALID_DATA();
-                }
-
-                const auto entry_bytes = key.size() + value.size();
-                if (total_bytes > max_startup_options_total_bytes - entry_bytes)
-                    return rpc::error::RESOURCE_EXHAUSTED();
-                total_bytes += entry_bytes;
-            }
+            auto error = decode_yas_blob(rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
+            if (error != rpc::error::OK())
+                return error;
 
             return rpc::error::OK();
         }
@@ -325,9 +293,9 @@ namespace rpc::sgx::coro::enclave
         {
             validated_init_request result{};
             result.request = request;
-            result.host_to_enclave_queue = static_cast<streaming::spsc_queue::queue_type*>(
+            result.host_to_enclave_queue = static_cast<::streaming::spsc_queue::queue_type*>(
                 pointer_from_request_address(request.parent_to_runtime_queue_ptr));
-            result.enclave_to_host_queue = static_cast<streaming::spsc_queue::queue_type*>(
+            result.enclave_to_host_queue = static_cast<::streaming::spsc_queue::queue_type*>(
                 pointer_from_request_address(request.runtime_to_parent_queue_ptr));
             result.startup_state = validate_outside_word_pointer(request.state);
             result.startup_error_code = validate_outside_word_pointer(request.error);
@@ -354,7 +322,7 @@ namespace rpc::sgx::coro::enclave
                 return result;
             }
 
-            result.error_code = validate_startup_options(result.request.options);
+            result.error_code = secure_module::validate_startup_applications_resource_budget(result.request.applications);
             if (result.error_code != rpc::error::OK())
                 return result;
 
@@ -610,7 +578,7 @@ namespace rpc::sgx::coro::enclave
             runtime.io_uring_scheduler.reset();
             runtime.scheduler.reset();
             runtime.enclave_zone = {};
-            runtime.startup_options.clear();
+            runtime.startup_applications = {};
             runtime.requested_workers.store(0, std::memory_order_release);
             runtime.attached_workers.store(0, std::memory_order_release);
             runtime.accepting_workers.store(false, std::memory_order_release);
@@ -657,7 +625,7 @@ namespace rpc::sgx::coro::enclave
             rpc::telemetry::create_coro_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
 #endif
             runtime.enclave_zone = init.request.runtime_zone_id;
-            runtime.startup_options = init.request.options;
+            runtime.startup_applications = init.request.applications;
             runtime.startup_state = init.startup_state;
             runtime.startup_error_code = init.startup_error_code;
             return rpc::sgx::coro::enclave::register_runtime(runtime);
@@ -698,7 +666,7 @@ namespace rpc::sgx::coro::enclave
             const validated_init_request& init,
             const std::shared_ptr<rpc::enclave_service>& service) -> std::shared_ptr<host_transport>
         {
-            auto stream = std::make_shared<streaming::spsc_queue::stream>(
+            auto stream = std::make_shared<::streaming::spsc_queue::stream>(
                 init.enclave_to_host_queue, init.host_to_enclave_queue, runtime.scheduler);
 
             rpc::stream_transport::stream_transport_options transport_options{
@@ -751,10 +719,10 @@ namespace rpc::sgx::coro::enclave
 
     const std::map<
         std::string,
-        std::string>&
-    runtime_startup_options() noexcept
+        json::v1::object>&
+    runtime_startup_applications() noexcept
     {
-        return runtime_storage().startup_options;
+        return runtime_storage().startup_applications;
     }
 
     CORO_TASK(runtime_io_uring_controller_result)

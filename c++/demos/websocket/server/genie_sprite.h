@@ -19,10 +19,17 @@ namespace websocket_demo
         // crown over the tracked head; with no detection it falls back to a
         // fixed position. The sprite's aspect ratio is the caller's
         // responsibility.
-        void composite_genie_sprite(vpx_image_t* img, int ox, int oy, int draw_w, int draw_h);
+        void composite_genie_sprite(
+            vpx_image_t* img,
+            int ox,
+            int oy,
+            int draw_w,
+            int draw_h);
 
         // Native sprite dimensions, so the caller can preserve aspect ratio
         // when choosing the draw rect.
-        void genie_sprite_native_size(int& w, int& h);
+        void genie_sprite_native_size(
+            int& w,
+            int& h);
     }
 }

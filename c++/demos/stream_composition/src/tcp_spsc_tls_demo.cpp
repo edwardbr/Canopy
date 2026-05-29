@@ -39,6 +39,7 @@
 
 #include <echo_impl.h>
 #include <rpc/rpc.h>
+#include <connection_factory/stream_rpc.h>
 
 #include <streaming/listener.h>
 #include <streaming/spsc_wrapping/stream.h>
@@ -47,7 +48,9 @@
 #include <streaming/secure_stream.h>
 #include <transports/streaming/transport.h>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/endpoint.h>
+#include <canopy/network_config/zone.h>
 
 #include <filesystem>
 #include <iostream>
@@ -140,24 +143,32 @@ namespace stream_composition
             CO_RETURN tls_stm;
         };
 
-        auto lst = std::make_shared<streaming::listener>(
-            "server_transport",
+        rpc::connection_factory_config::stream_factory_options options;
+        options.listener = rpc::connection_factory_config::named_options{.name = "server_transport"};
+        options.transport = rpc::connection_factory_config::named_options{.name = "server_transport"};
+        options.rpc.emplace();
+        options.rpc->encoding = rpc::encoding::yas_binary;
+        auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc_listener<i_echo, i_echo>(
             std::make_shared<streaming::tcp::acceptor>(endpoint),
-            rpc::stream_transport::make_connection_callback<i_echo, i_echo>(
-                [](const rpc::shared_ptr<i_echo>&,
-                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
-                {
-                    CO_RETURN rpc::service_connect_result<i_echo>{
-                        rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
-                }),
+            [](const rpc::shared_ptr<i_echo>&,
+                const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
+            {
+                CO_RETURN rpc::service_connect_result<i_echo>{rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
+            },
+            options,
+            service,
+            {},
+            listen_ep.port,
+            {},
             std::move(tls_transformer));
 
-        if (!lst->start_listening(service))
+        if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
         {
             RPC_ERROR("Server: failed to start listening");
             iteration_ok.store(false);
             CO_RETURN;
         }
+        auto listener = std::move(accept_result.handle);
 
         RPC_INFO("Server: listening on {}:{}", listen_ep.to_string(), listen_ep.port);
         service.reset();
@@ -166,10 +177,10 @@ namespace stream_composition
         co_await client_finished.wait();
         RPC_INFO("[run_server] client_finished — calling stop_listening");
 
-        co_await lst->stop_listening();
+        co_await listener->stop();
         RPC_INFO("[run_server] stop_listening returned");
-        lst.reset();
-        RPC_INFO("[run_server] lst reset — awaiting shutdown_event");
+        listener.reset();
+        RPC_INFO("[run_server] listener reset — awaiting shutdown_event");
 
         co_await shutdown_event->wait();
         RPC_INFO("Server: shutdown complete");
@@ -231,13 +242,16 @@ namespace stream_composition
         }
         RPC_INFO("Client: TLS handshake complete");
 
-        auto client_transport = rpc::stream_transport::make_client("client_transport", client_service, tls_stm);
-
         rpc::shared_ptr<i_echo> local_echo;
         rpc::shared_ptr<i_echo> remote_echo;
 
-        auto connect_result
-            = CO_AWAIT client_service->connect_to_zone<i_echo, i_echo>("echo_server", client_transport, local_echo);
+        rpc::connection_factory_config::stream_factory_options options;
+        options.transport = rpc::connection_factory_config::named_options{.name = "client_transport"};
+        options.connection = rpc::connection_factory_config::named_options{.name = "echo_server"};
+        options.rpc.emplace();
+        options.rpc->encoding = rpc::encoding::yas_binary;
+        auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc_stream<i_echo, i_echo>(
+            local_echo, tls_stm, options, client_service);
         remote_echo = connect_result.output_interface;
         auto error = connect_result.error_code;
 

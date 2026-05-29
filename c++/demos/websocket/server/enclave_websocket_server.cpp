@@ -7,9 +7,8 @@
 #include <algorithm>
 #include <atomic>
 #include <array>
-#include <charconv>
 #include <cstdint>
-#include <map>
+#include <exception>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -18,30 +17,35 @@
 
 #include <file_system/file_system_manager.h>
 #include <io_uring/tcp.h>
+#include <json/convert.h>
+#include <json/schema_validator.h>
 #include <rpc/rpc.h>
 #include <streaming/io_uring/stream.h>
 #include <streaming/secure_stream.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/service.h>
+#include <network_config/network_config_schema.h>
 #include <websocket_demo/websocket_demo.h>
+#include <websocket_demo/websocket_demo_schema.h>
 
 namespace websocket_demo::v1
 {
     // This factory is implemented in demo.cpp. The enclave build compiles that
-    // file with CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY, so this demo exposes the
-    // calculator and leaves llama.cpp out of the enclave for now.
+    // file without llama.cpp, but still passes the service into the demo so the
+    // video relay can use the service scheduler.
     //
     // Change this if you want to expose your own application service:
     //   1. replace the IDL interface in websocket_demo.idl,
     //   2. return your service object from this factory,
     //   3. update websocket_handler.cpp so the websocket transport binds the
     //      matching inbound/outbound interfaces.
-    rpc::shared_ptr<i_calculator> create_websocket_demo_instance();
+    rpc::shared_ptr<i_calculator> create_websocket_demo_instance(const std::shared_ptr<rpc::service>& service);
 
     namespace
     {
-        using enclave_support::make_rpc_shared_or_terminate;
-        using enclave_support::make_std_shared_or_terminate;
+        using enclave_support::make_std_shared_result;
+
+        constexpr const char* websocket_demo_app_name = "websocket_demo_enclave";
 
         // Reference enclave websocket server
         // ----------------------------------
@@ -108,7 +112,7 @@ namespace websocket_demo::v1
 
         auto create_tls_context(
             const std::string& certificate_pem,
-            const std::string& private_key_pem) -> std::shared_ptr<streaming::secure::context>
+            const std::string& private_key_pem) -> enclave_support::shared_create_result<streaming::secure::context>
         {
             streaming::secure::pem_credentials credentials;
             credentials.certificate = certificate_pem;
@@ -122,7 +126,7 @@ namespace websocket_demo::v1
             //   - set peer verification to the policy required by your protocol,
             //   - decide whether failed peer verification should close the HTTP
             //     connection before any application data is processed.
-            return make_std_shared_or_terminate<streaming::secure::context>(
+            return make_std_shared_result<streaming::secure::context>(
                 "enclave websocket TLS context",
                 credentials,
                 streaming::secure::server_context_options{.verify_peer = streaming::secure::peer_verification::none});
@@ -171,17 +175,37 @@ namespace websocket_demo::v1
             CO_RETURN tls_credentials_result{rpc::error::OK(), bytes_to_string(certificate), bytes_to_string(private_key)};
         }
 
-        auto option_or_default(
-            const std::map<
-                std::string,
-                std::string>& options,
-            const std::string& key,
-            std::string fallback) -> std::string
+        auto decode_websocket_server_options(
+            const json::v1::object& json_options,
+            server_options& typed_options) -> int
         {
-            auto it = options.find(key);
-            if (it == options.end() || it->second.empty())
-                return fallback;
-            return it->second;
+            try
+            {
+                static const json::v1::schema::schema_validator validator(json::v1::parse(server_options::get_schema()));
+
+                const auto validation = validator.validate(json_options);
+                if (!validation)
+                {
+                    const auto& errors = validation.errors();
+                    if (!errors.empty())
+                    {
+                        RPC_WARNING(
+                            "invalid enclave websocket startup options at {} schema {}: {}",
+                            errors.front().path,
+                            errors.front().schema_path,
+                            errors.front().message);
+                    }
+                    return rpc::error::INVALID_DATA();
+                }
+
+                typed_options = json::v1::convert::from_json_object<server_options>(json_options);
+                return rpc::error::OK();
+            }
+            catch (const std::exception& error)
+            {
+                RPC_WARNING("failed to decode enclave websocket startup options: {}", error.what());
+                return rpc::error::INVALID_DATA();
+            }
         }
 
         struct startup_listen_endpoint
@@ -192,47 +216,37 @@ namespace websocket_demo::v1
             std::array<uint8_t, 16> ipv6_address{};
         };
 
-        auto parse_startup_listen_endpoint(
-            const std::map<
-                std::string,
-                std::string>& options) -> startup_listen_endpoint
+        auto parse_startup_listen_endpoint(const canopy::network_config::tcp_endpoint& options) -> startup_listen_endpoint
         {
             startup_listen_endpoint endpoint;
-            endpoint.ipv6 = option_or_default(options, "listen-family", "ipv4") == "ipv6";
-
-            auto bytes = option_or_default(options, "listen-address-bytes", "");
-            const size_t expected_bytes = endpoint.ipv6 ? endpoint.ipv6_address.size() : endpoint.ipv4_address.size();
-            if (bytes.size() != expected_bytes)
+            if (options.family == canopy::network_config::ip_address_family::ipv6)
+                endpoint.ipv6 = true;
+            else if (options.family != canopy::network_config::ip_address_family::ipv4)
             {
                 endpoint.valid = false;
                 return endpoint;
             }
-            if (endpoint.ipv6)
-                std::copy(bytes.begin(), bytes.end(), endpoint.ipv6_address.begin());
-            else
-                std::copy(bytes.begin(), bytes.end(), endpoint.ipv4_address.begin());
-            return endpoint;
-        }
 
-        auto parse_startup_listen_port(
-            const std::map<
-                std::string,
-                std::string>& options) -> uint16_t
-        {
-            auto value = option_or_default(options, "listen-port", "8080");
-            uint32_t port = 0;
-            auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), port);
-            if (ec != std::errc() || ptr != value.data() + value.size() || port == 0 || port > UINT16_MAX)
-                return 0;
-            return static_cast<uint16_t>(port);
+            if (endpoint.ipv6)
+                std::copy(options.addr.begin(), options.addr.end(), endpoint.ipv6_address.begin());
+            else
+                std::copy(
+                    options.addr.begin(),
+                    options.addr.begin() + endpoint.ipv4_address.size(),
+                    endpoint.ipv4_address.begin());
+            return endpoint;
         }
 
         auto listen_request_is_valid(const enclave_websocket_state& state) -> bool
         {
+            // The generated JSON schema validates the config shape. This guard
+            // also covers runtime dependencies and semantic constraints that are
+            // not currently encoded in the IDL schema.
             const bool has_tls_paths = !state.certificate_path.empty() && !state.private_key_path.empty();
             const bool has_partial_tls_paths = !state.certificate_path.empty() || !state.private_key_path.empty();
             return state.service && state.controller && state.file_system_manager && state.listen_endpoint_valid
-                   && state.listen_port != 0 && (has_tls_paths || !has_partial_tls_paths);
+                   && state.listen_port != 0 && !state.static_root_path.empty()
+                   && (has_tls_paths || !has_partial_tls_paths);
         }
 
         CORO_TASK(void)
@@ -245,9 +259,17 @@ namespace websocket_demo::v1
             std::shared_ptr<streaming::stream> client_stream = std::move(io_stream);
             if (tls_context)
             {
-                auto tls_stream = make_std_shared_or_terminate<streaming::secure::stream>(
+                auto tls_stream_result = make_std_shared_result<streaming::secure::stream>(
                     "enclave websocket TLS stream", std::move(client_stream), std::move(tls_context));
+                if (tls_stream_result.error_code != rpc::error::OK() || !tls_stream_result.value)
+                {
+                    RPC_ERROR("failed to create enclave websocket TLS stream error={}", tls_stream_result.error_code);
+                    if (client_stream)
+                        CO_AWAIT client_stream->set_closed();
+                    CO_RETURN;
+                }
 
+                auto tls_stream = std::move(tls_stream_result.value);
                 const bool handshake_ok = CO_AWAIT tls_stream->handshake();
                 if (!handshake_ok)
                 {
@@ -264,7 +286,7 @@ namespace websocket_demo::v1
             http_client_connection connection(
                 std::move(client_stream),
                 state->service,
-                [] { return create_websocket_demo_instance(); },
+                [service = state->service] { return create_websocket_demo_instance(service); },
                 state->file_system_manager,
                 state->static_root_path);
 
@@ -320,13 +342,11 @@ namespace websocket_demo::v1
             enclave_websocket_server(
                 std::shared_ptr<rpc::service> service,
                 std::shared_ptr<rpc::io_uring::controller> controller,
-                startup_listen_endpoint listen_endpoint,
-                uint16_t listen_port,
-                std::string static_root_path,
-                std::string certificate_path,
-                std::string private_key_path)
-                : state_(make_std_shared_or_terminate<enclave_websocket_state>("enclave websocket listener state"))
+                server_options options,
+                std::shared_ptr<enclave_websocket_state> state)
+                : state_(std::move(state))
             {
+                const auto listen_endpoint = parse_startup_listen_endpoint(options.listen);
                 state_->service = std::move(service);
                 state_->controller = std::move(controller);
                 state_->file_system_manager = create_file_system_manager(state_->controller);
@@ -334,10 +354,14 @@ namespace websocket_demo::v1
                 state_->listen_ipv4_address = listen_endpoint.ipv4_address;
                 state_->listen_ipv6_address = listen_endpoint.ipv6_address;
                 state_->listen_endpoint_valid = listen_endpoint.valid;
-                state_->listen_port = listen_port;
-                state_->static_root_path = std::move(static_root_path);
-                state_->certificate_path = std::move(certificate_path);
-                state_->private_key_path = std::move(private_key_path);
+                state_->listen_port = options.listen.port;
+                state_->static_root_path = std::move(options.path);
+                if (options.tls)
+                {
+                    auto tls_options = std::move(*options.tls);
+                    state_->certificate_path = std::move(tls_options.certificate_path);
+                    state_->private_key_path = std::move(tls_options.private_key_path);
+                }
             }
 
             // Called by the untrusted host after it has connected to the enclave
@@ -370,14 +394,25 @@ namespace websocket_demo::v1
                     if (credentials.error_code != rpc::error::OK())
                         CO_RETURN credentials.error_code;
 
-                    tls_context = create_tls_context(credentials.certificate_pem, credentials.private_key_pem);
+                    auto tls_context_result = create_tls_context(credentials.certificate_pem, credentials.private_key_pem);
+                    if (tls_context_result.error_code != rpc::error::OK() || !tls_context_result.value)
+                    {
+                        CO_RETURN tls_context_result.error_code != rpc::error::OK() ? tls_context_result.error_code
+                                                                                    : rpc::error::OUT_OF_MEMORY();
+                    }
+
+                    tls_context = std::move(tls_context_result.value);
                     if (!tls_context->is_valid())
                         CO_RETURN rpc::error::INVALID_DATA();
                 }
 
-                auto acceptor = make_std_shared_or_terminate<rpc::io_uring::acceptor>(
+                auto acceptor_result = make_std_shared_result<rpc::io_uring::acceptor>(
                     "enclave websocket io_uring acceptor", state_->controller);
+                if (acceptor_result.error_code != rpc::error::OK() || !acceptor_result.value)
+                    CO_RETURN acceptor_result.error_code != rpc::error::OK() ? acceptor_result.error_code
+                                                                             : rpc::error::OUT_OF_MEMORY();
 
+                auto acceptor = std::move(acceptor_result.value);
                 auto listen_error
                     = state_->listen_ipv6
                           ? CO_AWAIT acceptor->listen_ipv6(state_->listen_ipv6_address, state_->listen_port)
@@ -424,14 +459,53 @@ namespace websocket_demo::v1
             std::shared_ptr<enclave_websocket_state> state_;
         };
 
-        struct connection_factory_registrar
+        auto create_enclave_websocket_server(
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<rpc::io_uring::controller> controller,
+            server_options options) -> rpc::service_connect_result<i_enclave_websocket_server>
         {
-            connection_factory_registrar()
+            try
             {
-                // The host connects by name ("websocket_demo_enclave"). Change
-                // this name if you package several enclave services in one image.
+                auto state_result = make_std_shared_result<enclave_websocket_state>("enclave websocket listener state");
+                if (state_result.error_code != rpc::error::OK() || !state_result.value)
+                {
+                    return {state_result.error_code != rpc::error::OK() ? state_result.error_code
+                                                                        : rpc::error::OUT_OF_MEMORY(),
+                        {}};
+                }
+
+                auto server = rpc::make_shared<enclave_websocket_server>(
+                    std::move(service), std::move(controller), std::move(options), std::move(state_result.value));
+                if (!server)
+                    return {rpc::error::OUT_OF_MEMORY(), {}};
+
+                return {rpc::error::OK(), std::move(server)};
+            }
+            catch (const std::bad_alloc&)
+            {
+                enclave_support::log_bad_alloc("enclave websocket server");
+                return {rpc::error::OUT_OF_MEMORY(), {}};
+            }
+            catch (const std::exception& error)
+            {
+                RPC_ERROR("exception while creating enclave websocket server: {}", error.what());
+                return {rpc::error::EXCEPTION(), {}};
+            }
+            catch (...)
+            {
+                RPC_ERROR("unknown exception while creating enclave websocket server");
+                return {rpc::error::EXCEPTION(), {}};
+            }
+        }
+
+        struct enclave_entry_point
+        {
+            enclave_entry_point()
+            {
+                // The host connects by name. Change this name if you package
+                // several enclave services in one image.
                 rpc::sgx::coro::enclave::register_connection_factory<rpc::i_noop, i_enclave_websocket_server>(
-                    "websocket_demo_enclave",
+                    websocket_demo_app_name,
                     [](rpc::shared_ptr<rpc::i_noop> host, std::shared_ptr<rpc::service> service)
                         -> CORO_TASK(rpc::service_connect_result<i_enclave_websocket_server>)
                     {
@@ -450,27 +524,28 @@ namespace websocket_demo::v1
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
-                        auto server_options = rpc::sgx::coro::enclave::runtime_startup_options();
-                        auto static_root_path = option_or_default(
-                            server_options, "static-root", std::string(CANOPY_WEBSOCKET_DEMO_STATIC_ROOT));
-                        auto listen_endpoint = parse_startup_listen_endpoint(server_options);
-                        auto listen_port = parse_startup_listen_port(server_options);
-                        auto certificate_path = option_or_default(server_options, "cert", "");
-                        auto private_key_path = option_or_default(server_options, "key", "");
-                        auto server = make_rpc_shared_or_terminate<enclave_websocket_server>(
-                            "enclave websocket server",
-                            std::move(service),
-                            std::move(controller),
-                            listen_endpoint,
-                            listen_port,
-                            std::move(static_root_path),
-                            std::move(certificate_path),
-                            std::move(private_key_path));
-                        CO_RETURN rpc::service_connect_result<i_enclave_websocket_server>{rpc::error::OK(), server};
+                        const auto& startup_applications = rpc::sgx::coro::enclave::runtime_startup_applications();
+                        const auto startup_options = startup_applications.find(websocket_demo_app_name);
+                        if (startup_options == startup_applications.end())
+                        {
+                            RPC_WARNING("missing enclave websocket startup options");
+                            CO_RETURN rpc::service_connect_result<i_enclave_websocket_server>{
+                                rpc::error::INVALID_DATA(), {}};
+                        }
+
+                        server_options parsed_options;
+                        if (auto error_code = decode_websocket_server_options(startup_options->second, parsed_options);
+                            error_code != rpc::error::OK())
+                        {
+                            CO_RETURN rpc::service_connect_result<i_enclave_websocket_server>{error_code, {}};
+                        }
+
+                        CO_RETURN create_enclave_websocket_server(
+                            std::move(service), std::move(controller), std::move(parsed_options));
                     });
             }
         };
 
-        connection_factory_registrar g_connection_factory_registrar;
+        enclave_entry_point g_enclave_entry_point;
     } // namespace
 } // namespace websocket_demo::v1

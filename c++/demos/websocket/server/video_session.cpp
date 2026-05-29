@@ -44,7 +44,9 @@ namespace websocket_demo
             return true;
         }
 
-        bool video_session::pump::ensure_encoder(unsigned int width, unsigned int height)
+        bool video_session::pump::ensure_encoder(
+            unsigned int width,
+            unsigned int height)
         {
             const uint32_t gen = params_gen_.load(std::memory_order_relaxed);
             // Reuse the encoder unless the frame size changed (browser
@@ -82,8 +84,7 @@ namespace websocket_demo
 
             // cpu_used is the dominant realtime speed/quality lever for VP8.
             // Range [-16, 16]; higher = faster encode, lower quality.
-            vpx_codec_control(
-                &encoder_, VP8E_SET_CPUUSED, static_cast<int>(cpu_used_.load(std::memory_order_relaxed)));
+            vpx_codec_control(&encoder_, VP8E_SET_CPUUSED, static_cast<int>(cpu_used_.load(std::memory_order_relaxed)));
             vpx_codec_control(&encoder_, VP8E_SET_STATIC_THRESHOLD, 1000);
 
             enc_w_ = width;
@@ -107,7 +108,9 @@ namespace websocket_demo
             }
         }
 
-        void video_session::pump::apply_brightness(vpx_image_t* img, int delta)
+        void video_session::pump::apply_brightness(
+            vpx_image_t* img,
+            int delta)
         {
             if (delta == 0)
                 return;
@@ -307,7 +310,10 @@ namespace websocket_demo
             pump_->effects_.store(effects, std::memory_order_relaxed);
         }
 
-        void video_session::set_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used)
+        void video_session::set_params(
+            int32_t brightness,
+            uint32_t bitrate_kbps,
+            uint32_t cpu_used)
         {
             if (brightness < -128)
                 brightness = -128;
@@ -337,8 +343,7 @@ namespace websocket_demo
             if (!p->sink_)
                 CO_RETURN rpc::error::OK();
 
-            // No scheduler (CALCULATOR_ONLY enclave compile-fit has no
-            // rpc::service): fall back to synchronous inline processing —
+            // No scheduler: fall back to synchronous inline processing —
             // correctness over latency there.
             if (!p->scheduler_)
             {

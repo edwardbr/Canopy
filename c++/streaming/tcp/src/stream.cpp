@@ -44,13 +44,16 @@ namespace streaming::tcp
         // Without this, Nagle + delayed-ACK interaction causes ~40-80ms stalls
         // per round-trip for payloads smaller than one TCP segment.
         int flag = 1;
-        ::setsockopt(
-            socket_.native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
+        ::setsockopt(socket_.native_handle(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    stream::stream(coro::net::tcp::client&& client, std::shared_ptr<rpc::executor> executor)
-        : stream(socket(std::move(client), std::move(executor)))
+    stream::stream(
+        coro::net::tcp::client&& client,
+        std::shared_ptr<rpc::executor> executor)
+        : stream(socket(
+              std::move(client),
+              std::move(executor)))
     {
     }
 #endif
@@ -95,9 +98,7 @@ namespace streaming::tcp
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
                     RPC_WARNING(
-                        "tcp::stream::send EAGAIN: {} bytes remaining, fd={}",
-                        buffer.size(),
-                        socket_.native_handle());
+                        "tcp::stream::send EAGAIN: {} bytes remaining, fd={}", buffer.size(), socket_.native_handle());
                     auto wstatus = CO_AWAIT socket_.wait_writable(std::chrono::seconds(30));
                     if (!wstatus.is_ok())
                     {

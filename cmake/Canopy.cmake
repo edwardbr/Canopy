@@ -157,16 +157,16 @@ if(NOT DEPENDENCIES_LOADED)
   if(CANOPY_BUILD_TEST
      AND CANOPY_BUILD_ENCLAVE
      AND CANOPY_BUILD_COROUTINE
-     AND (CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_SIM" OR CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_EPID"
+     AND (CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_SIM"
+          OR CANOPY_ATTESTATION_BACKEND STREQUAL "SGX_EPID"
           OR CANOPY_ATTESTATION_BACKEND STREQUAL "DCAP"))
     set(CANOPY_BUILD_SGX_ATTESTATION_TESTS ON)
   endif()
 
-  # CANOPY_BUILD_WEBSOCKET works in both coroutine and blocking builds; the
-  # WS framing stream (streaming_websocket) operates over a dual-mode
-  # streaming::stream and wraps the pure-C wslay library. transport_websocket
-  # and higher layers (TLS, http_server, the WS demo) may still gate on
-  # CANOPY_BUILD_COROUTINE individually until their own dual-mode work lands.
+  # CANOPY_BUILD_WEBSOCKET works in both coroutine and blocking builds; the WS framing stream (streaming_websocket)
+  # operates over a dual-mode streaming::stream and wraps the pure-C wslay library. transport_websocket and higher
+  # layers (TLS, http_server, the WS demo) may still gate on CANOPY_BUILD_COROUTINE individually until their own
+  # dual-mode work lands.
 
   set(CANOPY_SECURE_STREAM_BACKEND
       "OPENSSL"
@@ -430,9 +430,7 @@ if(NOT DEPENDENCIES_LOADED)
           c++/submodules/fmt
           submodules/idlparser
           c++/submodules/spdlog
-          c++/submodules/args
-          c++/submodules/json
-          c++/submodules/json-schema-validator)
+          c++/submodules/args)
 
       if(CANOPY_BUILD_COROUTINE)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro c++/submodules/c-ares)
@@ -458,8 +456,8 @@ if(NOT DEPENDENCIES_LOADED)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/llama.cpp)
       endif()
       if(CANOPY_BUILD_DEMOS AND CANOPY_BUILD_WEBSOCKET)
-        # libvpx is needed by the websocket video demo even when llama is
-        # disabled by CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY.
+        # libvpx is needed by the websocket video demo even when llama is disabled by
+        # CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY.
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libvpx)
       endif()
 
@@ -673,8 +671,8 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_IO_URING_SQPOLL_FLAG)
   endif()
 
-  # OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the
-  # dual-mode streaming::stream interface). mbedtls is still coroutine-only.
+  # OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls
+  # is still coroutine-only.
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     if(CANOPY_BUILD_COROUTINE)
       set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)

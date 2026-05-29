@@ -62,8 +62,7 @@ if(CANOPY_BUILD_TEST)
   include(GoogleTest)
   add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
 
-  if(CANOPY_BUILD_RUST
-     AND NOT CARGO_EXECUTABLE)
+  if(CANOPY_BUILD_RUST AND NOT CARGO_EXECUTABLE)
     find_program(CARGO_EXECUTABLE cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
   endif()
 

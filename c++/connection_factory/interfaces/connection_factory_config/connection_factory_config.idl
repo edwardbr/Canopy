@@ -1,0 +1,49 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "io_uring/io_uring_config.idl"
+#import "tcp/tcp_config.idl"
+
+namespace rpc
+{
+    namespace connection_factory_config
+    {
+        struct named_options
+        {
+            rpc::optional<std::string> name;
+        };
+
+        struct rpc_options
+        {
+            // Human JSON still uses the generated enum names, but the schema and
+            // converter now own that mapping rather than factory helper code.
+            rpc::optional<rpc::encoding> encoding;
+            rpc::optional<uint64_t> call_timeout;
+            rpc::optional<uint64_t> call_timeout_sweep;
+            rpc::optional<uint64_t> shutdown_timeout;
+        };
+
+        struct io_uring_options
+        {
+            canopy::io_uring::host_controller_options controller = {};
+            uint16_t port = 0;
+            uint16_t first_port = 26000;
+            uint16_t last_port = 26064;
+            streaming::io_uring::stream_options stream = {};
+        };
+
+        struct stream_factory_options
+        {
+            streaming::tcp::endpoint endpoint = {};
+            rpc::optional<named_options> service;
+            rpc::optional<named_options> transport;
+            rpc::optional<named_options> listener;
+            rpc::optional<named_options> connection;
+            rpc::optional<rpc_options> rpc;
+            rpc::optional<io_uring_options> io_uring;
+        };
+    }
+}

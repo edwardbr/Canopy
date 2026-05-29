@@ -30,6 +30,8 @@ namespace websocket_demo
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
             std::shared_ptr<rpc::service> service_);
+#elif defined(CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO)
+        rpc::shared_ptr<i_calculator> create_websocket_demo_instance(const std::shared_ptr<rpc::service>& service);
 #else
         rpc::shared_ptr<i_calculator> create_websocket_demo_instance();
 #endif
@@ -116,7 +118,11 @@ namespace websocket_demo
             if (!demo_.lock())
             {
 #ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  ifdef CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO
+                auto demo = create_websocket_demo_instance(shared_from_this());
+#  else
                 auto demo = create_websocket_demo_instance();
+#  endif
                 demo_ = demo;
                 return demo;
 #else

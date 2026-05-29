@@ -60,9 +60,10 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC comprehensive_idl
            transport_local
            transport_streaming
+           connection_factory
            streaming_tcp
            rpc
-           canopy_network_config
+           network_config
            ${CANOPY_LIBRARIES}
            rpc_log)
   target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
@@ -84,6 +85,7 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC comprehensive_idl
            transport_local
            transport_streaming
+           connection_factory
            streaming_spsc_queue
            spsc_queue
            rpc

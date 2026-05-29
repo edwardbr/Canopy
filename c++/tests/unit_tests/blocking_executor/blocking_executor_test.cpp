@@ -15,14 +15,18 @@
 
 namespace
 {
-    TEST(BlockingExecutor, ConstructsWithDefaultThreadCount)
+    TEST(
+        BlockingExecutor,
+        ConstructsWithDefaultThreadCount)
     {
         rpc::blocking_executor ex;
         EXPECT_GT(ex.worker_count(), 0u);
         EXPECT_FALSE(ex.is_shutdown());
     }
 
-    TEST(BlockingExecutor, ConstructsWithExplicitThreadCount)
+    TEST(
+        BlockingExecutor,
+        ConstructsWithExplicitThreadCount)
     {
         rpc::blocking_executor::options opts;
         opts.thread_count = 3;
@@ -30,7 +34,9 @@ namespace
         EXPECT_EQ(ex.worker_count(), 3u);
     }
 
-    TEST(BlockingExecutor, PostsCallableAndRunsIt)
+    TEST(
+        BlockingExecutor,
+        PostsCallableAndRunsIt)
     {
         rpc::blocking_executor ex;
         rpc::event done;
@@ -39,7 +45,9 @@ namespace
         SUCCEED();
     }
 
-    TEST(BlockingExecutor, PostExecutesMultipleCallables)
+    TEST(
+        BlockingExecutor,
+        PostExecutesMultipleCallables)
     {
         rpc::blocking_executor::options opts;
         opts.thread_count = 4;
@@ -53,7 +61,9 @@ namespace
         EXPECT_EQ(counter.load(), kJobs);
     }
 
-    TEST(BlockingExecutor, PostAfterShutdownReturnsFalse)
+    TEST(
+        BlockingExecutor,
+        PostAfterShutdownReturnsFalse)
     {
         rpc::blocking_executor ex;
         ex.shutdown();
@@ -61,7 +71,9 @@ namespace
         EXPECT_FALSE(ex.post([] { /* never runs */ }));
     }
 
-    TEST(BlockingExecutor, ScheduleAfterCompletesNormally)
+    TEST(
+        BlockingExecutor,
+        ScheduleAfterCompletesNormally)
     {
         rpc::blocking_executor ex;
         auto start = std::chrono::steady_clock::now();
@@ -70,17 +82,21 @@ namespace
         EXPECT_GE(elapsed, std::chrono::milliseconds(40));
     }
 
-    TEST(BlockingExecutor, ScheduleAfterIsInterruptedByShutdown)
+    TEST(
+        BlockingExecutor,
+        ScheduleAfterIsInterruptedByShutdown)
     {
         rpc::blocking_executor ex;
         rpc::event waiting;
         rpc::event finished;
         bool returned = true;
-        std::thread sleeper([&] {
-            waiting.set();
-            returned = ex.schedule_after(std::chrono::seconds(30));
-            finished.set();
-        });
+        std::thread sleeper(
+            [&]
+            {
+                waiting.set();
+                returned = ex.schedule_after(std::chrono::seconds(30));
+                finished.set();
+            });
         waiting.wait();
         // Give the sleeper a moment to actually enter the timed wait.
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -90,7 +106,9 @@ namespace
         EXPECT_FALSE(returned);
     }
 
-    TEST(BlockingExecutor, ShutdownIsIdempotent)
+    TEST(
+        BlockingExecutor,
+        ShutdownIsIdempotent)
     {
         rpc::blocking_executor ex;
         ex.shutdown();
@@ -98,7 +116,9 @@ namespace
         SUCCEED();
     }
 
-    TEST(BlockingExecutor, SchedulerIsNoop)
+    TEST(
+        BlockingExecutor,
+        SchedulerIsNoop)
     {
         rpc::blocking_executor ex;
         // schedule() must compile and return void without parking the caller.

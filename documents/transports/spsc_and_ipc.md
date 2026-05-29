@@ -14,9 +14,10 @@ Scope note:
 
 Single-Producer Single-Consumer queue-based communication for lock-free IPC.
 
-In the current C++ transport stack, the SPSC queue is a stream primitive, not
-a standalone top-level RPC transport API. It is primarily used underneath
-coroutine `rpc::stream_transport::transport` implementations.
+In the current C++ transport stack, the SPSC queue is the stream primitive used
+underneath coroutine `rpc::stream_transport::transport` implementations. The
+`rpc::spsc_queue` helpers also provide direct stream and RPC factory functions
+for tests and peer-to-peer in-process compositions.
 
 ## Where It Is Used
 
@@ -32,6 +33,10 @@ The current split is:
 
 - `streaming::spsc_queue::stream` turns an SPSC queue pair into a byte stream
 - `rpc::stream_transport::transport` turns that stream into an RPC transport
+- `rpc::spsc_queue::connect_stream` and `rpc::spsc_queue::accept_stream` turn an
+  existing queue pair into the two stream endpoints
+- `rpc::spsc_queue::connect_rpc` and `rpc::spsc_queue::accept_rpc` attach the
+  normal stream transport handshake and generated interfaces
 - `rpc::ipc_transport` creates the queue pair, spawns the child process, and
   owns process lifetime
 - `rpc::libcoro_spsc_dynamic_dll` consumes an already-created queue pair and
@@ -44,6 +49,9 @@ The current split is:
 
 So the SPSC layer is the message pipe; it is not the process manager, it is not
 the DLL loader, and it is not itself a hierarchical transport.
+
+An SPSC queue pair is a single peer-to-peer connection. Unlike TCP and io_uring
+acceptors, it does not accept multiple independent connections from one listener.
 
 ## Requirements
 
@@ -89,8 +97,49 @@ namespace spsc {
 
 ## Queue Pair Setup
 
-The current C++ pattern is to wrap each queue pair in
-`streaming::spsc_queue::stream` and then hand the resulting stream to
+For most direct SPSC use, prefer the `rpc::spsc_queue` factory helpers. They
+take a shared queue pair plus the same typed
+`rpc::connection_factory_config::stream_factory_options` used by the TCP factories.
+
+```cpp
+#include <connection_factory/spsc_queue.h>
+#include <connection_factory_config/connection_factory_config.h>
+
+auto queues = rpc::spsc_queue::queue_pair::create();
+
+rpc::connection_factory_config::stream_factory_options options;
+options.transport.emplace().name = std::string("spsc_transport");
+options.connection.emplace().name = std::string("peer");
+options.rpc.emplace().encoding = std::string("yas_binary");
+```
+
+Run the two peers concurrently. `accept_rpc` accepts exactly one stream and waits
+for the transport handshake, so do not await it to completion before starting
+the connecting side.
+
+Peer A:
+
+```cpp
+auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<yyy::i_client, yyy::i_server>(
+    server_interface,
+    queues,
+    options,
+    server_service);
+```
+
+Peer B:
+
+```cpp
+auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<yyy::i_client, yyy::i_server>(
+    client_interface,
+    queues,
+    options,
+    client_service);
+```
+
+The lower-level pattern is still available when a caller needs to construct
+streams or transports manually: wrap each queue pair in
+`streaming::spsc_queue::stream` and hand the resulting stream to
 `rpc::stream_transport`.
 
 ```cpp

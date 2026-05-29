@@ -50,7 +50,8 @@ namespace websocket_demo
             {
                 double n = 0.0, sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0;
             };
-            auto accumulate = [&](double cxw, double cyw, double rxw, double ryw, bool gated) {
+            auto accumulate = [&](double cxw, double cyw, double rxw, double ryw, bool gated)
+            {
                 stats s;
                 for (int yy = 0; yy < ch; ++yy)
                 {

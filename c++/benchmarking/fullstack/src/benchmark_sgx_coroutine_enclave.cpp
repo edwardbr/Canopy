@@ -757,9 +757,9 @@ namespace comprehensive::v1
             std::shared_ptr<server_session> server_session_;
         };
 
-        struct connection_factory_registrar
+        struct enclave_entry_point
         {
-            connection_factory_registrar()
+            enclave_entry_point()
             {
                 rpc::sgx::coro::enclave::register_connection_factory<rpc::i_noop, i_enclave_io_uring_benchmark>(
                     "benchmark_sgx_coroutine_enclave",
@@ -794,6 +794,6 @@ namespace comprehensive::v1
             }
         };
 
-        connection_factory_registrar g_connection_factory_registrar;
+        enclave_entry_point g_enclave_entry_point;
     } // namespace
 } // namespace comprehensive::v1

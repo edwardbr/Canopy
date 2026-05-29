@@ -7,9 +7,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
 
   target_link_libraries(blocking_executor_test GTest::gtest_main rpc::rpc)
 
-  target_include_directories(
-    blocking_executor_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
-                                   ${CMAKE_BINARY_DIR}/generated/include)
+  target_include_directories(blocking_executor_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
+                                                            ${CMAKE_BINARY_DIR}/generated/include)
 
   target_compile_options(blocking_executor_test PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(blocking_executor_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

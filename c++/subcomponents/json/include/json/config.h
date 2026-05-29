@@ -15,21 +15,13 @@
 #include <string>
 #include <string_view>
 
+#include <json/config_error.h>
 #include <json/json_dom.h>
 
 namespace json
 {
     inline namespace v1
     {
-        class config_error : public std::runtime_error
-        {
-        public:
-            explicit config_error(const std::string& message)
-                : std::runtime_error(message)
-            {
-            }
-        };
-
         inline object parse_file(const std::filesystem::path& path)
         {
             std::ifstream input(path);

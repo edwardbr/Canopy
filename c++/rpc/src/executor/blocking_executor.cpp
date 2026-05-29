@@ -87,9 +87,7 @@ namespace rpc
         if (shutdown_.load(std::memory_order_acquire))
             return false;
         std::unique_lock<std::mutex> lock(timer_mtx_);
-        return !timer_cv_.wait_for(lock, delay, [this] {
-            return shutdown_.load(std::memory_order_acquire);
-        });
+        return !timer_cv_.wait_for(lock, delay, [this] { return shutdown_.load(std::memory_order_acquire); });
     }
 
     void blocking_executor::shutdown() noexcept
@@ -122,7 +120,9 @@ namespace rpc
         workers_.clear();
     }
 
-    bool blocking_executor::try_pop_own(std::size_t self_index, std::function<void()>& out)
+    bool blocking_executor::try_pop_own(
+        std::size_t self_index,
+        std::function<void()>& out)
     {
         std::lock_guard<std::mutex> lock(slots_[self_index]->mtx);
         if (slots_[self_index]->queue.empty())
@@ -137,7 +137,9 @@ namespace rpc
         return true;
     }
 
-    bool blocking_executor::try_steal(std::size_t self_index, std::function<void()>& out)
+    bool blocking_executor::try_steal(
+        std::size_t self_index,
+        std::function<void()>& out)
     {
         // Scan peers, stealing one task from the first non-empty queue we
         // find. Steal from the BACK of the victim's deque (LIFO from
@@ -186,12 +188,13 @@ namespace rpc
             // Drain contract: only exit when shutdown_ is set AND every
             // queue is observed empty (pending_tasks_ == 0).
             std::unique_lock<std::mutex> lock(wake_mtx_);
-            wake_cv_.wait(lock, [this] {
-                return shutdown_.load(std::memory_order_acquire)
-                    || pending_tasks_.load(std::memory_order_acquire) > 0;
-            });
-            if (shutdown_.load(std::memory_order_acquire)
-                && pending_tasks_.load(std::memory_order_acquire) == 0)
+            wake_cv_.wait(
+                lock,
+                [this]
+                {
+                    return shutdown_.load(std::memory_order_acquire) || pending_tasks_.load(std::memory_order_acquire) > 0;
+                });
+            if (shutdown_.load(std::memory_order_acquire) && pending_tasks_.load(std::memory_order_acquire) == 0)
                 return;
         }
     }

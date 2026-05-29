@@ -34,7 +34,12 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR})
 
-target_include_directories(json_idl PUBLIC "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+foreach(json_idl_target json_idl json_idl_enclave)
+  if(TARGET ${json_idl_target})
+    target_include_directories(${json_idl_target}
+                               PUBLIC "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+  endif()
+endforeach()
 foreach(json_generated_target json_protobuf_generated json_nanopb_generated)
   if(TARGET ${json_generated_target})
     target_include_directories(${json_generated_target}

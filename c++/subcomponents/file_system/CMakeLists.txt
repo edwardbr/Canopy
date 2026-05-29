@@ -42,7 +42,9 @@ if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(canopy_file_system PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
-if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE AND TARGET canopy_io_uring_enclave)
+if(CANOPY_BUILD_ENCLAVE
+   AND CANOPY_BUILD_COROUTINE
+   AND TARGET canopy_io_uring_enclave)
   add_library(canopy_file_system_enclave STATIC src/file_system_manager.cpp)
 
   target_include_directories(

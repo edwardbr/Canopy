@@ -51,8 +51,7 @@ endif()
 
 set(CANOPY_ENCLAVE_COMPILE_OPTIONS ${CANOPY_COMPILE_OPTIONS} -Wno-c++17-extensions)
 set(CANOPY_ENCLAVE_LINK_OPTIONS ${CANOPY_LINK_DYNAMIC_LIBRARY_OPTIONS})
-set(CANOPY_WARN_PEDANTIC_ENCLAVE ${CANOPY_WARN_PEDANTIC} "SHELL:-Wno-variadic-macros"
-                                 "SHELL:-Wno-gnu-include-next")
+set(CANOPY_WARN_PEDANTIC_ENCLAVE ${CANOPY_WARN_PEDANTIC} "SHELL:-Wno-variadic-macros" "SHELL:-Wno-gnu-include-next")
 set(CANOPY_WARN_OK_ENCLAVE ${CANOPY_WARN_OK} "SHELL:-Wno-variadic-macros" "SHELL:-Wno-gnu-include-next")
 
 set(CANOPY_ENCLAVE_POLYFILL_INCLUDES ${CMAKE_SOURCE_DIR}/c++/rpc/include/rpc/internal/polyfill/sgx)

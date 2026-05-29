@@ -12,51 +12,45 @@
 
 namespace websocket_demo::v1::enclave_support
 {
-    // Enclave demo code deliberately terminates on allocation failure.
-    // Recovering from bad_alloc inside the enclave would need a larger policy:
-    // cancelling accepted clients, draining scheduler work, and reporting health
-    // to the host. For this reference server, logging and terminating is clearer
-    // than pretending the listener can continue safely.
     inline void log_bad_alloc(const char* component_name)
     {
         RPC_ERROR("bad_alloc while creating {}", component_name);
     }
 
+    template<typename Type> struct shared_create_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<Type> value;
+    };
+
     template<
         typename Type,
         typename... Args>
-    auto make_std_shared_or_terminate(
+    auto make_std_shared_result(
         const char* component_name,
-        Args&&... args) -> std::shared_ptr<Type>
+        Args&&... args) -> shared_create_result<Type>
     {
         try
         {
-            return std::make_shared<Type>(std::forward<Args>(args)...);
+            auto value = std::make_shared<Type>(std::forward<Args>(args)...);
+            if (!value)
+                return {rpc::error::OUT_OF_MEMORY(), {}};
+            return {rpc::error::OK(), std::move(value)};
         }
         catch (const std::bad_alloc&)
         {
             log_bad_alloc(component_name);
-            std::terminate();
+            return {rpc::error::OUT_OF_MEMORY(), {}};
         }
-        return {};
-    }
-
-    template<
-        typename Interface,
-        typename... Args>
-    auto make_rpc_shared_or_terminate(
-        const char* component_name,
-        Args&&... args) -> rpc::shared_ptr<Interface>
-    {
-        try
+        catch (const std::exception& error)
         {
-            return rpc::make_shared<Interface>(std::forward<Args>(args)...);
+            RPC_ERROR("exception while creating {}: {}", component_name, error.what());
+            return {rpc::error::EXCEPTION(), {}};
         }
-        catch (const std::bad_alloc&)
+        catch (...)
         {
-            log_bad_alloc(component_name);
-            std::terminate();
+            RPC_ERROR("unknown exception while creating {}", component_name);
+            return {rpc::error::EXCEPTION(), {}};
         }
-        return {};
     }
 } // namespace websocket_demo::v1::enclave_support

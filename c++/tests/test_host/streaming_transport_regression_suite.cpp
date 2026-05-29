@@ -12,6 +12,7 @@
 #include "test_globals.h"
 
 #ifdef CANOPY_BUILD_COROUTINE
+#  include <connection_factory/spsc_queue.h>
 #  include <transport/tests/streaming_tcp/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
 #endif
@@ -23,6 +24,114 @@ using namespace marshalled_tests;
 template<class T> using streaming_transport_regression_test = type_test<T>;
 
 #ifdef CANOPY_BUILD_COROUTINE
+namespace
+{
+    template<class Buffer> rpc::byte_span as_byte_span(const Buffer& buffer)
+    {
+        return rpc::byte_span{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
+    }
+
+    CORO_TASK(bool) coro_malformed_init_message_disconnects_transport(std::shared_ptr<coro::scheduler> scheduler)
+    {
+        auto zone_id = rpc::DEFAULT_PREFIX;
+        (void)zone_id.set_subnet(zone_id.get_subnet() + 4096);
+        auto service = rpc::root_service::create("bad_init_transport_test", zone_id, scheduler);
+
+        auto queues = rpc::spsc_queue::queue_pair::create();
+        auto peer_stream = std::make_shared<::streaming::spsc_queue::stream>(
+            queues.connect_to_accept, queues.accept_to_connect, scheduler);
+        auto transport_stream = std::make_shared<::streaming::spsc_queue::stream>(
+            queues.accept_to_connect, queues.connect_to_accept, scheduler);
+
+        auto handler_called = std::make_shared<std::atomic_bool>(false);
+        auto transport = rpc::stream_transport::create(
+            "bad_init_responder",
+            service,
+            std::move(transport_stream),
+            [handler_called](rpc::connection_settings, std::shared_ptr<rpc::service>, std::shared_ptr<rpc::transport>)
+                -> CORO_TASK(rpc::connection_handler_result)
+            {
+                handler_called->store(true, std::memory_order_release);
+                CO_RETURN rpc::connection_handler_result{rpc::error::OK(), {}};
+            },
+            rpc::stream_transport::stream_transport_options{
+                .call_timeout = std::chrono::milliseconds{0},
+                .call_timeout_sweep = std::chrono::milliseconds{0},
+                .shutdown_timeout = std::chrono::milliseconds{1},
+            });
+
+        CO_AWAIT service->schedule();
+
+        rpc::stream_transport::envelope_payload payload{
+            FLD(payload_fingerprint) rpc::id<rpc::stream_transport::init_client_channel_send>::get(rpc::get_version()),
+            FLD(payload) std::vector<uint8_t>{0xde, 0xad, 0xbe, 0xef},
+        };
+        auto payload_bytes = rpc::to_yas_binary(payload);
+        rpc::stream_transport::envelope_prefix prefix{
+            FLD(version) rpc::get_version(),
+            FLD(direction) rpc::stream_transport::message_direction::send,
+            FLD(sequence_number) uint64_t{1},
+            FLD(payload_size) payload_bytes.size(),
+        };
+        auto prefix_bytes = rpc::to_yas_binary(prefix);
+
+        auto send_status = CO_AWAIT peer_stream->send(as_byte_span(prefix_bytes));
+        CORO_ASSERT_EQ(send_status.is_ok(), true);
+        send_status = CO_AWAIT peer_stream->send(as_byte_span(payload_bytes));
+        CORO_ASSERT_EQ(send_status.is_ok(), true);
+
+        bool saw_disconnect_state = false;
+        for (int i = 0; i < 2000 && transport->get_status() != rpc::transport_status::DISCONNECTED; ++i)
+        {
+            if (transport->get_status() >= rpc::transport_status::DISCONNECTING)
+                saw_disconnect_state = true;
+            CO_AWAIT service->schedule();
+        }
+        saw_disconnect_state = saw_disconnect_state || transport->get_status() >= rpc::transport_status::DISCONNECTING;
+
+        CORO_ASSERT_EQ(handler_called->load(std::memory_order_acquire), false);
+        CORO_ASSERT_EQ(saw_disconnect_state, true);
+        CORO_ASSERT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTED);
+
+        for (int i = 0; i < 8; ++i)
+            CO_AWAIT service->schedule();
+
+        transport.reset();
+        peer_stream.reset();
+        service.reset();
+        CO_RETURN true;
+    }
+}
+
+TEST(
+    StreamingTransportBadMessage,
+    MalformedInitClientChannelSendDisconnects)
+{
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+            .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+    std::atomic_bool done{false};
+    bool passed = false;
+    auto runner = [&]() -> coro::task<void>
+    {
+        passed = CO_AWAIT coro_malformed_init_message_disconnects_transport(scheduler);
+        done.store(true, std::memory_order_release);
+        CO_RETURN;
+    };
+
+    ASSERT_TRUE(scheduler->spawn_detached(runner()));
+
+    for (int i = 0; i < 3000 && !done.load(std::memory_order_acquire); ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+
+    EXPECT_TRUE(done.load(std::memory_order_acquire));
+    EXPECT_TRUE(passed);
+
+    for (int i = 0; i < 100 && !scheduler->empty(); ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+}
+
 // Keep this suite on the stable TCP and SPSC streaming paths. The current
 // io_uring stream has dedicated typed transport and composition coverage.
 using streaming_transport_regression_implementations

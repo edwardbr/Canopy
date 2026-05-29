@@ -58,7 +58,9 @@ namespace
         return p;
     }
 
-    TEST(BlockingListener, AcceptsConnectionsAndInvokesCallback)
+    TEST(
+        BlockingListener,
+        AcceptsConnectionsAndInvokesCallback)
     {
         auto port = pick_free_port();
         ASSERT_NE(port, 0);
@@ -90,9 +92,7 @@ namespace
         rpc::event first_seen;
 
         streaming::listener::connection_callback cb
-            = [&](const std::string& /*name*/,
-                  std::shared_ptr<rpc::service> /*svc*/,
-                  std::shared_ptr<streaming::stream> stm)
+            = [&](const std::string& /*name*/, std::shared_ptr<rpc::service> /*svc*/, std::shared_ptr<streaming::stream> stm)
         {
             ASSERT_NE(stm, nullptr);
             if (connections_observed.fetch_add(1, std::memory_order_acq_rel) == 0)

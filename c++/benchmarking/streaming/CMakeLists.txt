@@ -12,20 +12,26 @@ project(
   LANGUAGES CXX)
 
 set(STREAMING_BENCHMARK_SOURCES benchmark.cpp benchmark_common.cpp stream_tcp.cpp stream_tcp_wrapped.cpp)
-set(STREAMING_BENCHMARK_LIBS streaming streaming_tcp rpc fmt::fmt-header-only ${CANOPY_LIBRARIES} rpc_log)
-set(
-  STREAMING_BENCHMARK_DEFINES
-  ${CANOPY_DEFINES}
-  # Local fixture credentials keep the benchmark independent of demos and avoid using OpenSSL just to generate
-  # throwaway certificates when the selected secure-stream backend is mbedTLS.
-  CANOPY_STREAMING_BENCHMARK_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
+set(STREAMING_BENCHMARK_LIBS
+    streaming
+    streaming_tcp
+    rpc
+    fmt::fmt-header-only
+    ${CANOPY_LIBRARIES}
+    rpc_log)
+set(STREAMING_BENCHMARK_DEFINES
+    ${CANOPY_DEFINES}
+    # Local fixture credentials keep the benchmark independent of demos and avoid using OpenSSL just to generate
+    # throwaway certificates when the selected secure-stream backend is mbedTLS.
+    CANOPY_STREAMING_BENCHMARK_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
 
 set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL" AND TARGET streaming_tls)
   set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_tls)
-elseif(CANOPY_BUILD_COROUTINE
-       AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
-       AND TARGET streaming_mbedtls)
+elseif(
+  CANOPY_BUILD_COROUTINE
+  AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
+  AND TARGET streaming_mbedtls)
   set(STREAMING_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
 endif()
 
@@ -56,7 +62,7 @@ if(CANOPY_BUILD_COROUTINE)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET streaming_io_uring)
     list(APPEND STREAMING_BENCHMARK_SOURCES stream_io_uring.cpp stream_sgx_io_uring.cpp)
-    list(APPEND STREAMING_BENCHMARK_LIBS streaming_io_uring)
+    list(APPEND STREAMING_BENCHMARK_LIBS streaming_io_uring connection_factory)
     list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_STREAMING_BENCHMARK_HAS_IO_URING)
   endif()
 endif()

@@ -361,9 +361,9 @@ namespace
         }
     };
 
-    struct connection_factory_registrar
+    struct enclave_entry_point
     {
-        connection_factory_registrar()
+        enclave_entry_point()
         {
             // The SGX coroutine host transport discovers an enclave entry point
             // by asking the enclave runtime for this registered factory. Keeping
@@ -396,5 +396,5 @@ namespace
         }
     };
 
-    connection_factory_registrar g_connection_factory_registrar;
+    enclave_entry_point g_enclave_entry_point;
 }

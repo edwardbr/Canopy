@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 
+#include <io_uring/io_uring_config.h>
 #include <io_uring/types.h>
 #include <rpc/rpc.h>
 
@@ -19,47 +20,10 @@ namespace coro
 
 namespace rpc::io_uring
 {
-    struct host_controller_options
-    {
-        uint32_t queue_depth{256};
-#ifdef CANOPY_IO_URING_SQPOLL
-        // Enclave users submit SQEs directly and cannot make io_uring_enter()
-        // themselves. SQPOLL gives the host a kernel-side submitter thread that
-        // can be woken through the SGX-private host-control interface.
-        bool use_sqpoll{true};
-#else
-        // Non-SQPOLL builds are useful for host-only experiments, but the SGX
-        // no-op smoke path expects SQPOLL because the enclave cannot enter the
-        // ring directly.
-        bool use_sqpoll{false};
-#endif
-        // SINGLE_ISSUER is only requested with SQPOLL. The host controller owns
-        // one ring and the intended model is a single enclave agent writing
-        // SQEs for that ring; sharing one ring between enclaves would need a
-        // different synchronization design.
-        bool use_single_issuer{true};
-        // COOP_TASKRUN is deliberately off for the SGX/SQPOLL path. It is a
-        // userspace task-run hint for non-SQPOLL rings, while this controller
-        // relies on the SQPOLL thread plus explicit wake_iouring().
-        bool use_coop_taskrun{false};
-        // Kernel SQPOLL idle timeout before the polling thread sleeps. A later
-        // wake_iouring() uses IORING_ENTER_SQ_WAKEUP to reactivate it.
-        uint32_t sq_thread_idle_ms{2000};
-        uint32_t buffer_count{256};
-        uint32_t buffer_size{4096};
-        bool register_buffers{false};
-        // Direct descriptors are private to the io_uring instance. Enclave TCP
-        // operations use them so SQEs never need to expose ordinary host file
-        // descriptor numbers or require enclave-side fd ownership.
-        uint32_t fixed_file_count{0};
-        bool register_fixed_files{false};
-        bool cleanup_on_scheduler{true};
-    };
-
     class host_controller
     {
     public:
-        using options = host_controller_options;
+        using options = ::canopy::io_uring::host_controller_options;
 
         [[nodiscard]] static int create(
             std::unique_ptr<host_controller>& controller,

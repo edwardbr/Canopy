@@ -87,7 +87,11 @@ The first 64 bits of the address are taken directly as the routing prefix (equiv
 **CMake target:** `canopy_network_config` (static library)
 
 **Headers:**
-- `c++/subcomponents/network_config/include/canopy/network_config/network_args.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/cli_args.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/endpoint.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/detect.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/zone.h`
+- `c++/subcomponents/network_config/include/canopy/network_config/types.h`
 
 ```cpp
 namespace canopy::network_config {
@@ -125,7 +129,6 @@ rpc::zone_address get_zone_address(
 tcp_endpoint parse_named_endpoint(const std::string& name_host_port);
 void ipv4_to_ip_address(const std::string& dotted_decimal, ip_address& addr);
 void ipv6_to_ip_address(const std::string& colon_hex, ip_address& addr);
-uint64_t ip_address_to_uint64(const ip_address& addr, ip_address_family family);
 
 // Auto-detect routing-prefix candidates from the host's network interfaces.
 bool detect_routing_prefix(...);
@@ -169,7 +172,8 @@ IPv6.
 ## Usage Pattern
 
 ```cpp
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
 
 int main(int argc, char* argv[])
 {
@@ -201,7 +205,11 @@ int main(int argc, char* argv[])
 ```
 c++/subcomponents/network_config/
   CMakeLists.txt
-  include/canopy/network_config/network_args.h
+  include/canopy/network_config/cli_args.h
+  include/canopy/network_config/endpoint.h
+  include/canopy/network_config/detect.h
+  include/canopy/network_config/zone.h
+  include/canopy/network_config/types.h
   src/network_args.cpp           ← CLI parsing, conversion, get_network_config()
   src/network_auto_detect.cpp    ← detect_routing_prefix() via getifaddrs()
 ```

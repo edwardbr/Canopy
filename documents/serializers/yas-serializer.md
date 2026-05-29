@@ -106,7 +106,8 @@ root_service->set_default_encoding(rpc::encoding::yas_json);
 | `std::list<T>` | Length + elements |
 | `std::map<K,V>` | Length + (key, value) pairs |
 | `std::array<T,N>` | Fixed number of elements |
-| `std::optional<T>` | Present flag + value |
+| `rpc::optional<T>` | Present flag + value in binary; omitted field when absent in YAS JSON objects |
+| `rpc::variant<Ts...>` | Alternative index + value in binary; `{ "caseN": value }` in YAS JSON |
 
 ### Custom Structs
 
@@ -125,8 +126,8 @@ struct person
 ## 5. JSON Schema Generation
 
 Canopy generates per-function JSON schema metadata for generated interfaces.
-The JSON schema test target is added only when
-`NLOHMANN_JSON_CONFIG_INSTALL_DIR` is defined at configure time.
+The JSON schema tests validate generated metadata with Canopy's native
+`json::v1::object` schema validator.
 
 ### Generated Schema
 

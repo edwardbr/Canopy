@@ -16,7 +16,8 @@
 
 #include <rpc/rpc.h>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/detect.h>
+#include <canopy/network_config/endpoint.h>
 
 namespace canopy::network_config
 {

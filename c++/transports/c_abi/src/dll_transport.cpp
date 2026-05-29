@@ -43,18 +43,18 @@ namespace rpc::c_abi
             return canopy_remote_object{borrow_zone_address(remote_object.get_address())};
         }
 
-        uint64_t payload_type_id(const std::optional<rpc::typed_payload>& payload)
+        uint64_t payload_type_id(const rpc::optional<rpc::typed_payload>& payload)
         {
             return payload ? payload->get_type_id() : 0;
         }
 
-        uint64_t payload_encoding(const std::optional<rpc::typed_payload>& payload)
+        uint64_t payload_encoding(const rpc::optional<rpc::typed_payload>& payload)
         {
             return payload ? static_cast<uint64_t>(payload->get_encoding())
                            : static_cast<uint64_t>(rpc::encoding::not_set);
         }
 
-        const std::vector<char>& payload_bytes(const std::optional<rpc::typed_payload>& payload)
+        const std::vector<char>& payload_bytes(const rpc::optional<rpc::typed_payload>& payload)
         {
             static const std::vector<char> empty;
             return payload ? payload->get_payload() : empty;
@@ -281,7 +281,7 @@ namespace rpc::c_abi
             return copy_chars(canopy_const_byte_buffer{bytes.data, bytes.size});
         }
 
-        std::optional<rpc::typed_payload> decode_payload(
+        rpc::optional<rpc::typed_payload> decode_payload(
             uint64_t type_id,
             uint64_t encoding,
             const canopy_const_byte_buffer& payload)

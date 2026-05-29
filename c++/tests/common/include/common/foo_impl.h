@@ -7,6 +7,8 @@
 
 #include <cstdint>
 #include <mutex>
+#include <optional>
+#include <variant>
 #include <example/example.h>
 
 #include <json/json_dom.h>
@@ -301,15 +303,87 @@ namespace marshalled_tests
             const json::v1::object& in_val,
             json::v1::object& out_val) override
         {
-            json::v1::array details;
-            details.emplace_back("json");
-            details.emplace_back(int64_t{3});
+            out_val = json::v1::map{
+                {"echo", in_val},
+                {"handled", true},
+                {"details", json::v1::array{"json", 3}},
+            };
+            CO_RETURN rpc::error::OK();
+        }
 
-            json::v1::map response;
-            response["echo"] = in_val;
-            response["handled"] = json::v1::object(true);
-            response["details"] = json::v1::object(std::move(details));
-            out_val = std::move(response);
+        CORO_TASK(error_code) give_optional_variant_json_holder(const xxx::optional_variant_json_holder& val) override
+        {
+            std::ignore = val;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) receive_optional_variant_json_holder(xxx::optional_variant_json_holder& val) override
+        {
+            val.optional_int = 33;
+            val.variant_value = std::string("received-variant");
+            val.json_value = json::v1::object(
+                json::v1::map{
+                    {"name", "received"},
+                    {"values", json::v1::array{1, true, nullptr}},
+                });
+            val.optional_json_value = json::v1::object(
+                json::v1::map{
+                    {"enabled", true},
+                    {"label", "received-optional-json"},
+                });
+            val.rpc_optional_int = 44;
+            val.rpc_optional_json_value = json::v1::object(
+                json::v1::map{
+                    {"enabled", true},
+                    {"label", "received-rpc-optional-json"},
+                });
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_optional_variant_json(
+            rpc::optional<int32_t> optional_int,
+            rpc::variant<
+                int32_t,
+                std::string> variant_value,
+            json::v1::object json_value,
+            rpc::optional<json::v1::object> optional_json_value,
+            rpc::optional<int32_t>& optional_int_out,
+            rpc::variant<
+                int32_t,
+                std::string>& variant_value_out,
+            json::v1::object& json_value_out,
+            rpc::optional<json::v1::object>& optional_json_value_out) override
+        {
+            optional_int_out = optional_int;
+            variant_value_out = std::move(variant_value);
+            json_value_out = json::v1::object(
+                json::v1::map{
+                    {"echo", std::move(json_value)},
+                    {"handled", true},
+                });
+            optional_json_value_out = std::move(optional_json_value);
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_rpc_optional_holder(
+            const xxx::rpc_optional_holder& in_val,
+            xxx::rpc_optional_holder& out_val) override
+        {
+            out_val = in_val;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_rpc_optional_values(
+            rpc::optional<int32_t> optional_int,
+            rpc::optional<json::v1::object> optional_json_value,
+            rpc::optional<int32_t>& optional_int_out,
+            rpc::optional<json::v1::object>& optional_json_value_out) override
+        {
+            optional_int_out = std::move(optional_int);
+            optional_json_value_out = std::move(optional_json_value);
             CO_RETURN rpc::error::OK();
         }
 

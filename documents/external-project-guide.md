@@ -117,8 +117,7 @@ target_link_options(server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_libraries(
   server
   PRIVATE my_service_idl         # CanopyGenerate(my_service …) → my_service_idl
-          transport_streaming
-          streaming_tcp
+          connection_factory
           rpc
           canopy_network_config
           ${CANOPY_LIBRARIES})
@@ -231,6 +230,9 @@ namespace my_app
 - Output parameters are marked `[out]` and passed by reference.
 - Input parameters are marked `[in]` for non-trivial types; plain value types need no annotation.
 - Use `rpc::shared_ptr<i_other>` to pass interface references across zones.
+- Use `rpc::optional<T>` and `rpc::variant<Ts...>` for IDL sum types. The generator
+  rejects `std::optional` and `std::variant` so JSON schema, YAS, protobuf, and
+  Nanopb all use the same wire shape.
 
 Generated header to include in your source: `<subdir/name.h>` — e.g.
 `#include <my_service/my_service.h>`.
@@ -242,11 +244,10 @@ Do **not** include `_stub.h` or `_proxy.h` directly; `name.h` is the public head
 
 ```cpp
 #include <rpc/rpc.h>
-#include <streaming/listener.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
-#include <canopy/network_config/network_args.h>
+#include <connection_factory/tcp.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
+#include <connection_factory_config/connection_factory_config.h>
 #include <my_service/my_service.h>   // generated header
 
 // Required when telemetry is disabled — Canopy macros call this
@@ -284,11 +285,6 @@ CORO_TASK(int) run_server(
     if (!listen)
         CO_RETURN 1;
 
-    const auto domain = listen->family == canopy::network_config::ip_address_family::ipv6
-        ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
-    const coro::net::socket_address endpoint{
-        coro::net::ip_address::from_string(listen->to_string(), domain), listen->port};
-
     auto allocator = canopy::network_config::make_allocator(cfg);
     rpc::zone_address server_zone_addr;
     auto zone_error = allocator.allocate_zone(server_zone_addr);
@@ -301,29 +297,26 @@ CORO_TASK(int) run_server(
         "my_server", server_zone, scheduler);
     service->set_shutdown_event(on_shutdown);
 
-    auto listener = std::make_shared<streaming::listener>(
-        "server_transport",
-        std::make_shared<streaming::tcp::acceptor>(endpoint),
-        rpc::stream_transport::make_connection_callback<my_app::i_my_service, my_app::i_my_service>(
-            [](const rpc::shared_ptr<my_app::i_my_service>&,
-               const std::shared_ptr<rpc::service>&)
-               -> CORO_TASK(rpc::service_connect_result<my_app::i_my_service>)
-            {
-                CO_RETURN rpc::service_connect_result<my_app::i_my_service>{
-                    rpc::error::OK(),
-                    rpc::shared_ptr<my_app::i_my_service>(new my_service_impl())};
-            }));
+    rpc::connection_factory_config::stream_factory_options options;
+    auto& endpoint = options.endpoint.emplace();
+    endpoint.host = listen->to_string();
+    endpoint.port = listen->port;
+    options.service.emplace().name = std::string("my_server");
+    options.transport.emplace().name = std::string("server_transport");
+    options.listener.emplace().name = std::string("server_listener");
+    options.rpc.emplace().encoding = std::string("nanopb");
 
-    if (!listener->start_listening(service))
-        CO_RETURN 1;
+    auto listener = CO_AWAIT rpc::tcp::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+        rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
+        options,
+        service);
+    if (listener.error_code != rpc::error::OK())
+        CO_RETURN listener.error_code;
 
-    service.reset();   // listener holds service alive from here
+    CO_AWAIT shutdown.wait();
 
-    co_await shutdown.wait();
-
-    co_await listener->stop_listening();
-    listener.reset();
-    co_await on_shutdown->wait();
+    CO_AWAIT listener.handle->stop();
+    CO_AWAIT on_shutdown->wait();
     CO_RETURN 0;
 }
 
@@ -355,9 +348,10 @@ int main(int argc, char* argv[])
 
 ```cpp
 #include <rpc/rpc.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
-#include <canopy/network_config/network_args.h>
+#include <connection_factory/tcp.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
+#include <connection_factory_config/connection_factory_config.h>
 #include <my_service/my_service.h>
 
 // rpc_log() required here too (see server example above)
@@ -380,24 +374,19 @@ CORO_TASK(int) run_client(
     auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
 
-    const auto domain = remote_cfg->family == canopy::network_config::ip_address_family::ipv6
-        ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
+    rpc::connection_factory_config::stream_factory_options options;
+    auto& endpoint = options.endpoint.emplace();
+    endpoint.host = remote_cfg->to_string();
+    endpoint.port = remote_cfg->port;
+    options.service.emplace().name = std::string("my_client");
+    options.transport.emplace().name = std::string("client_transport");
+    options.connection.emplace().name = std::string("my_server");
+    options.rpc.emplace().encoding = std::string("nanopb");
 
-    coro::net::tcp::client tcp_client(scheduler,
-        coro::net::socket_address{
-            coro::net::ip_address::from_string(remote_cfg->to_string(), domain), remote_cfg->port});
-
-    auto status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds(5000));
-    if (status != coro::net::connect_status::connected)
-        CO_RETURN 1;
-
-    auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
-    auto transport = rpc::stream_transport::make_client(
-        "client_transport", client_service, std::move(tcp_stm));
-
-    auto result = CO_AWAIT client_service->connect_to_zone<
-        my_app::i_my_service, my_app::i_my_service>(
-            "my_server", transport, rpc::shared_ptr<my_app::i_my_service>());
+    auto result = CO_AWAIT rpc::tcp::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+        rpc::shared_ptr<my_app::i_my_service>(),
+        options,
+        client_service);
 
     if (result.error_code != rpc::error::OK())
         CO_RETURN 1;
@@ -421,57 +410,92 @@ Both server and client executables need at minimum:
 ```cmake
 target_link_libraries(my_exe PRIVATE
     my_service_idl
-    transport_streaming
-    streaming_tcp
+    connection_factory
     rpc
     canopy_network_config
     ${CANOPY_LIBRARIES})
 ```
 
-For non-TCP (local/in-process) builds replace `transport_streaming streaming_tcp`
-with `transport_local`.
+For local/in-process-only builds, link `transport_local` instead of
+`connection_factory`.
+
+The stream factory overloads accept either the typed
+`rpc::connection_factory_config::stream_factory_options` object or a raw
+`json::v1::object`. Prefer the typed object inside application code. It is
+generated from `connection_factory_config.idl`, so option names and value types
+are kept in one place and the compiler catches misspelled fields.
+
+Use raw JSON at configuration boundaries: config files, config blobs, tests, and
+command-line overlays. That JSON is validated against the generated schema and
+uses exact nested keys: `endpoint.host`, `endpoint.port`, `endpoint.ipv6`,
+`endpoint.connect_timeout`, `service.name`, `transport.name`, `listener.name`,
+`connection.name`, `rpc.encoding`, `rpc.call_timeout`,
+`rpc.call_timeout_sweep`, and `rpc.shutdown_timeout`. Legacy flat aliases such
+as `service_name`, `transport_name`, or top-level `port` are rejected.
+
+`json/config_loader.h` provides the usual file/config boundary. Its merge order
+is:
+
+```
+JSON schema defaults < component defaults < config-file values < CLI overrides
+```
+
+```cpp
+#include <json/config_loader.h>
+#include <connection_factory_config/connection_factory_config.h>
+#include <connection_factory_config/connection_factory_config_schema.h>
+
+auto schema = json::v1::parse(
+    rpc::connection_factory_config::stream_factory_options::get_schema(rpc::encoding::yas_json));
+
+json::v1::object component_defaults{json::v1::map{
+    {"rpc", json::v1::map{{"encoding", "nanopb"}}},
+}};
+
+json::v1::object cli_overrides{json::v1::map{
+    {"endpoint", json::v1::map{{"port", uint16_t{8080}}}},
+}};
+
+auto options =
+    json::v1::load_typed_config_file<rpc::connection_factory_config::stream_factory_options>(
+        schema, "server.json", component_defaults, cli_overrides);
+```
 
 ## Blocking TCP Variant
 
 For a blocking external project, keep `CANOPY_BUILD_COROUTINE=OFF` and use C++17.
 Plain in-process RPC does not need a thread pool, but stream-backed TCP, TLS, and
 WebSocket transports do. Construct the owning service with an
-`rpc::blocking_executor` and use the mode-neutral TCP endpoint API:
+`rpc::blocking_executor` and use the same `rpc::tcp` helper API:
 
 ```cpp
 auto exec = std::make_shared<rpc::blocking_executor>();
 auto service = rpc::root_service::create("my_server", server_zone, exec);
 
-streaming::tcp::endpoint endpoint;
-endpoint.host = "127.0.0.1";
-endpoint.port = 8080;
+rpc::connection_factory_config::stream_factory_options options;
+auto& endpoint = options.endpoint.emplace();
+endpoint.host = std::string("127.0.0.1");
+endpoint.port = uint16_t{8080};
 
-auto listener = std::make_shared<streaming::listener>(
-    "server_transport",
-    std::make_shared<streaming::tcp::acceptor>(endpoint),
-    rpc::stream_transport::make_connection_callback<my_app::i_my_service, my_app::i_my_service>(
-        interface_factory));
-
-if (!listener->start_listening(service))
+auto listener = rpc::tcp::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
+    options,
+    service);
+if (listener.error_code != rpc::error::OK())
     return 1;
 
 // On shutdown:
-listener->stop_listening();
+listener.handle->stop();
 exec->shutdown();
 ```
 
-Blocking client code wraps an already-connected POSIX file descriptor in the
-same stream transport:
+Blocking client code uses the same factory:
 
 ```cpp
-auto stream = std::make_shared<streaming::tcp::stream>(
-    streaming::tcp::socket(connected_fd));
-auto transport = rpc::stream_transport::make_client(
-    "client_transport", client_service, std::move(stream));
-
-auto result = client_service->connect_to_zone<
-    my_app::i_my_service, my_app::i_my_service>(
-        "my_server", transport, rpc::shared_ptr<my_app::i_my_service>());
+auto result = rpc::tcp::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(),
+    options,
+    client_service);
 ```
 
 The blocking TCP socket takes ownership of the descriptor, switches it to

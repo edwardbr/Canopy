@@ -7,11 +7,23 @@
 #include <rpc/rpc.h>
 
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  define CANOPY_WEBSOCKET_DEMO_HAS_LLM 1
+#else
+#  define CANOPY_WEBSOCKET_DEMO_HAS_LLM 0
+#endif
+
+#ifdef CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO
+#  define CANOPY_WEBSOCKET_DEMO_HAS_VIDEO 1
+#else
+#  define CANOPY_WEBSOCKET_DEMO_HAS_VIDEO 0
+#endif
+
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
 #  include "video_session.h"
 #endif
 #include "websocket_demo/websocket_demo.h"
 
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
 #  include <random>
 
 #  include "secret_llama/secret_llama.h"
@@ -34,15 +46,15 @@ namespace websocket_demo
     {
         class demo : public rpc::base<demo, v1::i_calculator>
         {
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
             std::shared_ptr<secret_llama::v1_0::context> context_;
 #endif
             rpc::shared_ptr<i_context_event> event_;
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
             video_session video_;
 #endif
 
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
             std::shared_ptr<rpc::service> service_;
             std::shared_ptr<bool> signal_stop_;
             std::shared_ptr<bool> complete_;
@@ -50,9 +62,7 @@ namespace websocket_demo
 #endif
 
         public:
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-            demo() = default;
-#else
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
             demo(
                 const std::shared_ptr<rpc::service>& service,
                 const std::shared_ptr<secret_llama::v1_0::context>& context)
@@ -62,8 +72,18 @@ namespace websocket_demo
                 signal_stop_ = std::make_shared<bool>(false);
                 complete_ = std::make_shared<bool>(true);
                 evt_stopped_ = std::make_shared<rpc::event>();
+#  if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 video_.set_scheduler(service_->get_scheduler());
+#  endif
             }
+#elif CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
+            explicit demo(const std::shared_ptr<rpc::service>& service)
+            {
+                if (service)
+                    video_.set_scheduler(service->get_scheduler());
+            }
+#else
+            demo() = default;
 #endif
 
             ~demo() override { };
@@ -104,7 +124,7 @@ namespace websocket_demo
                 CO_RETURN rpc::error::OK();
             }
 
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
             static CORO_TASK(void) get_next(
                 std::shared_ptr<secret_llama::v1_0::context> context,
                 rpc::shared_ptr<i_context_event> event,
@@ -166,7 +186,7 @@ namespace websocket_demo
 
             CORO_TASK(int) set_callback(const rpc::shared_ptr<i_context_event>& event) override
             {
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
                 if (event_)
                 {
                     CO_RETURN secret_llama::v1_0::to_standard_return_type(
@@ -175,7 +195,7 @@ namespace websocket_demo
 #endif
 
                 event_ = event;
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 video_.set_sink(event);
 #endif
 
@@ -189,42 +209,45 @@ namespace websocket_demo
                 uint32_t flags,
                 const std::vector<uint8_t>& payload) override
             {
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                (void)seq; (void)pts_us; (void)flags; (void)payload;
-                CO_RETURN rpc::error::NOT_IMPLEMENTED();
-#else
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 CO_RETURN CO_AWAIT video_.forward_frame(seq, pts_us, flags, payload);
+#else
+                (void)seq;
+                (void)pts_us;
+                (void)flags;
+                (void)payload;
+                CO_RETURN rpc::error::NOT_IMPLEMENTED();
 #endif
             }
 
             CORO_TASK(int) set_video_effects(uint32_t effects) override
             {
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                (void)effects;
-#else
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 video_.set_effects(effects);
+#else
+                (void)effects;
 #endif
                 CO_RETURN rpc::error::OK();
             }
 
             CORO_TASK(int)
-            set_video_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used) override
+            set_video_params(
+                int32_t brightness,
+                uint32_t bitrate_kbps,
+                uint32_t cpu_used) override
             {
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-                (void)brightness; (void)bitrate_kbps; (void)cpu_used;
-#else
+#if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 video_.set_params(brightness, bitrate_kbps, cpu_used);
+#else
+                (void)brightness;
+                (void)bitrate_kbps;
+                (void)cpu_used;
 #endif
                 CO_RETURN rpc::error::OK();
             }
         };
 
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-        rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance()
-        {
-            return rpc::make_shared<demo>();
-        }
-#else
+#if CANOPY_WEBSOCKET_DEMO_HAS_LLM
         rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance(
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
@@ -243,6 +266,21 @@ namespace websocket_demo
                 return nullptr;
             }
             return rpc::make_shared<demo>(service_, context);
+        }
+#elif CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
+        rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance(const std::shared_ptr<rpc::service>& service)
+        {
+            return rpc::make_shared<demo>(service);
+        }
+
+        rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance()
+        {
+            return create_websocket_demo_instance(nullptr);
+        }
+#else
+        rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance()
+        {
+            return rpc::make_shared<demo>();
         }
 #endif
     }

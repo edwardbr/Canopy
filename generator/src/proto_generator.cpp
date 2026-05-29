@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <utility>
+#include <vector>
 
 #include "coreclasses.h"
 #include "helpers.h"
@@ -83,6 +85,35 @@ namespace proto_generator
         return false;
     }
 
+    std::vector<std::string> split_template_args(const std::string& args)
+    {
+        std::vector<std::string> result;
+        int bracket_count = 0;
+        size_t start = 0;
+
+        for (size_t i = 0; i < args.length(); ++i)
+        {
+            const char c = args[i];
+            if (c == '<')
+                bracket_count++;
+            else if (c == '>')
+                bracket_count--;
+            else if (c == ',' && bracket_count == 0)
+            {
+                auto arg = trim_copy(args.substr(start, i - start));
+                if (!arg.empty())
+                    result.push_back(std::move(arg));
+                start = i + 1;
+            }
+        }
+
+        auto arg = trim_copy(args.substr(start));
+        if (!arg.empty())
+            result.push_back(std::move(arg));
+
+        return result;
+    }
+
     bool is_map_type(
         const std::string& type,
         std::string& prefix)
@@ -138,7 +169,8 @@ namespace proto_generator
         std::string& inner_type)
     {
         const auto normalized = normalise_cpp_type(type);
-        if (normalized.find("std::optional<") != 0)
+        const bool is_rpc_optional = normalized.find("rpc::optional<") == 0 || normalized.find("::rpc::optional<") == 0;
+        if (!is_rpc_optional)
             return false;
 
         const auto template_start = normalized.find('<');
@@ -155,6 +187,25 @@ namespace proto_generator
         std::string inner_type;
         is_optional_type(type, inner_type);
         return inner_type;
+    }
+
+    bool is_variant_type(
+        const std::string& type,
+        std::vector<std::string>& alternative_types)
+    {
+        alternative_types.clear();
+        const auto normalized = normalise_cpp_type(type);
+        const bool is_rpc_variant = normalized.find("rpc::variant<") == 0 || normalized.find("::rpc::variant<") == 0;
+        if (!is_rpc_variant)
+            return false;
+
+        const auto template_start = normalized.find('<');
+        std::string content;
+        if (extract_template_content(normalized, template_start, content) == std::string::npos)
+            return false;
+
+        alternative_types = split_template_args(content);
+        return !alternative_types.empty();
     }
 
     std::string cpp_scalar_to_proto_type(const std::string& type)

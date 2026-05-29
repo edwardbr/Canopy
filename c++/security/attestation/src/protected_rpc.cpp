@@ -54,7 +54,7 @@ namespace canopy::security::attestation
             return rpc::remote_object(object.as_zone());
         }
 
-        auto payload_encoding(const std::optional<rpc::typed_payload>& payload) -> rpc::encoding
+        auto payload_encoding(const rpc::optional<rpc::typed_payload>& payload) -> rpc::encoding
         {
             return payload ? payload->get_encoding() : rpc::encoding::not_set;
         }
@@ -820,7 +820,7 @@ namespace canopy::security::attestation
     }
 
     auto is_protected_rpc_payload(
-        const std::optional<rpc::typed_payload>& payload,
+        const rpc::optional<rpc::typed_payload>& payload,
         uint64_t protocol_version) -> bool
     {
         return payload && is_protected_rpc_payload(payload->get_type_id(), protocol_version);

@@ -11,7 +11,7 @@ This directory contains tests and examples for the JSON schema generation capabi
 
 ### Test Programs
 - **`simple_json_schema_metadata_test.cpp`** - Self-contained test with no external dependencies
-- **`json_schema_metadata_test.cpp`** - Advanced test using nlohmann/json (optional dependency)
+- **`json_schema_metadata_test.cpp`** - Advanced schema metadata test using Canopy's native JSON DOM and validator
 
 ### Build Configuration
 - **`CMakeLists.txt`** - Build configuration for JSON schema tests
@@ -28,8 +28,7 @@ cd /path/to/rpc
 cmake --preset Debug  # or Release, SGX_Debug, etc.
 
 # Build the JSON schema tests
-cmake --build build --target simple_json_schema_metadata_test
-# Optional: cmake --build build --target json_schema_metadata_test (if nlohmann/json available)
+cmake --build build --target json_schema_metadata_test
 
 # Run the tests
 ./build/tests/json_schema_test/simple_json_schema_metadata_test

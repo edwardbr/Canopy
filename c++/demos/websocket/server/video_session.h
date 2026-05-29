@@ -57,8 +57,7 @@ namespace websocket_demo
         // session and the worker have let go. No core-transport changes
         // needed; the fix is entirely here.
         //
-        // When no scheduler is available (the CALCULATOR_ONLY enclave
-        // compile-fit build has no rpc::service), forward_frame falls back to
+        // When no scheduler is available, forward_frame falls back to
         // synchronous inline processing — correctness over latency there.
         class video_session
         {
@@ -117,14 +116,22 @@ namespace websocket_demo
                 ~pump();
 
                 bool ensure_decoder();
-                bool ensure_encoder(unsigned int width, unsigned int height);
+                bool ensure_encoder(
+                    unsigned int width,
+                    unsigned int height);
                 void transform_frame(vpx_image_t* img);
                 static void invert_luma(vpx_image_t* img);
-                static void apply_brightness(vpx_image_t* img, int delta);
+                static void apply_brightness(
+                    vpx_image_t* img,
+                    int delta);
 
                 // Heavy path: decode -> transform -> encode -> co_await push.
                 CORO_TASK(void)
-                process_one(uint64_t seq, uint64_t pts_us, uint32_t flags, std::vector<uint8_t> payload);
+                process_one(
+                    uint64_t seq,
+                    uint64_t pts_us,
+                    uint32_t flags,
+                    std::vector<uint8_t> payload);
 
                 // Detached drain loop. Holds a self shared_ptr for its whole
                 // lifetime so the pump (codecs, sink_) cannot be freed while
@@ -144,7 +151,10 @@ namespace websocket_demo
             int set_sink(const rpc::shared_ptr<i_context_event>& sink);
             void set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler);
             void set_effects(uint32_t effects);
-            void set_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used);
+            void set_params(
+                int32_t brightness,
+                uint32_t bitrate_kbps,
+                uint32_t cpu_used);
 
             CORO_TASK(int)
             forward_frame(

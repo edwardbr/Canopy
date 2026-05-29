@@ -165,7 +165,7 @@ namespace rpc::stream_transport
             if (init_receive.err_code != rpc::error::OK())
             {
                 stub_.reset();
-                RPC_ERROR("init_client_channel_send failed");
+                RPC_ERROR("init_client_channel_send failed {}", rpc::error::to_string(init_receive.err_code));
                 CO_RETURN rpc::connect_result{init_receive.err_code, {}};
             }
 
@@ -1589,6 +1589,7 @@ namespace rpc::stream_transport
         if (!err.empty())
         {
             RPC_ERROR("failed create_stub init_client_channel_send deserialization");
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 
@@ -1605,6 +1606,8 @@ namespace rpc::stream_transport
         }
         set_adjacent_zone_id(request.adjacent_zone_id);
 
+        rpc::transport_keep_alive handshake_keep_alive(shared_from_this(), input_descr.remote_object_id.as_zone());
+
         // Immediately inform the peer of our zone_id before invoking connection_handler_
         send_payload_init_client_initial_channel_response(
             prefix.version, message_direction::one_way, init_client_initial_channel_response{FLD(zone_id) get_zone_id()}, 0);
@@ -1616,6 +1619,7 @@ namespace rpc::stream_transport
         if (ret != rpc::error::OK())
         {
             RPC_ERROR("failed to connect to zone {}", ret);
+            set_status(rpc::transport_status::DISCONNECTING);
             CO_RETURN;
         }
 

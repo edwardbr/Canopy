@@ -9,8 +9,8 @@ if(NOT TARGET canopy_file_system)
 endif()
 
 set(WEBSOCKET_DEMO_SECURE_STREAM_TARGET)
-# Secure stream is currently coroutine-only. In blocking builds the demo
-# runs over plain HTTP only; --cert/--key are rejected at runtime.
+# Secure stream is currently coroutine-only. In blocking builds the demo runs over plain HTTP only; --cert/--key are
+# rejected at runtime.
 if(CANOPY_BUILD_COROUTINE)
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     if(NOT TARGET streaming_mbedtls)
@@ -78,12 +78,18 @@ if(TARGET transport_websocket_enclave)
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
-# Video session / genie / face_track depend on libvpx and an async video
-# pipeline that hasn't been dual-moded yet. Keep them in the coroutine build
-# only; blocking builds get a slim REST + WS calculator demo.
+# Video session / genie / face_track depend on libvpx and an async video pipeline that hasn't been dual-moded yet. Keep
+# them in the coroutine build only; blocking builds get a slim REST + WS calculator demo.
 set(WEBSOCKET_DEMO_VIDEO_SRCS)
+set(WEBSOCKET_DEMO_VIDEO_DEFINES)
 if(CANOPY_BUILD_COROUTINE)
-  list(APPEND WEBSOCKET_DEMO_VIDEO_SRCS video_session.cpp genie_sprite.cpp face_track.cpp)
+  list(
+    APPEND
+    WEBSOCKET_DEMO_VIDEO_SRCS
+    video_session.cpp
+    genie_sprite.cpp
+    face_track.cpp)
+  list(APPEND WEBSOCKET_DEMO_VIDEO_DEFINES CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO)
 endif()
 
 add_executable(
@@ -97,8 +103,9 @@ add_executable(
   ${WEBSOCKET_DEMO_VIDEO_SRCS}
   ${WEBSOCKET_DEMO_OPTIONAL_SRCS})
 
-target_compile_definitions(websocket_server PRIVATE ${CANOPY_DEFINES} ${WEBSOCKET_DEMO_OPTIONAL_DEFINES}
-                                                    CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
+target_compile_definitions(
+  websocket_server PRIVATE ${CANOPY_DEFINES} ${WEBSOCKET_DEMO_OPTIONAL_DEFINES} ${WEBSOCKET_DEMO_VIDEO_DEFINES}
+                           CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
 
 target_include_directories(
   websocket_server
@@ -110,6 +117,7 @@ target_link_libraries(
   PUBLIC streaming
          ${WEBSOCKET_DEMO_SECURE_STREAM_TARGET}
          transport_streaming
+         connection_factory
          streaming_transport_idl
          transport_websocket
          websocket_demo_idl
@@ -117,12 +125,16 @@ target_link_libraries(
          rpc
          canopy_file_system
          canopy_http_server
-         canopy_network_config
+         network_config
          ${CANOPY_LIBRARIES}
          rpc_log)
 
-# libvpx is provided centrally by c++/submodules/CMakeLists.txt (gated on
-# demos + websocket). Link it only if that target exists.
+if(CANOPY_BUILD_COROUTINE AND TARGET streaming_io_uring)
+  target_link_libraries(websocket_server PUBLIC streaming_io_uring)
+endif()
+
+# libvpx is provided centrally by c++/submodules/CMakeLists.txt (gated on demos + websocket). Link it only if that
+# target exists.
 if(TARGET canopy_libvpx)
   target_link_libraries(websocket_server PUBLIC canopy_libvpx)
 endif()
@@ -149,6 +161,7 @@ if(CANOPY_BUILD_ENCLAVE
    AND CANOPY_BUILD_COROUTINE
    AND TARGET canopy_http_server_enclave
    AND TARGET canopy_file_system_enclave
+   AND TARGET json_enclave
    AND TARGET streaming_io_uring_enclave
    AND TARGET transport_websocket_enclave
    AND WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET)
@@ -165,7 +178,9 @@ if(CANOPY_BUILD_ENCLAVE
   add_library(websocket_demo_enclave_compile_fit STATIC ${WEBSOCKET_DEMO_ENCLAVE_SRCS})
   target_compile_definitions(
     websocket_demo_enclave_compile_fit
-    PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+    PRIVATE ${CANOPY_ENCLAVE_DEFINES}
+            CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+            CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO
             CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
             CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
   target_include_directories(websocket_demo_enclave_compile_fit PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
@@ -183,10 +198,10 @@ if(CANOPY_BUILD_ENCLAVE
            streaming_websocket_enclave
            transport_websocket_enclave
            transport_sgx_coroutine_enclave
-    PRIVATE rpc::rpc_enclave ${CANOPY_ENCLAVE_FMT_LIB})
+    PRIVATE rpc::rpc_enclave json_enclave ${CANOPY_ENCLAVE_FMT_LIB})
 
-  # libvpx built against the enclave freestanding toolchain — propagates the
-  # vpx/ include dirs so video_session/genie_sprite compile under -nostdinc.
+  # libvpx built against the enclave freestanding toolchain — propagates the vpx/ include dirs so
+  # video_session/genie_sprite compile under -nostdinc.
   if(TARGET canopy_libvpx_enclave)
     target_link_libraries(websocket_demo_enclave_compile_fit PRIVATE canopy_libvpx_enclave)
   endif()
@@ -214,7 +229,7 @@ if(CANOPY_BUILD_ENCLAVE
     add_enclave_library(
       websocket_demo_enclave
       SRCS ${WEBSOCKET_DEMO_ENCLAVE_SRCS}
-      HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
+      HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB} json_enclave
       TRUSTED_LIBS
         libcoro_enclave
         rpc_enclave
@@ -242,19 +257,19 @@ if(CANOPY_BUILD_ENCLAVE
 
     target_compile_definitions(
       websocket_demo_enclave
-      PRIVATE ${CANOPY_ENCLAVE_DEFINES} CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+      PRIVATE ${CANOPY_ENCLAVE_DEFINES}
+              CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+              CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO
               CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}
               CANOPY_WEBSOCKET_DEMO_STATIC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/www")
     target_include_directories(websocket_demo_enclave PRIVATE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
                                                               ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
-    # add_enclave_library links canopy_libvpx_enclave (TRUSTED_LIBS) but does
-    # not propagate its INTERFACE includes to the enclave SRCS compile, so the
-    # vpx/ headers must be added explicitly here (the compile-fit target gets
-    # them via target_link_libraries usage requirements).
+    # add_enclave_library links canopy_libvpx_enclave (TRUSTED_LIBS) but does not propagate its INTERFACE includes to
+    # the enclave SRCS compile, so the vpx/ headers must be added explicitly here (the compile-fit target gets them via
+    # target_link_libraries usage requirements).
     if(TARGET canopy_libvpx_enclave)
-      target_include_directories(
-        websocket_demo_enclave
-        PRIVATE $<TARGET_PROPERTY:canopy_libvpx_enclave,INTERFACE_INCLUDE_DIRECTORIES>)
+      target_include_directories(websocket_demo_enclave
+                                 PRIVATE $<TARGET_PROPERTY:canopy_libvpx_enclave,INTERFACE_INCLUDE_DIRECTORIES>)
     endif()
     target_compile_options(websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
     target_link_options(websocket_demo_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
@@ -264,9 +279,8 @@ if(CANOPY_BUILD_ENCLAVE
       set_target_properties(websocket_demo_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
     endif()
 
-    # Demo-specific enclave config (large heap for in-enclave libvpx); the
-    # shared test config's 4 MiB heap starves the codec. Kept separate so
-    # other test enclaves are unaffected.
+    # Demo-specific enclave config (large heap for in-enclave libvpx); the shared test config's 4 MiB heap starves the
+    # codec. Kept separate so other test enclaves are unaffected.
     enclave_sign(
       websocket_demo_enclave
       KEY ../../../tests/test_enclave/marshal_test_enclave_private.pem
@@ -285,9 +299,11 @@ if(CANOPY_BUILD_ENCLAVE
       websocket_enclave_server
       PUBLIC websocket_demo_idl
              rpc::rpc
+             connection_factory
              transport_sgx_coroutine
+             streaming_io_uring
              canopy_io_uring
-             canopy_network_config
+             network_config
              ${CANOPY_LIBRARIES}
              ${CANOPY_SGX_HOST_LIBRARIES}
              rpc_log)

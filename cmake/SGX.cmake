@@ -678,6 +678,8 @@ function(canopy_configure_sgxssl_for_enclave)
           "${CMAKE_COMMAND}" -E env ${CANOPY_SGX_DETERMINISTIC_ENV} "SGX_SDK=${SGX_DIR}"
           "DEBUG=${_canopy_sgxssl_debug_flag}" "HOME=${CANOPY_SGXSSL_BUILD_DIR}" "${CANOPY_BASH_EXECUTABLE}"
           "${CANOPY_SGXSSL_BUILD_DIR}/prepare_sgxssl.sh"
+        COMMAND "${CMAKE_COMMAND}" "-DCANOPY_SGXSSL_OPENSSL_SOURCE_DIR=${_canopy_sgxssl_openssl_build_dir}" -P
+                "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLOpenSSL.cmake"
         # prepare_sgxssl.sh builds the package; libssl.a is then rebuilt/copied into the archive name expected by the
         # enclave link so TLS symbols are present alongside the SGXSSL glue archive.
         COMMAND "${CMAKE_COMMAND}" -E chdir "${_canopy_sgxssl_openssl_build_dir}" "${CANOPY_MAKE_EXECUTABLE}" libssl.a
@@ -685,6 +687,7 @@ function(canopy_configure_sgxssl_for_enclave)
                 "${_canopy_sgxssl_ssl_lib}"
         DEPENDS "${CANOPY_SGXSSL_ROOT_DIR}/prepare_sgxssl.sh"
                 "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLBootstrap.cmake"
+                "${CMAKE_SOURCE_DIR}/cmake/CanopyPatchSGXSSLOpenSSL.cmake"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
         COMMENT "Preparing ${_canopy_sgxssl_archive_config} TLS-capable SGXSSL for enclave OpenSSL support"
         VERBATIM)

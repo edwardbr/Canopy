@@ -31,7 +31,7 @@ namespace rpc
             release.caller_zone_id = params.caller_zone_id;
             release.options = release_options_from_add_ref(params.build_out_param_channel);
             release.in_back_channel = params.in_back_channel;
-            release.payload = {};
+            release.payload.reset();
             return release;
         }
     }

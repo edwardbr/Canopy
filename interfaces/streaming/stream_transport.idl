@@ -112,7 +112,7 @@ namespace rpc
             rpc::remote_object destination_zone_id;
             rpc::interface_ordinal interface_id;
             std::vector<rpc::back_channel_entry> back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct try_cast_receive
@@ -129,7 +129,7 @@ namespace rpc
             uint64_t request_id;
             rpc::add_ref_options build_out_param_channel;
             std::vector<rpc::back_channel_entry> back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct addref_receive
@@ -144,7 +144,7 @@ namespace rpc
             rpc::caller_zone caller_zone_id;
             rpc::release_options options;
             std::vector<rpc::back_channel_entry> back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct handshake_send
@@ -170,7 +170,7 @@ namespace rpc
             rpc::remote_object destination_zone_id;
             rpc::caller_zone caller_zone_id;
             std::vector<rpc::back_channel_entry> back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct transport_down_send
@@ -178,7 +178,7 @@ namespace rpc
             rpc::destination_zone destination_zone_id;
             rpc::caller_zone caller_zone_id;
             std::vector<rpc::back_channel_entry> back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct get_new_zone_id_send

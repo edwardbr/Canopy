@@ -36,19 +36,17 @@
  */
 
 #include <demo_impl.h>
+#include <connection_factory/tcp.h>
 #include <rpc/rpc.h>
 #include <iostream>
-#include <chrono>
 #include <string_view>
 #include <vector>
 
-#include <streaming/listener.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
 #include <comprehensive/comprehensive_stub.h>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/endpoint.h>
+#include <canopy/network_config/zone.h>
 
 void print_separator(const std::string& title)
 {
@@ -139,6 +137,33 @@ namespace comprehensive
 {
     namespace v1
     {
+        rpc::connection_factory_config::named_options named_options(const std::string& name)
+        {
+            rpc::connection_factory_config::named_options options;
+            options.name = name;
+            return options;
+        }
+
+        rpc::connection_factory_config::stream_factory_options tcp_options_from_endpoint(
+            const canopy::network_config::tcp_endpoint& endpoint,
+            const std::string& service_name,
+            const std::string& listener_name,
+            const std::string& transport_name,
+            const std::string& connection_name)
+        {
+            rpc::connection_factory_config::stream_factory_options options;
+
+            options.endpoint.host = endpoint.to_string();
+            options.endpoint.port = endpoint.port;
+            options.endpoint.ipv6 = endpoint.family == canopy::network_config::ip_address_family::ipv6;
+
+            options.service = named_options(service_name);
+            options.listener = named_options(listener_name);
+            options.transport = named_options(transport_name);
+            options.connection = named_options(connection_name);
+            return options;
+        }
+
         CORO_TASK(bool)
         run_tcp_server(
             std::shared_ptr<coro::scheduler> scheduler,
@@ -159,27 +184,24 @@ namespace comprehensive
 
             RPC_INFO("Server zone ID (address): {}", rpc::to_yas_json<std::string>(service->get_zone_id().get_address()));
 
-            const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
-                                    ? coro::net::domain_t::ipv6
-                                    : coro::net::domain_t::ipv4;
-            const coro::net::socket_address endpoint{coro::net::ip_address::from_string(host, domain), port};
+            auto options = tcp_options_from_endpoint(
+                listen_ep, "tcp_server", "server_transport", "server_transport", "tcp_server");
+            auto accept_result = CO_AWAIT rpc::tcp::accept_rpc<i_calculator, i_calculator>(
+                [](const rpc::shared_ptr<i_calculator>&,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+                {
+                    CO_RETURN rpc::service_connect_result<i_calculator>{
+                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
+                },
+                options,
+                service);
 
-            auto listener = std::make_shared<streaming::listener>(
-                "server_transport",
-                std::make_shared<streaming::tcp::acceptor>(endpoint),
-                rpc::stream_transport::make_connection_callback<i_calculator, i_calculator>(
-                    [](const rpc::shared_ptr<i_calculator>&,
-                        const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
-                    {
-                        CO_RETURN rpc::service_connect_result<i_calculator>{
-                            rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
-                    }));
-
-            if (!listener->start_listening(service))
+            if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
             {
                 RPC_ERROR("Server: Failed to start listening");
                 CO_RETURN false;
             }
+            auto listener = std::move(accept_result.handle);
 
             RPC_INFO("Server: Listening on {}:{}", host, port);
             service.reset();
@@ -187,7 +209,7 @@ namespace comprehensive
 
             co_await client_finished.wait();
 
-            co_await listener->stop_listening();
+            co_await listener->stop();
             listener.reset();
 
             co_await on_shutdown_event->wait();
@@ -222,29 +244,12 @@ namespace comprehensive
             }
 
             {
-                const auto client_domain = connect_ep.family == canopy::network_config::ip_address_family::ipv6
-                                               ? coro::net::domain_t::ipv6
-                                               : coro::net::domain_t::ipv4;
-                coro::net::tcp::client client(
-                    scheduler, coro::net::socket_address{coro::net::ip_address::from_string(host, client_domain), port});
-
-                auto connection_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-                if (connection_status != coro::net::connect_status::connected)
-                {
-                    RPC_ERROR("Client: Failed to connect to server (status: {})", static_cast<int>(connection_status));
-                    CO_RETURN false;
-                }
-
-                RPC_INFO("Client: TCP connection established");
-
-                auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-                auto client_transport
-                    = rpc::stream_transport::make_client("client_transport", client_service, std::move(tcp_stm));
-
                 RPC_INFO("Client: Starting RPC connection...");
 
-                auto connect_result = CO_AWAIT client_service->connect_to_zone<i_calculator, i_calculator>(
-                    "tcp_server", client_transport, rpc::shared_ptr<i_calculator>());
+                auto options = tcp_options_from_endpoint(
+                    connect_ep, "tcp_client", "client_listener", "client_transport", "tcp_server");
+                auto connect_result = CO_AWAIT rpc::tcp::connect_rpc<i_calculator, i_calculator>(
+                    rpc::shared_ptr<i_calculator>(), options, client_service);
                 remote_calculator = connect_result.output_interface;
                 auto error = connect_result.error_code;
 

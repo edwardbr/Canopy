@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstdint>
 
+#include <json/json_dom.h>
 #include <rpc/rpc.h>
 #include <secure_coroutine_module/secure_coroutine_module.h>
 #include <streaming/spsc_queue/stream.h>
@@ -44,8 +45,8 @@ namespace rpc::sgx::coro::host
                 // Keep the queue storage tied to the ECALL thread lifetime so
                 // transport destruction cannot unmap it while workers are
                 // still returning from the enclave.
-                std::shared_ptr<streaming::spsc_queue::queue_type> host_to_enclave_queue_;
-                std::shared_ptr<streaming::spsc_queue::queue_type> enclave_to_host_queue_;
+                std::shared_ptr<::streaming::spsc_queue::queue_type> host_to_enclave_queue_;
+                std::shared_ptr<::streaming::spsc_queue::queue_type> enclave_to_host_queue_;
             };
 
             explicit enclave_owner(uint64_t eid)
@@ -67,10 +68,10 @@ namespace rpc::sgx::coro::host
         };
 
         std::string enclave_path_;
-        std::shared_ptr<streaming::spsc_queue::queue_type> host_to_enclave_queue_;
-        std::shared_ptr<streaming::spsc_queue::queue_type> enclave_to_host_queue_;
+        std::shared_ptr<::streaming::spsc_queue::queue_type> host_to_enclave_queue_;
+        std::shared_ptr<::streaming::spsc_queue::queue_type> enclave_to_host_queue_;
         std::shared_ptr<deferred_stream> deferred_stream_;
-        std::shared_ptr<streaming::spsc_queue::stream> queue_stream_;
+        std::shared_ptr<::streaming::spsc_queue::stream> queue_stream_;
         std::shared_ptr<enclave_owner> enclave_owner_;
         transport(
             std::string name,
@@ -107,15 +108,12 @@ namespace rpc::sgx::coro::host
 
         const std::string& get_enclave_path() const { return enclave_path_; }
         void set_enclave_worker_thread_count(uint32_t worker_thread_count);
-        [[nodiscard]] int set_enclave_startup_options(
-            std::map<
-                std::string,
-                std::string> options);
+        [[nodiscard]] int set_enclave_startup_options(json::v1::object options);
 
     private:
         std::atomic<bool> enclave_shutdown_started_{false};
         std::atomic<uint32_t> enclave_worker_thread_count_{0};
         std::mutex enclave_startup_options_mutex_;
-        std::map<std::string, std::string> enclave_startup_options_;
+        std::map<std::string, json::v1::object> enclave_startup_applications_{};
     };
 }

@@ -40,24 +40,107 @@ In the current C++ implementation, TCP support is provided by:
 - `streaming::tcp::stream`
 - `streaming::listener`
 - `rpc::stream_transport::transport`
+- `rpc::tcp` factory helpers from `connection_factory`
 
-## Server Setup with Listener
+The high-level factory helpers accept a generated typed options object:
+`rpc::connection_factory_config::stream_factory_options`. This is the preferred API for
+application code because it avoids hand-written JSON probing while still using
+the same generated schema shape as config files.
 
-The examples below use coroutine syntax. Blocking builds use the same listener
-and transport layering but construct a `streaming::tcp::endpoint` acceptor and
-pass an `rpc::blocking_executor` to the owning service.
+The JSON overloads remain useful at process boundaries. They validate
+`json::v1::object` input against the generated
+`rpc::connection_factory_config::stream_factory_options` schema, then apply schema
+defaults, TCP component defaults, and caller overrides. TCP endpoint settings
+use exact nested keys: `endpoint.host`, `endpoint.port`, `endpoint.ipv6`, and
+`endpoint.connect_timeout`. Flattened aliases are not accepted.
+
+## Factory Setup
+
+Include the TCP factory header and the generated connection factory config type:
+
+```cpp
+#include <connection_factory/tcp.h>
+#include <connection_factory_config/connection_factory_config.h>
+```
+
+The examples below use coroutine syntax. Blocking builds can use the same
+factory calls when the owning service has an `rpc::blocking_executor`. Manual
+blocking paths construct a `streaming::tcp::endpoint` acceptor directly.
+
+Server-side RPC accept:
+
+```cpp
+rpc::connection_factory_config::stream_factory_options options;
+auto& endpoint = options.endpoint.emplace();
+endpoint.host = std::string("127.0.0.1");
+endpoint.port = uint16_t{8080};
+options.listener.emplace().name = std::string("responder_listener");
+options.transport.emplace().name = std::string("responder_transport");
+options.rpc.emplace().encoding = std::string("nanopb");
+
+auto listener = CO_AWAIT rpc::tcp::accept_rpc<yyy::i_client, yyy::i_server>(
+    server_interface,
+    options,
+    service);
+
+if (listener.error_code != rpc::error::OK())
+{
+    // Handle bind/listen or service startup failure.
+}
+```
+
+Client-side RPC connect:
+
+```cpp
+rpc::connection_factory_config::stream_factory_options options;
+auto& endpoint = options.endpoint.emplace();
+endpoint.host = std::string("127.0.0.1");
+endpoint.port = uint16_t{8080};
+endpoint.connect_timeout = uint64_t{5000};
+options.connection.emplace().name = std::string("server");
+options.transport.emplace().name = std::string("client_transport");
+options.rpc.emplace().encoding = std::string("nanopb");
+
+auto result = CO_AWAIT rpc::tcp::connect_rpc<yyy::i_client, yyy::i_server>(
+    client_interface,
+    options,
+    service);
+
+if (result.error_code != rpc::error::OK())
+{
+    // Handle connection failure.
+}
+
+auto remote = result.output_interface;
+```
+
+Stream-only code can use the lower-level endpoint overload:
+
+```cpp
+streaming::tcp::endpoint endpoint;
+endpoint.host = "127.0.0.1";
+endpoint.port = 8080;
+
+auto stream = CO_AWAIT rpc::tcp::connect_stream(
+    endpoint, std::chrono::milliseconds{5000}, service);
+```
+
+## Manual Listener Setup
+
+The listener and stream objects are streaming-layer components. The RPC
+transport is `rpc::stream_transport::transport`. Use the manual path when a
+caller needs to construct or transform stream objects directly.
 
 ```cpp
 auto listener = std::make_unique<streaming::listener>(
     "responder_transport",
-    std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8080}),
-    rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(interface_factory));
+    std::make_shared<streaming::tcp::acceptor>(
+        coro::net::socket_address{"127.0.0.1", 8080}),
+    rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
+        interface_factory));
 
 listener->start_listening(peer_service);
 ```
-
-The listener and stream objects are streaming-layer components. The RPC
-transport is `rpc::stream_transport::transport`.
 
 ## Coroutine Client Connection
 

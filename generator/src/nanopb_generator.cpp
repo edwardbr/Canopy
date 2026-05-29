@@ -144,6 +144,25 @@ namespace nanopb_generator
         return proto_generator::optional_inner_type(normalize_type(type));
     }
 
+    bool is_variant_type(
+        const std::string& type,
+        std::vector<std::string>& alternative_types)
+    {
+        return proto_generator::is_variant_type(normalize_type(type), alternative_types);
+    }
+
+    std::string variant_wrapper_message_name(
+        const std::string& owning_message_name,
+        const std::string& field_name)
+    {
+        return proto_generator::sanitize_type_name(owning_message_name) + "_" + field_name + "_variant";
+    }
+
+    std::string variant_value_field_name(size_t alternative_index)
+    {
+        return "value_" + std::to_string(alternative_index);
+    }
+
     bool is_user_template_instantiation(const std::string& type)
     {
         const auto normalized = normalize_type(type);
@@ -258,6 +277,14 @@ namespace nanopb_generator
     {
         if (is_optional_type(type))
             return is_unsupported_nanopb_field_type(optional_inner_type(type));
+        std::vector<std::string> variant_alternatives;
+        if (is_variant_type(type, variant_alternatives))
+        {
+            return std::any_of(
+                variant_alternatives.begin(),
+                variant_alternatives.end(),
+                [](const auto& alternative_type) { return is_unsupported_nanopb_field_type(alternative_type); });
+        }
         if (is_interface_type(type) || is_byte_vector_type(type) || is_json_dom_type(type)
             || is_repeated_varint_type(type) || is_sequence_structure_type(type) || is_dictionary_structure_type(type))
             return false;
@@ -852,6 +879,68 @@ namespace nanopb_generator
         }
     }
 
+    void write_optional_nanopb_encode_state_storage(
+        const std::string& field_type,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_string_type(field_type))
+        {
+            cpp("rpc::serialization::nanopb::string_encode_state {}_state;", state_prefix);
+        }
+        else if (is_byte_vector_type(field_type))
+        {
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state;", state_prefix);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("std::vector<char> {}_buffer;", state_prefix);
+            cpp("rpc::serialization::nanopb::bytes_encode_state {}_state;", state_prefix);
+        }
+    }
+
+    void write_optional_cpp_value_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& source_value_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_string_type(field_type))
+        {
+            cpp("{}_state = rpc::serialization::nanopb::string_encode_state {{ &{} }};", state_prefix, source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_string;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_byte_vector_type(field_type))
+        {
+            cpp("{}_state = rpc::serialization::nanopb::bytes_encode_state {{ {}.data(), {}.size() }};",
+                state_prefix,
+                source_value_expr,
+                source_value_expr);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("{}.nanopb_serialise({}_buffer);", source_value_expr, state_prefix);
+            cpp("{}_state = rpc::serialization::nanopb::bytes_encode_state {{ {}_buffer.data(), {}_buffer.size() }};",
+                state_prefix,
+                state_prefix,
+                state_prefix);
+            cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", target_expr, field_name);
+            cpp("{}.{}.arg = &{}_state;", target_expr, field_name, state_prefix);
+        }
+        else
+        {
+            write_cpp_value_to_nanopb_field(
+                lib, package_name, field_name, field_type, source_value_expr, target_expr, state_prefix, cpp);
+        }
+    }
+
     void write_prepare_nanopb_field_decode(
         const class_entity& lib,
         const std::string& package_name,
@@ -1007,6 +1096,166 @@ namespace nanopb_generator
         }
     }
 
+    void write_prepare_nanopb_variant_decode(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& variant_type,
+        const std::string& wrapper_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        std::vector<std::string> alternative_types;
+        if (!is_variant_type(variant_type, alternative_types))
+            return;
+
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            write_prepare_nanopb_field_decode(
+                lib,
+                package_name,
+                variant_value_field_name(index),
+                alternative_types[index],
+                wrapper_expr,
+                state_prefix + "_" + variant_value_field_name(index),
+                cpp);
+        }
+    }
+
+    void write_cpp_variant_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& variant_type,
+        const std::string& source_value_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        std::vector<std::string> alternative_types;
+        if (!is_variant_type(variant_type, alternative_types))
+            return;
+
+        cpp("if ({}.valueless_by_exception())", source_value_expr);
+        cpp("{{");
+        cpp("throw std::runtime_error(\"Cannot serialize valueless variant\");");
+        cpp("}}");
+
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            const auto current_prefix = state_prefix + "_" + variant_value_field_name(index);
+            if (is_string_type(alternative_types[index]))
+            {
+                cpp("rpc::serialization::nanopb::string_encode_state {}_state;", current_prefix);
+            }
+            else if (is_byte_vector_type(alternative_types[index]))
+            {
+                cpp("rpc::serialization::nanopb::bytes_encode_state {}_state;", current_prefix);
+            }
+            else if (is_json_dom_type(alternative_types[index]))
+            {
+                cpp("std::vector<char> {}_buffer;", current_prefix);
+                cpp("rpc::serialization::nanopb::bytes_encode_state {}_state;", current_prefix);
+            }
+        }
+
+        cpp("{}.{}.index = static_cast<uint32_t>({}.index());", target_expr, field_name, source_value_expr);
+        cpp("switch ({}.index())", source_value_expr);
+        cpp("{{");
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            const auto value_field_name = variant_value_field_name(index);
+            const auto current_prefix = state_prefix + "_" + value_field_name;
+            const auto alternative_expr = "rpc::get<" + std::to_string(index) + ">(" + source_value_expr + ")";
+            const auto wrapper_expr = target_expr + "." + field_name;
+
+            cpp("case {}:", index);
+            cpp("{{");
+            if (is_string_type(alternative_types[index]))
+            {
+                cpp("{}_state = rpc::serialization::nanopb::string_encode_state {{ &{} }};", current_prefix, alternative_expr);
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_string;", wrapper_expr, value_field_name);
+                cpp("{}.{}.arg = &{}_state;", wrapper_expr, value_field_name, current_prefix);
+            }
+            else if (is_byte_vector_type(alternative_types[index]))
+            {
+                cpp("{}_state = rpc::serialization::nanopb::bytes_encode_state {{ {}.data(), {}.size() }};",
+                    current_prefix,
+                    alternative_expr,
+                    alternative_expr);
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", wrapper_expr, value_field_name);
+                cpp("{}.{}.arg = &{}_state;", wrapper_expr, value_field_name, current_prefix);
+            }
+            else if (is_json_dom_type(alternative_types[index]))
+            {
+                cpp("{}.nanopb_serialise({}_buffer);", alternative_expr, current_prefix);
+                cpp("{}_state = rpc::serialization::nanopb::bytes_encode_state {{ {}_buffer.data(), "
+                    "{}_buffer.size() }};",
+                    current_prefix,
+                    current_prefix,
+                    current_prefix);
+                cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_bytes;", wrapper_expr, value_field_name);
+                cpp("{}.{}.arg = &{}_state;", wrapper_expr, value_field_name, current_prefix);
+            }
+            else
+            {
+                write_cpp_value_to_nanopb_field(
+                    lib,
+                    package_name,
+                    value_field_name,
+                    alternative_types[index],
+                    alternative_expr,
+                    wrapper_expr,
+                    current_prefix,
+                    cpp);
+            }
+            cpp("break;");
+            cpp("}}");
+        }
+        cpp("default:");
+        cpp("throw std::runtime_error(\"Unknown variant alternative\");");
+        cpp("}}");
+        cpp("{}.has_{} = true;", target_expr, field_name);
+    }
+
+    void write_nanopb_variant_to_cpp_value(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& variant_type,
+        const std::string& source_wrapper_expr,
+        const std::string& dest_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        std::vector<std::string> alternative_types;
+        if (!is_variant_type(variant_type, alternative_types))
+            return;
+
+        cpp("switch ({}.index)", source_wrapper_expr);
+        cpp("{{");
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            cpp("case {}:", index);
+            cpp("{{");
+            cpp("{} __variant_value {{}};", normalize_type(alternative_types[index]));
+            write_nanopb_field_to_cpp_value(
+                lib,
+                package_name,
+                variant_value_field_name(index),
+                alternative_types[index],
+                source_wrapper_expr,
+                "__variant_value",
+                state_prefix + "_" + variant_value_field_name(index),
+                cpp);
+            cpp("{} = std::move(__variant_value);", dest_expr);
+            cpp("break;");
+            cpp("}}");
+        }
+        cpp("default:");
+        cpp("{} = {}{{}};", dest_expr, normalize_type(variant_type));
+        cpp("break;");
+        cpp("}}");
+    }
+
     void write_cpp_to_nanopb_field(
         const class_entity& lib,
         const std::string& package_name,
@@ -1020,9 +1269,10 @@ namespace nanopb_generator
         if (is_optional_type(member_type))
         {
             const auto inner_type = optional_inner_type(member_type);
+            write_optional_nanopb_encode_state_storage(inner_type, state_prefix + "_value", cpp);
             cpp("if ({}.{}.has_value())", source_expr, member_name);
             cpp("{{");
-            write_cpp_value_to_nanopb_field(
+            write_optional_cpp_value_to_nanopb_field(
                 lib,
                 package_name,
                 "value",
@@ -1037,6 +1287,11 @@ namespace nanopb_generator
             cpp("{{");
             cpp("{}.has_{} = false;", target_expr, member_name);
             cpp("}}");
+        }
+        else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
+        {
+            write_cpp_variant_to_nanopb_field(
+                lib, package_name, member_name, member_type, source_expr + "." + member_name, target_expr, state_prefix, cpp);
         }
         else if (is_pointer_type(member_type))
         {
@@ -1303,6 +1558,11 @@ namespace nanopb_generator
                     current_prefix + "_value",
                     cpp);
             }
+            else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
+            {
+                write_prepare_nanopb_variant_decode(
+                    lib, package_name, member_type, target_expr + "." + member_name, current_prefix, cpp);
+            }
             else if (is_string_type(member_type))
             {
                 cpp("std::string {}_decoded;", current_prefix);
@@ -1445,6 +1705,38 @@ namespace nanopb_generator
                 cpp("{{");
                 cpp("{}.{}.reset();", target_expr, member_name);
                 cpp("}}");
+            }
+            else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
+            {
+                if (optional_wrapper_value_has_nanopb_presence(lib, member_type))
+                {
+                    cpp("if (!{}.has_{})", source_expr, member_name);
+                    cpp("{{");
+                    cpp("{} = {}{{}};", target_expr + "." + member_name, normalize_type(member_type));
+                    cpp("}}");
+                    cpp("else");
+                    cpp("{{");
+                    write_nanopb_variant_to_cpp_value(
+                        lib,
+                        package_name,
+                        member_type,
+                        source_expr + "." + member_name,
+                        target_expr + "." + member_name,
+                        current_prefix,
+                        cpp);
+                    cpp("}}");
+                }
+                else
+                {
+                    write_nanopb_variant_to_cpp_value(
+                        lib,
+                        package_name,
+                        member_type,
+                        source_expr + "." + member_name,
+                        target_expr + "." + member_name,
+                        current_prefix,
+                        cpp);
+                }
             }
             else if (is_pointer_type(member_type))
             {
@@ -1753,6 +2045,10 @@ namespace nanopb_generator
                 write_prepare_nanopb_field_decode(
                     lib, package_name, "value", optional_inner_type(member_type), "msg." + field_name, field_name + "_value", cpp);
             }
+            else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
+            {
+                write_prepare_nanopb_variant_decode(lib, package_name, member_type, "msg." + field_name, field_name, cpp);
+            }
             else if (is_string_type(member_type))
             {
                 cpp("std::string {}_decoded;", field_name);
@@ -1862,6 +2158,18 @@ namespace nanopb_generator
                 cpp("{}.reset();", member_name);
                 cpp("}}");
             }
+            else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
+            {
+                cpp("if (msg.has_{})", field_name);
+                cpp("{{");
+                write_nanopb_variant_to_cpp_value(
+                    lib, package_name, member_type, "msg." + field_name, member_name, field_name, cpp);
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{} = {}{{}};", member_name, normalize_type(member_type));
+                cpp("}}");
+            }
             else if (is_pointer_type(member_type))
             {
                 cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}));",
@@ -1964,7 +2272,23 @@ namespace nanopb_generator
         {
             const auto field_name = proto_generator::sanitize_field_name(parameter->get_name());
             const auto param_type = parameter->get_type();
-            if (is_interface_type(param_type))
+            if (is_optional_type(param_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib,
+                    package_name,
+                    "value",
+                    optional_inner_type(param_type),
+                    "__message." + field_name,
+                    field_name + "_value",
+                    cpp);
+            }
+            else if (std::vector<std::string> variant_alternatives; is_variant_type(param_type, variant_alternatives))
+            {
+                write_prepare_nanopb_variant_decode(
+                    lib, package_name, param_type, "__message." + field_name, field_name, cpp);
+            }
+            else if (is_interface_type(param_type))
             {
                 cpp("std::vector<uint8_t> {}_addr_decoded;", field_name);
                 cpp("rpc::serialization::nanopb::bytes_decode_state {}_addr_state {{ &{}_addr_decoded }};",
@@ -2056,7 +2380,34 @@ namespace nanopb_generator
         const auto field_name = proto_generator::sanitize_field_name(parameter.get_name());
         const auto param_type = parameter.get_type();
 
-        if (is_enum_type(lib, param_type))
+        if (is_optional_type(param_type))
+        {
+            const auto inner_type = optional_inner_type(param_type);
+            write_optional_nanopb_encode_state_storage(inner_type, field_name + "_value", cpp);
+            cpp("if ({}.has_value())", source_name);
+            cpp("{{");
+            write_optional_cpp_value_to_nanopb_field(
+                lib,
+                package_name,
+                "value",
+                inner_type,
+                source_name + ".value()",
+                "__message." + field_name,
+                field_name + "_value",
+                cpp);
+            cpp("__message.has_{} = true;", field_name);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("__message.has_{} = false;", field_name);
+            cpp("}}");
+        }
+        else if (std::vector<std::string> variant_alternatives; is_variant_type(param_type, variant_alternatives))
+        {
+            write_cpp_variant_to_nanopb_field(
+                lib, package_name, field_name, param_type, source_name, "__message", field_name, cpp);
+        }
+        else if (is_enum_type(lib, param_type))
         {
             cpp("__message.{} = static_cast<decltype(__message.{})>(static_cast<std::underlying_type_t<{}>>({}));",
                 field_name,
@@ -2193,7 +2544,43 @@ namespace nanopb_generator
         const auto field_name = proto_generator::sanitize_field_name(parameter.get_name());
         const auto param_type = parameter.get_type();
 
-        if (is_pointer_type(param_type))
+        if (is_optional_type(param_type))
+        {
+            const auto inner_type = optional_inner_type(param_type);
+            cpp("if (__message.has_{})", field_name);
+            cpp("{{");
+            if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+            {
+                cpp("if (!__message.{}.has_value)", field_name);
+                cpp("{{");
+                cpp("throw std::runtime_error(\"Malformed nanopb optional field {}: wrapper is present without "
+                    "value\");",
+                    field_name);
+                cpp("}}");
+            }
+            cpp("{} {}_value {{}};", normalize_type(inner_type), field_name);
+            write_nanopb_field_to_cpp_value(
+                lib, package_name, "value", inner_type, "__message." + field_name, field_name + "_value", field_name + "_value", cpp);
+            cpp("{} = {}_value;", destination_name, field_name);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("{}.reset();", destination_name);
+            cpp("}}");
+        }
+        else if (std::vector<std::string> variant_alternatives; is_variant_type(param_type, variant_alternatives))
+        {
+            cpp("if (__message.has_{})", field_name);
+            cpp("{{");
+            write_nanopb_variant_to_cpp_value(
+                lib, package_name, param_type, "__message." + field_name, destination_name, field_name, cpp);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("{} = {}{{}};", destination_name, normalize_type(param_type));
+            cpp("}}");
+        }
+        else if (is_pointer_type(param_type))
         {
             cpp("{} = __message.{};", destination_name, field_name);
         }

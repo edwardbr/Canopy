@@ -13,19 +13,18 @@ add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
 add_subdirectory(subcomponents/json)
+add_subdirectory(subcomponents/io_uring_config)
 
-# The abstract streaming::stream interface is dual-mode; concrete impls inside
-# c++/streaming (tcp, tls, mbedtls, spsc, attestation, websocket) gate
-# themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
+# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp, tls, mbedtls, spsc,
+# attestation, websocket) gate themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
 add_subdirectory(streaming)
 
 if(CANOPY_BUILD_COROUTINE)
   add_subdirectory(transports/secure_coroutine_module)
 endif()
 
-# io_uring is coroutine-only by design (see project memory). file_system is
-# dual-mode: coroutine builds use the io_uring controller, blocking builds
-# use plain POSIX ::open/::read/::write/::close.
+# io_uring is coroutine-only by design (see project memory). file_system is dual-mode: coroutine builds use the io_uring
+# controller, blocking builds use plain POSIX ::open/::read/::write/::close.
 if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_subdirectory(subcomponents/io_uring)
 endif()
@@ -33,8 +32,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_subdirectory(subcomponents/file_system)
 endif()
 
-# canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes;
-# mbedtls secure streams remain coroutine-only in streaming/mbedtls.
+# canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes; mbedtls secure streams remain coroutine-only
+# in streaming/mbedtls.
 if(CANOPY_BUILD_WEBSOCKET)
   add_subdirectory(subcomponents/http_server)
 endif()
@@ -46,10 +45,13 @@ endif()
 add_subdirectory(transports)
 
 if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # The io_uring stream adapter depends on the low-level io_uring controller target and optionally on
-  # transport_streaming test helpers, so it is configured after both subcomponents/io_uring and transports.
+  # The io_uring stream adapter depends on the low-level io_uring controller target, so it is configured after
+  # subcomponents/io_uring and transports. connection_factory is configured after this so its optional io_uring helpers
+  # can link the stream adapter when it exists.
   add_subdirectory(streaming/io_uring)
 endif()
+
+add_subdirectory(connection_factory)
 
 if(CANOPY_BUILD_TEST)
   add_subdirectory(tests)

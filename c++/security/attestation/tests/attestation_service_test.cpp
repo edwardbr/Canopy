@@ -231,7 +231,7 @@ namespace
     }
 
     void expect_identity_typed_payload(
-        const std::optional<rpc::typed_payload>& payload,
+        const rpc::optional<rpc::typed_payload>& payload,
         uint64_t type_id,
         rpc::encoding encoding,
         const std::string& expected_zone_id)
@@ -251,7 +251,7 @@ namespace
     }
 
     void expect_payload(
-        const std::optional<rpc::typed_payload>& payload,
+        const rpc::optional<rpc::typed_payload>& payload,
         uint64_t type_id,
         rpc::encoding encoding,
         const std::vector<char>& bytes)
@@ -263,7 +263,7 @@ namespace
     }
 
     void expect_protected_payload(
-        const std::optional<rpc::typed_payload>& payload,
+        const rpc::optional<rpc::typed_payload>& payload,
         rpc::encoding encoding)
     {
         ASSERT_TRUE(payload.has_value());

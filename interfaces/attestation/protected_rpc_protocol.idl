@@ -171,7 +171,7 @@ namespace rpc
             rpc::requesting_zone requesting_zone_id;
             rpc::add_ref_options add_ref_options = rpc::add_ref_options::normal;
             std::vector<rpc::back_channel_entry> in_back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct release_plaintext
@@ -181,7 +181,7 @@ namespace rpc
             rpc::caller_zone caller_zone_id;
             rpc::release_options release_options = rpc::release_options::normal;
             std::vector<rpc::back_channel_entry> in_back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct try_cast_plaintext
@@ -191,7 +191,7 @@ namespace rpc
             rpc::remote_object remote_object_id;
             rpc::interface_ordinal interface_id;
             std::vector<rpc::back_channel_entry> in_back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct object_released_plaintext
@@ -200,7 +200,7 @@ namespace rpc
             rpc::remote_object remote_object_id;
             rpc::caller_zone caller_zone_id;
             std::vector<rpc::back_channel_entry> in_back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         struct transport_down_plaintext
@@ -209,7 +209,7 @@ namespace rpc
             rpc::destination_zone destination_zone_id;
             rpc::caller_zone caller_zone_id;
             std::vector<rpc::back_channel_entry> in_back_channel;
-            std::optional<rpc::typed_payload> payload;
+            rpc::optional<rpc::typed_payload> payload;
         };
 
         // Protected send responses hide application error codes and out_buf from

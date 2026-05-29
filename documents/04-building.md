@@ -377,10 +377,14 @@ cmake --build build_debug --target transport_dynamic_library      # Blocking DLL
 cmake --build build_debug --target transport_c_abi                # C ABI DLL transport
 cmake --build build_debug --target transport_streaming            # Stream-backed transport, blocking mode
 cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport, coroutine mode
+cmake --build build_debug --target connection_factory_config_idl  # Generated connection factory options
 cmake --build build_debug_coroutine --target transport_ipc_transport
 cmake --build build_debug_coroutine --target transport_libcoro_host_scheduled_dynamic_library
 cmake --build build_debug_coroutine --target transport_libcoro_dll_scheduled_dynamic_library
 ```
+
+`connection_factory` is an interface library target used from
+`target_link_libraries`, not a standalone build target.
 
 ### Tests
 
@@ -781,7 +785,7 @@ target_link_libraries(my_demo
     PUBLIC
         my_idl                   # Your generated IDL library
         transport_local          # Local transport (if using)
-        transport_streaming      # Stream transport (if using)
+        connection_factory       # Typed/JSON stream/RPC helpers (if using connection factories)
         rpc::rpc                 # Core RPC library
         ${CANOPY_LIBRARIES}        # System libraries
 )
@@ -806,6 +810,7 @@ endif()
 | Local transport | `transport_local` | In-process communication |
 | Blocking DLL transport | `transport_dynamic_library` | In-process child-zone loading |
 | Streaming transport | `transport_streaming` | Stream-backed RPC transport |
+| Connection factory | `connection_factory` | Interface target for typed and JSON-configured stream/RPC helper APIs |
 | IPC transport | `transport_ipc_transport` | Coroutine process-owned transport |
 | Core RPC | `rpc::rpc` | Base RPC functionality |
 | Logging IDL | `logging_idl` | Generated `rpc::log_record` type |

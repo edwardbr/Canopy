@@ -27,7 +27,7 @@ namespace rpc::sgx::coro::enclave
         static std::shared_ptr<host_transport> create(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::shared_ptr<streaming::stream> stream,
+            std::shared_ptr<::streaming::stream> stream,
             connection_handler handler,
             rpc::stream_transport::stream_transport_options options = {});
 
@@ -60,7 +60,7 @@ namespace rpc::sgx::coro::enclave
         host_transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::shared_ptr<streaming::stream> stream,
+            std::shared_ptr<::streaming::stream> stream,
             connection_handler handler,
             rpc::stream_transport::stream_transport_options options);
 

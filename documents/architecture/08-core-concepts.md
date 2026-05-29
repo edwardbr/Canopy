@@ -96,7 +96,8 @@ Zone 1 (Root)
 ### Creating a Root Zone
 
 ```cpp
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
 
 // ... in main()
 args::ArgumentParser parser("My App");

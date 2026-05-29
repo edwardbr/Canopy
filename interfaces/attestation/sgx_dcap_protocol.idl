@@ -90,7 +90,7 @@ namespace rpc
             std::vector<uint8_t> quote;
 
             [description="Optional local or delegated quote-verification result. This is advisory until a verifier has checked the raw quote and, for delegated QvE results, the QvE report/signature and accepted QvE identity."]
-            std::optional<sgx_dcap_verification_result> verification_result;
+            rpc::optional<sgx_dcap_verification_result> verification_result;
         };
         }
     }

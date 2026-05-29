@@ -78,8 +78,7 @@ endif()
 # ######################################################################################################################
 set(_rpc_blocking_executor_sources)
 if(NOT CANOPY_BUILD_COROUTINE)
-  list(APPEND _rpc_blocking_executor_sources
-       include/rpc/internal/executor/blocking_executor.h
+  list(APPEND _rpc_blocking_executor_sources include/rpc/internal/executor/blocking_executor.h
        src/executor/blocking_executor.cpp)
 endif()
 

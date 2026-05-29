@@ -3,7 +3,7 @@
    All rights reserved.
 ]]
 #
-#Fullstack Benchmark CMakeLists.txt Benchmarks covering SPSC and TCP transport with multiple encodings
+# Fullstack Benchmark CMakeLists.txt Benchmarks covering SPSC and TCP transport with multiple encodings
 #
 
 cmake_minimum_required(VERSION 3.24)
@@ -125,9 +125,10 @@ endif()
 set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL" AND TARGET streaming_tls)
   set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET streaming_tls)
-elseif(CANOPY_BUILD_COROUTINE
-       AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
-       AND TARGET streaming_mbedtls)
+elseif(
+  CANOPY_BUILD_COROUTINE
+  AND CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS"
+  AND TARGET streaming_mbedtls)
   set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
 endif()
 
@@ -147,9 +148,8 @@ endif()
 target_compile_definitions(benchmark PRIVATE ${CANOPY_DEFINES})
 if(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
   target_compile_definitions(
-    benchmark
-    PRIVATE CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
-            CANOPY_FULLSTACK_BENCHMARK_CERT_DIR="${CANOPY_CPP_SOURCE_DIR}/benchmarking/streaming/certs")
+    benchmark PRIVATE CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+                      CANOPY_FULLSTACK_BENCHMARK_CERT_DIR="${CANOPY_CPP_SOURCE_DIR}/benchmarking/streaming/certs")
 endif()
 if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
   target_compile_definitions(benchmark PRIVATE CANOPY_BUILD_WEBSOCKET)
@@ -179,6 +179,7 @@ target_link_libraries(
   PUBLIC comprehensive_idl
          transport_local
          transport_streaming
+         connection_factory
          streaming_tcp
          rpc
          ${CANOPY_LIBRARIES})

@@ -1,0 +1,820 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+// Tests for the generator-emitted `from_json_object` / `to_json_object`
+// converters. The converters live in the IDL struct's namespace and are
+// found by ADL through `json::v1::convert::tag<T>`.
+
+#include <chrono>
+#include <string>
+
+#include <gtest/gtest.h>
+
+#include <json/config.h>
+#include <json/convert.h>
+#include <json/json_dom.h>
+#include <json/json_utils.h>
+#include <json/schema_validator.h>
+#include <connection_factory/tcp.h>
+#include <connection_factory_config/connection_factory_config_schema.h>
+#include <example_shared/example_shared_schema.h>
+#include <network_config/network_config_schema.h>
+#include <rpc/rpc_types_schema.h>
+#include <schema_cycle/schema_cycle_schema.h>
+#include <set_fixture/set_fixture_schema.h>
+
+namespace
+{
+    using json::v1::parse;
+    using json::v1::convert::from_json_object;
+    using json::v1::convert::to_json_object;
+
+    TEST(
+        JsonConvert,
+        TcpEndpointRoundTripThroughTypedStruct)
+    {
+        const auto input = parse(R"json({
+            "host": "192.168.0.1",
+            "port": 8443,
+            "ipv6": false,
+            "connect_timeout": 7500
+        })json");
+
+        const auto typed = from_json_object<streaming::tcp::endpoint>(input);
+        EXPECT_EQ(typed.host, "192.168.0.1");
+        EXPECT_EQ(typed.port, 8443);
+        EXPECT_FALSE(typed.ipv6);
+        EXPECT_EQ(typed.connect_timeout, 7500u);
+
+        // Round-trip: typed -> json::v1::object -> typed.
+        const auto round_tripped = from_json_object<streaming::tcp::endpoint>(to_json_object(typed));
+        EXPECT_EQ(round_tripped.host, typed.host);
+        EXPECT_EQ(round_tripped.port, typed.port);
+        EXPECT_EQ(round_tripped.ipv6, typed.ipv6);
+        EXPECT_EQ(round_tripped.connect_timeout, typed.connect_timeout);
+    }
+
+    TEST(
+        JsonConvert,
+        RpcOptionalAcceptsValuesConvertibleToStoredType)
+    {
+        rpc::optional<std::string> direct = "server_transport";
+        ASSERT_TRUE(direct.has_value());
+        EXPECT_EQ(direct.value(), "server_transport");
+
+        direct = "client_transport";
+        ASSERT_TRUE(direct.has_value());
+        EXPECT_EQ(direct.value(), "client_transport");
+
+        rpc::connection_factory_config::named_options named;
+        named.name = "listener_transport";
+        ASSERT_TRUE(named.name.has_value());
+        EXPECT_EQ(named.name.value(), "listener_transport");
+    }
+
+    TEST(
+        JsonConvert,
+        MissingTcpEndpointFieldsUseIdlDefaults)
+    {
+        const auto input = parse(R"json({})json");
+        const auto typed = from_json_object<streaming::tcp::endpoint>(input);
+        EXPECT_EQ(typed.host, "127.0.0.1");
+        EXPECT_EQ(typed.port, 0);
+        EXPECT_FALSE(typed.ipv6);
+        EXPECT_EQ(typed.connect_timeout, 5000u);
+    }
+
+    TEST(
+        JsonConvert,
+        ExplicitNullUsesTcpEndpointDefault)
+    {
+        const auto input = parse(R"json({"host": null, "port": 9000})json");
+        const auto typed = from_json_object<streaming::tcp::endpoint>(input);
+        EXPECT_EQ(typed.host, "127.0.0.1");
+        EXPECT_EQ(typed.port, 9000);
+    }
+
+    TEST(
+        JsonConvert,
+        ToJsonWritesConcreteTcpEndpointDefaults)
+    {
+        streaming::tcp::endpoint typed;
+        typed.port = uint16_t{443};
+        const auto serialised = to_json_object(typed);
+        ASSERT_EQ(serialised.get_type(), json::v1::object::type::map_type);
+        const auto& map = serialised.as_map();
+        EXPECT_EQ(map.size(), 4u);
+        ASSERT_NE(map.find("host"), map.end());
+        ASSERT_NE(map.find("port"), map.end());
+        ASSERT_NE(map.find("ipv6"), map.end());
+        ASSERT_NE(map.find("connect_timeout"), map.end());
+    }
+
+    TEST(
+        JsonConvert,
+        NestedStructIsBuiltViaAdl)
+    {
+        const auto input = parse(R"json({
+            "endpoint": {"host": "10.0.0.1", "port": 18080},
+            "service": {"name": "telemetry"}
+        })json");
+
+        const auto typed = from_json_object<rpc::connection_factory_config::stream_factory_options>(input);
+        EXPECT_EQ(typed.endpoint.host, "10.0.0.1");
+        EXPECT_EQ(typed.endpoint.port, 18080);
+
+        ASSERT_TRUE(typed.service.has_value());
+        ASSERT_TRUE(typed.service->name.has_value());
+        EXPECT_EQ(*typed.service->name, "telemetry");
+    }
+
+    TEST(
+        JsonConvert,
+        RequiredFieldMissingThrows)
+    {
+        // schema_cycle::config_node has a required `name` field with no IDL
+        // default and a recursive optional `children` list of nested nodes.
+        const auto input = parse(R"json({"children": []})json");
+        EXPECT_THROW(static_cast<void>(from_json_object<schema_cycle::config_node>(input)), json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        RecursiveStructPopulatesChildrenViaAdl)
+    {
+        // schema_cycle::config_node declares `children` without a default, so
+        // each nested node must spell its (possibly empty) children list out.
+        const auto input = parse(R"json({
+            "name": "root",
+            "children": [
+                {"name": "child_a", "children": []},
+                {"name": "child_b", "children": []}
+            ]
+        })json");
+
+        const auto typed = from_json_object<schema_cycle::config_node>(input);
+        EXPECT_EQ(typed.name, "root");
+        ASSERT_EQ(typed.children.size(), 2u);
+        EXPECT_EQ(typed.children[0].name, "child_a");
+        EXPECT_EQ(typed.children[1].name, "child_b");
+    }
+
+    TEST(
+        JsonConvert,
+        RequiredVectorMissingThrows)
+    {
+        // No IDL default on `children` means missing the key is an error,
+        // matching the strict-required semantics for non-optional fields.
+        const auto input = parse(R"json({"name": "lonely"})json");
+        EXPECT_THROW(static_cast<void>(from_json_object<schema_cycle::config_node>(input)), json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        EnumRoundTripsByName)
+    {
+        const auto from_string = from_json_object<canopy::network_config::ip_address_family>(parse("\"ipv6\""));
+        EXPECT_EQ(from_string, canopy::network_config::ip_address_family::ipv6);
+
+        const auto from_int = from_json_object<canopy::network_config::ip_address_family>(parse("0"));
+        EXPECT_EQ(from_int, canopy::network_config::ip_address_family::ipv4);
+
+        const auto serialised = to_json_object(canopy::network_config::ip_address_family::ipv6);
+        ASSERT_EQ(serialised.get_type(), json::v1::object::type::string_type);
+        EXPECT_EQ(serialised.get<std::string>(), "ipv6");
+
+        EXPECT_THROW(
+            static_cast<void>(from_json_object<canopy::network_config::ip_address_family>(parse("\"ipx\""))),
+            json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        EnumFieldInStructUsesIdlDefaultWhenMissing)
+    {
+        // tcp_endpoint declares `family = ip_address_family::ipv4` in the IDL.
+        const auto input = parse(R"json({"name": "lo", "port": 22})json");
+        const auto typed = from_json_object<canopy::network_config::tcp_endpoint>(input);
+        EXPECT_EQ(typed.name, "lo");
+        EXPECT_EQ(typed.port, 22);
+        EXPECT_EQ(typed.family, canopy::network_config::ip_address_family::ipv4);
+    }
+
+    TEST(
+        JsonConvert,
+        RpcVariantRoundTripsTagKeyedShape)
+    {
+        // variant_value is rpc::variant<int32_t, std::string>. The new wire
+        // shape keys each alternative by its canonical type tag ("int32" /
+        // "string") rather than the old index-based "caseN" form.
+        const auto input = parse(R"json({
+            "optional_int": 42,
+            "variant_value": {"string": "hello"},
+            "json_value": {"nested": [1, 2, 3]},
+            "optional_json_value": null,
+            "rpc_optional_int": 9,
+            "rpc_optional_json_value": {"x": true}
+        })json");
+
+        const auto typed = from_json_object<xxx::optional_variant_json_holder>(input);
+
+        ASSERT_TRUE(typed.optional_int.has_value());
+        EXPECT_EQ(*typed.optional_int, 42);
+        ASSERT_EQ(typed.variant_value.index(), 1u);
+        EXPECT_EQ(rpc::get<std::string>(typed.variant_value), "hello");
+        ASSERT_EQ(typed.json_value.get_type(), json::v1::object::type::map_type);
+        EXPECT_FALSE(typed.optional_json_value.has_value());
+
+        // Round-trip preserves the tag-keyed variant shape.
+        const auto serialised = to_json_object(typed);
+        const auto& serialised_map = serialised.as_map();
+        ASSERT_NE(serialised_map.find("variant_value"), serialised_map.end());
+        const auto& variant_obj = serialised_map.at("variant_value").as_map();
+        ASSERT_EQ(variant_obj.size(), 1u);
+        EXPECT_EQ(variant_obj.begin()->first, "string");
+    }
+
+    TEST(
+        JsonConvert,
+        VariantUnknownTagThrows)
+    {
+        const auto input = parse(R"json({
+            "optional_int": null,
+            "variant_value": {"wibble": 0},
+            "json_value": null,
+            "rpc_optional_int": null
+        })json");
+        EXPECT_THROW(static_cast<void>(from_json_object<xxx::optional_variant_json_holder>(input)), json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        VariantLegacyCaseKeyIsRejected)
+    {
+        // Clean break with the old wire shape: the index-keyed "caseN" form
+        // no longer reads. Documents the migration contract.
+        const auto input = parse(R"json({
+            "optional_int": null,
+            "variant_value": {"case0": 1},
+            "json_value": null,
+            "rpc_optional_int": null
+        })json");
+        EXPECT_THROW(static_cast<void>(from_json_object<xxx::optional_variant_json_holder>(input)), json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        EnumRoundTripValidatesAgainstGeneratedSchema)
+    {
+        // The schema must accept the string form the converter emits.
+        // Previously the enum schema was integer-only, so a round-tripped
+        // typed value would fail validation against its own schema.
+        canopy::network_config::tcp_endpoint typed;
+        typed.name = "lo";
+        typed.family = canopy::network_config::ip_address_family::ipv6;
+
+        const auto serialised = to_json_object(typed);
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+
+        json::v1::schema::schema_validator validator(schema);
+        const auto result = validator.validate(serialised);
+        EXPECT_TRUE(result) << (result.errors().empty() ? "" : result.errors().front().message);
+    }
+
+    TEST(
+        JsonConvert,
+        RawJsonObjectFieldAcceptsExplicitNull)
+    {
+        // json::v1::object is the late-bound passthrough type; null is a
+        // legitimate JSON value, not "field missing".
+        const auto input = parse(R"json({
+            "optional_int": null,
+            "variant_value": {"int32": 1},
+            "json_value": null,
+            "rpc_optional_int": null
+        })json");
+
+        const auto typed = from_json_object<xxx::optional_variant_json_holder>(input);
+        EXPECT_EQ(typed.json_value.get_type(), json::v1::object::type::null_type);
+    }
+
+    TEST(
+        JsonConvert,
+        VectorOfNestedStructsRoundTrips)
+    {
+        const auto input = parse(R"json({
+            "name": "root",
+            "children": [
+                {"name": "child_a", "children": []}
+            ]
+        })json");
+        const auto typed = from_json_object<schema_cycle::config_node>(input);
+        const auto round_tripped = from_json_object<schema_cycle::config_node>(to_json_object(typed));
+        ASSERT_EQ(round_tripped.children.size(), 1u);
+        EXPECT_EQ(round_tripped.children.front().name, "child_a");
+    }
+
+    TEST(
+        JsonConvert,
+        StringKeyedMapRoundTripsAndValidatesAgainstSchema)
+    {
+        // map_val is std::map<std::string, something_complicated>. The schema
+        // and converter must agree on the wire shape — JSON object, not the
+        // legacy array-of-{k,v}.
+        xxx::something_more_complicated typed;
+        typed.vector_val = {};
+        typed.map_val.emplace("alpha", xxx::something_complicated{});
+        typed.map_val.emplace("beta", xxx::something_complicated{});
+
+        const auto serialised = to_json_object(typed);
+        const auto& serialised_map = serialised.as_map();
+        ASSERT_NE(serialised_map.find("map_val"), serialised_map.end());
+        EXPECT_EQ(serialised_map.at("map_val").get_type(), json::v1::object::type::map_type);
+
+        const auto schema = json::v1::parse(xxx::something_more_complicated::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+        const auto result = validator.validate(serialised);
+        EXPECT_TRUE(result) << (result.errors().empty() ? "" : result.errors().front().message);
+    }
+
+    TEST(
+        JsonConvert,
+        SetFixtureRoundTripValidatesAgainstSchema)
+    {
+        // End-to-end exercise of the set/unordered_set path through an
+        // actual IDL: schema declares uniqueItems, converter writes an array,
+        // and the array passes uniqueItems validation.
+        set_fixture::unique_collections typed;
+        typed.ordered_ids = {1, 2, 3};
+        typed.tags = {"alpha", "beta"};
+
+        const auto serialised = to_json_object(typed);
+        ASSERT_EQ(serialised.get_type(), json::v1::object::type::map_type);
+
+        const auto schema = json::v1::parse(set_fixture::unique_collections::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+        const auto result = validator.validate(serialised);
+        EXPECT_TRUE(result) << (result.errors().empty() ? "" : result.errors().front().message);
+
+        const auto round_tripped = from_json_object<set_fixture::unique_collections>(serialised);
+        EXPECT_EQ(round_tripped.ordered_ids, typed.ordered_ids);
+        EXPECT_EQ(round_tripped.tags, typed.tags);
+    }
+
+    TEST(
+        JsonConvert,
+        SetFixtureRejectsDuplicateInput)
+    {
+        // The converter throws on duplicate input rather than silently
+        // dropping, matching the uniqueItems contract in the schema.
+        const auto input = parse(R"json({
+            "ordered_ids": [1, 2, 2],
+            "tags": ["alpha", "beta"]
+        })json");
+        EXPECT_THROW(static_cast<void>(from_json_object<set_fixture::unique_collections>(input)), json::v1::config_error);
+
+        const auto dup_string = parse(R"json({
+            "ordered_ids": [1, 2, 3],
+            "tags": ["alpha", "alpha"]
+        })json");
+        EXPECT_THROW(
+            static_cast<void>(from_json_object<set_fixture::unique_collections>(dup_string)), json::v1::config_error);
+    }
+
+    TEST(
+        JsonConvert,
+        SchemaRejectsDuplicateArrayForSetField)
+    {
+        // Independent check that the schema itself rejects duplicates, even
+        // before the converter would have a chance to throw.
+        const auto schema = json::v1::parse(set_fixture::unique_collections::get_schema());
+        const auto bad = parse(R"json({
+            "ordered_ids": [1, 1],
+            "tags": ["alpha"]
+        })json");
+        json::v1::schema::schema_validator validator(schema);
+        EXPECT_FALSE(validator.validate(bad));
+    }
+
+    TEST(
+        JsonConvert,
+        VariantRoundTripValidatesAgainstGeneratedSchema)
+    {
+        // The variant schema emits oneOf of {"caseN": <T>} alternatives that
+        // must match exactly what the converter writes.
+        xxx::optional_variant_json_holder typed;
+        typed.variant_value = std::string("payload");
+        typed.json_value = parse(R"json({"nested": [1, 2]})json");
+
+        const auto serialised = to_json_object(typed);
+        const auto schema = json::v1::parse(xxx::optional_variant_json_holder::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+        const auto result = validator.validate(serialised);
+        EXPECT_TRUE(result) << (result.errors().empty() ? "" : result.errors().front().message);
+
+        // The same struct with the integer alternative should also validate.
+        typed.variant_value = int32_t{17};
+        const auto serialised_int = to_json_object(typed);
+        EXPECT_TRUE(validator.validate(serialised_int));
+    }
+
+    TEST(
+        JsonConvert,
+        SchemaRejectsBadVariantShape)
+    {
+        // A tag the schema doesn't enumerate should be rejected. The schema
+        // now lists exactly the canonical alternative tags ("int32" and
+        // "string" for this variant) — anything else fails validation, which
+        // is the layer that catches a bad config before the converter runs.
+        const auto schema = json::v1::parse(xxx::optional_variant_json_holder::get_schema());
+        const auto bad_unknown = parse(R"json({
+            "variant_value": {"wibble": 0},
+            "json_value": null
+        })json");
+        json::v1::schema::schema_validator validator(schema);
+        EXPECT_FALSE(validator.validate(bad_unknown));
+
+        // Legacy "caseN" is also schema-rejected — a clean break from the
+        // index-keyed shape.
+        const auto bad_legacy = parse(R"json({
+            "variant_value": {"case0": 1},
+            "json_value": null
+        })json");
+        EXPECT_FALSE(validator.validate(bad_legacy));
+    }
+
+    TEST(
+        JsonConvert,
+        ConcreteTcpEndpointDefaultsAbsentAndPresent)
+    {
+        // stream_factory_options::endpoint is the IDL-generated concrete TCP
+        // endpoint type. Sparse JSON can omit it; conversion applies the IDL
+        // defaults. Explicit null is handled by overlay policy at the config
+        // boundary rather than by the schema for the concrete field.
+        const auto schema = json::v1::parse(rpc::connection_factory_config::stream_factory_options::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+
+        const auto absent = parse(R"json({})json");
+        EXPECT_TRUE(validator.validate(absent));
+        const auto typed_absent = from_json_object<rpc::connection_factory_config::stream_factory_options>(absent);
+        EXPECT_EQ(typed_absent.endpoint.host, "127.0.0.1");
+        EXPECT_EQ(typed_absent.endpoint.port, 0);
+
+        const auto explicit_null = parse(R"json({"endpoint": null})json");
+        EXPECT_FALSE(validator.validate(explicit_null));
+
+        const auto valid = parse(R"json({"endpoint": {"host": "10.0.0.1", "port": 8443}})json");
+        EXPECT_TRUE(validator.validate(valid));
+        const auto typed_valid = from_json_object<rpc::connection_factory_config::stream_factory_options>(valid);
+        EXPECT_EQ(typed_valid.endpoint.host, "10.0.0.1");
+        EXPECT_EQ(typed_valid.endpoint.port, 8443);
+    }
+
+    TEST(
+        JsonConvert,
+        ConcreteTcpEndpointInvalidInnerIsRejectedBySchema)
+    {
+        // Wrong type for an inner field (port should be integer) should fail
+        // the parent schema. The converter has the same behaviour because
+        // from_json_object<uint16_t> throws when given a string.
+        const auto schema = json::v1::parse(rpc::connection_factory_config::stream_factory_options::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+
+        const auto bad = parse(R"json({"endpoint": {"host": "10.0.0.1", "port": "not-a-number"}})json");
+        EXPECT_FALSE(validator.validate(bad));
+        EXPECT_THROW(
+            static_cast<void>(from_json_object<rpc::connection_factory_config::stream_factory_options>(bad)),
+            std::exception);
+    }
+
+    TEST(
+        JsonConvert,
+        OptionalJsonObjectFieldAcceptsAnyJsonOrNull)
+    {
+        // rpc::optional<json::v1::object> accepts the full JSON spectrum
+        // plus null and absence. The example_shared holder exercises this
+        // because optional_json_value is exactly that type.
+        const auto schema = json::v1::parse(xxx::optional_variant_json_holder::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+
+        // The base shape needs the required fields, plus we vary
+        // optional_json_value across absent / null / object / array.
+        const auto base = R"json("variant_value": {"int32": 1}, "json_value": null)json";
+        const auto absent = parse(std::string("{") + base + "}");
+        EXPECT_TRUE(validator.validate(absent));
+        EXPECT_FALSE(from_json_object<xxx::optional_variant_json_holder>(absent).optional_json_value.has_value());
+
+        const auto explicit_null = parse(std::string("{") + base + R"json(, "optional_json_value": null)json" + "}");
+        EXPECT_TRUE(validator.validate(explicit_null));
+        EXPECT_FALSE(from_json_object<xxx::optional_variant_json_holder>(explicit_null).optional_json_value.has_value());
+
+        const auto raw_object = parse(std::string("{") + base + R"json(, "optional_json_value": {"x": 1})json" + "}");
+        EXPECT_TRUE(validator.validate(raw_object));
+        const auto typed_raw_obj = from_json_object<xxx::optional_variant_json_holder>(raw_object);
+        ASSERT_TRUE(typed_raw_obj.optional_json_value.has_value());
+        EXPECT_EQ(typed_raw_obj.optional_json_value->get_type(), json::v1::object::type::map_type);
+
+        const auto raw_array = parse(std::string("{") + base + R"json(, "optional_json_value": [1,2,3])json" + "}");
+        EXPECT_TRUE(validator.validate(raw_array));
+        const auto typed_raw_arr = from_json_object<xxx::optional_variant_json_holder>(raw_array);
+        ASSERT_TRUE(typed_raw_arr.optional_json_value.has_value());
+        EXPECT_EQ(typed_raw_arr.optional_json_value->get_type(), json::v1::object::type::array_type);
+    }
+
+    TEST(
+        JsonConvert,
+        VariantSchemaFailsClosedForLegacyCaseShape)
+    {
+        // The defence-in-depth check from the earlier audit becomes much
+        // tighter now: legacy {"caseN":…} is not just unsupported by the
+        // converter, the schema actively rejects it.
+        const auto schema = json::v1::parse(xxx::optional_variant_json_holder::get_schema());
+        json::v1::schema::schema_validator validator(schema);
+        const auto bad = parse(R"json({
+            "variant_value": {"case0": 1},
+            "json_value": null
+        })json");
+        EXPECT_FALSE(validator.validate(bad));
+    }
+
+    TEST(
+        JsonConvert,
+        DomNumericEqualityIsLenientAcrossSignedness)
+    {
+        // The DOM and the schema validator now agree that 1 == 1.0 and
+        // signed/unsigned values that represent the same magnitude compare
+        // equal. Strict identity-of-representation is available via the
+        // typed `number` accessors.
+        const auto signed_one = parse(R"json(1)json");
+        const auto float_one = parse(R"json(1.0)json");
+        const auto unsigned_one = parse(R"json(1)json"); // parses unsigned by default
+
+        EXPECT_EQ(signed_one, float_one);
+        EXPECT_EQ(unsigned_one, float_one);
+
+        const auto signed_two = parse(R"json(2)json");
+        EXPECT_NE(signed_one, signed_two);
+
+        const auto signed_neg = parse(R"json(-1)json");
+        EXPECT_NE(unsigned_one, signed_neg);
+    }
+
+    TEST(
+        JsonConvert,
+        JsonDumpIsKeySortedAndStable)
+    {
+        // The YAS JSON writer now sorts map keys, matching the protobuf and
+        // canonical_crypto paths. Two calls produce identical bytes; a map
+        // built in reverse key order serialises in alphabetic order.
+        json::v1::map m;
+        m.emplace("zulu", json::v1::object(int64_t{3}));
+        m.emplace("alpha", json::v1::object(int64_t{1}));
+        m.emplace("mike", json::v1::object(int64_t{2}));
+
+        const auto first = json::v1::dump(json::v1::object(json::v1::map(m)));
+        const auto second = json::v1::dump(json::v1::object(json::v1::map(m)));
+        EXPECT_EQ(first, second);
+        EXPECT_EQ(first, R"({"alpha":1,"mike":2,"zulu":3})");
+    }
+
+    TEST(
+        JsonConvert,
+        SchemaCarriesDefaultsTranslatedFromIdl)
+    {
+        // tcp_endpoint declares `port = 0`, `family = ip_address_family::ipv4`,
+        // and `addr = {}`. The first two translate to JSON literals and land
+        // on the schema; the brace-init form is intentionally skipped because
+        // there is no JSON representation that round-trips through a typed
+        // array.
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+        const auto& definitions = schema.as_map().at("definitions").as_map();
+        const auto& tcp_endpoint = definitions.at("canopy_network_config_tcp_endpoint").as_map();
+        const auto& properties = tcp_endpoint.at("properties").as_map();
+
+        const auto& port_schema = properties.at("port").as_map();
+        ASSERT_NE(port_schema.find("default"), port_schema.end());
+        EXPECT_EQ(port_schema.at("default"), json::v1::object(int64_t{0}));
+
+        const auto& family_schema = properties.at("family").as_map();
+        ASSERT_NE(family_schema.find("default"), family_schema.end());
+        EXPECT_EQ(family_schema.at("default"), json::v1::object(std::string("ipv4")));
+
+        // addr's IDL default is `{}`, which we deliberately do not translate.
+        const auto& addr_schema = properties.at("addr").as_map();
+        EXPECT_EQ(addr_schema.find("default"), addr_schema.end());
+    }
+
+    TEST(
+        JsonConvert,
+        FieldsWithIdlDefaultsAreNotMarkedRequired)
+    {
+        // The schema's `required` list now matches the converter's "must be
+        // supplied" rule: a field with an IDL default is omittable because
+        // the converter applies the default on its behalf.
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+        const auto& definitions = schema.as_map().at("definitions").as_map();
+        const auto& tcp_endpoint = definitions.at("canopy_network_config_tcp_endpoint").as_map();
+        const auto& required = tcp_endpoint.at("required").as_array();
+
+        // `name` has no default → required. The rest have defaults.
+        ASSERT_EQ(required.size(), 1u);
+        EXPECT_EQ(required[0], json::v1::object(std::string("name")));
+    }
+
+    TEST(
+        JsonConvert,
+        SchemaDefaultsOverlayPopulatesIdlDefaults)
+    {
+        // schema_default_values walks the full schema document (entering
+        // through the top-level $ref) and produces a JSON object the
+        // converter can accept. After overlay the converter sees `family`
+        // already populated from the schema default and never has to fall
+        // back to the IDL expression.
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+        const auto schema_defaults = json::v1::schema_default_values(schema);
+        const auto& schema_defaults_map = schema_defaults.as_map();
+        ASSERT_NE(schema_defaults_map.find("port"), schema_defaults_map.end());
+        ASSERT_NE(schema_defaults_map.find("family"), schema_defaults_map.end());
+
+        const auto user_input = json::v1::parse(R"json({"name": "lo"})json");
+        const auto overlayed = json::v1::merge_overlay(schema_defaults, user_input);
+        const auto typed = from_json_object<canopy::network_config::tcp_endpoint>(overlayed);
+        EXPECT_EQ(typed.name, "lo");
+        EXPECT_EQ(typed.port, 0);
+        EXPECT_EQ(typed.family, canopy::network_config::ip_address_family::ipv4);
+    }
+
+    TEST(
+        JsonConvert,
+        SchemaDefaultsAndConverterFallbackAgree)
+    {
+        // Parity check: with and without the overlay the converter produces
+        // the same typed result. The C++ struct-default initializer, the
+        // converter's else branch, and the schema's default annotation must
+        // all carry the same IDL-declared value.
+        const auto user_input = json::v1::parse(R"json({"name": "lo"})json");
+        const auto without_overlay = from_json_object<canopy::network_config::tcp_endpoint>(user_input);
+
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+        const auto schema_defaults = json::v1::schema_default_values(schema);
+        const auto overlayed = json::v1::merge_overlay(schema_defaults, user_input);
+        const auto with_overlay = from_json_object<canopy::network_config::tcp_endpoint>(overlayed);
+
+        EXPECT_EQ(without_overlay.port, with_overlay.port);
+        EXPECT_EQ(without_overlay.family, with_overlay.family);
+        EXPECT_EQ(without_overlay.name, with_overlay.name);
+    }
+
+    TEST(
+        JsonConvert,
+        ScopedIntegerConstantIsNotTranslatedAsEnumName)
+    {
+        // rpc::zone_address_args::version is `uint8_t = default_values::version_3;`
+        // — `default_values` is a struct of static constexprs, not an IDL
+        // enum. The translator must refuse: emitting `"default":
+        // "version_3"` next to `"type": "integer"` would contradict the
+        // field's declared type and any external validator would reject
+        // the value. The C++ path still pastes the constexpr verbatim.
+        const auto schema = json::v1::parse(rpc::zone_address_args::get_schema());
+        const auto& definitions = schema.as_map().at("definitions").as_map();
+        const auto& zaa = definitions.at("rpc_zone_address_args").as_map();
+        const auto& version_schema = zaa.at("properties").as_map().at("version").as_map();
+
+        EXPECT_NE(version_schema.find("type"), version_schema.end());
+        EXPECT_EQ(version_schema.find("default"), version_schema.end());
+    }
+
+    TEST(
+        JsonConvert,
+        EnumDefaultIsWrappedInAllOfBesideDefault)
+    {
+        // Draft-07 ignores siblings of `$ref`. The schema now emits
+        // {default, allOf:[{$ref}]} so an external Draft-07 client picks
+        // the default up correctly.
+        const auto schema = json::v1::parse(canopy::network_config::tcp_endpoint::get_schema());
+        const auto& definitions = schema.as_map().at("definitions").as_map();
+        const auto& tcp_endpoint = definitions.at("canopy_network_config_tcp_endpoint").as_map();
+        const auto& family_schema = tcp_endpoint.at("properties").as_map().at("family").as_map();
+
+        ASSERT_NE(family_schema.find("default"), family_schema.end());
+        EXPECT_EQ(family_schema.find("$ref"), family_schema.end());
+        ASSERT_NE(family_schema.find("allOf"), family_schema.end());
+
+        const auto& all_of = family_schema.at("allOf").as_array();
+        ASSERT_EQ(all_of.size(), 1u);
+        const auto& ref_only = all_of[0].as_map();
+        EXPECT_NE(ref_only.find("$ref"), ref_only.end());
+
+        // The overlay still works against the allOf-wrapped form because
+        // schema_default_values walks allOf recursively.
+        const auto schema_defaults = json::v1::schema_default_values(schema);
+        const auto& defaults_map = schema_defaults.as_map();
+        ASSERT_NE(defaults_map.find("family"), defaults_map.end());
+        EXPECT_EQ(defaults_map.at("family"), json::v1::object(std::string("ipv4")));
+    }
+
+    TEST(
+        JsonConvert,
+        TcpOptionsMaterialiserAppliesDefaultsAndPreservesOverrides)
+    {
+        // Public JSON entry points convert raw options to the typed form
+        // exactly once via rpc::tcp::materialise_tcp_options. Verify the
+        // overlay+convert step produces the expected typed result and that
+        // user overrides win over the TCP component defaults.
+        const auto user_input = json::v1::parse(R"json({
+            "endpoint": {"host": "10.0.0.42", "port": 9000}
+        })json");
+        const auto materialised = rpc::tcp::materialise_tcp_options(user_input);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        const auto& typed = materialised.options;
+
+        EXPECT_EQ(typed.endpoint.host, "10.0.0.42");
+        EXPECT_EQ(typed.endpoint.port, 9000);
+        EXPECT_FALSE(typed.endpoint.ipv6);
+        EXPECT_EQ(typed.endpoint.connect_timeout, 5000u);
+    }
+
+    TEST(
+        JsonConvert,
+        TcpOptionsMaterialiserRejectsInvalidJson)
+    {
+        // Validation still happens — just once. An unknown top-level key
+        // is rejected by the schema before the converter runs.
+        const auto bad_input = json::v1::parse(R"json({
+            "unsupported_key": 1
+        })json");
+        EXPECT_EQ(rpc::tcp::materialise_tcp_options(bad_input).error_code, rpc::error::INVALID_DATA());
+    }
+
+    TEST(
+        JsonConvert,
+        TcpOptionsMaterialiserTreatsNullOverlayAsOmitted)
+    {
+        // User config is a sparse overlay, not a complete object to validate
+        // before defaults. With the default null policy, null means "not
+        // supplied", so a null override disappears before final validation.
+        const auto null_keyed = json::v1::parse(R"json({
+            "unsupported_key": null
+        })json");
+        EXPECT_EQ(rpc::tcp::materialise_tcp_options(null_keyed).error_code, rpc::error::OK());
+    }
+
+    TEST(
+        JsonConvert,
+        TcpOptionsMaterialiserUsesGeneratedEncodingEnum)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "rpc": {"encoding": "yas_binary"}
+        })json");
+        const auto materialised = rpc::tcp::materialise_tcp_options(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        ASSERT_TRUE(materialised.options.rpc.has_value());
+        ASSERT_TRUE(materialised.options.rpc->encoding.has_value());
+        EXPECT_EQ(*materialised.options.rpc->encoding, rpc::encoding::yas_binary);
+
+        const auto legacy_alias = json::v1::parse(R"json({
+            "rpc": {"encoding": "binary"}
+        })json");
+        EXPECT_EQ(rpc::tcp::materialise_tcp_options(legacy_alias).error_code, rpc::error::INVALID_DATA());
+    }
+
+    TEST(
+        JsonConvert,
+        IoUringTimeoutStrategyUsesGeneratedEnum)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "io_uring": {"stream": {"timeout_strategy": "nonblocking_poll"}}
+        })json");
+        const auto materialised = rpc::connection_factory::materialise_options(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        ASSERT_TRUE(materialised.options.io_uring.has_value());
+        EXPECT_TRUE(materialised.options.io_uring->controller.use_sqpoll);
+        EXPECT_EQ(materialised.options.io_uring->controller.fixed_file_count, uint32_t{128});
+        EXPECT_TRUE(materialised.options.io_uring->controller.register_fixed_files);
+        EXPECT_EQ(
+            materialised.options.io_uring->stream.timeout_strategy,
+            streaming::io_uring::receive_timeout_strategy::nonblocking_poll);
+
+        const auto invalid = json::v1::parse(R"json({
+            "io_uring": {"stream": {"timeout_strategy": "poll_once"}}
+        })json");
+        EXPECT_EQ(rpc::connection_factory::materialise_options(invalid).error_code, rpc::error::INVALID_DATA());
+    }
+
+    TEST(
+        JsonConvert,
+        UnknownPropertiesAreIgnoredButPreservedTypeIsCorrect)
+    {
+        // Unknown JSON properties pass through silently — schema validation is
+        // the place to reject unexpected keys; the converter just builds the
+        // typed view of what it recognises.
+        const auto input = parse(R"json({
+            "host": "127.0.0.1",
+            "uninvented_key": 42
+        })json");
+        const auto typed = from_json_object<streaming::tcp::endpoint>(input);
+        EXPECT_EQ(typed.host, "127.0.0.1");
+    }
+}

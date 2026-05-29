@@ -8,6 +8,7 @@ typedef int error_code;
 #import "rpc/rpc_types.idl"
 #import "rpc/noop.idl"
 #import "streaming/stream_transport.idl"
+#import "json/json.idl"
 
 // Control contract for secure coroutine modules whose runtime cannot directly
 // own kernel-visible resources. Ordinary same-zone coroutine code should use
@@ -28,6 +29,7 @@ namespace rpc
                 shutting_down = 6,
                 stopped = 7,
             };
+
             struct init_request
             {
                 rpc::zone parent_zone_id;
@@ -49,7 +51,10 @@ namespace rpc
                 error_code* error = 0;
                 uint64_t ticks_per_millisecond = 0;
                 uint64_t initial_unix_epoch_milliseconds = 0;
-                std::map<std::string, std::string> options;
+                // Runtime receives one raw JSON fragment per app. Each app
+                // validates and converts its own fragment against its own IDL
+                // schema.
+                std::map<std::string, json::v1::object> applications = {};
             };
 
             struct enter_thread_request

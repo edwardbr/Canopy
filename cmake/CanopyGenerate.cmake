@@ -197,6 +197,8 @@ function(
   set(stub_path ${sub_directory}/${base_filename}_stub.cpp)
   set(stub_header_path ${sub_directory}/${base_filename}_stub.h)
   set(full_header_path ${output_path}/include/${header_path})
+  set(json_schema_header_path ${sub_directory}/${base_filename}_schema.h)
+  set(full_json_schema_header_path ${output_path}/include/${json_schema_header_path})
   set(full_proxy_path ${output_path}/src/${proxy_path})
   set(full_stub_path ${output_path}/src/${stub_path})
   set(full_stub_header_path ${output_path}/include/${stub_header_path})
@@ -318,10 +320,12 @@ function(
     message("defines ${params_defines}")
     message("mock ${params_mock}")
     message("header_path ${header_path}")
+    message("json_schema_header_path ${json_schema_header_path}")
     message("proxy_path ${proxy_path}")
     message("stub_path ${stub_path}")
     message("stub_header_path ${stub_header_path}")
     message("full_header_path ${full_header_path}")
+    message("full_json_schema_header_path ${full_json_schema_header_path}")
     message("full_proxy_path ${full_proxy_path}")
     message("full_stub_path ${full_stub_path}")
     message("full_stub_header_path ${full_stub_header_path}")
@@ -419,7 +423,12 @@ function(
   endif()
 
   # Build the list of output files based on enabled formats
-  set(GENERATOR_OUTPUTS ${full_header_path} ${full_proxy_path} ${full_stub_header_path} ${full_stub_path})
+  set(GENERATOR_OUTPUTS
+      ${full_header_path}
+      ${full_json_schema_header_path}
+      ${full_proxy_path}
+      ${full_stub_header_path}
+      ${full_stub_path})
 
   if(generate_yas)
     list(APPEND GENERATOR_OUTPUTS ${full_yas_path})
@@ -732,7 +741,12 @@ function(
   endif()
 
   # Build library sources based on enabled formats
-  set(IDL_SOURCES ${full_header_path} ${full_stub_header_path} ${full_stub_path} ${full_proxy_path})
+  set(IDL_SOURCES
+      ${full_header_path}
+      ${full_json_schema_header_path}
+      ${full_stub_header_path}
+      ${full_stub_path}
+      ${full_proxy_path})
 
   if(generate_yas)
     list(APPEND IDL_SOURCES ${full_yas_path})
@@ -744,7 +758,12 @@ function(
 
   set(IDL_SOURCES_ENCLAVE ${IDL_SOURCES})
   if(generate_nanopb)
-    set(IDL_SOURCES_ENCLAVE ${full_header_path} ${full_stub_header_path} ${full_stub_path} ${full_proxy_path})
+    set(IDL_SOURCES_ENCLAVE
+        ${full_header_path}
+        ${full_json_schema_header_path}
+        ${full_stub_header_path}
+        ${full_stub_path}
+        ${full_proxy_path})
     if(generate_yas)
       list(APPEND IDL_SOURCES_ENCLAVE ${full_yas_path})
     endif()

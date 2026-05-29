@@ -23,10 +23,7 @@ add_subdirectory(libcoro_host_scheduled_dynamic_library_dll)
 add_subdirectory(libcoro_spsc_dynamic_dll)
 add_subdirectory(test_host)
 add_subdirectory(serialiser_test)
-# this is a way to detect if we have nlohman that we can use for testing json schemas
-if(DEFINED NLOHMANN_JSON_CONFIG_INSTALL_DIR)
-  add_subdirectory(json_schema_test)
-endif()
+add_subdirectory(json_schema_test)
 
 if(CANOPY_BUILD_ENCLAVE)
   add_subdirectory(test_enclave)

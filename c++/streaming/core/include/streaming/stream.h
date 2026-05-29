@@ -6,7 +6,7 @@
 #include <rpc/rpc.h>
 
 #ifndef FOR_SGX
-#  include <canopy/network_config/network_args.h>
+#  include <canopy/network_config/types.h>
 #endif
 
 namespace streaming
@@ -32,8 +32,7 @@ namespace streaming
         // Receive data into buffer
         virtual auto receive(
             rpc::mutable_byte_span buffer,
-            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> CORO_TASK(receive_result) = 0;
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0}) -> CORO_TASK(receive_result) = 0;
 
         // Async send-all: keeps sending until entire span is consumed or error.
         virtual auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) = 0;

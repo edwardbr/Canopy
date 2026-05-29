@@ -45,8 +45,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   target_include_directories(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     transport_sgx_coroutine_enclave_service_host_test
-    PUBLIC transport_sgx_coroutine_enclave_headers
-           transport_secure_coroutine_module_headers
+    PUBLIC transport_sgx_coroutine_enclave_headers transport_secure_coroutine_module_headers
     PRIVATE canopy::security_attestation
             canopy_io_uring
             route_attestation_protocol_idl

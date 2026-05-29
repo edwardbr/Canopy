@@ -18,8 +18,7 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC streaming
     PRIVATE wslay rpc libcoro)
 else()
-  # Blocking-mode WS stream operates over a dual-mode streaming::stream and
-  # the pure-C wslay library; no libcoro link.
+  # Blocking-mode WS stream operates over a dual-mode streaming::stream and the pure-C wslay library; no libcoro link.
   target_link_libraries(
     streaming_websocket
     PUBLIC streaming

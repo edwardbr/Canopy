@@ -32,8 +32,6 @@ add_library(yas_common INTERFACE)
 
 target_include_directories(yas_common SYSTEM INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/yas/include>")
 
-add_subdirectory(json)
-
 # spdlog is used by telemetry (CANOPY_USE_TELEMETRY) and test targets (CANOPY_BUILD_TEST)
 if(CANOPY_USE_TELEMETRY OR CANOPY_BUILD_TEST)
   set(SPDLOG_FMT_EXTERNAL_HO
@@ -44,11 +42,6 @@ if(CANOPY_USE_TELEMETRY OR CANOPY_BUILD_TEST)
       CACHE BOOL "no exceptions" FORCE)
   set(SPDLOG_INSTALL OFF)
   add_subdirectory(spdlog)
-endif()
-
-# json-schema-validator is only used by tests/json_schema_test (requires NLOHMANN_JSON_CONFIG_INSTALL_DIR)
-if(DEFINED NLOHMANN_JSON_CONFIG_INSTALL_DIR)
-  add_subdirectory(json-schema-validator)
 endif()
 
 # wslay + llhttp are both needed by the dual-mode WebSocket framing stream

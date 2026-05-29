@@ -14,11 +14,13 @@
 #include <rpc/rpc.h>
 #include <chrono>
 #include <new>
+#include <map>
 #include <system_error>
 #include <thread>
 #include <tuple>
 #include <utility>
 #include <secure_coroutine_module/secure_coroutine_module.h>
+#include <transports/secure_coroutine_module/startup_options.h>
 
 #ifndef CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG
 #  define CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG SGX_DEBUG_FLAG
@@ -38,10 +40,6 @@ namespace rpc::sgx::coro::host
         constexpr rpc::encoding sgx_bootstrap_init_request_encoding = rpc::encoding::yas_binary;
         constexpr uint64_t sgx_bootstrap_init_request_encoding_value
             = static_cast<uint64_t>(sgx_bootstrap_init_request_encoding);
-        constexpr size_t max_startup_option_count = 64;
-        constexpr size_t max_startup_option_key_bytes = 128;
-        constexpr size_t max_startup_option_value_bytes = 4096;
-        constexpr size_t max_startup_options_total_bytes = 64U * 1024U;
 
         inline auto startup_load_error(const error_code* value) noexcept -> error_code
         {
@@ -83,12 +81,12 @@ namespace rpc::sgx::coro::host
             startup_store_error(&error, 0);
         }
 
-        bool signal_peer_closed(streaming::spsc_queue::queue_type* send_queue)
+        bool signal_peer_closed(::streaming::spsc_queue::queue_type* send_queue)
         {
             if (!send_queue)
                 return false;
 
-            streaming::spsc_queue::blob close_blob{};
+            ::streaming::spsc_queue::blob close_blob{};
             return send_queue->push(close_blob);
         }
 
@@ -194,37 +192,12 @@ namespace rpc::sgx::coro::host
             startup_store_state(startup_state_word, startup_state::failed);
         }
 
-        int validate_startup_options(
-            const std::map<
-                std::string,
-                std::string>& options)
-        {
-            if (options.size() > max_startup_option_count)
-                return rpc::error::RESOURCE_EXHAUSTED();
-
-            size_t total_bytes = 0;
-            for (const auto& [key, value] : options)
-            {
-                if (key.empty() || key.size() > max_startup_option_key_bytes || value.size() > max_startup_option_value_bytes)
-                {
-                    return rpc::error::INVALID_DATA();
-                }
-
-                const auto entry_bytes = key.size() + value.size();
-                if (total_bytes > max_startup_options_total_bytes - entry_bytes)
-                    return rpc::error::RESOURCE_EXHAUSTED();
-                total_bytes += entry_bytes;
-            }
-
-            return rpc::error::OK();
-        }
-
     }
 
-    class transport::deferred_stream : public streaming::stream
+    class transport::deferred_stream : public ::streaming::stream
     {
     public:
-        void bind(std::shared_ptr<streaming::stream> stream) { stream_ = std::move(stream); }
+        void bind(std::shared_ptr<::streaming::stream> stream) { stream_ = std::move(stream); }
 
         auto receive(
             rpc::mutable_byte_span buffer,
@@ -255,13 +228,13 @@ namespace rpc::sgx::coro::host
             CO_RETURN;
         }
 
-        [[nodiscard]] auto get_peer_info() const -> streaming::peer_info override
+        [[nodiscard]] auto get_peer_info() const -> ::streaming::peer_info override
         {
-            return stream_ ? stream_->get_peer_info() : streaming::peer_info{};
+            return stream_ ? stream_->get_peer_info() : ::streaming::peer_info{};
         }
 
     private:
-        std::shared_ptr<streaming::stream> stream_;
+        std::shared_ptr<::streaming::stream> stream_;
     };
 
     transport::enclave_owner::thread_state::thread_state(uint64_t eid)
@@ -394,17 +367,14 @@ namespace rpc::sgx::coro::host
         enclave_worker_thread_count_.store(worker_thread_count, std::memory_order_release);
     }
 
-    int transport::set_enclave_startup_options(
-        std::map<
-            std::string,
-            std::string> options)
+    int transport::set_enclave_startup_options(json::v1::object options)
     {
-        auto validation_error = validate_startup_options(options);
-        if (validation_error != rpc::error::OK())
-            return validation_error;
+        auto materialised = rpc::v4::secure_coroutine_module::materialise_startup_applications(options);
+        if (materialised.error_code != rpc::error::OK())
+            return materialised.error_code;
 
         std::lock_guard lock(enclave_startup_options_mutex_);
-        enclave_startup_options_ = std::move(options);
+        enclave_startup_applications_ = std::move(materialised.applications);
         return rpc::error::OK();
     }
 
@@ -551,10 +521,10 @@ namespace rpc::sgx::coro::host
         auto adjacent_zone_id = zone_result.zone_id;
         set_adjacent_zone_id(adjacent_zone_id);
 
-        host_to_enclave_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
-        enclave_to_host_queue_ = std::make_shared<streaming::spsc_queue::queue_type>();
+        host_to_enclave_queue_ = std::make_shared<::streaming::spsc_queue::queue_type>();
+        enclave_to_host_queue_ = std::make_shared<::streaming::spsc_queue::queue_type>();
 
-        queue_stream_ = std::make_shared<streaming::spsc_queue::stream>(
+        queue_stream_ = std::make_shared<::streaming::spsc_queue::stream>(
             host_to_enclave_queue_, enclave_to_host_queue_, svc->get_scheduler());
         deferred_stream_->bind(queue_stream_);
 
@@ -588,10 +558,10 @@ namespace rpc::sgx::coro::host
         // spawn the main thread for this enclave
         const auto worker_thread_count = enclave_worker_thread_count_.load(std::memory_order_acquire);
         {
-            std::map<std::string, std::string> startup_options;
+            std::map<std::string, json::v1::object> startup_applications;
             {
                 std::lock_guard lock(enclave_startup_options_mutex_);
-                startup_options = enclave_startup_options_;
+                startup_applications = enclave_startup_applications_;
             }
             auto* host_to_enclave_queue = host_to_enclave_queue_.get();
             auto* enclave_to_host_queue = enclave_to_host_queue_.get();
@@ -599,7 +569,6 @@ namespace rpc::sgx::coro::host
             // This ECALL blob is decoded before the enclave-side service
             // exists. Keep it on the fixed SGX bootstrap ABI; the stream/RPC
             // layers use service/request encoding after the link is live.
-            const auto request_encoding = sgx_bootstrap_init_request_encoding;
             // These host-provided clock values are bootstrap hints only. They
             // must not be treated as trusted time for certificate validation,
             // attestation decisions, or other enclave security policy.
@@ -613,10 +582,9 @@ namespace rpc::sgx::coro::host
                 &state->startup_error_code_,
                 host_ticks_per_millisecond(),
                 host_unix_epoch_milliseconds(),
-                std::move(startup_options)};
+                std::move(startup_applications)};
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
-            auto request_blob
-                = std::make_shared<std::vector<char>>(rpc::serialise<std::vector<char>>(request, request_encoding));
+            auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));
             owner->init_thread_ = std::thread(
                 [state, request_blob = std::move(request_blob), request_type_id]()
                 {

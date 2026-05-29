@@ -4,12 +4,28 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "network_config/network_config.idl"
 #import "websocket/websocket_protocol.idl"
 
 namespace websocket_demo
 {
     namespace v1
     {
+        [status=demo]
+        struct tls_options
+        {
+            std::string certificate_path;
+            std::string private_key_path;
+        };
+
+        [status=demo]
+        struct server_options
+        {
+            canopy::network_config::tcp_endpoint listen;
+            std::string path;
+            rpc::optional<tls_options> tls;
+        };
+
         // Inbound callback interface (enclave -> browser). Hosts both LLM
         // token streaming (piece) and video egress (push_frame). Sharing one
         // interface here is pragmatic: the websocket transport binds a single

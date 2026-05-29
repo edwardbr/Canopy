@@ -1,0 +1,45 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace canopy
+{
+    namespace io_uring
+    {
+        struct host_controller_options
+        {
+            uint32_t queue_depth = 256;
+            bool use_sqpoll = true;
+            bool use_single_issuer = true;
+            bool use_coop_taskrun = false;
+            uint32_t sq_thread_idle_ms = 2000;
+            uint32_t buffer_count = 256;
+            uint32_t buffer_size = 4096;
+            bool register_buffers = false;
+            uint32_t fixed_file_count = 128;
+            bool register_fixed_files = true;
+            bool cleanup_on_scheduler = true;
+        };
+    }
+}
+
+namespace streaming
+{
+    namespace io_uring
+    {
+        enum receive_timeout_strategy : uint8_t
+        {
+            linked_timeout = 0,
+            nonblocking_poll = 1,
+        };
+
+        struct stream_options
+        {
+            uint64_t max_transfer_size = 0;
+            receive_timeout_strategy timeout_strategy = receive_timeout_strategy::linked_timeout;
+        };
+    }
+}

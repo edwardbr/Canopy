@@ -206,6 +206,29 @@ CORO_TASK(error_code) bad_example(int item)
 | Same machine, high perf | SPSC | Lock-free, fast |
 | Secure computation | SGX | Hardware isolation |
 
+### Factory Configuration
+
+For stream-backed factories, keep JSON at process boundaries and use typed
+options inside the application.
+
+Do:
+
+- Use `rpc::connection_factory_config::stream_factory_options` for TCP and SPSC factory
+  calls in normal C++ code.
+- Use `json::v1::load_typed_config_file` or `json::v1::load_typed_config` when a
+  config file/blob plus command-line overrides must become a generated IDL
+  options type.
+- Use `<connection_factory/io_uring_options.h>` to convert io_uring JSON into typed controller,
+  listen, and stream options before calling core io_uring mechanics.
+
+Don't:
+
+- Thread raw `json::v1::object` lookups through component internals when a typed
+  options object can describe the same contract.
+- Depend on flat legacy aliases for stream factory options. Exact nested schema
+  names such as `endpoint.port`, `service.name`, and `rpc.encoding` are the
+  supported configuration surface.
+
 ## 6. Zone Hierarchy Design
 
 ### Do

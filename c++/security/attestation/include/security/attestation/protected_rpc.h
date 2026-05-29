@@ -105,7 +105,7 @@ namespace canopy::security::attestation
         uint64_t protocol_version) -> bool;
 
     [[nodiscard]] auto is_protected_rpc_payload(
-        const std::optional<rpc::typed_payload>& payload,
+        const rpc::optional<rpc::typed_payload>& payload,
         uint64_t protocol_version) -> bool;
 
     // True when a send/post-style interface+method pair is the protected envelope carrier.

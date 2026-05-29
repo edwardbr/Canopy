@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -14,15 +13,19 @@
 #include <stdexcept>
 #include <thread>
 #include <tuple>
+#include <utility>
 #include <vector>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
 #include <coro/coro.hpp>
 #include <io_uring/host_controller.h>
+#include <json/convert.h>
+#include <json/json_dom.h>
 #include <rpc/rpc.h>
 #include <transports/sgx_coroutine/host/connect.h>
 #include <transports/sgx_coroutine/host/transport.h>
 #include <websocket_demo/websocket_demo.h>
+#include <websocket_demo/websocket_demo_schema.h>
 
 #ifndef CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH
 #  error "CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH must be defined for websocket_enclave_server"
@@ -33,6 +36,8 @@
 
 namespace
 {
+    constexpr const char* websocket_demo_app_name = "websocket_demo_enclave";
+
     volatile std::sig_atomic_t g_stop_requested = 0;
 
     struct command_line
@@ -44,7 +49,7 @@ namespace
         std::string static_root_path;
         std::string enclave_path;
         uint32_t enclave_worker_threads{0};
-        std::map<std::string, std::string> enclave_options;
+        json::v1::object enclave_options{json::v1::map{}};
     };
 
     void on_signal(int signal_number)
@@ -133,7 +138,7 @@ namespace
             parser, "file", "Path to TLS certificate file (PEM format); provide with --key to enable TLS", {"cert"}, "");
         args::ValueFlag<std::string> key_file(
             parser, "file", "Path to TLS private key file (PEM format); provide with --cert to enable TLS", {"key"}, "");
-        args::ValueFlag<std::string> static_root(
+        args::ValueFlag<std::string> path(
             parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
         args::ValueFlag<std::string> enclave_path(
             parser, "path", "Path to the signed websocket demo enclave image", {"enclave"}, CANOPY_WEBSOCKET_DEMO_ENCLAVE_PATH);
@@ -171,7 +176,7 @@ namespace
         output.listen_address = listen_ep.to_string();
         output.certificate_path = args::get(cert_file);
         output.private_key_path = args::get(key_file);
-        output.static_root_path = args::get(static_root);
+        output.static_root_path = args::get(path);
         output.enclave_path = args::get(enclave_path);
         output.enclave_worker_threads = args::get(enclave_worker_threads);
 
@@ -180,19 +185,20 @@ namespace
         if (output.enclave_path.empty())
             throw std::invalid_argument("--enclave must not be empty");
 
-        const size_t listen_address_byte_count
-            = listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? listen_ep.addr.size() : 4;
+        websocket_demo::v1::server_options enclave_options;
+        enclave_options.listen = listen_ep;
+        enclave_options.path = output.static_root_path;
+        if (!output.certificate_path.empty() && !output.private_key_path.empty())
+        {
+            websocket_demo::v1::tls_options tls_options;
+            tls_options.certificate_path = output.certificate_path;
+            tls_options.private_key_path = output.private_key_path;
+            enclave_options.tls = std::move(tls_options);
+        }
 
-        output.enclave_options.emplace("listen-address", output.listen_address);
-        output.enclave_options.emplace(
-            "listen-family", listen_ep.family == canopy::network_config::ip_address_family::ipv6 ? "ipv6" : "ipv4");
-        output.enclave_options.emplace(
-            "listen-address-bytes",
-            std::string(reinterpret_cast<const char*>(listen_ep.addr.data()), listen_address_byte_count));
-        output.enclave_options.emplace("listen-port", std::to_string(output.port));
-        output.enclave_options.emplace("static-root", output.static_root_path);
-        output.enclave_options.emplace("cert", output.certificate_path);
-        output.enclave_options.emplace("key", output.private_key_path);
+        using json::v1::convert::to_json_object;
+        output.enclave_options
+            = json::v1::object(json::v1::map{{std::string(websocket_demo_app_name), to_json_object(enclave_options)}});
         return output;
     }
 

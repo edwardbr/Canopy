@@ -32,7 +32,7 @@ namespace rpc::sgx::coro::enclave
     host_transport::host_transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::shared_ptr<streaming::stream> stream,
+        std::shared_ptr<::streaming::stream> stream,
         connection_handler handler,
         rpc::stream_transport::stream_transport_options options)
         : rpc::stream_transport::transport(
@@ -58,7 +58,7 @@ namespace rpc::sgx::coro::enclave
     std::shared_ptr<host_transport> host_transport::create(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::shared_ptr<streaming::stream> stream,
+        std::shared_ptr<::streaming::stream> stream,
         connection_handler handler,
         rpc::stream_transport::stream_transport_options options)
     {
@@ -133,7 +133,7 @@ namespace rpc::sgx::coro::enclave
                 .caller_zone_id = get_zone_id(),
                 .options = rpc::release_options::normal,
                 .in_back_channel = {},
-                .payload = {}};
+                .payload = rpc::optional<rpc::typed_payload>{}};
         }
 
         CO_RETURN rpc::error::OK();

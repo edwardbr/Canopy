@@ -8,11 +8,13 @@
 #include <cstdint>
 #include <functional>
 #include <io_uring/controller.h>
+#include <json/json_dom.h>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <rpc/rpc.h>
+#include <secure_coroutine_module/secure_coroutine_module.h>
 #include <streaming/stream.h>
 #include <string>
 #include <transports/sgx_coroutine/enclave/io_uring_controller.h>
@@ -29,8 +31,8 @@ namespace rpc::sgx::coro::enclave
     void mark_runtime_connection_established();
     [[nodiscard]] const std::map<
         std::string,
-        std::string>&
-    runtime_startup_options() noexcept;
+        json::v1::object>&
+    runtime_startup_applications() noexcept;
     uint64_t runtime_ticks_per_millisecond() noexcept;
     uint64_t read_runtime_tick_counter() noexcept;
     uint64_t runtime_unix_epoch_milliseconds() noexcept;
@@ -132,7 +134,10 @@ namespace rpc::sgx::coro::enclave
 
         auto parent_service_proxy
             = rpc::service_proxy::create("parent", enclave_svc, route_transport, input_descr.remote_object_id.as_zone());
-        parent_service_proxy->set_encoding(input_descr.encoding_type);
+        // The enclave-private io_uring control channel transfers RPC interface
+        // references and is generated only for YAS dispatch. Keep application
+        // payload encoding separate from this bootstrap control route.
+        parent_service_proxy->set_encoding(rpc::encoding::yas_binary);
         parent_service_proxy = enclave_svc->add_parent_zone_proxy(parent_service_proxy);
 
         bool new_proxy_added = true;

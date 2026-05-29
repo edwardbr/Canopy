@@ -252,11 +252,21 @@ rpc::libcoro_spsc_dynamic_dll        // loaded DLL runtime over SPSC queues
 
 // Peer and stream-based transports
 rpc::stream_transport
+rpc::tcp           // TCP stream/RPC factory helpers
+rpc::spsc_queue    // SPSC queue-pair stream/RPC factory helpers, coroutine only
+rpc::io_uring      // Linux loopback io_uring stream/RPC factory helpers, coroutine only
 ```
 
 For DLL and IPC details, see `documents/transports/dynamic_library.md`. The
 direct `canopy_ipc_child_process` executable is currently disabled; the current
 process-hosted DLL path uses `canopy_ipc_child_host_process`.
+
+The high-level stream factories prefer typed configuration objects generated
+from `connection_factory_config.idl`, primarily
+`rpc::connection_factory_config::stream_factory_options`. JSON overloads are still
+available for config files and command-line overlays; they validate exact nested
+option names against the generated schema before converting to typed options or
+transport-specific settings.
 
 ### Status
 
@@ -476,6 +486,12 @@ RPC_ASSERT(condition);
 ```cpp
 // Get function info including JSON schemas
 static std::vector<rpc::function_info> get_function_info();
+
+// Get JSON schema for the generated interface or struct. Currently available
+// for rpc::encoding::yas_json.
+static std::string get_schema();
+static std::string get_schema(rpc::encoding encoding);
+static constexpr const char* get_inner_schema();
 
 // Get interface ID for version
 static rpc::interface_ordinal get_id(uint64_t rpc_version);

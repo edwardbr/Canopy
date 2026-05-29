@@ -92,7 +92,7 @@ namespace rpc
             std::vector<uint8_t> quote;
 
             [description="Optional IAS report material used by verifiers that receive an already-appraised quote."]
-            std::optional<sgx_epid_ias_report> ias_report;
+            rpc::optional<sgx_epid_ias_report> ias_report;
         };
         }
     }

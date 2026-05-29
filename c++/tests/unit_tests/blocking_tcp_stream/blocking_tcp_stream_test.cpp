@@ -62,7 +62,9 @@ namespace
         return p;
     }
 
-    TEST(BlockingTcpStream, AcceptConnectExchangeBytes)
+    TEST(
+        BlockingTcpStream,
+        AcceptConnectExchangeBytes)
     {
         auto port = pick_free_port();
         ASSERT_NE(port, 0);
@@ -77,12 +79,14 @@ namespace
         // Drive the acceptor on a worker.
         std::shared_ptr<streaming::stream> server_stream;
         std::atomic<bool> got{false};
-        ASSERT_TRUE(exec->post([&] {
-            auto maybe = acc->accept();
-            if (maybe)
-                server_stream = std::move(*maybe);
-            got.store(true, std::memory_order_release);
-        }));
+        ASSERT_TRUE(exec->post(
+            [&]
+            {
+                auto maybe = acc->accept();
+                if (maybe)
+                    server_stream = std::move(*maybe);
+                got.store(true, std::memory_order_release);
+            }));
 
         int client_fd = -1;
         for (int i = 0; i < 200 && client_fd < 0; ++i)
@@ -104,17 +108,15 @@ namespace
         ASSERT_EQ(::write(client_fd, hello, sizeof(hello)), static_cast<ssize_t>(sizeof(hello)));
 
         std::vector<uint8_t> buf(64);
-        auto [status, span] = server_stream->receive(
-            rpc::mutable_byte_span(buf.data(), buf.size()),
-            std::chrono::milliseconds(1000));
+        auto [status, span]
+            = server_stream->receive(rpc::mutable_byte_span(buf.data(), buf.size()), std::chrono::milliseconds(1000));
         ASSERT_TRUE(status.is_ok()) << "receive status type=" << static_cast<int>(status.type);
         ASSERT_EQ(span.size(), sizeof(hello));
         EXPECT_EQ(std::memcmp(span.data(), hello, sizeof(hello)), 0);
 
         // Send from server stream -> read on client fd.
         const char world[] = "world-blocking-tcp";
-        auto send_status = server_stream->send(
-            rpc::byte_span(reinterpret_cast<const uint8_t*>(world), sizeof(world)));
+        auto send_status = server_stream->send(rpc::byte_span(reinterpret_cast<const uint8_t*>(world), sizeof(world)));
         ASSERT_TRUE(send_status.is_ok()) << "send status type=" << static_cast<int>(send_status.type);
 
         std::vector<uint8_t> rbuf(sizeof(world));

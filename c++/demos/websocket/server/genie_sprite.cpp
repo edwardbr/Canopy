@@ -21,10 +21,17 @@ namespace websocket_demo
                 uint8_t r, g, b, a;
             };
 
-            inline uint8_t clamp8(int v) { return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v)); }
+            inline uint8_t clamp8(int v)
+            {
+                return static_cast<uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v));
+            }
 
             // Source-over blend of one colour onto an existing RGBA pixel.
-            void blend_px(std::vector<uint8_t>& buf, int x, int y, rgba c)
+            void blend_px(
+                std::vector<uint8_t>& buf,
+                int x,
+                int y,
+                rgba c)
             {
                 if (x < 0 || y < 0 || x >= SPR_W || y >= SPR_H || c.a == 0)
                     return;
@@ -36,7 +43,13 @@ namespace websocket_demo
                 p[3] = static_cast<uint8_t>(std::min(255, p[3] + a));
             }
 
-            void fill_ellipse(std::vector<uint8_t>& buf, int cx, int cy, int rx, int ry, rgba c)
+            void fill_ellipse(
+                std::vector<uint8_t>& buf,
+                int cx,
+                int cy,
+                int rx,
+                int ry,
+                rgba c)
             {
                 if (rx <= 0 || ry <= 0)
                     return;
@@ -50,7 +63,13 @@ namespace websocket_demo
                     }
             }
 
-            void fill_rect(std::vector<uint8_t>& buf, int x0, int y0, int x1, int y1, rgba c)
+            void fill_rect(
+                std::vector<uint8_t>& buf,
+                int x0,
+                int y0,
+                int x1,
+                int y1,
+                rgba c)
             {
                 for (int y = y0; y <= y1; ++y)
                     for (int x = x0; x <= x1; ++x)
@@ -58,16 +77,22 @@ namespace websocket_demo
             }
 
             // Filled triangle via edge-function sign test over the bounding box.
-            void fill_triangle(std::vector<uint8_t>& buf,
-                int ax, int ay, int bx, int by, int cx, int cy, rgba col)
+            void fill_triangle(
+                std::vector<uint8_t>& buf,
+                int ax,
+                int ay,
+                int bx,
+                int by,
+                int cx,
+                int cy,
+                rgba col)
             {
                 const int minx = std::min({ax, bx, cx});
                 const int maxx = std::max({ax, bx, cx});
                 const int miny = std::min({ay, by, cy});
                 const int maxy = std::max({ay, by, cy});
-                auto edge = [](int x0, int y0, int x1, int y1, int px, int py) {
-                    return (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0);
-                };
+                auto edge = [](int x0, int y0, int x1, int y1, int px, int py)
+                { return (x1 - x0) * (py - y0) - (y1 - y0) * (px - x0); };
                 for (int y = miny; y <= maxy; ++y)
                     for (int x = minx; x <= maxx; ++x)
                     {
@@ -87,7 +112,8 @@ namespace websocket_demo
             // reads as a crown when the caller scales it to head width.
             const std::vector<uint8_t>& sprite()
             {
-                static const std::vector<uint8_t> data = [] {
+                static const std::vector<uint8_t> data = []
+                {
                     std::vector<uint8_t> buf(static_cast<size_t>(SPR_W) * SPR_H * 4, 0);
 
                     const rgba gold{235, 190, 70, 255};
@@ -105,8 +131,7 @@ namespace websocket_demo
                     const int apex_x[5] = {33, 67, 100, 133, 167};
                     const int apex_y[5] = {44, 26, 8, 26, 44};
                     for (int i = 0; i < 5; ++i)
-                        fill_triangle(buf, ex[i], base_y, ex[i + 1], base_y,
-                            apex_x[i], apex_y[i], gold);
+                        fill_triangle(buf, ex[i], base_y, ex[i + 1], base_y, apex_x[i], apex_y[i], gold);
 
                     // Band.
                     fill_rect(buf, 16, base_y, 184, 116, gold);
@@ -132,20 +157,51 @@ namespace websocket_demo
                 return data;
             }
 
-            inline uint8_t rgb2y(int r, int g, int b) { return clamp8((77 * r + 150 * g + 29 * b) >> 8); }
-            inline uint8_t rgb2u(int r, int g, int b) { return clamp8(((-43 * r - 84 * g + 127 * b) >> 8) + 128); }
-            inline uint8_t rgb2v(int r, int g, int b) { return clamp8(((127 * r - 106 * g - 21 * b) >> 8) + 128); }
+            inline uint8_t rgb2y(
+                int r,
+                int g,
+                int b)
+            {
+                return clamp8((77 * r + 150 * g + 29 * b) >> 8);
+            }
+            inline uint8_t rgb2u(
+                int r,
+                int g,
+                int b)
+            {
+                return clamp8(((-43 * r - 84 * g + 127 * b) >> 8) + 128);
+            }
+            inline uint8_t rgb2v(
+                int r,
+                int g,
+                int b)
+            {
+                return clamp8(((127 * r - 106 * g - 21 * b) >> 8) + 128);
+            }
 
-            inline uint8_t mix(uint8_t dst, uint8_t src, int a) { return clamp8((src * a + dst * (255 - a) + 127) / 255); }
+            inline uint8_t mix(
+                uint8_t dst,
+                uint8_t src,
+                int a)
+            {
+                return clamp8((src * a + dst * (255 - a) + 127) / 255);
+            }
         }
 
-        void genie_sprite_native_size(int& w, int& h)
+        void genie_sprite_native_size(
+            int& w,
+            int& h)
         {
             w = SPR_W;
             h = SPR_H;
         }
 
-        void composite_genie_sprite(vpx_image_t* img, int ox, int oy, int draw_w, int draw_h)
+        void composite_genie_sprite(
+            vpx_image_t* img,
+            int ox,
+            int oy,
+            int draw_w,
+            int draw_h)
         {
             const int fw = static_cast<int>(img->d_w);
             const int fh = static_cast<int>(img->d_h);

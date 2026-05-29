@@ -78,10 +78,7 @@ namespace rpc
 
         void shutdown() noexcept;
 
-        [[nodiscard]] bool is_shutdown() const noexcept
-        {
-            return shutdown_.load(std::memory_order_acquire);
-        }
+        [[nodiscard]] bool is_shutdown() const noexcept { return shutdown_.load(std::memory_order_acquire); }
 
         [[nodiscard]] std::size_t worker_count() const noexcept { return workers_.size(); }
 
@@ -93,8 +90,12 @@ namespace rpc
         };
 
         void worker_loop(std::size_t index);
-        bool try_pop_own(std::size_t self_index, std::function<void()>& out);
-        bool try_steal(std::size_t self_index, std::function<void()>& out);
+        bool try_pop_own(
+            std::size_t self_index,
+            std::function<void()>& out);
+        bool try_steal(
+            std::size_t self_index,
+            std::function<void()>& out);
 
         std::vector<std::unique_ptr<worker_slot>> slots_;
         std::vector<std::thread> workers_;

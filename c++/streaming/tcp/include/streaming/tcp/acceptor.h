@@ -16,20 +16,20 @@
 //     AND calls ::shutdown(listen_fd, SHUT_RD) so any thread blocked in
 //     poll wakes immediately.
 //
-// Public API + bind options are exposed through streaming::tcp::endpoint so
-// callers don't reference libcoro types directly. A coroutine-only
-// convenience constructor accepting coro::net::socket_address is preserved
-// for existing callers (tests use it).
+// Public API + bind options are exposed through the IDL-generated
+// streaming::tcp::endpoint so callers don't reference libcoro types directly.
+// A coroutine-only convenience constructor accepting coro::net::socket_address
+// is preserved for existing callers (tests use it).
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 
 #include <streaming/stream_acceptor.h>
 #include <streaming/tcp/stream.h>
+#include <tcp/tcp_config.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <coro/coro.hpp>
@@ -38,13 +38,6 @@
 
 namespace streaming::tcp
 {
-    struct endpoint
-    {
-        std::string host = "127.0.0.1";
-        uint16_t port = 0;
-        bool ipv6 = false;
-    };
-
     class acceptor : public ::streaming::stream_acceptor
     {
     public:

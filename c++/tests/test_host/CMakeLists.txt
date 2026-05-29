@@ -17,7 +17,7 @@ endif()
 
 if(CANOPY_BUILD_COROUTINE)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
-  set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
+  set(STREAMING_TRANSPORT_TEST_LIB connection_factory_test)
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     set(STREAMING_SECURE_STREAM_LIB streaming_mbedtls)
   else()

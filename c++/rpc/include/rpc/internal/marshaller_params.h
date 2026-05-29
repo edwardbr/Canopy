@@ -4,7 +4,6 @@
  */
 #pragma once
 
-#include <optional>
 #include <vector>
 
 // rpc_types.h, types.h, error_codes.h, and serialiser.h are included by rpc.h
@@ -60,7 +59,7 @@ namespace rpc
         remote_object remote_object_id;
         interface_ordinal interface_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
-        std::optional<rpc::typed_payload> payload;
+        rpc::optional<rpc::typed_payload> payload;
     };
 
     struct add_ref_params
@@ -72,7 +71,7 @@ namespace rpc
         add_ref_options build_out_param_channel;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t request_id = 0;
-        std::optional<rpc::typed_payload> payload;
+        rpc::optional<rpc::typed_payload> payload;
     };
 
     struct release_params
@@ -82,7 +81,7 @@ namespace rpc
         caller_zone caller_zone_id;
         release_options options;
         std::vector<rpc::back_channel_entry> in_back_channel;
-        std::optional<rpc::typed_payload> payload;
+        rpc::optional<rpc::typed_payload> payload;
     };
 
     struct handshake_params
@@ -102,7 +101,7 @@ namespace rpc
         remote_object remote_object_id;
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
-        std::optional<rpc::typed_payload> payload;
+        rpc::optional<rpc::typed_payload> payload;
     };
 
     struct transport_down_params
@@ -111,7 +110,7 @@ namespace rpc
         destination_zone destination_zone_id;
         caller_zone caller_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
-        std::optional<rpc::typed_payload> payload;
+        rpc::optional<rpc::typed_payload> payload;
     };
 
     struct get_new_zone_id_params

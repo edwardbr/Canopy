@@ -40,9 +40,9 @@ namespace
         (void)rpc_optimistic_loaded;
     }
 
-    struct connection_factory_registrar
+    struct enclave_entry_point
     {
-        connection_factory_registrar()
+        enclave_entry_point()
         {
             exercise_atomic_smart_ptr_polyfill();
 
@@ -102,5 +102,5 @@ namespace
         }
     };
 
-    connection_factory_registrar g_connection_factory_registrar;
+    enclave_entry_point g_enclave_entry_point;
 }

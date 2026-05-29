@@ -4,6 +4,17 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+CanopyGenerate(
+  tcp_config
+  tcp/tcp_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 add_library(streaming_tcp STATIC src/stream.cpp src/socket.cpp src/acceptor.cpp)
 target_include_directories(
   streaming_tcp
@@ -15,13 +26,13 @@ target_link_options(streaming_tcp PRIVATE ${CANOPY_LINK_OPTIONS})
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     streaming_tcp
-    PUBLIC streaming libcoro canopy_cares
+    PUBLIC streaming tcp_config_idl libcoro canopy_cares
     PRIVATE rpc)
 else()
   # Blocking-mode TCP uses POSIX sockets directly; no libcoro/c-ares.
   target_link_libraries(
     streaming_tcp
-    PUBLIC streaming
+    PUBLIC streaming tcp_config_idl
     PRIVATE rpc)
 endif()
 if(CANOPY_ENABLE_CLANG_TIDY)

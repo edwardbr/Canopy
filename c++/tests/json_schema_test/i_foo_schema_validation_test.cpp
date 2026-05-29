@@ -8,17 +8,42 @@
 #include <cstdint>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <string>
+#include <variant>
 #include <vector>
+
+#include <json/schema_validator.h>
 
 // RPC headers
 #include <rpc/rpc.h>
 
 // Other headers
-#include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
-#include <nlohmann/json-schema.hpp>
 #include <example_shared/example_shared.h>
+#include <gtest/gtest.h>
+
+namespace
+{
+    const json::v1::object* find_member(
+        const json::v1::object& value,
+        const std::string& name)
+    {
+        if (value.get_type() != json::v1::object::type::map_type)
+            return nullptr;
+
+        const auto& values = value.as_map();
+        const auto it = values.find(name);
+        if (it == values.end())
+            return nullptr;
+        return &it->second;
+    }
+
+    bool has_non_empty_properties(const json::v1::object& schema)
+    {
+        const auto* properties = find_member(schema, "properties");
+        return properties && properties->get_type() == json::v1::object::type::map_type && !properties->as_map().empty();
+    }
+}
 
 // Helper function to create dummy data for different types
 template<typename T> T create_dummy_value();
@@ -31,6 +56,15 @@ template<> int create_dummy_value<int>()
 template<> std::string create_dummy_value<std::string>()
 {
     return "test_string";
+}
+
+template<> json::v1::object create_dummy_value<json::v1::object>()
+{
+    return json::v1::object(
+        json::v1::map{
+            {"name", "schema-test"},
+            {"values", json::v1::array{"one", true, nullptr}},
+        });
 }
 
 template<> xxx::something_complicated create_dummy_value<xxx::something_complicated>()
@@ -46,6 +80,41 @@ template<> xxx::something_more_complicated create_dummy_value<xxx::something_mor
     xxx::something_more_complicated obj;
     obj.vector_val.push_back(create_dummy_value<xxx::something_complicated>());
     obj.map_val["key1"] = create_dummy_value<xxx::something_complicated>();
+    return obj;
+}
+
+template<> xxx::optional_variant_json_holder create_dummy_value<xxx::optional_variant_json_holder>()
+{
+    xxx::optional_variant_json_holder obj;
+    obj.optional_int = 42;
+    obj.variant_value = std::string("schema-variant");
+    obj.json_value = create_dummy_value<json::v1::object>();
+    obj.optional_json_value = json::v1::object(
+        json::v1::map{
+            {"enabled", true},
+            {"label", "schema-optional-json"},
+        });
+    obj.rpc_optional_int = 43;
+    obj.rpc_optional_json_value = json::v1::object(
+        json::v1::map{
+            {"enabled", true},
+            {"label", "schema-rpc-optional-json"},
+        });
+    return obj;
+}
+
+template<> xxx::rpc_optional_holder create_dummy_value<xxx::rpc_optional_holder>()
+{
+    xxx::rpc_optional_holder obj;
+    obj.required_int = 7;
+    obj.required_string = "required";
+    obj.optional_int = 51;
+    obj.optional_string = std::string("present");
+    obj.optional_json_value = json::v1::object(
+        json::v1::map{
+            {"kind", "rpc-optional"},
+            {"enabled", true},
+        });
     return obj;
 }
 
@@ -89,10 +158,10 @@ TEST(
             }
 
             // Parse the schema from the function info
-            nlohmann::json schema_json;
+            json::v1::object schema_json;
             try
             {
-                schema_json = nlohmann::json::parse(func_info.in_json_schema);
+                schema_json = json::v1::parse(func_info.in_json_schema);
             }
             catch (const std::exception& e)
             {
@@ -101,18 +170,7 @@ TEST(
                 continue;
             }
 
-            // Create validator and set the schema
-            nlohmann::json_schema::json_validator validator;
-            try
-            {
-                validator.set_root_schema(schema_json);
-            }
-            catch (const std::exception& e)
-            {
-                std::cout << "ERROR: Failed to set schema for " << func_info.name << ": " << e.what() << std::endl;
-                failed_functions.push_back(func_info.name + " (schema validation error)");
-                continue;
-            }
+            const json::v1::schema::schema_validator validator(schema_json);
 
             // Now test actual serialization and validate against schema
             std::vector<char> buffer;
@@ -317,6 +375,55 @@ TEST(
                     val1, val2, buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
+            else if (func_info.name == "exchange_json_object")
+            {
+                auto val = create_dummy_value<json::v1::object>();
+                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_json_object(
+                    val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "give_optional_variant_json_holder")
+            {
+                auto val = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err
+                    = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::give_optional_variant_json_holder(
+                        val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "receive_optional_variant_json_holder")
+            {
+                auto err
+                    = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::receive_optional_variant_json_holder(
+                        buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_optional_variant_json")
+            {
+                const auto holder = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err
+                    = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_optional_variant_json(
+                        holder.optional_int,
+                        holder.variant_value,
+                        holder.json_value,
+                        holder.optional_json_value,
+                        buffer,
+                        rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_rpc_optional_holder")
+            {
+                auto val = create_dummy_value<xxx::rpc_optional_holder>();
+                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_rpc_optional_holder(
+                    val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_rpc_optional_values")
+            {
+                const auto holder = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_rpc_optional_values(
+                    holder.rpc_optional_int, holder.rpc_optional_json_value, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
             else if (func_info.name == "exception_test")
             {
                 auto err = xxx::i_foo::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::exception_test(
@@ -347,10 +454,10 @@ TEST(
             }
 
             // Parse the serialized data as JSON
-            nlohmann::json payload_json;
+            json::v1::object payload_json;
             try
             {
-                payload_json = nlohmann::json::parse(buffer_str);
+                payload_json = json::v1::parse(buffer_str);
             }
             catch (const std::exception& e)
             {
@@ -360,18 +467,18 @@ TEST(
                 continue;
             }
 
-            // Validate the payload against the schema
-            try
+            const auto validation_result = validator.validate(payload_json);
+            if (validation_result)
             {
-                validator.validate(payload_json);
                 std::cout << "SUCCESS: Payload validates against schema for " << func_info.name << std::endl;
                 tested_functions++;
             }
-            catch (const std::exception& e)
+            else
             {
-                std::cout << "ERROR: Schema validation failed for " << func_info.name << ": " << e.what() << std::endl;
-                std::cout << "Payload: " << payload_json.dump(2) << std::endl;
-                std::cout << "Schema: " << schema_json.dump(2) << std::endl;
+                std::cout << "ERROR: Schema validation failed for " << func_info.name << ": "
+                          << validation_result.errors().front().message << std::endl;
+                std::cout << "Payload: " << buffer_str << std::endl;
+                std::cout << "Schema: " << func_info.in_json_schema << std::endl;
                 failed_functions.push_back(func_info.name + " (payload validation failed)");
             }
         }
@@ -451,10 +558,10 @@ TEST(
         try
         {
             // Parse the output schema from the function info
-            nlohmann::json schema_json;
+            json::v1::object schema_json;
             try
             {
-                schema_json = nlohmann::json::parse(func_info.out_json_schema);
+                schema_json = json::v1::parse(func_info.out_json_schema);
             }
             catch (const std::exception& e)
             {
@@ -464,7 +571,7 @@ TEST(
             }
 
             // Check if this function has output parameters
-            bool has_output_params = schema_json.contains("properties") && !schema_json["properties"].empty();
+            bool has_output_params = has_non_empty_properties(schema_json);
             if (!has_output_params)
             {
                 std::cout << "INFO: Function " << func_info.name << " has no output parameters" << std::endl;
@@ -472,18 +579,7 @@ TEST(
                 continue;
             }
 
-            // Create validator and set the schema
-            nlohmann::json_schema::json_validator validator;
-            try
-            {
-                validator.set_root_schema(schema_json);
-            }
-            catch (const std::exception& e)
-            {
-                std::cout << "ERROR: Failed to set output schema for " << func_info.name << ": " << e.what() << std::endl;
-                failed_functions.push_back(func_info.name + " (output schema validation error)");
-                continue;
-            }
+            const json::v1::schema::schema_validator validator(schema_json);
 
             // Now test stub_serialiser with dummy output data
             std::vector<char> buffer;
@@ -573,6 +669,47 @@ TEST(
                         out_val, buffer, rpc::encoding::yas_json);
                 serialization_success = (err == 0);
             }
+            else if (func_info.name == "exchange_json_object")
+            {
+                auto out_val = create_dummy_value<json::v1::object>();
+                auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_json_object(
+                    out_val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "receive_optional_variant_json_holder")
+            {
+                auto out_val = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err
+                    = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::receive_optional_variant_json_holder(
+                        out_val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_optional_variant_json")
+            {
+                const auto holder = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_optional_variant_json(
+                    holder.optional_int,
+                    holder.variant_value,
+                    holder.json_value,
+                    holder.optional_json_value,
+                    buffer,
+                    rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_rpc_optional_holder")
+            {
+                auto out_val = create_dummy_value<xxx::rpc_optional_holder>();
+                auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_rpc_optional_holder(
+                    out_val, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
+            else if (func_info.name == "exchange_rpc_optional_values")
+            {
+                const auto holder = create_dummy_value<xxx::optional_variant_json_holder>();
+                auto err = xxx::i_foo::stub_serialiser<rpc::serialiser::yas, rpc::encoding>::exchange_rpc_optional_values(
+                    holder.rpc_optional_int, holder.rpc_optional_json_value, buffer, rpc::encoding::yas_json);
+                serialization_success = (err == 0);
+            }
             else if (func_info.name == "receive_interface" || func_info.name == "give_interface"
                      || func_info.name == "call_baz_interface" || func_info.name == "create_baz_interface"
                      || func_info.name == "get_null_interface" || func_info.name == "set_interface"
@@ -608,10 +745,10 @@ TEST(
             }
 
             // Parse the serialized data as JSON
-            nlohmann::json payload_json;
+            json::v1::object payload_json;
             try
             {
-                payload_json = nlohmann::json::parse(buffer_str);
+                payload_json = json::v1::parse(buffer_str);
             }
             catch (const std::exception& e)
             {
@@ -621,19 +758,18 @@ TEST(
                 continue;
             }
 
-            // Validate the payload against the output schema
-            try
+            const auto validation_result = validator.validate(payload_json);
+            if (validation_result)
             {
-                validator.validate(payload_json);
                 std::cout << "SUCCESS: Output payload validates against schema for " << func_info.name << std::endl;
                 tested_functions++;
             }
-            catch (const std::exception& e)
+            else
             {
-                std::cout << "ERROR: Output schema validation failed for " << func_info.name << ": " << e.what()
-                          << std::endl;
-                std::cout << "Output Payload: " << payload_json.dump(2) << std::endl;
-                std::cout << "Output Schema: " << schema_json.dump(2) << std::endl;
+                std::cout << "ERROR: Output schema validation failed for " << func_info.name << ": "
+                          << validation_result.errors().front().message << std::endl;
+                std::cout << "Output Payload: " << buffer_str << std::endl;
+                std::cout << "Output Schema: " << func_info.out_json_schema << std::endl;
                 failed_functions.push_back(func_info.name + " (output payload validation failed)");
             }
         }

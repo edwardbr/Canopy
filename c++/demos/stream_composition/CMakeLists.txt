@@ -52,8 +52,9 @@ if(CANOPY_BUILD_COROUTINE)
            ${STREAM_COMPOSITION_SECURE_STREAM_TARGET}
            streaming_spsc_wrapping
            transport_streaming
+           connection_factory
            rpc
-           canopy_network_config
+           network_config
            ${CANOPY_LIBRARIES}
            rpc_log)
 

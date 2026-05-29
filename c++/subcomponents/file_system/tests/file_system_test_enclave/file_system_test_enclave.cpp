@@ -14,9 +14,9 @@
 
 namespace
 {
-    struct connection_factory_registrar
+    struct enclave_entry_point
     {
-        connection_factory_registrar()
+        enclave_entry_point()
         {
 
             rpc::sgx::coro::enclave::register_connection_factory<rpc::i_noop, rpc::file_system::i_manager>(
@@ -56,5 +56,5 @@ namespace
         }
     };
 
-    connection_factory_registrar g_connection_factory_registrar;
+    enclave_entry_point g_enclave_entry_point;
 }

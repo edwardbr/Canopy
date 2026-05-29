@@ -1,0 +1,18 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+typedef int error_code;
+
+namespace set_fixture
+{
+    [status=demo]
+    struct unique_collections
+    {
+        // Exercises the schema/converter parity for set-like containers:
+        // schema emits uniqueItems: true; converter throws on duplicates.
+        std::set<int32_t> ordered_ids;
+        std::unordered_set<std::string> tags;
+    };
+}

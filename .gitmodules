@@ -30,14 +30,6 @@
 	url = https://github.com/c-ares/c-ares.git
 	update = none
 	shallow = true
-[submodule "c++/submodules/json"]
-	path = c++/submodules/json
-	url = https://github.com/nlohmann/json.git
-	shallow = true
-[submodule "c++/submodules/json-schema-validator"]
-	path = c++/submodules/json-schema-validator
-	url = https://github.com/pboettch/json-schema-validator.git
-	shallow = true
 [submodule "submodules/protobuf"]
 	path = submodules/protobuf
 	url = https://github.com/protocolbuffers/protobuf.git

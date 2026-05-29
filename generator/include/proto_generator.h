@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <vector>
 
 class class_entity;
 
@@ -27,6 +28,8 @@ namespace proto_generator
         std::string& first,
         std::string& second);
 
+    std::vector<std::string> split_template_args(const std::string& args);
+
     bool is_map_type(
         const std::string& type,
         std::string& prefix);
@@ -40,6 +43,10 @@ namespace proto_generator
         std::string& inner_type);
 
     std::string optional_inner_type(const std::string& type);
+
+    bool is_variant_type(
+        const std::string& type,
+        std::vector<std::string>& alternative_types);
 
     std::string cpp_scalar_to_proto_type(const std::string& type);
 

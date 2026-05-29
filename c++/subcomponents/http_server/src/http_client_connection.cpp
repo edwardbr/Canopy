@@ -18,6 +18,8 @@
 #  include <openssl/buffer.h>
 #  include <openssl/evp.h>
 #  include <openssl/sha.h>
+#else
+#  error "canopy_http_server requires CANOPY_SECURE_STREAM_BACKEND_OPENSSL or CANOPY_SECURE_STREAM_BACKEND_MBEDTLS"
 #endif
 
 namespace canopy::http_server
@@ -72,74 +74,6 @@ namespace canopy::http_server
 
             std::string result(buffer_ptr->data, buffer_ptr->length);
             BIO_free_all(bio);
-            return result;
-#else
-            // No TLS / mbedtls backend available (blocking-mode build before
-            // streaming::secure becomes dual-mode). The WS handshake's
-            // Sec-WebSocket-Accept header is just SHA-1 of the client key
-            // concatenated with the RFC 6455 GUID, base64-encoded —
-            // neither operation is sensitive crypto, so an inline
-            // implementation is sufficient until the secure-stream layer
-            // is dual-moded.
-            auto rotl = [](uint32_t v, int s) -> uint32_t { return (v << s) | (v >> (32 - s)); };
-            std::vector<uint8_t> msg(combined.begin(), combined.end());
-            uint64_t orig_bits = static_cast<uint64_t>(msg.size()) * 8;
-            msg.push_back(0x80);
-            while (msg.size() % 64 != 56)
-                msg.push_back(0);
-            for (int i = 7; i >= 0; --i)
-                msg.push_back(static_cast<uint8_t>((orig_bits >> (i * 8)) & 0xff));
-
-            uint32_t h[5] = {0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0};
-            for (size_t chunk = 0; chunk < msg.size(); chunk += 64)
-            {
-                uint32_t w[80];
-                for (int i = 0; i < 16; ++i)
-                {
-                    w[i] = (uint32_t(msg[chunk + i * 4]) << 24) | (uint32_t(msg[chunk + i * 4 + 1]) << 16)
-                           | (uint32_t(msg[chunk + i * 4 + 2]) << 8) | uint32_t(msg[chunk + i * 4 + 3]);
-                }
-                for (int i = 16; i < 80; ++i)
-                    w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-                uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
-                for (int i = 0; i < 80; ++i)
-                {
-                    uint32_t f, k;
-                    if (i < 20) { f = (b & c) | ((~b) & d); k = 0x5a827999; }
-                    else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
-                    else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
-                    else { f = b ^ c ^ d; k = 0xca62c1d6; }
-                    uint32_t t = rotl(a, 5) + f + e + k + w[i];
-                    e = d; d = c; c = rotl(b, 30); b = a; a = t;
-                }
-                h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
-            }
-            uint8_t digest[20];
-            for (int i = 0; i < 5; ++i)
-            {
-                digest[i * 4 + 0] = static_cast<uint8_t>((h[i] >> 24) & 0xff);
-                digest[i * 4 + 1] = static_cast<uint8_t>((h[i] >> 16) & 0xff);
-                digest[i * 4 + 2] = static_cast<uint8_t>((h[i] >> 8) & 0xff);
-                digest[i * 4 + 3] = static_cast<uint8_t>(h[i] & 0xff);
-            }
-
-            static constexpr char b64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-            std::string result;
-            result.reserve(28);
-            for (int i = 0; i < 18; i += 3)
-            {
-                uint32_t v = (uint32_t(digest[i]) << 16) | (uint32_t(digest[i + 1]) << 8) | uint32_t(digest[i + 2]);
-                result.push_back(b64chars[(v >> 18) & 0x3f]);
-                result.push_back(b64chars[(v >> 12) & 0x3f]);
-                result.push_back(b64chars[(v >> 6) & 0x3f]);
-                result.push_back(b64chars[v & 0x3f]);
-            }
-            // Final group: digest bytes 18, 19, then pad with 0x00 and '='.
-            uint32_t v = (uint32_t(digest[18]) << 16) | (uint32_t(digest[19]) << 8);
-            result.push_back(b64chars[(v >> 18) & 0x3f]);
-            result.push_back(b64chars[(v >> 12) & 0x3f]);
-            result.push_back(b64chars[(v >> 6) & 0x3f]);
-            result.push_back('=');
             return result;
 #endif
         }

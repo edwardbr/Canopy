@@ -22,14 +22,15 @@
 #include_next <stdlib.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-static inline char* canopy_sgx_getenv(const char* name)
-{
-    (void)name;
-    return 0;
-}
+    static inline char* canopy_sgx_getenv(const char* name)
+    {
+        (void)name;
+        return 0;
+    }
 
 #ifdef __cplusplus
 }

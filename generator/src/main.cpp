@@ -8,6 +8,10 @@
 #include <sstream>
 #include <filesystem>
 #include <fstream>
+#include <cctype>
+#include <algorithm>
+#include <map>
+#include <vector>
 
 #ifdef __clang__
 #  pragma clang diagnostic push
@@ -68,6 +72,7 @@ void get_imports(
                 imports.push_back(cls->get_import_lib());
             }
         }
+        get_imports(*cls, imports, imports_cache);
     }
 }
 
@@ -84,6 +89,194 @@ bool is_different(
     }
     stream_str = stream_str.substr(0, stream_str.length() - 1);
     return stream_str != data;
+}
+
+std::string sanitise_cpp_identifier(std::string name)
+{
+    for (auto& ch : name)
+    {
+        const auto value = static_cast<unsigned char>(ch);
+        if (!std::isalnum(value) && ch != '_')
+            ch = '_';
+    }
+
+    if (name.empty() || std::isdigit(static_cast<unsigned char>(name.front())))
+        name.insert(name.begin(), '_');
+
+    return name;
+}
+
+std::string make_json_schema_header(
+    const std::string& module_name,
+    const class_entity& root_entity,
+    const std::string& generated_header_include,
+    const std::list<std::string>& imports)
+{
+    const auto symbol_name = sanitise_cpp_identifier(module_name) + "_json_schema";
+
+    std::stringstream header;
+    header << "#pragma once\n\n";
+    header << "#include <stdexcept>\n";
+    header << "#include <string>\n\n";
+    header << "#include <rpc/rpc_types.h>\n";
+    header << "#include <json/convert.h>\n";
+    // Pull in the schema headers of every imported IDL so generated
+    // from_json_object/to_json_object overloads for cross-IDL types are
+    // visible to ADL when this header is included alone.
+    for (const auto& import : imports)
+    {
+        auto schema_include = import;
+        const auto dot = schema_include.rfind('.');
+        if (dot != std::string::npos)
+            schema_include.erase(dot);
+        schema_include += "_schema.h";
+        header << "#include \"" << schema_include << "\"\n";
+    }
+    header << "#include \"" << generated_header_include << "\"\n\n";
+    json_schema::write_cpp_schema_accessors(root_entity, header, module_name, symbol_name);
+    json_schema::write_cpp_convert_accessors(root_entity, header);
+    return header.str();
+}
+
+std::string compact_type_for_policy(std::string type)
+{
+    type.erase(
+        std::remove_if(type.begin(), type.end(), [](unsigned char ch) { return std::isspace(ch) != 0; }), type.end());
+    return type;
+}
+
+bool contains_forbidden_std_idl_sum_type(
+    const std::string& type,
+    const std::string& type_name)
+{
+    const auto compact = compact_type_for_policy(type);
+    auto pos = compact.find(type_name + "<");
+    while (pos != std::string::npos)
+    {
+        if (pos == 0 || compact[pos - 1] == ':')
+            return true;
+        pos = compact.find(type_name + "<", pos + 1);
+    }
+    return false;
+}
+
+void validate_idl_type_policy_type(
+    const std::string& type,
+    const std::string& location,
+    std::vector<std::string>& errors)
+{
+    if (contains_forbidden_std_idl_sum_type(type, "std::optional"))
+    {
+        errors.push_back(location + " uses std::optional in IDL type '" + type + "'. Use rpc::optional instead.");
+    }
+    if (contains_forbidden_std_idl_sum_type(type, "std::variant"))
+    {
+        errors.push_back(location + " uses std::variant in IDL type '" + type + "'. Use rpc::variant instead.");
+    }
+}
+
+void validate_idl_type_policy_entity(
+    const class_entity& object,
+    const std::string& scope,
+    std::vector<std::string>& errors)
+{
+    const auto elements = object.get_elements(entity_type::NAMESPACE_MEMBERS | entity_type::STRUCTURE_MEMBERS);
+    for (const auto& element : elements)
+    {
+        if (!element)
+            continue;
+
+        const auto name = element->get_name();
+        const auto location = scope.empty() || name.empty() ? name : scope + "::" + name;
+
+        if (const auto class_element = std::dynamic_pointer_cast<class_entity>(element))
+        {
+            if (class_element->get_entity_type() == entity_type::TYPEDEF)
+                validate_idl_type_policy_type(class_element->get_alias_name(), location, errors);
+            validate_idl_type_policy_entity(*class_element, location, errors);
+        }
+        else if (const auto function_element = std::dynamic_pointer_cast<function_entity>(element))
+        {
+            validate_idl_type_policy_type(function_element->get_return_type(), location, errors);
+            for (const auto& parameter : function_element->get_parameters())
+            {
+                const auto parameter_location
+                    = location + "(" + (parameter.get_name().empty() ? "<unnamed>" : parameter.get_name()) + ")";
+                validate_idl_type_policy_type(parameter.get_type(), parameter_location, errors);
+            }
+        }
+        else if (const auto parameter_element = std::dynamic_pointer_cast<parameter_entity>(element))
+        {
+            validate_idl_type_policy_type(parameter_element->get_type(), location, errors);
+        }
+    }
+}
+
+std::vector<std::string> validate_idl_type_policy(const class_entity& objects)
+{
+    std::vector<std::string> errors;
+    validate_idl_type_policy_entity(objects, "", errors);
+    return errors;
+}
+
+bool is_concrete_idl_symbol(entity_type type)
+{
+    return type == entity_type::STRUCT || type == entity_type::ENUM || type == entity_type::INTERFACE
+           || type == entity_type::TYPEDEF || type == entity_type::CLASS;
+}
+
+std::string idl_symbol_source(const class_entity& object)
+{
+    if (!object.get_import_lib().empty())
+        return object.get_import_lib();
+    return "<current idl>";
+}
+
+void validate_duplicate_idl_symbols_entity(
+    const class_entity& object,
+    const std::string& scope,
+    std::map<
+        std::string,
+        std::string>& symbols,
+    std::vector<std::string>& errors)
+{
+    for (const auto& element : object.get_elements(entity_type::NAMESPACE_MEMBERS | entity_type::STRUCTURE_MEMBERS))
+    {
+        if (!element)
+            continue;
+
+        const auto class_element = std::dynamic_pointer_cast<class_entity>(element);
+        if (!class_element)
+            continue;
+
+        const auto name = class_element->get_name();
+        const auto location = scope.empty() || name.empty() ? name : scope + "::" + name;
+        const auto entity_type = class_element->get_entity_type();
+
+        if (is_concrete_idl_symbol(entity_type) && !location.empty())
+        {
+            const auto source = idl_symbol_source(*class_element);
+            const auto existing = symbols.find(location);
+            if (existing == symbols.end())
+            {
+                symbols.emplace(location, source);
+            }
+            else if (existing->second != source || source == "<current idl>")
+            {
+                errors.push_back("duplicate IDL symbol '" + location + "' from " + existing->second + " and " + source);
+            }
+        }
+
+        validate_duplicate_idl_symbols_entity(*class_element, location, symbols, errors);
+    }
+}
+
+std::vector<std::string> validate_duplicate_idl_symbols(const class_entity& objects)
+{
+    std::vector<std::string> errors;
+    std::map<std::string, std::string> symbols;
+    validate_duplicate_idl_symbols_entity(objects, "", symbols, errors);
+    return errors;
 }
 
 int main(
@@ -263,6 +456,17 @@ int main(
         auto objects = std::make_shared<class_entity>(nullptr);
         const auto* ppdata = pre_parsed_data.data();
         objects->parse_structure(ppdata, true, false);
+        const auto idl_policy_errors = validate_idl_type_policy(*objects);
+        const auto duplicate_symbol_errors = validate_duplicate_idl_symbols(*objects);
+        if (!idl_policy_errors.empty() || !duplicate_symbol_errors.empty())
+        {
+            std::cerr << "IDL validation failed:\n";
+            for (const auto& error : idl_policy_errors)
+                std::cerr << "  " << error << '\n';
+            for (const auto& error : duplicate_symbol_errors)
+                std::cerr << "  " << error << '\n';
+            return -1;
+        }
 
         std::list<std::string> imports;
         {
@@ -592,15 +796,22 @@ int main(
             auto file_path = header_path.substr(0, pos) + ".json";
 
             auto json_schema_fs_path = output_path / "json_schema" / file_path;
+            auto json_schema_header_fs_path = output_path / "include" / (header_path.substr(0, pos) + "_schema.h");
 
             std::filesystem::create_directories(json_schema_fs_path.parent_path());
+            std::filesystem::create_directories(json_schema_header_fs_path.parent_path());
 
             // read the original data and close the files afterwards
             string json_schema_data;
+            string json_schema_header_data;
 
             {
                 ifstream hfs(json_schema_fs_path);
                 std::getline(hfs, json_schema_data, '\0');
+            }
+            {
+                ifstream hfs(json_schema_header_fs_path);
+                std::getline(hfs, json_schema_header_data, '\0');
             }
 
             std::stringstream json_schema_stream;
@@ -609,10 +820,18 @@ int main(
             json_schema::write_json_schema(*objects, json_schema_stream,
                 module_name); // Use filename as title
 
+            const auto json_schema_string = json_schema_stream.str();
             if (is_different(json_schema_stream, json_schema_data))
             {
                 ofstream file(json_schema_fs_path);
-                file << json_schema_stream.str();
+                file << json_schema_string;
+            }
+
+            const auto json_schema_header = make_json_schema_header(module_name, *objects, header_path, imports);
+            if (json_schema_header != json_schema_header_data)
+            {
+                ofstream file(json_schema_header_fs_path);
+                file << json_schema_header;
             }
         }
     }

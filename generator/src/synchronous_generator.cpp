@@ -2781,6 +2781,14 @@ namespace synchronous_generator
             }
         }
 
+        if (!m_ob.get_is_template())
+        {
+            header("");
+            header("static std::string get_schema();");
+            header("static std::string get_schema(rpc::encoding encoding);");
+            header("static constexpr const char* get_inner_schema();");
+        }
+
         // Generate YAS serialization method if enabled
         if (enable_yas)
         {
@@ -2891,6 +2899,21 @@ namespace synchronous_generator
             write_canonical_crypto_struct_methods(m_ob, header);
         }
 
+        // Grant the generated JSON converters access to private members so
+        // structs that hide their representation can still round-trip
+        // through json::v1::object. The bodies are defined in the
+        // _schema.h header. We only emit friends for structs the schema
+        // generator will actually emit a converter for, so a friend never
+        // references an undefined ADL overload.
+        if (json_schema::struct_will_have_converter(m_ob))
+        {
+            header("");
+            header("friend {} from_json_object(", m_ob.get_name());
+            header("    ::json::v1::convert::tag<{}>,", m_ob.get_name());
+            header("    const ::json::v1::object& __value);");
+            header("friend ::json::v1::object to_json_object(const {}& __value);", m_ob.get_name());
+        }
+
         header("}};");
 
         std::stringstream sstr;
@@ -2924,7 +2947,7 @@ namespace synchronous_generator
             }
         }
         header.raw(sstr.str());
-        header("inline bool operator != (const {0}& lhs, const {0}& rhs)", obj_type);
+        header("inline bool operator == (const {0}& lhs, const {0}& rhs)", obj_type);
         header("{{");
         bool has_params = true;
         {
@@ -2971,7 +2994,7 @@ namespace synchronous_generator
 
                     header.raw("\n");
                     header.print_tabs();
-                    header.raw("{1}lhs.{0} != rhs.{0}", field->get_name(), first_pass ? "" : "|| ");
+                    header.raw("{1}lhs.{0} == rhs.{0}", field->get_name(), first_pass ? "" : "&& ");
                     first_pass = false;
                 }
             }
@@ -2981,14 +3004,14 @@ namespace synchronous_generator
         {
             header("std::ignore = lhs;");
             header("std::ignore = rhs;");
-            header("return false;");
+            header("return true;");
         }
         header("}}\n");
 
         header.raw(sstr.str());
-        header("inline bool operator == (const {0}& lhs, const {0}& rhs)", obj_type);
+        header("inline bool operator != (const {0}& lhs, const {0}& rhs)", obj_type);
         header("{{");
-        header("return !(lhs != rhs);");
+        header("return !(lhs == rhs);");
         header("}}");
     }
 
@@ -3238,6 +3261,27 @@ namespace synchronous_generator
         }
     }
 
+    void write_variant_alternative_tag_specialization(
+        const class_entity& m_ob,
+        writer& header)
+    {
+        if (m_ob.is_in_import())
+            return;
+        if (m_ob.get_is_template())
+            return;
+        // The tag is the type's unqualified name. This is the same string the
+        // schema and the convert.h-side dispatcher use so all three layers
+        // agree on the JSON wire shape.
+        const auto qualified = get_full_name(m_ob, true);
+        const auto& unqualified = m_ob.get_name();
+        header("");
+        header("template<>");
+        header("struct variant_alternative_tag<{}>", qualified);
+        header("{{");
+        header("    static constexpr const char* value = \"{}\";", unqualified);
+        header("}};");
+    }
+
     void write_epilog(
         bool from_host,
         const class_entity& lib,
@@ -3259,6 +3303,11 @@ namespace synchronous_generator
             {
                 auto& ent = static_cast<const class_entity&>(*cls);
                 write_struct_id(ent, header);
+                write_variant_alternative_tag_specialization(ent, header);
+            }
+            else if (cls->get_entity_type() == entity_type::ENUM)
+            {
+                write_variant_alternative_tag_specialization(*cls, header);
             }
             else
             {
@@ -3321,6 +3370,9 @@ namespace synchronous_generator
         header("#include <string>");
         header("#include <array>");
         header("#include <optional>");
+        header("#include <rpc/internal/optional.h>");
+        header("#include <variant>");
+        header("#include <rpc/internal/variant.h>");
         header("#include <cstdint>");
         if (enable_canonical_crypto)
         {
@@ -3344,8 +3396,18 @@ namespace synchronous_generator
             header("#include \"{}.h\"", path);
         }
 
+        // Forward declarations for the JSON converter ADL surface used by the
+        // friend declarations emitted inside each struct body below. Keeping
+        // this as a forward decl avoids dragging the full json/convert.h into
+        // every consumer that just wants the IDL types.
+        header("");
+        header("namespace json {{ inline namespace v1 {{ class object; namespace convert {{ template<typename T> "
+               "struct tag; }} }} }}");
+        header("");
+
         header("namespace rpc");
         header("{{");
+        header("enum class encoding : uint64_t;");
         header("template<class T> class local_proxy;");
         header("template<class T> class weak_ptr;");
         header("template<class T> class shared_ptr;");

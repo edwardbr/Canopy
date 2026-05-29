@@ -123,6 +123,7 @@ primary C++ implementation, multiple transports are available:
 |-----------|----------|--------------|
 | [Local](transports/local.md) | In-process parent/child zones | None |
 | [TCP](transports/tcp.md) | Network communication | Coroutine scheduler or blocking executor |
+| [io_uring](transports/io_uring.md) | Linux loopback stream factories | CANOPY_BUILD_COROUTINE=ON |
 | [SPSC and IPC](transports/spsc_and_ipc.md) | Lock-free single producer/consumer IPC and process-hosted streaming | CANOPY_BUILD_COROUTINE=ON |
 | [SGX](transports/sgx.md) | Secure enclave communication | CANOPY_BUILD_ENCLAVE=ON |
 | [Custom](transports/custom.md) | User-defined transports | Varies |

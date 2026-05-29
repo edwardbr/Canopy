@@ -12,15 +12,14 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iomanip>
 #include <limits>
 #include <memory>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -34,6 +33,7 @@
 #include <yas/serialize.hpp>
 #include <yas/std_types.hpp>
 
+#include <fmt/format.h>
 #include <rpc/rpc.h>
 #ifdef CANOPY_BUILD_CANONICAL_CRYPTO
 #  include <rpc/serialization/canonical_crypto.h>
@@ -98,9 +98,11 @@ namespace json
                     throw std::out_of_range("JSON numbers cannot be NaN or infinity");
             }
             explicit number(std::string lexical)
-                : value_(parse_floating(lexical))
-                , lexical_(std::move(lexical))
+                : lexical_(std::move(lexical))
             {
+                if (!is_strict_json_number(lexical_))
+                    throw std::invalid_argument("invalid JSON number");
+                value_ = parse_floating(lexical_);
             }
 
             [[nodiscard]] type get_type() const
@@ -201,6 +203,8 @@ namespace json
             {
                 if (token.empty())
                     throw std::invalid_argument("empty JSON number");
+                if (!is_strict_json_number(token))
+                    throw std::invalid_argument("invalid JSON number");
 
                 const bool is_floating = token.find_first_of(".eE") != std::string_view::npos;
                 if (!is_floating)
@@ -237,21 +241,92 @@ namespace json
             std::variant<int64_t, uint64_t, double> value_{int64_t{0}};
             std::string lexical_;
 
+            [[nodiscard]] static bool is_digit(char ch) { return ch >= '0' && ch <= '9'; }
+
+            [[nodiscard]] static bool is_strict_json_number(std::string_view token)
+            {
+                size_t i = 0;
+                if (token.empty())
+                    return false;
+
+                if (token[i] == '-')
+                {
+                    ++i;
+                    if (i == token.size())
+                        return false;
+                }
+
+                if (token[i] == '0')
+                {
+                    ++i;
+                }
+                else if (token[i] >= '1' && token[i] <= '9')
+                {
+                    while (i < token.size() && is_digit(token[i]))
+                        ++i;
+                }
+                else
+                {
+                    return false;
+                }
+
+                if (i < token.size() && token[i] == '.')
+                {
+                    ++i;
+                    const auto fraction_start = i;
+                    while (i < token.size() && is_digit(token[i]))
+                        ++i;
+                    if (i == fraction_start)
+                        return false;
+                }
+
+                if (i < token.size() && (token[i] == 'e' || token[i] == 'E'))
+                {
+                    ++i;
+                    if (i < token.size() && (token[i] == '+' || token[i] == '-'))
+                        ++i;
+                    const auto exponent_start = i;
+                    while (i < token.size() && is_digit(token[i]))
+                        ++i;
+                    if (i == exponent_start)
+                        return false;
+                }
+
+                return i == token.size();
+            }
+
             [[nodiscard]] static double parse_floating(const std::string& lexical)
             {
+                // Prefer std::from_chars for locale independence — std::strtod
+                // honours the active C locale and would misparse JSON like
+                // "1.5" on a de_DE host. from_chars<double> is C++17 but the
+                // floating-point overload only landed in libstdc++ 11 / MSVC
+                // 19.24, so we fall back to a locale-classic strtod when it
+                // isn't available.
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611 && (!defined(__GLIBCXX__) || __GLIBCXX__ >= 20210408)  \
+    && (!defined(_LIBCPP_VERSION) || _LIBCPP_VERSION >= 14000)
+                double value = 0.0;
+                const auto* first = lexical.data();
+                const auto* last = first + lexical.size();
+                const auto result = std::from_chars(first, last, value);
+                if (result.ec != std::errc{} || result.ptr != last || !std::isfinite(value))
+                    throw std::out_of_range("invalid JSON floating-point number");
+                return value;
+#else
                 errno = 0;
                 char* end = nullptr;
                 const double value = std::strtod(lexical.c_str(), &end);
                 if (errno == ERANGE || end != lexical.c_str() + lexical.size() || !std::isfinite(value))
                     throw std::out_of_range("invalid JSON floating-point number");
                 return value;
+#endif
             }
 
             [[nodiscard]] static std::string format_double(double value)
             {
-                std::ostringstream stream;
-                stream << std::setprecision(std::numeric_limits<double>::max_digits10) << value;
-                return stream.str();
+                if (!std::isfinite(value))
+                    throw std::out_of_range("invalid JSON floating-point number");
+                return fmt::format("{:.{}g}", value, std::numeric_limits<double>::max_digits10);
             }
 
             friend bool operator==(
@@ -259,11 +334,38 @@ namespace json
                 const number& rhs);
         };
 
+        // Compare two JSON numbers by mathematical value rather than by the
+        // active variant alternative. 1 (int64) and 1.0 (double) round-trip
+        // through JSON as equivalent and most callers (DOM diffing, set
+        // dedupe, schema const/enum/uniqueItems) want them treated as equal.
+        // Strict identity-of-representation is available via the typed
+        // accessors on `number` itself.
         inline bool operator==(
             const number& lhs,
             const number& rhs)
         {
-            return lhs.value_ == rhs.value_;
+            // Same active alternative: variant equality is already lenient
+            // within the same type.
+            if (lhs.value_.index() == rhs.value_.index())
+                return lhs.value_ == rhs.value_;
+
+            // Cross-type: route signed/unsigned through their natural
+            // comparison and only fall back to double when at least one side
+            // is genuinely floating-point. The double conversion is the only
+            // path that can lose precision, so it is deliberately last.
+            const auto lhs_type = lhs.get_type();
+            const auto rhs_type = rhs.get_type();
+            if (lhs_type == number::type::signed_integer && rhs_type == number::type::unsigned_integer)
+            {
+                const auto lhs_value = lhs.as_int64();
+                return lhs_value >= 0 && static_cast<uint64_t>(lhs_value) == rhs.as_uint64();
+            }
+            if (lhs_type == number::type::unsigned_integer && rhs_type == number::type::signed_integer)
+            {
+                const auto rhs_value = rhs.as_int64();
+                return rhs_value >= 0 && lhs.as_uint64() == static_cast<uint64_t>(rhs_value);
+            }
+            return lhs.as_double() == rhs.as_double();
         }
 
         inline bool operator!=(
@@ -392,7 +494,37 @@ namespace json
                 value_ = number(value);
                 return *this;
             }
+            object& operator=(int32_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
+            object& operator=(int16_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
+            object& operator=(int8_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
             object& operator=(uint64_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
+            object& operator=(uint32_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
+            object& operator=(uint16_t value)
+            {
+                value_ = number(value);
+                return *this;
+            }
+            object& operator=(uint8_t value)
             {
                 value_ = number(value);
                 return *this;
@@ -449,12 +581,29 @@ namespace json
         public:
             using base = std::unordered_map<std::string, object>;
 
+            struct entry
+            {
+                std::string key;
+                object value;
+
+                template<typename Value>
+                entry(
+                    std::string entry_key,
+                    Value&& entry_value)
+                    : key(std::move(entry_key))
+                    , value(std::forward<Value>(entry_value))
+                {
+                }
+            };
+
             map() = default;
             map(const map&) = default;
             map(map&&) = default;
-            map(std::initializer_list<base::value_type> init)
-                : base(init)
+            map(std::initializer_list<entry> init)
             {
+                base::reserve(init.size());
+                for (const auto& item : init)
+                    base::emplace(item.key, item.value);
             }
 
             map& operator=(const map&) = default;
@@ -475,12 +624,25 @@ namespace json
         public:
             using base = std::vector<object>;
 
+            struct element
+            {
+                object value;
+
+                template<typename Value>
+                element(Value&& element_value)
+                    : value(std::forward<Value>(element_value))
+                {
+                }
+            };
+
             array() = default;
             array(const array&) = default;
             array(array&&) = default;
-            array(std::initializer_list<object> init)
-                : base(init)
+            array(std::initializer_list<element> init)
             {
+                base::reserve(init.size());
+                for (const auto& item : init)
+                    base::push_back(item.value);
             }
 
             array& operator=(const array&) = default;
@@ -1091,17 +1253,30 @@ namespace yas
             {
                 if constexpr (F & yas::json)
                 {
+                    // Iterate keys in sorted order so dump() is byte-stable
+                    // across runs / standard library versions. Matches the
+                    // protobuf and canonical_crypto serialisers, which
+                    // already sort to give deterministic output.
+                    std::vector<const json::v1::map::base::value_type*> ordered;
+                    ordered.reserve(map.size());
+                    for (const auto& entry : map)
+                        ordered.push_back(&entry);
+                    std::sort(
+                        ordered.begin(),
+                        ordered.end(),
+                        [](const auto* lhs, const auto* rhs) { return lhs->first < rhs->first; });
+
                     ar.write("{", 1);
                     bool first = true;
-                    for (const auto& [key, value] : map)
+                    for (const auto* entry : ordered)
                     {
                         if (!first)
                             ar.write(",", 1);
                         first = false;
                         ar.write("\"", 1);
-                        save_string(ar, key.data(), key.size());
+                        save_string(ar, entry->first.data(), entry->first.size());
                         ar.write("\":", 2);
-                        ar & value;
+                        ar & entry->second;
                     }
                     ar.write("}", 1);
                 }

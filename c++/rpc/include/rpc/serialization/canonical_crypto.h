@@ -17,10 +17,13 @@
 #  include <string>
 #  include <type_traits>
 #  include <utility>
+#  include <variant>
 #  include <vector>
 
 namespace rpc
 {
+    template<typename T> class optional;
+
     inline constexpr size_t canonical_crypto_bytes_per_kib = 1024U;
     inline constexpr size_t canonical_crypto_kib_per_mib = 1024U;
     inline constexpr size_t canonical_crypto_max_field_size_mib = 64U;
@@ -244,6 +247,36 @@ namespace rpc
 
     template<typename T> inline constexpr bool is_std_optional_v = is_std_optional<T>::value;
 
+    template<typename T> struct is_rpc_optional : std::false_type
+    {
+    };
+
+    template<typename T> struct is_rpc_optional<rpc::optional<T>> : std::true_type
+    {
+    };
+
+    template<typename T> inline constexpr bool is_optional_v = is_std_optional_v<T> || is_rpc_optional<T>::value;
+
+    template<typename T> struct is_std_variant : std::false_type
+    {
+    };
+
+    template<typename... Types> struct is_std_variant<std::variant<Types...>> : std::true_type
+    {
+    };
+
+    template<typename T> inline constexpr bool is_std_variant_v = is_std_variant<T>::value;
+
+    template<typename T> struct is_rpc_variant : std::false_type
+    {
+    };
+
+    template<typename... Types> struct is_rpc_variant<rpc::variant<Types...>> : std::true_type
+    {
+    };
+
+    template<typename T> inline constexpr bool is_variant_v = is_std_variant_v<T> || is_rpc_variant<T>::value;
+
     template<typename T> struct is_std_map : std::false_type
     {
     };
@@ -304,6 +337,37 @@ namespace rpc
     bool canonical_crypto_read(
         canonical_crypto_reader& reader,
         T& value);
+
+    template<
+        typename Variant,
+        size_t Index = 0,
+        typename = std::enable_if_t<is_variant_v<Variant>>>
+    bool canonical_crypto_read_variant_alternative(
+        canonical_crypto_reader& reader,
+        uint64_t alternative_index,
+        Variant& value)
+    {
+        if constexpr (Index >= rpc::variant_size_v<Variant>)
+        {
+            (void)reader;
+            (void)alternative_index;
+            (void)value;
+            return false;
+        }
+        else
+        {
+            if (alternative_index == Index)
+            {
+                using alternative_type = rpc::variant_alternative_t<Index, Variant>;
+                alternative_type alternative{};
+                if (!canonical_crypto_read(reader, alternative))
+                    return false;
+                value = std::move(alternative);
+                return true;
+            }
+            return canonical_crypto_read_variant_alternative<Variant, Index + 1>(reader, alternative_index, value);
+        }
+    }
 
     template<typename T>
     bool canonical_crypto_write_integral(
@@ -452,13 +516,19 @@ namespace rpc
             }
             return true;
         }
-        else if constexpr (is_std_optional_v<T>)
+        else if constexpr (is_optional_v<T>)
         {
             if (!writer.append_u8(value.has_value() ? 1U : 0U))
                 return false;
             if (!value)
                 return true;
             return canonical_crypto_write(writer, *value);
+        }
+        else if constexpr (is_variant_v<T>)
+        {
+            if (value.valueless_by_exception() || !writer.append_u64(static_cast<uint64_t>(value.index())))
+                return false;
+            return rpc::visit([&](const auto& alternative) { return canonical_crypto_write(writer, alternative); }, value);
         }
         else if constexpr (is_std_map_v<T>)
         {
@@ -558,7 +628,7 @@ namespace rpc
             }
             return true;
         }
-        else if constexpr (is_std_optional_v<T>)
+        else if constexpr (is_optional_v<T>)
         {
             uint8_t present = 0;
             if (!reader.read_u8(present) || present > 1U)
@@ -573,6 +643,13 @@ namespace rpc
                 return false;
             value = std::move(entry);
             return true;
+        }
+        else if constexpr (is_variant_v<T>)
+        {
+            uint64_t alternative_index = 0;
+            if (!reader.read_u64(alternative_index) || alternative_index >= rpc::variant_size_v<T>)
+                return false;
+            return canonical_crypto_read_variant_alternative(reader, alternative_index, value);
         }
         else if constexpr (is_std_map_v<T>)
         {

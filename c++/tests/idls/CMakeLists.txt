@@ -67,6 +67,25 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
 CanopyGenerate(
+  schema_cycle
+  schema_cycle/schema_cycle.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+
+CanopyGenerate(
+  set_fixture
+  set_fixture/set_fixture.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+
+CanopyGenerate(
   io_uring_test
   io_uring_test/test.idl
   ${CMAKE_CURRENT_SOURCE_DIR}

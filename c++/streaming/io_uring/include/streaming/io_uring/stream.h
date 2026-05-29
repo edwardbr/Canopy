@@ -12,6 +12,7 @@
 #include <memory>
 
 #include <io_uring/direct_descriptor.h>
+#include <io_uring/io_uring_config.h>
 #include <streaming/stream.h>
 
 namespace streaming::io_uring
@@ -19,20 +20,8 @@ namespace streaming::io_uring
     class stream : public streaming::stream
     {
     public:
-        enum class receive_timeout_strategy : uint8_t
-        {
-            linked_timeout,
-            nonblocking_poll
-        };
-
-        struct options
-        {
-            // Zero means ask the controller to transfer as much as the caller
-            // requested. The controller may still cap this to its host buffer
-            // slot size. Non-zero gives experiments a simple stream-level cap.
-            size_t max_transfer_size{0};
-            receive_timeout_strategy timeout_strategy{receive_timeout_strategy::linked_timeout};
-        };
+        using receive_timeout_strategy = ::streaming::io_uring::receive_timeout_strategy;
+        using options = ::streaming::io_uring::stream_options;
 
         // Adapts an io_uring direct descriptor into the generic streaming API.
         // The descriptor may come from any future byte-oriented io_uring

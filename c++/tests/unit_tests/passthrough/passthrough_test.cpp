@@ -324,7 +324,7 @@ template<class T> CORO_TASK(bool) coro_add_ref_happy_path(T& lib)
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify exact count changes: shared_count should increase by exactly 1, optimistic_count unchanged
@@ -363,7 +363,7 @@ template<class T> CORO_TASK(bool) coro_add_ref_optimistic(T& lib)
             .build_out_param_channel = rpc::add_ref_options::optimistic,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify exact count changes: optimistic_count should increase by exactly 1, shared_count unchanged
@@ -403,7 +403,7 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify add_ref worked: shared_count should increase by exactly 1
@@ -418,7 +418,7 @@ template<class T> CORO_TASK(bool) coro_release_happy_path(T& lib)
             .caller_zone_id = lib.get_reverse_dest(),
             .options = rpc::release_options::normal,
             .in_back_channel = {},
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify balanced operation: release should decrease by exactly 1, returning to initial state
@@ -529,7 +529,7 @@ template<class T> CORO_TASK(bool) coro_add_ref_with_transport_down(T& lib)
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify operation failed AND counts unchanged due to transport being down
@@ -579,7 +579,7 @@ template<class T> CORO_TASK(bool) coro_add_ref_compensates_destination_leg_when_
             .build_out_param_channel = rpc::add_ref_options::build_destination_route | rpc::add_ref_options::build_caller_route,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
@@ -635,7 +635,7 @@ template<class T> CORO_TASK(bool) coro_optimistic_add_ref_compensates_with_optim
                                        | rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     CORO_ASSERT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
@@ -675,7 +675,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Add optimistic reference
@@ -688,7 +688,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .build_out_param_channel = rpc::add_ref_options::optimistic,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify both increments
@@ -704,7 +704,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     CO_AWAIT reverse_transport->inbound_release(
@@ -714,7 +714,7 @@ template<class T> CORO_TASK(bool) coro_reference_count_balance(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify everything returned to initial state (balanced operations)
@@ -754,7 +754,7 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
             .build_out_param_channel = rpc::add_ref_options::normal,
             .in_back_channel = {},
             .request_id = 0,
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     CO_AWAIT reverse_transport->inbound_release(
@@ -764,7 +764,7 @@ template<class T> CORO_TASK(bool) coro_cleanup_verification(T& lib)
             .caller_zone_id = rpc::caller_zone{make_local_zone_address(1)},
             .options = rpc::release_options::normal,
             .in_back_channel = {},
-            .payload = {},
+            .payload = rpc::optional<rpc::typed_payload>{},
         });
 
     // Verify balanced operation returned to initial state

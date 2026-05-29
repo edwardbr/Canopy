@@ -40,8 +40,7 @@ add_library(transport_ipc_transport_test INTERFACE)
 target_include_directories(transport_ipc_transport_test
                            INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
 
-# TODO: ipc_child_process needs reworking before it can be re-enabled. The
-# current source still hardcodes the example test interfaces instead of taking a
-# generic child-service entry point.
+# TODO: ipc_child_process needs reworking before it can be re-enabled. The current source still hardcodes the example
+# test interfaces instead of taking a generic child-service entry point.
 add_subdirectory(ipc_child_process)
 add_subdirectory(ipc_child_host_process)

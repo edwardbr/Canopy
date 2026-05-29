@@ -19,6 +19,8 @@
 // synchronous/coroutine sensitive headers
 #include <rpc/internal/coroutine_support.h>
 #include <rpc/internal/span.h>
+#include <rpc/internal/optional.h>
+#include <rpc/internal/variant.h>
 #include <rpc/internal/polyfill/event.h>
 #include <rpc/internal/polyfill/io_status.h>
 #include <rpc/internal/executor/executor.h>

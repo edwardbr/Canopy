@@ -24,7 +24,9 @@ namespace streaming::tcp
         // Convenience constructor for existing coroutine call sites that
         // hold a libcoro client. Wraps it in a socket internally so the
         // common stream code path stays unchanged.
-        stream(coro::net::tcp::client&& client, std::shared_ptr<rpc::executor> executor);
+        stream(
+            coro::net::tcp::client&& client,
+            std::shared_ptr<rpc::executor> executor);
 #endif
 
         auto receive(

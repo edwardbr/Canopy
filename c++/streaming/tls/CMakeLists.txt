@@ -21,8 +21,7 @@ if(CANOPY_BUILD_COROUTINE)
     PUBLIC streaming
     PRIVATE OpenSSL::Crypto OpenSSL::SSL rpc libcoro)
 else()
-  # Blocking-mode TLS drives memory BIOs over a dual-mode streaming::stream;
-  # no libcoro dependency.
+  # Blocking-mode TLS drives memory BIOs over a dual-mode streaming::stream; no libcoro dependency.
   target_link_libraries(
     streaming_tls
     PUBLIC streaming

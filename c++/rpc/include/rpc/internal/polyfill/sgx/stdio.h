@@ -34,12 +34,12 @@
 // keep the self-documenting opaque struct for C, where we are the only
 // definer.
 #ifndef CANOPY_SGX_FILE_DEFINED
-#define CANOPY_SGX_FILE_DEFINED
-#ifdef __cplusplus
+#  define CANOPY_SGX_FILE_DEFINED
+#  ifdef __cplusplus
 typedef unsigned long FILE; // must match the SGX libc++ FILE spelling
-#else
+#  else
 typedef struct _canopy_sgx_opaque_FILE FILE;
-#endif
+#  endif
 #endif
 
 // Declarations only — NO enclave implementation. libvpx's vpx_tpl.c (VP9
@@ -50,8 +50,14 @@ typedef struct _canopy_sgx_opaque_FILE FILE;
 // would be a link error — the correct outcome for file I/O in an enclave.
 // libvpx is C; only that build references them.
 #ifndef __cplusplus
-int fprintf(FILE *, const char *, ...);
-int fscanf(FILE *, const char *, ...);
+int fprintf(
+    FILE*,
+    const char*,
+    ...);
+int fscanf(
+    FILE*,
+    const char*,
+    ...);
 #endif
 
 #endif // CANOPY_SGX_POLYFILL_STDIO_H

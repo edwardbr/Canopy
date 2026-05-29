@@ -12,7 +12,8 @@
 #include <string_view>
 #include <vector>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
 #include <canopy/http_server/http_acceptor.h>
 #include <file_system/file_system_manager.h>
 #include <rpc/rpc.h>
@@ -113,9 +114,10 @@ namespace
     auto make_executor() -> rpc::executor_ptr
     {
 #ifdef CANOPY_BUILD_COROUTINE
+        // clang-format off
         return rpc::executor_ptr(coro::scheduler::make_unique(
             coro::scheduler::options{
-                FLD(thread_strategy)  coro::scheduler::thread_strategy_t::spawn,
+                FLD(thread_strategy) coro::scheduler::thread_strategy_t::spawn,
                 FLD(on_io_thread_start_functor) []
                 { RPC_DEBUG("process event thread start"); },
                 FLD(on_io_thread_stop_functor) []
@@ -129,13 +131,13 @@ namespace
                 },
                 FLD(execution_strategy) coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));
+        // clang-format on
 #else
         return std::make_shared<rpc::blocking_executor>();
 #endif
     }
 
-    auto create_static_file_manager(rpc::executor_ptr executor)
-        -> rpc::shared_ptr<rpc::file_system::i_manager>
+    auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<rpc::file_system::i_manager>
     {
 #ifdef CANOPY_BUILD_COROUTINE
         rpc::io_uring::linux_io_uring_handle::options handle_options;
@@ -180,9 +182,8 @@ auto run_http_server(
     std::string static_root_path,
     std::shared_ptr<streaming::secure::context> tls_ctx) -> CORO_TASK(void)
 {
-    auto stream_handler
-        = [service, file_system_manager, static_root_path = std::move(static_root_path)](
-              std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
+    auto stream_handler = [service, file_system_manager, static_root_path = std::move(static_root_path)](
+                              std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
 #ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         // Calculator-only build path uses the 5-arg constructor with an
@@ -211,7 +212,7 @@ auto main(
     auto net = canopy::network_config::add_network_args(parser);
     args::ValueFlag<std::string> cert_file(parser, "file", "Path to TLS certificate file (PEM format)", {"cert"}, "");
     args::ValueFlag<std::string> key_file(parser, "file", "Path to TLS private key file (PEM format)", {"key"}, "");
-    args::ValueFlag<std::string> static_root(
+    args::ValueFlag<std::string> path(
         parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
     auto cli = add_default_network_args(argc, argv);
 
@@ -256,7 +257,7 @@ auto main(
 
     const auto cert_path = args::get(cert_file);
     const auto key_path = args::get(key_file);
-    const auto static_root_path = args::get(static_root);
+    const auto static_root_path = args::get(path);
     if (static_root_path.empty())
     {
         RPC_ERROR("--static-root must not be empty");
@@ -276,8 +277,7 @@ auto main(
     {
         // Direct file-load path works in both modes; file_system_manager is
         // dual-mode and streaming::secure::context only needs the PEM bytes.
-        tls_ctx = std::make_shared<streaming::secure::context>(
-            cert_path, key_path);
+        tls_ctx = std::make_shared<streaming::secure::context>(cert_path, key_path);
         if (!tls_ctx->is_valid())
         {
             RPC_ERROR("Failed to initialize TLS context, exiting");
@@ -306,8 +306,7 @@ auto main(
     // SYNC_WAIT collapses to coro::sync_wait in coroutine builds and to the
     // raw expression in blocking builds (where run_http_server returns void
     // and runs the accept loop synchronously on this thread).
-    SYNC_WAIT(run_http_server(
-        executor, http_ep, root_service, file_system_manager, static_root_path, tls_ctx));
+    SYNC_WAIT(run_http_server(executor, http_ep, root_service, file_system_manager, static_root_path, tls_ctx));
     root_service.reset();
     executor->shutdown();
     return 0;

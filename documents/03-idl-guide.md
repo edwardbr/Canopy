@@ -550,6 +550,24 @@ In practice:
 
 If you need different move semantics, express that choice explicitly in the IDL because the generated interface is treated as the source of truth.
 
+### Optional and Variant Types
+
+IDL sum types use Canopy-owned wrappers:
+
+```idl
+struct request_options
+{
+    rpc::optional<std::string> label;
+    rpc::variant<int32_t, std::string> selector;
+};
+```
+
+Use `rpc::optional<T>` and `rpc::variant<Ts...>` rather than the standard-library
+types. The generator rejects `std::optional` and `std::variant` in IDL so YAS,
+protobuf, Nanopb, and JSON schema all agree on one wire shape. For YAS JSON,
+absent `rpc::optional` object members are omitted; an explicit JSON `null` also
+loads as an empty optional.
+
 ### Output Parameters ([out])
 
 Data is marshalled FROM the remote object BACK to the caller:
@@ -877,6 +895,7 @@ When you compile IDL files, Canopy generates:
 | `{name}_stub.cpp` | Server-side stub implementation |
 | `{name}_stub.h` | Stub declarations |
 | `{name}.json` | JSON schema for introspection |
+| `{name}_schema.h` | Header accessors for complete, interface, and struct JSON schemas |
 
 ### Generated Interface
 
@@ -891,6 +910,9 @@ public:
     virtual ~i_example() = default;
 
     static std::vector<rpc::function_info> get_function_info();
+    static std::string get_schema();
+    static std::string get_schema(rpc::encoding encoding);
+    static constexpr const char* get_inner_schema();
 };
 
 } // namespace yyy

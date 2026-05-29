@@ -16,15 +16,11 @@ target_compile_options(streaming_io_uring PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CA
 target_link_options(streaming_io_uring PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_io_uring
-  PUBLIC streaming canopy_io_uring
+  PUBLIC streaming canopy_io_uring io_uring_config_idl
   PRIVATE rpc libcoro)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_io_uring PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
-endif()
-
-if(TARGET transport_streaming_test)
-  target_link_libraries(transport_streaming_test INTERFACE streaming_io_uring)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE)
@@ -38,7 +34,7 @@ if(CANOPY_BUILD_ENCLAVE)
   target_link_options(streaming_io_uring_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
   target_link_libraries(
     streaming_io_uring_enclave
-    PUBLIC streaming_enclave canopy_io_uring_enclave
+    PUBLIC streaming_enclave canopy_io_uring_enclave io_uring_config_idl_enclave
     PRIVATE rpc_enclave)
 
   if(CANOPY_ENABLE_CLANG_TIDY)

@@ -22,19 +22,22 @@ struct timeval
 };
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-static inline int gettimeofday(struct timeval *tv, void *tz)
-{
-    (void)tz;
-    if (tv)
+    static inline int gettimeofday(
+        struct timeval* tv,
+        void* tz)
     {
-        tv->tv_sec = 0;
-        tv->tv_usec = 0;
+        (void)tz;
+        if (tv)
+        {
+            tv->tv_sec = 0;
+            tv->tv_usec = 0;
+        }
+        return 0;
     }
-    return 0;
-}
 
 #ifdef __cplusplus
 }

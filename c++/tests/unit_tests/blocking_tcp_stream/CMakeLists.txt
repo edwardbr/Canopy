@@ -5,11 +5,16 @@ cmake_minimum_required(VERSION 3.24)
 if(NOT CANOPY_BUILD_COROUTINE)
   add_executable(blocking_tcp_stream_test blocking_tcp_stream_test.cpp)
 
-  target_link_libraries(blocking_tcp_stream_test PRIVATE GTest::gtest_main rpc::rpc streaming streaming_tcp rpc_log)
+  target_link_libraries(
+    blocking_tcp_stream_test
+    PRIVATE GTest::gtest_main
+            rpc::rpc
+            streaming
+            streaming_tcp
+            rpc_log)
 
-  target_include_directories(
-    blocking_tcp_stream_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
-                                     ${CMAKE_BINARY_DIR}/generated/include)
+  target_include_directories(blocking_tcp_stream_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
+                                                              ${CMAKE_BINARY_DIR}/generated/include)
 
   target_compile_options(blocking_tcp_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(blocking_tcp_stream_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

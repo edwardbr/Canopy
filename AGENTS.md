@@ -119,7 +119,7 @@ Use the exact preset names from `CMakePresets.json`. Do not normalize or rename 
 - `CANOPY_BUILD_RUST` defaults to `OFF`.
 - `CANOPY_BUILD_TEST=OFF` also disables integration/fuzz test targets.
 - `tests/test_enclave` is only added when `CANOPY_BUILD_ENCLAVE=ON`.
-- `tests/json_schema_test` is only added when `NLOHMANN_JSON_CONFIG_INSTALL_DIR` is defined.
+- `tests/json_schema_test` uses Canopy's native `json::v1::object` schema validator.
 
 ## Common Commands
 

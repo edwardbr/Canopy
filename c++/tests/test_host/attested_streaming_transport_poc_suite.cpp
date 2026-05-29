@@ -413,7 +413,7 @@ namespace
                && !encrypted_payload.authentication_tag.empty();
     }
 
-    auto is_valid_encrypted_payload(const std::optional<rpc::typed_payload>& payload) -> bool
+    auto is_valid_encrypted_payload(const rpc::optional<rpc::typed_payload>& payload) -> bool
     {
         return payload.has_value() && is_valid_encrypted_payload(payload->get_payload(), payload->get_encoding());
     }

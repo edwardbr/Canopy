@@ -27,7 +27,7 @@ if(CANOPY_BUILD_ENCLAVE)
   target_compile_options(canopy_io_uring_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(canopy_io_uring_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 
-  target_link_libraries(canopy_io_uring_enclave PUBLIC rpc::rpc_enclave libcoro_enclave)
+  target_link_libraries(canopy_io_uring_enclave PUBLIC rpc::rpc_enclave libcoro_enclave io_uring_config_idl_enclave)
 
   set_property(TARGET canopy_io_uring_enclave PROPERTY COMPILE_PDB_NAME canopy_io_uring_enclave)
 
@@ -45,7 +45,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_options(canopy_io_uring PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   target_link_libraries(
     canopy_io_uring
-    PUBLIC rpc::rpc
+    PUBLIC rpc::rpc io_uring_config_idl
     PRIVATE libcoro ${CANOPY_LIBRARIES})
   message(STATUS "canopy_io_uring configured without Linux io_uring control on non-Linux platform")
   return()
@@ -117,7 +117,7 @@ target_link_options(canopy_io_uring PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 target_link_libraries(
   canopy_io_uring
-  PUBLIC rpc::rpc
+  PUBLIC rpc::rpc io_uring_config_idl
   PRIVATE libcoro canopy_liburing ${CANOPY_LIBRARIES} ${CANOPY_FMT_LIB})
 
 if(CANOPY_LIBURING_BOOTSTRAP_TARGET)
