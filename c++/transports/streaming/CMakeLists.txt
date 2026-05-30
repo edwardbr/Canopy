@@ -5,6 +5,17 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+CanopyGenerate(
+  stream_transport_config
+  stream_transport/stream_transport_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 # transport_streaming is dual-mode. Coroutine builds use libcoro; blocking builds dispatch the three loops to
 # rpc::blocking_executor via the SPAWN macro and use rpc::event for completion signalling.
 add_library(transport_streaming src/transport.cpp)
@@ -19,7 +30,7 @@ target_include_directories(
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     transport_streaming
-    PUBLIC streaming json
+    PUBLIC streaming json stream_transport_config_idl
     PRIVATE yas_common
             streaming_transport_idl
             rpc_types_idl
@@ -28,7 +39,7 @@ if(CANOPY_BUILD_COROUTINE)
 else()
   target_link_libraries(
     transport_streaming
-    PUBLIC streaming json
+    PUBLIC streaming json stream_transport_config_idl
     PRIVATE yas_common streaming_transport_idl rpc_types_idl ${CANOPY_LIBRARIES})
 endif()
 

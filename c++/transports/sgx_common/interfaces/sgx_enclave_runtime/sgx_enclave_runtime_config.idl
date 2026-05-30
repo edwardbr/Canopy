@@ -1,0 +1,41 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+#import "io_uring/io_uring_config.idl"
+
+namespace rpc
+{
+    namespace sgx_enclave_runtime
+    {
+        // Generic typed startup settings used inside SGX enclave runtime
+        // configuration. The SGX transport owns this envelope only; the named
+        // subsystem owns the schema of settings and materialises the JSON with
+        // its own IDL type.
+        struct typed_runtime_settings
+        {
+            [description="Runtime subsystem type understood by the enclave, such as attestation, filesystem, or another enclave-local service."]
+            std::string type;
+
+            [description="Subsystem-owned JSON settings. Debug enclaves may use host-provided values directly; release enclaves must sanitize or replace security-sensitive values with enclave-owned policy."]
+            rpc::optional<json::v1::object> settings;
+        };
+
+        // Common enclave startup policy shared by SGX transports. These values
+        // are provided by the host transport configuration because the SGX
+        // transport instantiates the enclave. The defaults should describe the
+        // production release policy; release enclaves may ignore untrusted host
+        // overrides and use compiled-in policy for security-critical fields.
+        struct runtime_settings
+        {
+            [description="Requested io_uring controller policy for enclave runtime services. Debug enclaves may use this directly; release enclaves may replace security-sensitive values with compiled production policy."]
+            canopy::io_uring::host_controller_options io_uring = {};
+
+            [description="Named enclave runtime services and policy blobs, such as attestation or filesystem configuration. Each named service owns its settings schema."]
+            std::map<std::string, rpc::sgx_enclave_runtime::typed_runtime_settings> services = {};
+        };
+    }
+}

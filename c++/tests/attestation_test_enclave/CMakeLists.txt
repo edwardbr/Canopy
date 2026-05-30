@@ -23,7 +23,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
       rpc_enclave
       transport_sgx_coroutine_enclave
       ${ATTESTATION_TEST_TELEMETRY_ENCLAVE_LIBS}
-      canopy_coroutine_edl_enclave
+      sgx_coroutine_transport_edl_enclave
       common_enclave
       transport_local_enclave
       attestation_test_idl_enclave

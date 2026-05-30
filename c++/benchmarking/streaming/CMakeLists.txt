@@ -11,10 +11,9 @@ project(
   VERSION 1.0.0
   LANGUAGES CXX)
 
-set(STREAMING_BENCHMARK_SOURCES benchmark.cpp benchmark_common.cpp stream_tcp.cpp stream_tcp_wrapped.cpp)
+set(STREAMING_BENCHMARK_SOURCES benchmark.cpp benchmark_common.cpp)
 set(STREAMING_BENCHMARK_LIBS
     streaming
-    streaming_tcp
     rpc
     fmt::fmt-header-only
     ${CANOPY_LIBRARIES}
@@ -41,7 +40,7 @@ if(STREAMING_BENCHMARK_SECURE_STREAM_TARGET)
 endif()
 
 if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
-  list(APPEND STREAMING_BENCHMARK_LIBS streaming_websocket wslay)
+  list(APPEND STREAMING_BENCHMARK_LIBS streaming_websocket)
   list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_BUILD_WEBSOCKET)
 endif()
 
@@ -60,11 +59,14 @@ if(CANOPY_BUILD_COROUTINE)
     endif()
   endif()
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET streaming_io_uring)
-    list(APPEND STREAMING_BENCHMARK_SOURCES stream_io_uring.cpp stream_sgx_io_uring.cpp)
-    list(APPEND STREAMING_BENCHMARK_LIBS streaming_io_uring connection_factory)
-    list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_STREAMING_BENCHMARK_HAS_IO_URING)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET streaming_tcp_coroutine)
+    list(APPEND STREAMING_BENCHMARK_SOURCES stream_tcp_coroutine.cpp stream_sgx_io_uring.cpp)
+    list(APPEND STREAMING_BENCHMARK_LIBS streaming_tcp_coroutine connection_factory)
+    list(APPEND STREAMING_BENCHMARK_DEFINES CANOPY_STREAMING_BENCHMARK_HAS_TCP_COROUTINE)
   endif()
+else()
+  list(APPEND STREAMING_BENCHMARK_SOURCES stream_tcp_blocking.cpp stream_tcp_wrapped.cpp)
+  list(APPEND STREAMING_BENCHMARK_LIBS streaming_tcp_blocking)
 endif()
 
 add_executable(streaming_benchmark ${STREAMING_BENCHMARK_SOURCES})

@@ -26,9 +26,9 @@ target_include_directories(
 # Add enclave dependencies if needed
 if(CANOPY_BUILD_ENCLAVE)
   if(CANOPY_BUILD_COROUTINE)
-    set(ENCLAVE_DEPENDENCIES canopy_coroutine_edl transport_sgx_coroutine canopy_io_uring)
+    set(ENCLAVE_DEPENDENCIES sgx_coroutine_transport_edl transport_sgx_coroutine canopy_io_uring)
   else()
-    set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header transport_sgx)
+    set(ENCLAVE_DEPENDENCIES sgx_blocking_transport_edl rpc_telemetry_edl_header transport_sgx_blocking)
   endif()
 endif()
 

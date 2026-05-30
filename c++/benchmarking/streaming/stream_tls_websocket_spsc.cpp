@@ -5,7 +5,6 @@
 
 #include "benchmark_common.h"
 #include "benchmark_tls_fixture.h"
-#include "websocket_client_stream.h"
 
 #ifdef CANOPY_BUILD_WEBSOCKET
 #  include <streaming/spsc_queue/stream.h>
@@ -86,7 +85,7 @@ namespace stream_bench
                 return false;
 
             server = std::make_shared<streaming::websocket::stream>(tls_a);
-            client = std::make_shared<websocket_client_stream>(tls_b);
+            client = std::make_shared<streaming::websocket::stream>(tls_b, streaming::websocket::stream_role::client);
             return true;
         }
 

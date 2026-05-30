@@ -5,7 +5,9 @@
 
 #include "benchmark_common.h"
 
-#include <streaming/tcp/stream.h>
+#ifndef CANOPY_BUILD_COROUTINE
+#  include <streaming/tcp_blocking/stream.h>
+#endif
 
 #include <algorithm>
 #include <cerrno>
@@ -20,10 +22,6 @@
 #include <system_error>
 
 #include <fmt/format.h>
-
-#ifdef CANOPY_BUILD_COROUTINE
-#  include <coro/net/tcp/server.hpp>
-#endif
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -783,54 +781,11 @@ namespace stream_bench
         return ntohs(bound_addr.sin_port);
     }
 
-    void tcp_stream_pair::shutdown()
-    {
-#ifdef CANOPY_BUILD_COROUTINE
-        if (scheduler_a)
-            scheduler_a->shutdown();
-        if (scheduler_b)
-            scheduler_b->shutdown();
-#endif
-    }
+#ifndef CANOPY_BUILD_COROUTINE
+    void tcp_stream_pair::shutdown() { }
 
     bool make_tcp_stream_pair(tcp_stream_pair& pair)
     {
-#ifdef CANOPY_BUILD_COROUTINE
-        const coro::net::socket_address endpoint{"127.0.0.1", allocate_loopback_port()};
-        pair.scheduler_a = make_scheduler();
-        pair.scheduler_b = make_scheduler();
-
-        rpc::event server_ready;
-        std::shared_ptr<streaming::stream> server_stream;
-        std::shared_ptr<streaming::stream> client_stream;
-        coro::sync_wait(
-            coro::when_all(
-                [&]() -> coro::task<void>
-                {
-                    auto server = std::make_shared<coro::net::tcp::server>(pair.scheduler_a, endpoint);
-                    server_ready.set();
-                    auto accepted = co_await server->accept(std::chrono::milliseconds{5000});
-                    if (!accepted)
-                        co_return;
-                    server_stream = std::make_shared<streaming::tcp::stream>(std::move(*accepted), pair.scheduler_a);
-                }(),
-                [&]() -> coro::task<void>
-                {
-                    co_await server_ready.wait();
-                    coro::net::tcp::client client(pair.scheduler_b, endpoint);
-                    if (co_await client.connect(std::chrono::milliseconds{5000}) != coro::net::connect_status::connected)
-                        co_return;
-                    client_stream = std::make_shared<streaming::tcp::stream>(std::move(client), pair.scheduler_b);
-                }()));
-
-        pair.side_a = std::move(server_stream);
-        pair.side_b = std::move(client_stream);
-        if (pair.side_a && pair.side_b)
-            return true;
-
-        pair.shutdown();
-        return false;
-#else
         uint16_t port = 0;
         int listen_fd = make_loopback_listener(port);
         if (listen_fd < 0)
@@ -853,11 +808,11 @@ namespace stream_bench
             return false;
         }
 
-        pair.side_a = std::make_shared<streaming::tcp::stream>(streaming::tcp::socket(server_fd));
-        pair.side_b = std::make_shared<streaming::tcp::stream>(streaming::tcp::socket(client_fd));
+        pair.side_a = std::make_shared<streaming::blocking::tcp::stream>(streaming::blocking::tcp::socket(server_fd));
+        pair.side_b = std::make_shared<streaming::blocking::tcp::stream>(streaming::blocking::tcp::socket(client_fd));
         return true;
-#endif
     }
+#endif
 
     bench_stats compute_stats(
         std::vector<int64_t> samples,

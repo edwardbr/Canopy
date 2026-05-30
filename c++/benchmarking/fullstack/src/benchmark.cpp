@@ -473,14 +473,14 @@ namespace
     }
 
 #ifdef CANOPY_BUILD_COROUTINE
-    bool should_run_io_uring_variant(
+    bool should_run_tcp_coroutine_variant(
         const benchmark_filters& filters,
         std::string_view transport)
     {
         if (filters.transports.empty())
             return true;
 
-        return std::find(filters.transports.begin(), filters.transports.end(), "io_uring") != filters.transports.end()
+        return std::find(filters.transports.begin(), filters.transports.end(), "tcp_coroutine") != filters.transports.end()
                || std::find(filters.transports.begin(), filters.transports.end(), transport) != filters.transports.end();
     }
 #endif
@@ -1690,57 +1690,60 @@ int main(
         [](rpc::encoding enc, size_t blob_size) { return run_spsc_benchmark(enc, blob_size); });
 
 #endif
+#ifndef CANOPY_BUILD_COROUTINE
     add_transport_jobs(
         jobs,
         filters,
         encodings,
         blob_sizes,
-        "tcp",
-        [](rpc::encoding enc, size_t blob_size) { return run_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
-
-#ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
-    add_transport_jobs(
-        jobs,
-        filters,
-        encodings,
-        blob_sizes,
-        "tls+tcp",
+        "tcp_blocking",
         [](rpc::encoding enc, size_t blob_size)
-        { return run_tls_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
-#endif
+        { return run_tcp_blocking_benchmark(enc, blob_size, allocate_loopback_port()); });
 
-#ifdef CANOPY_BUILD_WEBSOCKET
-    add_transport_jobs(
-        jobs,
-        filters,
-        encodings,
-        blob_sizes,
-        "ws+tcp",
-        [](rpc::encoding enc, size_t blob_size)
-        { return run_websocket_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
 #  ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
     add_transport_jobs(
         jobs,
         filters,
         encodings,
         blob_sizes,
-        "tls+ws+tcp",
+        "tls+tcp_blocking",
         [](rpc::encoding enc, size_t blob_size)
-        { return run_tls_websocket_tcp_benchmark(enc, blob_size, allocate_loopback_port()); });
+        { return run_tls_tcp_blocking_benchmark(enc, blob_size, allocate_loopback_port()); });
+#  endif
+
+#  ifdef CANOPY_BUILD_WEBSOCKET
+    add_transport_jobs(
+        jobs,
+        filters,
+        encodings,
+        blob_sizes,
+        "ws+tcp_blocking",
+        [](rpc::encoding enc, size_t blob_size)
+        { return run_websocket_tcp_blocking_benchmark(enc, blob_size, allocate_loopback_port()); });
+#    ifdef CANOPY_FULLSTACK_BENCHMARK_HAS_TLS
+    add_transport_jobs(
+        jobs,
+        filters,
+        encodings,
+        blob_sizes,
+        "tls+ws+tcp_blocking",
+        [](rpc::encoding enc, size_t blob_size)
+        { return run_tls_websocket_tcp_blocking_benchmark(enc, blob_size, allocate_loopback_port()); });
+#    endif
 #  endif
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
-    const std::vector<io_uring_benchmark_variant> io_uring_variants = {
-        {"io_uring_proactor_4k", true, 4096},
-        {"io_uring_proactor_64k", true, 65536},
-        {"io_uring_cooperative_4k", false, 4096},
-        {"io_uring_cooperative_64k", false, 65536},
+    const std::vector<io_uring_benchmark_variant> tcp_coroutine_variants = {
+        {"tcp_coroutine_proactor_4k", true, 4096},
+        {"tcp_coroutine_proactor_64k", true, 65536},
+        {"tcp_coroutine_cooperative_4k", false, 4096},
+        {"tcp_coroutine_cooperative_64k", false, 65536},
     };
 
-    for (const auto& variant : io_uring_variants)
+    for (const auto& variant : tcp_coroutine_variants)
     {
-        if (!should_run_io_uring_variant(filters, variant.name))
+        if (!should_run_tcp_coroutine_variant(filters, variant.name))
             continue;
 
         add_selected_transport_jobs(
@@ -1751,18 +1754,21 @@ int main(
             variant.name,
             [use_proactor = variant.use_proactor, host_buffer_size = variant.host_buffer_size](
                 rpc::encoding enc, size_t blob_size)
-            { return run_io_uring_benchmark(enc, blob_size, allocate_loopback_port(), use_proactor, host_buffer_size); });
+            {
+                return run_tcp_coroutine_benchmark(
+                    enc, blob_size, allocate_loopback_port(), use_proactor, host_buffer_size);
+            });
     }
 
 #  ifdef CANOPY_BENCHMARK_SGX_COROUTINE
-    const std::vector<io_uring_benchmark_variant> sgx_io_uring_variants = {
+    const std::vector<io_uring_benchmark_variant> sgx_tcp_coroutine_variants = {
         {"sgx_io_uring_proactor_4k", true, 4096},
         {"sgx_io_uring_proactor_64k", true, 65536},
         {"sgx_io_uring_cooperative_4k", false, 4096},
         {"sgx_io_uring_cooperative_64k", false, 65536},
     };
 
-    for (const auto& variant : sgx_io_uring_variants)
+    for (const auto& variant : sgx_tcp_coroutine_variants)
     {
         if (!should_run_sgx_io_uring_variant(filters, variant.name))
             continue;

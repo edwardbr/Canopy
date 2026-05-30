@@ -222,12 +222,12 @@ namespace
             host_controller_options.buffer_size = 64U * 1024U;
             host_controller_options.use_sqpoll = true;
 
-            auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+            auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
                 "file system test enclave", root_service_, CANOPY_FILE_SYSTEM_TEST_ENCLAVE_PATH);
             transports_.push_back(transport);
 
             auto result = run_on_manual_scheduler<rpc::service_connect_result<rpc::file_system::i_manager>>(
-                rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, rpc::file_system::i_manager>(
+                rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, rpc::file_system::i_manager>(
                     root_service_, "file system test enclave", transport, {}, host_controller_options));
             connect_error_ = result.error_code;
             manager_ = std::move(result.output_interface);
@@ -337,7 +337,7 @@ namespace
         std::shared_ptr<coro::scheduler> scheduler_;
         std::shared_ptr<rpc::root_service> root_service_;
         rpc::shared_ptr<rpc::file_system::i_manager> manager_;
-        std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
+        std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>> transports_;
         std::atomic_bool teardown_done_{false};
         int connect_error_{rpc::error::OK()};
     };

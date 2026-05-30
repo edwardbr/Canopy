@@ -20,7 +20,8 @@ endif()
 add_subdirectory(mock_test)
 
 if(CANOPY_BUILD_ENCLAVE)
-  add_subdirectory(sgx)
+  add_subdirectory(sgx_common)
+  add_subdirectory(sgx_blocking)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)

@@ -11,7 +11,7 @@
 #include <string>
 #include <secure_coroutine_module/secure_coroutine_module.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     class host_transport;
 
@@ -67,7 +67,10 @@ namespace rpc::sgx::coro::enclave
             uint32_t descriptor,
             uint32_t backlog) override;
         CORO_TASK(rpc::io_uring::descriptor_result) accept(uint32_t descriptor) override;
-        CORO_TASK(rpc::io_uring::descriptor_result) connect_tcp_ipv4_loopback(uint16_t port) override;
+        CORO_TASK(rpc::io_uring::descriptor_result)
+        connect_tcp_ipv4_loopback(
+            uint16_t port,
+            std::chrono::milliseconds timeout) override;
         CORO_TASK(rpc::io_uring::operation_result) set_tcp_no_delay(uint32_t descriptor) override;
         CORO_TASK(rpc::io_uring::transfer_result)
         send(

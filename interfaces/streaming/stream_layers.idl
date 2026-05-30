@@ -1,0 +1,27 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+
+namespace rpc
+{
+    namespace stream_layers
+    {
+        // Generic stream-layer configuration envelope.
+        //
+        // The stream-layer factory owns this envelope only. The implementation
+        // identified by type owns the JSON schema of settings and converts it
+        // with that implementation's generated IDL type.
+        struct stream_layer_settings
+        {
+            [description="Stream layer implementation type, such as websocket, tls, attestation, compression, or a custom application-provided layer."]
+            std::string type;
+
+            [description="Implementation-owned JSON settings. The stream-layer factory treats this as opaque until it dispatches to the named layer implementation."]
+            rpc::optional<json::v1::object> settings;
+        };
+    }
+}

@@ -259,7 +259,7 @@ namespace rpc
             // Enclave-local transports are only next-hop links between zones in
             // the same enclave. Reference-control security is still about the
             // referenced owner route, not the adjacent local peer.
-            if (rpc::sgx::coro::enclave::is_local_route_transport(transport))
+            if (rpc::sgx_coroutine_transport::enclave::is_local_route_transport(transport))
                 return remote_object_id.as_zone();
 
             return transport->get_adjacent_zone_id();

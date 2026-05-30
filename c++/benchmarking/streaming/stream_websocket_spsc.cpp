@@ -4,7 +4,6 @@
  */
 
 #include "benchmark_common.h"
-#include "websocket_client_stream.h"
 
 #ifdef CANOPY_BUILD_WEBSOCKET
 #  include <streaming/spsc_queue/stream.h>
@@ -43,7 +42,8 @@ namespace stream_bench
             auto sched_b = make_scheduler();
             auto pipe = std::make_unique<spsc_pipe>();
             auto server = std::make_shared<streaming::websocket::stream>(pipe->side_a(sched_a));
-            auto client = std::make_shared<websocket_client_stream>(pipe->side_b(sched_b));
+            auto client = std::make_shared<streaming::websocket::stream>(
+                pipe->side_b(sched_b), streaming::websocket::stream_role::client);
 
             run_paired_stream_bench(server, client, cfg, wd, blob_size, unidirectional, send_reply);
 
@@ -62,7 +62,8 @@ namespace stream_bench
             auto sched_b = make_scheduler();
             auto pipe = std::make_unique<spsc_pipe>();
             auto server = std::make_shared<streaming::websocket::stream>(pipe->side_a(sched_a));
-            auto client = std::make_shared<websocket_client_stream>(pipe->side_b(sched_b));
+            auto client = std::make_shared<streaming::websocket::stream>(
+                pipe->side_b(sched_b), streaming::websocket::stream_role::client);
 
             run_paired_stream_stress_bench(server, client, cfg, wd, blob_size, send, recv);
 

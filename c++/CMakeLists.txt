@@ -15,8 +15,8 @@ add_subdirectory(subcomponents/spsc_queue)
 add_subdirectory(subcomponents/json)
 add_subdirectory(subcomponents/io_uring_config)
 
-# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp, tls, mbedtls, spsc,
-# attestation, websocket) gate themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
+# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking, tls,
+# mbedtls, spsc, attestation, websocket) gate themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
 add_subdirectory(streaming)
 
 if(CANOPY_BUILD_COROUTINE)
@@ -32,23 +32,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_subdirectory(subcomponents/file_system)
 endif()
 
-# canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes; mbedtls secure streams remain coroutine-only
-# in streaming/mbedtls.
-if(CANOPY_BUILD_WEBSOCKET)
-  add_subdirectory(subcomponents/http_server)
-endif()
-
 if(CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_ENCLAVE)
   add_subdirectory(transports/sgx_coroutine/edl)
 endif()
 
 add_subdirectory(transports)
 
-if(CANOPY_BUILD_COROUTINE AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # The io_uring stream adapter depends on the low-level io_uring controller target, so it is configured after
-  # subcomponents/io_uring and transports. connection_factory is configured after this so its optional io_uring helpers
-  # can link the stream adapter when it exists.
-  add_subdirectory(streaming/io_uring)
+# The tcp_coroutine stream IDL is generated in all builds so JSON schema users
+# can materialise stream configs independently of the coroutine-only
+# implementation. The implementation target still gates itself on coroutine
+# Linux builds and on the low-level io_uring controller target.
+add_subdirectory(streaming/tcp_coroutine)
+
+# canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes; mbedtls secure streams remain coroutine-only
+# in streaming/mbedtls.
+if(CANOPY_BUILD_WEBSOCKET)
+  add_subdirectory(subcomponents/http_server)
 endif()
 
 add_subdirectory(connection_factory)

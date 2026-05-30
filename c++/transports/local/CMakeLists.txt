@@ -5,6 +5,17 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+CanopyGenerate(
+  local_transport_config
+  local_transport/local_transport_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 # Enclave version
 if(CANOPY_BUILD_ENCLAVE)
   add_library(transport_local_enclave src/transport.cpp)
@@ -38,7 +49,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
-target_link_libraries(transport_local PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
+target_link_libraries(transport_local PUBLIC local_transport_config_idl PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 target_compile_options(transport_local PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(transport_local PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

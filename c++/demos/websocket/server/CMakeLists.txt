@@ -129,8 +129,8 @@ target_link_libraries(
          ${CANOPY_LIBRARIES}
          rpc_log)
 
-if(CANOPY_BUILD_COROUTINE AND TARGET streaming_io_uring)
-  target_link_libraries(websocket_server PUBLIC streaming_io_uring)
+if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
+  target_link_libraries(websocket_server PUBLIC streaming_tcp_coroutine)
 endif()
 
 # libvpx is provided centrally by c++/submodules/CMakeLists.txt (gated on demos + websocket). Link it only if that
@@ -162,7 +162,7 @@ if(CANOPY_BUILD_ENCLAVE
    AND TARGET canopy_http_server_enclave
    AND TARGET canopy_file_system_enclave
    AND TARGET json_enclave
-   AND TARGET streaming_io_uring_enclave
+   AND TARGET streaming_tcp_coroutine_enclave
    AND TARGET transport_websocket_enclave
    AND WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET)
   set(WEBSOCKET_DEMO_ENCLAVE_SRCS
@@ -193,7 +193,7 @@ if(CANOPY_BUILD_ENCLAVE
     PUBLIC websocket_demo_idl_enclave
            canopy_file_system_enclave
            canopy_http_server_enclave
-           streaming_io_uring_enclave
+           streaming_tcp_coroutine_enclave
            ${WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET}
            streaming_websocket_enclave
            transport_websocket_enclave
@@ -234,7 +234,7 @@ if(CANOPY_BUILD_ENCLAVE
         libcoro_enclave
         rpc_enclave
         streaming_enclave
-        streaming_io_uring_enclave
+        streaming_tcp_coroutine_enclave
         ${WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET}
         streaming_websocket_enclave
         transport_streaming_enclave
@@ -243,7 +243,7 @@ if(CANOPY_BUILD_ENCLAVE
         transport_sgx_coroutine_enclave
         ${WEBSOCKET_DEMO_TELEMETRY_ENCLAVE_LIBS}
         streaming_spsc_queue_enclave
-        canopy_coroutine_edl_enclave
+        sgx_coroutine_transport_edl_enclave
         canopy_io_uring_enclave
         canopy_file_system_enclave
         file_system_idl_enclave
@@ -301,7 +301,7 @@ if(CANOPY_BUILD_ENCLAVE
              rpc::rpc
              connection_factory
              transport_sgx_coroutine
-             streaming_io_uring
+             streaming_tcp_coroutine
              canopy_io_uring
              network_config
              ${CANOPY_LIBRARIES}

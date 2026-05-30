@@ -6,6 +6,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -222,14 +223,63 @@ namespace rpc::io_uring
         {
         }
 
-        CORO_TASK(direct_descriptor_result) connect_loopback_with_result(uint16_t port)
+        CORO_TASK(direct_descriptor_result)
+        connect_loopback_with_result(
+            uint16_t port,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
+        {
+            CO_RETURN CO_AWAIT connect_ipv4_with_result({127, 0, 0, 1}, port, timeout);
+        }
+
+        CORO_TASK(direct_descriptor_result)
+        connect_ipv4_with_result(
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {
             if (!controller_)
             {
                 CO_RETURN direct_descriptor_result{rpc::error::RESOURCE_CLOSED(), 0, 0, {}};
             }
 
-            auto connect_result = CO_AWAIT controller_->connect_tcp_ipv4_loopback(port);
+            auto connect_result = CO_AWAIT controller_->connect_tcp_ipv4(address, port, timeout);
+            if (connect_result.error_code != rpc::error::OK())
+            {
+                CO_RETURN direct_descriptor_result{
+                    connect_result.error_code, connect_result.native_result, connect_result.cqe_flags, {}};
+            }
+
+            std::shared_ptr<direct_descriptor> descriptor;
+            try
+            {
+                descriptor = std::make_shared<direct_descriptor>(controller_, connect_result.descriptor);
+            }
+            catch (const std::bad_alloc&)
+            {
+                RPC_ERROR("bad_alloc while creating connected direct io_uring descriptor");
+                std::terminate();
+            }
+
+            CO_RETURN direct_descriptor_result{
+                rpc::error::OK(), connect_result.native_result, connect_result.cqe_flags, std::move(descriptor)};
+        }
+
+        CORO_TASK(direct_descriptor_result)
+        connect_ipv6_with_result(
+            const std::array<
+                uint8_t,
+                16>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
+        {
+            if (!controller_)
+            {
+                CO_RETURN direct_descriptor_result{rpc::error::RESOURCE_CLOSED(), 0, 0, {}};
+            }
+
+            auto connect_result = CO_AWAIT controller_->connect_tcp_ipv6(address, port, timeout);
             if (connect_result.error_code != rpc::error::OK())
             {
                 CO_RETURN direct_descriptor_result{
@@ -254,6 +304,30 @@ namespace rpc::io_uring
         CORO_TASK(std::shared_ptr<direct_descriptor>) connect_loopback(uint16_t port)
         {
             auto result = CO_AWAIT connect_loopback_with_result(port);
+            CO_RETURN std::move(result.descriptor);
+        }
+
+        CORO_TASK(std::shared_ptr<direct_descriptor>)
+        connect_ipv4(
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
+        {
+            auto result = CO_AWAIT connect_ipv4_with_result(address, port, timeout);
+            CO_RETURN std::move(result.descriptor);
+        }
+
+        CORO_TASK(std::shared_ptr<direct_descriptor>)
+        connect_ipv6(
+            const std::array<
+                uint8_t,
+                16>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
+        {
+            auto result = CO_AWAIT connect_ipv6_with_result(address, port, timeout);
             CO_RETURN std::move(result.descriptor);
         }
 

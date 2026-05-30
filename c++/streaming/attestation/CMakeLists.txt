@@ -5,6 +5,17 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+CanopyGenerate(
+  attestation_stream_config
+  attestation_stream/attestation_stream_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 add_library(streaming_attestation STATIC src/stream.cpp)
 add_library(canopy::streaming_attestation ALIAS streaming_attestation)
 
@@ -15,7 +26,7 @@ target_include_directories(
 target_compile_definitions(streaming_attestation PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(streaming_attestation PUBLIC streaming canopy::security_attestation libcoro)
+target_link_libraries(streaming_attestation PUBLIC streaming canopy::security_attestation libcoro attestation_stream_config_idl)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_attestation PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -35,8 +46,11 @@ if(CANOPY_BUILD_ENCLAVE
   target_compile_options(streaming_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
                                                                ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(streaming_attestation_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
-  target_link_libraries(streaming_attestation_enclave PUBLIC streaming_enclave canopy::security_attestation_enclave
-                                                             libcoro_enclave)
+  set(STREAMING_ATTESTATION_ENCLAVE_PUBLIC_LIBS streaming_enclave canopy::security_attestation_enclave libcoro_enclave)
+  if(TARGET attestation_stream_config_idl_enclave)
+    list(APPEND STREAMING_ATTESTATION_ENCLAVE_PUBLIC_LIBS attestation_stream_config_idl_enclave)
+  endif()
+  target_link_libraries(streaming_attestation_enclave PUBLIC ${STREAMING_ATTESTATION_ENCLAVE_PUBLIC_LIBS})
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(streaming_attestation_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

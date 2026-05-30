@@ -369,7 +369,7 @@ namespace
             // by asking the enclave runtime for this registered factory. Keeping
             // the attestation test in its own factory/enclave avoids adding
             // attestation-only methods to unrelated io_uring or RPC tests.
-            rpc::sgx::coro::enclave::register_connection_factory<yyy::i_host, attestation_test::i_attestation_enclave_test>(
+            rpc::sgx_coroutine_transport::enclave::register_connection_factory<yyy::i_host, attestation_test::i_attestation_enclave_test>(
                 "sgx_attestation_test_enclave",
                 [](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::service> child_service)
                     -> CORO_TASK(rpc::service_connect_result<attestation_test::i_attestation_enclave_test>)

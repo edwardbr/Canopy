@@ -13,7 +13,7 @@ CanopyGenerate(
   ""
   yas_binary
   yas_json
-  dependencies rpc_types_idl noop_idl streaming_transport_idl json_idl
+  dependencies rpc_types_idl noop_idl streaming_transport_idl stream_layers_idl json_idl
   include_paths ${CMAKE_SOURCE_DIR}/interfaces
   install_dir ${GENERATED_INSTALL_DIR})
 

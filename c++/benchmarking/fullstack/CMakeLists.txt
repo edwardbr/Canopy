@@ -90,8 +90,8 @@ if(CANOPY_BUILD_COROUTINE)
         transport_sgx_coroutine_enclave
         ${BENCHMARK_SGX_COROUTINE_TELEMETRY_ENCLAVE_LIBS}
         streaming_spsc_queue_enclave
-        streaming_io_uring_enclave
-        canopy_coroutine_edl_enclave
+        streaming_tcp_coroutine_enclave
+        sgx_coroutine_transport_edl_enclave
         transport_local_enclave
         canopy_io_uring_enclave
         comprehensive_idl_enclave
@@ -132,7 +132,7 @@ elseif(
   set(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET streaming_mbedtls)
 endif()
 
-add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp src/benchmark_tcp.cpp)
+add_executable(benchmark src/benchmark.cpp src/benchmark_common.cpp src/benchmark_local.cpp)
 if(CANOPY_BUILD_COROUTINE)
   target_sources(
     benchmark
@@ -140,7 +140,7 @@ if(CANOPY_BUILD_COROUTINE)
             src/benchmark_libcoro_host_scheduled_dynamic_library.cpp
             src/benchmark_ipc.cpp
             src/benchmark_spsc.cpp
-            src/benchmark_io_uring.cpp)
+            src/benchmark_tcp_coroutine.cpp)
   if(CANOPY_BUILD_ENCLAVE)
     target_sources(benchmark PRIVATE src/benchmark_sgx_coroutine.cpp)
   endif()
@@ -170,6 +170,7 @@ if(CANOPY_BUILD_COROUTINE)
               CANOPY_BENCHMARK_SGX_COROUTINE_ENCLAVE_PATH="${canopy_benchmark_sgx_coroutine_enclave_sign_OUTPUT_NAME}")
   endif()
 else()
+  target_sources(benchmark PRIVATE src/benchmark_tcp_blocking.cpp)
   target_compile_definitions(benchmark PRIVATE CANOPY_BENCHMARK_DLL_PATH="$<TARGET_FILE:canopy_benchmark_dll>")
 endif()
 target_include_directories(benchmark PRIVATE "${CANOPY_CPP_SOURCE_DIR}/benchmarking/fullstack/src"
@@ -180,14 +181,13 @@ target_link_libraries(
          transport_local
          transport_streaming
          connection_factory
-         streaming_tcp
          rpc
          ${CANOPY_LIBRARIES})
 if(FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET)
   target_link_libraries(benchmark PUBLIC ${FULLSTACK_BENCHMARK_SECURE_STREAM_TARGET})
 endif()
 if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
-  target_link_libraries(benchmark PUBLIC streaming_websocket wslay)
+  target_link_libraries(benchmark PUBLIC streaming_websocket)
 endif()
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
@@ -196,13 +196,13 @@ if(CANOPY_BUILD_COROUTINE)
            transport_libcoro_host_scheduled_dynamic_library
            transport_ipc_transport
            streaming_spsc_queue
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            rpc_log)
   if(CANOPY_BUILD_ENCLAVE)
     target_link_libraries(benchmark PUBLIC transport_sgx_coroutine)
   endif()
 else()
-  target_link_libraries(benchmark PUBLIC transport_dynamic_library rpc_log)
+  target_link_libraries(benchmark PUBLIC transport_dynamic_library streaming_tcp_blocking rpc_log)
 endif()
 target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

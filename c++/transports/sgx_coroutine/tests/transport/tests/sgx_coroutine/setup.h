@@ -70,7 +70,7 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class sgx_coroutine_setup
     : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
+    std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>> transports_;
 
     [[nodiscard]] bool all_transports_expired() const
     {
@@ -105,12 +105,12 @@ public:
         this->local_host_ptr_ = this->i_host_ptr_;
 
         auto host_ptr = this->use_host_in_child_ ? this->i_host_ptr_ : nullptr;
-        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+        auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
             "main child", this->root_service_, coroutine_enclave_path);
         transports_.push_back(transport);
         auto result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
             this->io_scheduler_,
-            rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+            rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
                 this->root_service_, "main child", transport, host_ptr));
 
         this->i_example_ptr_ = std::move(result.output_interface);
@@ -147,11 +147,11 @@ public:
         if (zone_result.error_code != rpc::error::OK())
             CO_RETURN nullptr;
 
-        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+        auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
             "main child", this->root_service_, coroutine_enclave_path);
         transports_.push_back(transport);
         transport->set_adjacent_zone_id(zone_result.zone_id);
-        auto result = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+        auto result = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
             this->root_service_, "main child", transport, this->use_host_in_child_ ? this->i_host_ptr_ : nullptr);
 
         ptr = std::move(result.output_interface);

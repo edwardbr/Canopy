@@ -1,0 +1,22 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace spsc_queue_stream
+    {
+        // Settings for the SPSC queue base stream. The current connection
+        // factory receives the actual queue pair from layered_connection_context;
+        // this generated type still gives the stream a stable JSON schema and
+        // leaves room for named queue-pair lookup later.
+        struct stream_settings
+        {
+            [description="Optional application-defined queue-pair identifier. The built-in factory validates this field but currently receives the queue pair from connection context."]
+            rpc::optional<std::string> queue_pair;
+        };
+    }
+}

@@ -8,7 +8,7 @@
 #include <cstring>
 #include <time.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     uint64_t runtime_unix_epoch_milliseconds() noexcept;
 }
@@ -36,7 +36,7 @@ extern "C" sgx_status_t u_sgxssl_ftime(
     if (!timeptr || timeb_len < sizeof(sgxssl_timeb))
         return SGX_ERROR_INVALID_PARAMETER;
 
-    const auto epoch_milliseconds = rpc::sgx::coro::enclave::runtime_unix_epoch_milliseconds();
+    const auto epoch_milliseconds = rpc::sgx_coroutine_transport::enclave::runtime_unix_epoch_milliseconds();
 
     sgxssl_timeb result{};
     result.time = static_cast<time_t>(epoch_milliseconds / 1000);

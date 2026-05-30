@@ -17,16 +17,18 @@
  *       server ever responds.
  *
  *   Transport variants covered:
- *     tcp          — streaming::tcp::stream over TCP loopback (port 8090)
+ *     tcp_coroutine — streaming::coroutine::tcp::stream over TCP loopback (port 8091)
  *     spsc         — streaming::spsc_queue::stream (in-process)
- *     io_uring     — streaming::io_uring::stream (Linux, port 8091)
- *     tls          — selected secure stream backend over TCP+SPSC (port 8092)
- *     websocket    — streaming::websocket::stream over TCP (port 8093)
+ *     tls          — selected secure stream backend over TCP coroutine + SPSC (port 8092)
+ *     websocket    — streaming::websocket::stream over TCP coroutine (port 8093)
  *                    requires CANOPY_BUILD_WEBSOCKET
  */
 
 #include <rpc/rpc.h>
 #include <common/tests.h>
+#include <array>
+#include <atomic>
+#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -40,21 +42,19 @@
 #  include <streaming/listener.h>
 #  include <streaming/spsc_queue/stream.h>
 #  include <streaming/spsc_wrapping/stream.h>
-#  include <streaming/tcp/acceptor.h>
-#  include <streaming/tcp/stream.h>
 #  include <streaming/secure_stream.h>
 #  include <transports/streaming/transport.h>
 
 #  ifdef __linux__
 #    include <io_uring/host_io_uring.h>
 #    include <io_uring/tcp.h>
-#    include <streaming/io_uring/acceptor.h>
-#    include <streaming/io_uring/stream.h>
+#    include <streaming/tcp_coroutine/acceptor.h>
+#    include <streaming/tcp_coroutine/connector.h>
+#    include <streaming/tcp_coroutine/stream.h>
 #  endif
 
 #  ifdef CANOPY_BUILD_WEBSOCKET
 #    include <streaming/websocket/stream.h>
-#    include <wslay/wslay.h>
 #  endif
 
 using namespace marshalled_tests;
@@ -75,223 +75,40 @@ namespace
     }
 } // namespace
 
-// ---------------------------------------------------------------------------
-// WebSocket client-mode stream
-// Mirrors the server-side streaming::websocket::stream but uses
-// wslay_event_context_client_init so outgoing frames are masked (RFC 6455).
-// ---------------------------------------------------------------------------
-
 #  ifdef CANOPY_BUILD_WEBSOCKET
 namespace
 {
-    class ws_client_stream : public streaming::stream
+    auto make_websocket_test_scheduler() -> std::shared_ptr<coro::scheduler>
     {
-    public:
-        explicit ws_client_stream(std::shared_ptr<::streaming::stream> underlying)
-            : underlying_(std::move(underlying))
-            , raw_recv_buffer_(
-                  io_chunk_size_,
-                  '\0')
-        {
-            wslay_event_callbacks cbs{};
-            cbs.recv_callback = recv_cb;
-            cbs.send_callback = send_cb;
-            cbs.on_msg_recv_callback = on_msg_cb;
-            cbs.genmask_callback = genmask_cb;
-            if (wslay_event_context_client_init(&ctx_, &cbs, this) != 0)
-                throw std::runtime_error("ws_client_stream: wslay client init failed");
-        }
+        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{
+                .thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                .pool = coro::thread_pool::options{.thread_count = 2},
+                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
+            }));
+    }
 
-        ~ws_client_stream() override
-        {
-            if (ctx_)
-                wslay_event_context_free(ctx_);
-        }
-
-        ws_client_stream(const ws_client_stream&) = delete;
-        auto operator=(const ws_client_stream&) -> ws_client_stream& = delete;
-        ws_client_stream(ws_client_stream&&) = delete;
-        auto operator=(ws_client_stream&&) -> ws_client_stream& = delete;
-
-        auto receive(
-            rpc::mutable_byte_span buf,
-            std::chrono::milliseconds /*timeout*/ = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override
-        {
-            if (!decoded_.empty())
-                co_return serve_decoded(buf);
-
-            while (true)
-            {
-                if (!co_await do_send())
-                    co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
-
-                auto [status, span] = co_await underlying_->receive(
-                    rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()));
-                if (status.is_closed())
-                {
-                    closed_ = true;
-                    co_return {status, {}};
-                }
-                if (status.is_ok() && !span.empty())
-                {
-                    raw_recv_pos_ = 0;
-                    raw_recv_size_ = span.size();
-                    wslay_event_recv(ctx_);
-                    if (!co_await do_send())
-                        co_return {coro::net::io_status{.type = coro::net::io_status::kind::closed}, {}};
-                    if (!decoded_.empty())
-                        co_return serve_decoded(buf);
-                }
-                else
-                {
-                    co_return {status, {}};
-                }
-            }
-        }
-
-        auto send(rpc::byte_span buf) -> coro::task<coro::net::io_status> override
-        {
-            if (closed_)
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
-
-            wslay_event_msg msg{};
-            msg.opcode = WSLAY_BINARY_FRAME;
-            msg.msg = reinterpret_cast<const uint8_t*>(buf.data());
-            msg.msg_length = buf.size();
-            if (wslay_event_queue_msg(ctx_, &msg) != 0)
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
-            if (!co_await do_send())
-                co_return coro::net::io_status{.type = coro::net::io_status::kind::closed};
-            co_return coro::net::io_status{.type = coro::net::io_status::kind::ok};
-        }
-
-        [[nodiscard]] bool is_closed() const override { return closed_; }
-
-        auto set_closed() -> coro::task<void> override
-        {
-            closed_ = true;
-            if (underlying_)
-                co_await underlying_->set_closed();
-            co_return;
-        }
-
-        auto get_peer_info() const -> streaming::peer_info override { return underlying_->get_peer_info(); }
-
-    private:
-        static constexpr size_t io_chunk_size_ = 8192;
-
-        std::pair<
-            coro::net::io_status,
-            rpc::mutable_byte_span>
-        serve_decoded(rpc::mutable_byte_span buf)
-        {
-            auto& msg = decoded_.front();
-            size_t avail = msg.size() - msg_offset_;
-            size_t n = std::min(avail, buf.size());
-            std::memcpy(buf.data(), msg.data() + msg_offset_, n);
-            msg_offset_ += n;
-            if (msg_offset_ >= msg.size())
-            {
-                decoded_.pop();
-                msg_offset_ = 0;
-            }
-            return {coro::net::io_status{.type = coro::net::io_status::kind::ok}, buf.subspan(0, n)};
-        }
-
-        auto do_send() -> coro::task<bool>
-        {
-            while (wslay_event_want_write(ctx_))
-            {
-                outgoing_raw_.clear();
-                wslay_event_send(ctx_);
-                size_t offset = 0;
-                while (offset < outgoing_raw_.size())
-                {
-                    size_t chunk = std::min(io_chunk_size_, outgoing_raw_.size() - offset);
-                    auto st = co_await underlying_->send(
-                        rpc::byte_span(reinterpret_cast<const char*>(outgoing_raw_.data() + offset), chunk));
-                    if (!st.is_ok())
-                        co_return false;
-                    offset += chunk;
-                }
-                outgoing_raw_.clear();
-            }
-            co_return true;
-        }
-
-        static int genmask_cb(
-            wslay_event_context_ptr,
-            uint8_t* buf,
-            size_t len,
-            void*)
-        {
-            for (size_t i = 0; i < len; ++i)
-                buf[i] = static_cast<uint8_t>(std::rand() & 0xff); // NOLINT(cert-msc50-cpp)
-            return 0;
-        }
-
-        static ssize_t send_cb(
-            wslay_event_context_ptr,
-            const uint8_t* data,
-            size_t len,
-            int,
-            void* ud)
-        {
-            auto* self = static_cast<ws_client_stream*>(ud);
-            self->outgoing_raw_.insert(self->outgoing_raw_.end(), data, data + len);
-            return static_cast<ssize_t>(len);
-        }
-
-        static ssize_t recv_cb(
-            wslay_event_context_ptr ctx,
-            uint8_t* out,
-            size_t len,
-            int,
-            void* ud)
-        {
-            auto* self = static_cast<ws_client_stream*>(ud);
-            size_t avail = self->raw_recv_size_ - self->raw_recv_pos_;
-            if (avail == 0)
-            {
-                wslay_event_set_error(ctx, WSLAY_ERR_WOULDBLOCK);
-                return -1;
-            }
-            size_t n = std::min(avail, len);
-            std::memcpy(out, self->raw_recv_buffer_.data() + self->raw_recv_pos_, n);
-            self->raw_recv_pos_ += n;
-            return static_cast<ssize_t>(n);
-        }
-
-        static void on_msg_cb(
-            wslay_event_context_ptr,
-            const wslay_event_on_msg_recv_arg* arg,
-            void* ud)
-        {
-            auto* self = static_cast<ws_client_stream*>(ud);
-            if (arg->opcode == WSLAY_BINARY_FRAME || arg->opcode == WSLAY_TEXT_FRAME)
-            {
-                self->decoded_.emplace(
-                    reinterpret_cast<const uint8_t*>(arg->msg),
-                    reinterpret_cast<const uint8_t*>(arg->msg) + arg->msg_length);
-                self->msg_offset_ = 0;
-            }
-        }
-
-        std::shared_ptr<::streaming::stream> underlying_;
-        wslay_event_context_ptr ctx_{nullptr};
-        std::string raw_recv_buffer_;
-        size_t raw_recv_size_{0};
-        size_t raw_recv_pos_{0};
-        std::queue<std::vector<uint8_t>> decoded_;
-        size_t msg_offset_{0};
-        std::vector<uint8_t> outgoing_raw_;
-        bool closed_{false};
+    struct websocket_spsc_pair
+    {
+        std::shared_ptr<streaming::spsc_queue::queue_type> client_to_server;
+        std::shared_ptr<streaming::spsc_queue::queue_type> server_to_client;
+        std::shared_ptr<streaming::spsc_queue::stream> client_base;
+        std::shared_ptr<streaming::spsc_queue::stream> server_base;
     };
+
+    auto make_websocket_spsc_pair(std::shared_ptr<coro::scheduler> scheduler) -> websocket_spsc_pair
+    {
+        websocket_spsc_pair pair;
+        pair.client_to_server = std::make_shared<streaming::spsc_queue::queue_type>();
+        pair.server_to_client = std::make_shared<streaming::spsc_queue::queue_type>();
+        pair.client_base
+            = std::make_shared<streaming::spsc_queue::stream>(pair.client_to_server, pair.server_to_client, scheduler);
+        pair.server_base = std::make_shared<streaming::spsc_queue::stream>(
+            pair.server_to_client, pair.client_to_server, std::move(scheduler));
+        return pair;
+    }
 } // namespace
-#  endif // CANOPY_BUILD_WEBSOCKET
+#  endif
 
 // ---------------------------------------------------------------------------
 // Server-side implementation that never responds
@@ -455,73 +272,6 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// TCP setup (port 8090)
-// ---------------------------------------------------------------------------
-
-class timeout_tcp_setup : public timeout_setup_base
-{
-protected:
-    CORO_TASK(bool) do_coro_setup() override
-    {
-        auto root_zone_id = rpc::DEFAULT_PREFIX;
-        auto peer_zone_id = rpc::DEFAULT_PREFIX;
-        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
-
-        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
-
-        listener_ = std::make_unique<streaming::listener>(
-            "responder",
-            std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8090}),
-            rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), timeout_transport_options()));
-
-        if (!listener_->start_listening(peer_service_))
-        {
-            RPC_ERROR("timeout_tcp_setup: failed to start listener");
-            CO_RETURN false;
-        }
-
-        auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8090});
-        auto conn_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-        if (conn_status != coro::net::connect_status::connected)
-        {
-            RPC_ERROR("timeout_tcp_setup: TCP connect failed");
-            CO_RETURN false;
-        }
-
-        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-        auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(tcp_stm), timeout_transport_options());
-
-        rpc::shared_ptr<yyy::i_host> local_host(new host());
-        auto connect_result
-            = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>("child", initiator, local_host);
-        i_example_ptr_ = std::move(connect_result.output_interface);
-        if (connect_result.error_code != rpc::error::OK())
-        {
-            RPC_ERROR("timeout_tcp_setup: connect_to_zone failed: {}", connect_result.error_code);
-            CO_RETURN false;
-        }
-        CO_RETURN true;
-    }
-
-    CORO_TASK(void) do_coro_teardown() override
-    {
-        if (listener_)
-        {
-            CO_AWAIT listener_->stop_listening();
-            listener_.reset();
-        }
-        CO_RETURN;
-    }
-
-public:
-    ~timeout_tcp_setup() override = default;
-};
-
-// ---------------------------------------------------------------------------
 // SPSC setup (in-process)
 // ---------------------------------------------------------------------------
 
@@ -568,13 +318,14 @@ public:
     ~timeout_spsc_setup() override = default;
 };
 
+#  ifdef __linux__
 // ---------------------------------------------------------------------------
-// io_uring setup (Linux, port 8091)
+// TCP coroutine setup (Linux, port 8091)
 // ---------------------------------------------------------------------------
 
-#  ifdef __linux__
-class timeout_iouring_setup : public timeout_setup_base
+class timeout_tcp_coroutine_setup_base : public timeout_setup_base
 {
+protected:
     static rpc::io_uring::linux_io_uring_handle::options make_io_uring_options()
     {
         rpc::io_uring::linux_io_uring_handle::options options;
@@ -588,72 +339,22 @@ class timeout_iouring_setup : public timeout_setup_base
         return options;
     }
 
-protected:
-    CORO_TASK(bool) do_coro_setup() override
+    auto make_tcp_coroutine_controller(const char* setup_name) -> std::shared_ptr<rpc::io_uring::controller>
     {
-        auto root_zone_id = rpc::DEFAULT_PREFIX;
-        auto peer_zone_id = rpc::DEFAULT_PREFIX;
-        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
-
-        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
-        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
-
         auto ret = rpc::io_uring::create_scheduler(io_uring_scheduler_owner_, make_io_uring_options(), io_scheduler_);
         if (ret != rpc::error::OK())
         {
-            RPC_ERROR("timeout_iouring_setup: failed to create io_uring scheduler: {}", ret);
-            CO_RETURN false;
+            RPC_ERROR("{}: failed to create io_uring scheduler: {}", setup_name, ret);
+            return {};
         }
 
         auto controller = io_uring_scheduler_owner_->get_controller();
         if (!controller)
         {
-            RPC_ERROR("timeout_iouring_setup: missing io_uring controller");
-            CO_RETURN false;
+            RPC_ERROR("{}: missing io_uring controller", setup_name);
+            return {};
         }
-
-        auto acceptor = std::make_shared<streaming::io_uring::acceptor>(controller);
-        auto listen_result = CO_AWAIT acceptor->listen_loopback(8091);
-        if (listen_result != rpc::error::OK())
-        {
-            RPC_ERROR("timeout_iouring_setup: listen failed: {}", listen_result);
-            CO_RETURN false;
-        }
-
-        listener_ = std::make_unique<streaming::listener>(
-            "responder",
-            std::move(acceptor),
-            rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
-                make_hanging_factory(), timeout_transport_options()));
-
-        if (!listener_->start_listening(peer_service_))
-        {
-            RPC_ERROR("timeout_iouring_setup: failed to start listener");
-            CO_RETURN false;
-        }
-
-        rpc::io_uring::connector connector(controller);
-        auto descriptor_result = CO_AWAIT connector.connect_loopback_with_result(8091);
-        auto stream_result = streaming::io_uring::make_stream_result(descriptor_result, 8091);
-        if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
-        {
-            RPC_ERROR("timeout_iouring_setup: connect failed");
-            CO_RETURN false;
-        }
-
-        auto initiator = rpc::stream_transport::make_client(
-            "initiator", root_service_, std::move(stream_result.connection), timeout_transport_options());
-
-        rpc::shared_ptr<yyy::i_host> local_host(new host());
-        auto connect_result
-            = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>("child", initiator, local_host);
-        i_example_ptr_ = std::move(connect_result.output_interface);
-        if (connect_result.error_code != rpc::error::OK())
-        {
-            RPC_ERROR("timeout_iouring_setup: connect_to_zone failed: {}", connect_result.error_code);
-            CO_RETURN false;
-        }
-        CO_RETURN true;
+        return controller;
     }
 
     CORO_TASK(void) do_coro_teardown() override
@@ -667,8 +368,6 @@ protected:
     }
 
 public:
-    ~timeout_iouring_setup() override = default;
-
     void tear_down()
     {
         timeout_setup_base::tear_down();
@@ -682,13 +381,8 @@ public:
 private:
     std::shared_ptr<rpc::io_uring::io_uring_scheduler> io_uring_scheduler_owner_;
 };
-#  endif // __linux__
 
-// ---------------------------------------------------------------------------
-// TLS setup — TCP → SPSC wrapping → TLS (port 8092)
-// ---------------------------------------------------------------------------
-
-class timeout_tls_setup : public timeout_setup_base
+class timeout_tcp_coroutine_setup : public timeout_tcp_coroutine_setup_base
 {
 protected:
     CORO_TASK(bool) do_coro_setup() override
@@ -699,6 +393,80 @@ protected:
 
         peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
         root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
+
+        auto controller = make_tcp_coroutine_controller("timeout_tcp_coroutine_setup");
+        if (!controller)
+            CO_RETURN false;
+
+        auto acceptor = std::make_shared<streaming::coroutine::tcp::acceptor>(controller);
+        auto listen_result = CO_AWAIT acceptor->listen_loopback(8091);
+        if (listen_result != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_tcp_coroutine_setup: listen failed: {}", listen_result);
+            CO_RETURN false;
+        }
+
+        listener_ = std::make_unique<streaming::listener>(
+            "responder",
+            std::move(acceptor),
+            rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
+                make_hanging_factory(), timeout_transport_options()));
+
+        if (!listener_->start_listening(peer_service_))
+        {
+            RPC_ERROR("timeout_tcp_coroutine_setup: failed to start listener");
+            CO_RETURN false;
+        }
+
+        rpc::io_uring::connector connector(controller);
+        auto descriptor_result = CO_AWAIT connector.connect_loopback_with_result(8091);
+        auto stream_result = streaming::coroutine::tcp::make_stream_result(descriptor_result, 8091);
+        if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
+        {
+            RPC_ERROR("timeout_tcp_coroutine_setup: connect failed");
+            CO_RETURN false;
+        }
+
+        auto initiator = rpc::stream_transport::make_client(
+            "initiator", root_service_, std::move(stream_result.connection), timeout_transport_options());
+
+        rpc::shared_ptr<yyy::i_host> local_host(new host());
+        auto connect_result
+            = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>("child", initiator, local_host);
+        i_example_ptr_ = std::move(connect_result.output_interface);
+        if (connect_result.error_code != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_tcp_coroutine_setup: connect_to_zone failed: {}", connect_result.error_code);
+            CO_RETURN false;
+        }
+        CO_RETURN true;
+    }
+
+public:
+    ~timeout_tcp_coroutine_setup() override = default;
+};
+#  endif // __linux__
+
+// ---------------------------------------------------------------------------
+// TLS setup — TCP → SPSC wrapping → TLS (port 8092)
+// ---------------------------------------------------------------------------
+
+#  ifdef __linux__
+class timeout_tls_setup : public timeout_tcp_coroutine_setup_base
+{
+protected:
+    CORO_TASK(bool) do_coro_setup() override
+    {
+        auto root_zone_id = rpc::DEFAULT_PREFIX;
+        auto peer_zone_id = rpc::DEFAULT_PREFIX;
+        std::ignore = peer_zone_id.set_subnet(peer_zone_id.get_subnet() + 1);
+
+        peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
+        root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
+
+        auto controller = make_tcp_coroutine_controller("timeout_tls_setup");
+        if (!controller)
+            CO_RETURN false;
 
         const auto cert_dir = timeout_test_cert_dir();
         const auto cert_path = cert_dir / "server.crt";
@@ -728,9 +496,17 @@ protected:
             CO_RETURN tls_stm;
         };
 
+        auto acceptor = std::make_shared<streaming::coroutine::tcp::acceptor>(controller);
+        auto listen_result = CO_AWAIT acceptor->listen_loopback(8092);
+        if (listen_result != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_tls_setup: listen failed: {}", listen_result);
+            CO_RETURN false;
+        }
+
         listener_ = std::make_unique<streaming::listener>(
             "responder",
-            std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8092}),
+            std::move(acceptor),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
                 make_hanging_factory(), timeout_transport_options()),
             std::move(tls_transformer));
@@ -742,16 +518,14 @@ protected:
         }
 
         auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8092});
-        auto conn_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-        if (conn_status != coro::net::connect_status::connected)
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, 8092);
+        if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
         {
-            RPC_ERROR("timeout_tls_setup: TCP connect failed");
+            RPC_ERROR("timeout_tls_setup: TCP coroutine connect failed: {}", tcp_result.error_code);
             CO_RETURN false;
         }
 
-        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-        auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+        auto spsc_stm = streaming::spsc_wrapping::stream::create(std::move(tcp_result.connection), scheduler);
 
         auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
@@ -781,16 +555,6 @@ protected:
         CO_RETURN true;
     }
 
-    CORO_TASK(void) do_coro_teardown() override
-    {
-        if (listener_)
-        {
-            CO_AWAIT listener_->stop_listening();
-            listener_.reset();
-        }
-        CO_RETURN;
-    }
-
 public:
     ~timeout_tls_setup() override = default;
 };
@@ -799,8 +563,8 @@ public:
 // WebSocket setup — TCP → WebSocket framing (port 8093)
 // ---------------------------------------------------------------------------
 
-#  ifdef CANOPY_BUILD_WEBSOCKET
-class timeout_websocket_setup : public timeout_setup_base
+#    ifdef CANOPY_BUILD_WEBSOCKET
+class timeout_websocket_setup : public timeout_tcp_coroutine_setup_base
 {
 protected:
     CORO_TASK(bool) do_coro_setup() override
@@ -812,15 +576,27 @@ protected:
         peer_service_ = rpc::root_service::create("peer", peer_zone_id, io_scheduler_);
         root_service_ = rpc::root_service::create("host", root_zone_id, io_scheduler_);
 
+        auto controller = make_tcp_coroutine_controller("timeout_websocket_setup");
+        if (!controller)
+            CO_RETURN false;
+
         // Server wraps accepted TCP streams with server-mode WebSocket framing.
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto ws_transformer =
             [](std::shared_ptr<streaming::stream> tcp_stm) -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         { CO_RETURN std::make_shared<streaming::websocket::stream>(tcp_stm); };
 
+        auto acceptor = std::make_shared<streaming::coroutine::tcp::acceptor>(controller);
+        auto listen_result = CO_AWAIT acceptor->listen_loopback(8093);
+        if (listen_result != rpc::error::OK())
+        {
+            RPC_ERROR("timeout_websocket_setup: listen failed: {}", listen_result);
+            CO_RETURN false;
+        }
+
         listener_ = std::make_unique<streaming::listener>(
             "responder",
-            std::make_shared<streaming::tcp::acceptor>(coro::net::socket_address{"127.0.0.1", 8093}),
+            std::move(acceptor),
             rpc::stream_transport::make_connection_callback<yyy::i_host, yyy::i_example>(
                 make_hanging_factory(), timeout_transport_options()),
             std::move(ws_transformer));
@@ -831,17 +607,15 @@ protected:
             CO_RETURN false;
         }
 
-        auto scheduler = root_service_->get_scheduler();
-        coro::net::tcp::client client(scheduler, coro::net::socket_address{"127.0.0.1", 8093});
-        auto conn_status = CO_AWAIT client.connect(std::chrono::milliseconds(5000));
-        if (conn_status != coro::net::connect_status::connected)
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, 8093);
+        if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
         {
-            RPC_ERROR("timeout_websocket_setup: TCP connect failed");
+            RPC_ERROR("timeout_websocket_setup: TCP coroutine connect failed: {}", tcp_result.error_code);
             CO_RETURN false;
         }
 
-        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(client), scheduler);
-        auto ws_stm = std::make_shared<ws_client_stream>(tcp_stm);
+        auto ws_stm = std::make_shared<streaming::websocket::stream>(
+            std::move(tcp_result.connection), streaming::websocket::stream_role::client);
         auto initiator = rpc::stream_transport::make_client(
             "initiator", root_service_, std::move(ws_stm), timeout_transport_options());
 
@@ -857,20 +631,11 @@ protected:
         CO_RETURN true;
     }
 
-    CORO_TASK(void) do_coro_teardown() override
-    {
-        if (listener_)
-        {
-            CO_AWAIT listener_->stop_listening();
-            listener_.reset();
-        }
-        CO_RETURN;
-    }
-
 public:
     ~timeout_websocket_setup() override = default;
 };
-#  endif // CANOPY_BUILD_WEBSOCKET
+#    endif // CANOPY_BUILD_WEBSOCKET
+#  endif   // __linux__
 
 #endif // CANOPY_BUILD_COROUTINE
 
@@ -880,22 +645,104 @@ public:
 
 #include "type_test_fixture.h"
 
+#ifdef CANOPY_BUILD_WEBSOCKET
+TEST(
+    WebSocketStream,
+    KeepAlivePingPongDoesNotSurfaceApplicationData)
+{
+    auto scheduler = make_websocket_test_scheduler();
+    auto pair = make_websocket_spsc_pair(scheduler);
+
+    streaming::websocket::stream_options client_options;
+    client_options.role = streaming::websocket::stream_role::client;
+    client_options.keep_alive.enabled = true;
+    client_options.keep_alive.interval = std::chrono::milliseconds{1};
+    client_options.keep_alive.timeout = std::chrono::milliseconds{250};
+
+    auto client = std::make_shared<streaming::websocket::stream>(pair.client_base, client_options);
+    auto server
+        = std::make_shared<streaming::websocket::stream>(pair.server_base, streaming::websocket::stream_role::server);
+
+    bool client_timed_out = false;
+    bool server_timed_out = false;
+    size_t client_payload_size = 1;
+    size_t server_payload_size = 1;
+
+    coro::sync_wait(
+        coro::when_all(
+            [&]() -> coro::task<void>
+            {
+                std::array<uint8_t, 64> buffer{};
+                auto [status, bytes]
+                    = CO_AWAIT client->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{100});
+                client_timed_out = status.is_timeout();
+                client_payload_size = bytes.size();
+                CO_RETURN;
+            }(),
+            [&]() -> coro::task<void>
+            {
+                std::array<uint8_t, 64> buffer{};
+                auto [status, bytes]
+                    = CO_AWAIT server->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{100});
+                server_timed_out = status.is_timeout();
+                server_payload_size = bytes.size();
+                CO_RETURN;
+            }()));
+
+    EXPECT_TRUE(client_timed_out);
+    EXPECT_TRUE(server_timed_out);
+    EXPECT_EQ(client_payload_size, 0u);
+    EXPECT_EQ(server_payload_size, 0u);
+    EXPECT_FALSE(client->is_closed());
+    EXPECT_FALSE(server->is_closed());
+
+    const std::string payload = "after keep alive";
+    bool send_ok = false;
+    bool receive_ok = false;
+    std::string received;
+
+    coro::sync_wait(
+        coro::when_all(
+            [&]() -> coro::task<void>
+            {
+                auto status = CO_AWAIT client->send(rpc::byte_span{payload});
+                send_ok = status.is_ok();
+                CO_RETURN;
+            }(),
+            [&]() -> coro::task<void>
+            {
+                std::array<uint8_t, 128> buffer{};
+                auto [status, bytes]
+                    = CO_AWAIT server->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{500});
+                receive_ok = status.is_ok();
+                received.assign(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+                CO_RETURN;
+            }()));
+
+    EXPECT_TRUE(send_ok);
+    EXPECT_TRUE(receive_ok);
+    EXPECT_EQ(received, payload);
+
+    coro::sync_wait(client->set_closed());
+    coro::sync_wait(server->set_closed());
+    scheduler->shutdown();
+}
+#endif
+
 template<class T> using timeout_test = type_test<T>;
 
 #ifdef CANOPY_BUILD_COROUTINE
 
 using timeout_implementations = ::testing::Types<
-    timeout_tcp_setup,
     timeout_spsc_setup
 #  ifdef __linux__
     ,
-    timeout_iouring_setup
-#  endif
-    ,
+    timeout_tcp_coroutine_setup,
     timeout_tls_setup
-#  ifdef CANOPY_BUILD_WEBSOCKET
+#    ifdef CANOPY_BUILD_WEBSOCKET
     ,
     timeout_websocket_setup
+#    endif
 #  endif
     >;
 

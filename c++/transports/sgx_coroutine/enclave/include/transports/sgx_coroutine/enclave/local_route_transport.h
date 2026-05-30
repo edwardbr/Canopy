@@ -8,7 +8,7 @@
 
 #include <rpc/rpc.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     class local_route_transport
     {

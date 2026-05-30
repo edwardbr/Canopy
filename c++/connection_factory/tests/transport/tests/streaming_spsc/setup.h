@@ -25,9 +25,8 @@ protected:
         current_host_service = this->root_service_;
         queues_ = rpc::spsc_queue::queue_pair::create();
 
-        rpc::connection_factory_config::stream_factory_options common_options;
-        common_options.rpc.emplace();
-        common_options.rpc->call_timeout_sweep = uint64_t{1};
+        rpc::connection_factory::stream_rpc_connection_settings common_options;
+        common_options.transport.call_timeout_sweep = uint64_t{1};
 
         auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<yyy::i_host, yyy::i_example>(
             this->make_interface_setup_factory(), queues_, common_options, this->peer_service_);

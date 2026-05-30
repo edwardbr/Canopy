@@ -541,7 +541,7 @@ TEST(
         "name": "runtime",
         "children": [
             {
-                "name": "io_uring",
+                "name": "tcp_coroutine",
                 "children": [
                     {"name": "queue-pair", "children": []}
                 ]

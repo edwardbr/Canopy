@@ -678,8 +678,9 @@ namespace
         rpc::caller_zone last_transport_down_caller_zone;
     };
 
-    class recording_enclave_local_reference_control_transport final : public recording_reference_control_transport,
-                                                                      public rpc::sgx::coro::enclave::local_route_transport
+    class recording_enclave_local_reference_control_transport final
+        : public recording_reference_control_transport,
+          public rpc::sgx_coroutine_transport::enclave::local_route_transport
     {
     public:
         recording_enclave_local_reference_control_transport(
@@ -2172,7 +2173,7 @@ namespace
         auto parent_service = rpc::root_service::create("enclave-local-wrapper-parent", parent_zone, scheduler);
         bool child_parent_transport_marked = false;
         bool child_service_is_enclave_service = false;
-        auto child_transport = std::make_shared<rpc::sgx::coro::enclave::local_child_transport>(
+        auto child_transport = std::make_shared<rpc::sgx_coroutine_transport::enclave::local_child_transport>(
             "enclave-local-child-transport", parent_service);
         child_transport->set_adjacent_zone_id(child_zone);
         child_transport->template set_child_entry_point<yyy::i_host, yyy::i_example>(
@@ -2180,18 +2181,18 @@ namespace
                 const rpc::shared_ptr<yyy::i_host>& host, const std::shared_ptr<rpc::child_service>& child_service_ptr)
                 -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
-                child_parent_transport_marked
-                    = rpc::sgx::coro::enclave::is_local_route_transport(child_service_ptr->get_parent_transport());
+                child_parent_transport_marked = rpc::sgx_coroutine_transport::enclave::is_local_route_transport(
+                    child_service_ptr->get_parent_transport());
                 child_service_is_enclave_service
                     = static_cast<bool>(std::dynamic_pointer_cast<rpc::enclave_service>(child_service_ptr));
                 CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(),
                     rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(child_service_ptr, host))};
             });
-        auto parent_transport = std::make_shared<rpc::sgx::coro::enclave::local_parent_transport>(
+        auto parent_transport = std::make_shared<rpc::sgx_coroutine_transport::enclave::local_parent_transport>(
             "enclave-local-parent-transport", child_transport);
 
-        CORO_ASSERT_EQ(rpc::sgx::coro::enclave::is_local_route_transport(child_transport), true);
-        CORO_ASSERT_EQ(rpc::sgx::coro::enclave::is_local_route_transport(parent_transport), true);
+        CORO_ASSERT_EQ(rpc::sgx_coroutine_transport::enclave::is_local_route_transport(child_transport), true);
+        CORO_ASSERT_EQ(rpc::sgx_coroutine_transport::enclave::is_local_route_transport(parent_transport), true);
         CORO_ASSERT_EQ(child_transport->get_adjacent_zone_id(), child_zone);
         CORO_ASSERT_EQ(parent_transport->get_adjacent_zone_id(), parent_zone);
 

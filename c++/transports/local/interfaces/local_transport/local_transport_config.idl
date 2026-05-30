@@ -1,0 +1,27 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace local_transport
+    {
+        // Settings for the in-process local child-zone transport. This is a
+        // transport, not a stream: it creates a child service zone directly and
+        // therefore cannot be combined with stream layers.
+        struct transport_settings
+        {
+            [description="Name of the parent-side local child transport. If service_proxy_name is omitted, this value is also used as the service proxy name."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the local child-zone proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads across the local child-zone boundary. Omit or use not_set to keep the service default."]
+            rpc::optional<rpc::encoding> encoding;
+        };
+    }
+}

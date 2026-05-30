@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -22,6 +23,25 @@ struct wslay_event_on_msg_recv_arg;
 
 namespace streaming::websocket
 {
+    enum class stream_role
+    {
+        client,
+        server
+    };
+
+    struct keep_alive_options
+    {
+        bool enabled{false};
+        std::chrono::milliseconds interval{std::chrono::milliseconds{30000}};
+        std::chrono::milliseconds timeout{std::chrono::milliseconds{10000}};
+    };
+
+    struct stream_options
+    {
+        stream_role role{stream_role::server};
+        keep_alive_options keep_alive;
+    };
+
     // WebSocket stream over any streaming::stream. wslay's context is not
     // thread-safe, so this wrapper serializes access to wslay-owned state while
     // leaving underlying stream I/O outside the lock.
@@ -29,6 +49,12 @@ namespace streaming::websocket
     {
     public:
         explicit stream(std::shared_ptr<::streaming::stream> underlying);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            stream_role role);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            stream_options options);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -60,6 +86,12 @@ namespace streaming::websocket
         auto drive_send() -> CORO_TASK(bool);
         auto drive_send_locked() -> CORO_TASK(bool);
         auto flush_outgoing_raw(std::vector<uint8_t> raw) -> CORO_TASK(bool);
+        auto maybe_queue_keep_alive_locked(std::chrono::steady_clock::time_point now) -> bool;
+        auto next_receive_timeout_locked(
+            std::chrono::steady_clock::time_point deadline,
+            bool single_attempt,
+            std::chrono::steady_clock::time_point now) const -> std::chrono::milliseconds;
+        void handle_keep_alive_locked(const wslay_event_on_msg_recv_arg* arg);
 
         static auto send_callback(
             wslay_event_context* ctx,
@@ -73,6 +105,11 @@ namespace streaming::websocket
             size_t len,
             int flags,
             void* user_data) -> ssize_t;
+        static auto genmask_callback(
+            wslay_event_context* ctx,
+            uint8_t* buf,
+            size_t len,
+            void* user_data) -> int;
         static void on_msg_recv_callback(
             wslay_event_context* ctx,
             const wslay_event_on_msg_recv_arg* arg,
@@ -86,12 +123,18 @@ namespace streaming::websocket
 #endif
         std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context* wslay_ctx_{nullptr};
+        stream_options options_;
         std::string raw_recv_buffer_;
         size_t raw_recv_size_{0};
         size_t raw_recv_pos_{0};
         std::queue<std::vector<uint8_t>> decoded_messages_;
         size_t current_msg_offset_{0};
         std::vector<uint8_t> outgoing_raw_; // staging buffer populated by send_callback
+        std::vector<uint8_t> pending_ping_payload_;
+        uint64_t next_ping_id_{1};
+        std::chrono::steady_clock::time_point next_ping_time_;
+        std::chrono::steady_clock::time_point ping_deadline_;
+        bool ping_outstanding_{false};
         bool closed_{false};
     };
 } // namespace streaming::websocket

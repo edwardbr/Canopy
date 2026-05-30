@@ -55,15 +55,11 @@ namespace comprehensive
 
                 rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
 
-                rpc::connection_factory_config::stream_factory_options options;
-                options.service.emplace();
-                options.service->name = "process_1";
-                options.transport.emplace();
-                options.transport->name = "transport_1";
-                options.connection.emplace();
-                options.connection->name = "process_2";
-                options.rpc.emplace();
-                options.rpc->call_timeout_sweep = uint64_t{1};
+                rpc::connection_factory::stream_rpc_connection_settings options;
+                options.service.name = "process_1";
+                options.transport.name = "transport_1";
+                options.transport.service_proxy_name = "process_2";
+                options.transport.call_timeout_sweep = uint64_t{1};
 
                 std::cout << "Process 1: Connecting...\n";
                 auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<i_calculator, i_calculator>(
@@ -134,15 +130,11 @@ namespace comprehensive
 
             rpc::event on_connected;
 
-            rpc::connection_factory_config::stream_factory_options options;
-            options.service.emplace();
-            options.service->name = "process_2";
-            options.transport.emplace();
-            options.transport->name = "transport_2";
-            options.connection.emplace();
-            options.connection->name = "process_2";
-            options.rpc.emplace();
-            options.rpc->call_timeout_sweep = uint64_t{1};
+            rpc::connection_factory::stream_rpc_connection_settings options;
+            options.service.name = "process_2";
+            options.transport.name = "transport_2";
+            options.transport.service_proxy_name = "process_2";
+            options.transport.call_timeout_sweep = uint64_t{1};
 
             auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<i_calculator, i_calculator>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)

@@ -74,12 +74,12 @@ namespace stream_bench
 
                 host_ = std::move(host_result.output_interface);
 
-                auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+                auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
                     "sgx streaming benchmark enclave", root_service_, sgx_coroutine_test_enclave_path);
                 transports_.push_back(transport);
 
-                auto result
-                    = SYNC_WAIT((rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
+                auto result = SYNC_WAIT(
+                    (rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
                         root_service_,
                         "sgx streaming benchmark enclave",
                         transport,
@@ -198,7 +198,7 @@ namespace stream_bench
             std::shared_ptr<coro::scheduler> scheduler_;
             rpc::shared_ptr<yyy::i_host> host_;
             rpc::shared_ptr<io_uring_test::i_test_uring> test_uring_;
-            std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
+            std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>> transports_;
             std::atomic_bool interfaces_released_{false};
             std::atomic_bool root_shutdown_complete_{false};
         };

@@ -11,7 +11,7 @@ project(
 
 add_subdirectory(idl)
 
-if(CANOPY_BUILD_COROUTINE)
+if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     set(STREAM_COMPOSITION_SECURE_STREAM_TARGET streaming_mbedtls)
   elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
@@ -48,7 +48,7 @@ if(CANOPY_BUILD_COROUTINE)
     tcp_spsc_tls_demo
     PUBLIC echo_idl
            streaming
-           streaming_tcp
+           streaming_tcp_coroutine
            ${STREAM_COMPOSITION_SECURE_STREAM_TARGET}
            streaming_spsc_wrapping
            transport_streaming
@@ -70,5 +70,5 @@ if(CANOPY_BUILD_COROUTINE)
   message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC → TLS composition, requires coroutines)")
   message(STATUS "  - Cert dir: ${DEMO_CERT_DIR}")
 else()
-  message(STATUS "stream_composition demo skipped (requires CANOPY_BUILD_COROUTINE)")
+  message(STATUS "stream_composition demo skipped (requires CANOPY_BUILD_COROUTINE and streaming_tcp_coroutine)")
 endif()

@@ -12,37 +12,144 @@ CanopyGenerate(
   ${CMAKE_BINARY_DIR}/generated
   ""
   yas_json
-  dependencies rpc_types_idl tcp_config_idl io_uring_config_idl
+  dependencies rpc_types_idl json_idl stream_layers_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
-                ${CMAKE_SOURCE_DIR}/c++/streaming/tcp/interfaces
-                ${CMAKE_SOURCE_DIR}/c++/subcomponents/io_uring_config/interfaces
                 ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
-add_library(connection_factory INTERFACE)
-target_include_directories(connection_factory INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-                                                        "$<INSTALL_INTERFACE:include>")
-target_link_libraries(connection_factory INTERFACE transport_streaming streaming_tcp json connection_factory_config_idl
-                                                tcp_config_idl io_uring_config_idl)
+CanopyGenerate(
+  connection_factory_service
+  connection_factory_service/connection_factory_service.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+                ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
 
-if(TARGET streaming_spsc_queue)
-  target_link_libraries(connection_factory INTERFACE streaming_spsc_queue)
+add_library(
+  connection_factory STATIC
+  src/connection_factory.cpp
+  src/handles.cpp
+  src/options.cpp
+  src/service.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../transports/streaming/src/connection_factory_adapter.cpp)
+target_include_directories(
+  connection_factory
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CANOPY_INCLUDES})
+target_compile_definitions(connection_factory PRIVATE ${CANOPY_DEFINES})
+target_compile_options(connection_factory PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_link_options(connection_factory PRIVATE ${CANOPY_LINK_OPTIONS})
+target_link_libraries(
+  connection_factory
+  PUBLIC transport_streaming
+         streaming_layer_factory
+         json
+         connection_factory_config_idl
+         connection_factory_service_idl
+         json_idl
+         stream_layers_idl
+         io_uring_config_idl)
+
+if(TARGET streaming_tcp_blocking)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_blocking/src/connection_factory_helpers.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_blocking/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC streaming_tcp_blocking tcp_blocking_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING)
 endif()
 
-if(TARGET streaming_io_uring)
-  target_link_libraries(connection_factory INTERFACE streaming_io_uring)
+if(TARGET transport_local)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/local/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_local local_transport_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_LOCAL)
+endif()
+
+if(TARGET transport_sgx_coroutine)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/sgx_coroutine/host/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_sgx_coroutine sgx_coroutine_transport_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE)
+endif()
+
+if(TARGET transport_sgx_blocking)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/sgx_blocking/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_sgx_blocking sgx_blocking_transport_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING)
+endif()
+
+if(TARGET streaming_spsc_queue)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/spsc_queue/src/connection_factory_helpers.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/spsc_queue/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC streaming_spsc_queue spsc_queue_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC)
+endif()
+
+if(TARGET streaming_spsc_wrapping)
+  target_link_libraries(connection_factory PUBLIC streaming_spsc_wrapping spsc_wrapping_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING)
+endif()
+
+if(TARGET streaming_tcp_coroutine)
+  target_sources(
+    connection_factory
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_coroutine/src/connection_factory_helpers.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_coroutine/src/connection_factory_adapter.cpp)
+  target_link_libraries(connection_factory PUBLIC streaming_tcp_coroutine)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE)
+endif()
+
+if(CANOPY_BUILD_WEBSOCKET AND TARGET streaming_websocket)
+  target_link_libraries(connection_factory PUBLIC streaming_websocket websocket_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET)
+endif()
+
+if(TARGET streaming_tls)
+  target_link_libraries(connection_factory PUBLIC streaming_tls tls_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TLS)
+elseif(TARGET streaming_mbedtls)
+  target_link_libraries(connection_factory PUBLIC streaming_mbedtls mbedtls_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TLS)
+endif()
+
+if(TARGET streaming_attestation)
+  target_link_libraries(connection_factory PUBLIC streaming_attestation attestation_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
   add_library(connection_factory_test INTERFACE)
   target_include_directories(connection_factory_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
-  target_link_libraries(connection_factory_test INTERFACE streaming streaming_tcp connection_factory)
+  target_link_libraries(connection_factory_test INTERFACE streaming connection_factory)
+
+  if(TARGET streaming_tcp_blocking)
+    target_link_libraries(connection_factory_test INTERFACE streaming_tcp_blocking)
+  endif()
 
   if(TARGET streaming_spsc_queue)
     target_link_libraries(connection_factory_test INTERFACE streaming_spsc_queue)
   endif()
 
-  if(TARGET streaming_io_uring)
-    target_link_libraries(connection_factory_test INTERFACE streaming_io_uring)
+  if(TARGET streaming_tcp_coroutine)
+    target_link_libraries(connection_factory_test INTERFACE streaming_tcp_coroutine)
+  endif()
+
+  if(TARGET streaming_spsc_wrapping)
+    target_link_libraries(connection_factory_test INTERFACE streaming_spsc_wrapping)
+  endif()
+
+  if(TARGET transport_sgx_coroutine)
+    target_link_libraries(connection_factory_test INTERFACE transport_sgx_coroutine)
   endif()
 endif()

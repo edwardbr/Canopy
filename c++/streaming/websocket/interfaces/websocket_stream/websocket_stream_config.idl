@@ -1,0 +1,49 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace websocket_stream
+    {
+        enum endpoint_role : uint8_t
+        {
+            client = 0,
+            server = 1,
+        };
+
+        // Optional protocol-level keep-alive for the WebSocket stream layer.
+        //
+        // This is WebSocket ping/pong, not application RPC liveness. It keeps
+        // intermediaries and peers from silently leaving an otherwise idle
+        // WebSocket connection half-open. Business-level health checks should
+        // still live above the transport when the application needs semantic
+        // service readiness rather than byte-stream liveness.
+        struct keep_alive_settings
+        {
+            [description="When true, the WebSocket stream periodically sends ping control frames while it is being polled for input. The default keeps existing behaviour unchanged."]
+            bool enabled = false;
+
+            [description="Milliseconds between keep-alive ping frames. Zero disables periodic ping generation even when enabled is true."]
+            uint64_t interval_ms = 30000;
+
+            [description="Milliseconds allowed for a matching pong before the stream is treated as closed. Zero disables pong timeout enforcement."]
+            uint64_t timeout_ms = 10000;
+        };
+
+        // Settings for the WebSocket stream wrapper. WebSocket is a stream
+        // layer, not a base stream: it wraps an already-created stream after
+        // TCP/TLS/etc. are in place.
+        struct stream_settings
+        {
+            [description="Optional endpoint role override. If omitted, the connection factory derives client for connect paths and server for accept paths."]
+            rpc::optional<endpoint_role> role;
+
+            [description="Protocol-level WebSocket ping/pong keep-alive settings."]
+            keep_alive_settings keep_alive = {};
+        };
+    }
+}

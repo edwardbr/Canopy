@@ -249,7 +249,7 @@ auto main(
     controller_options.fixed_file_count = 256;
     controller_options.sq_thread_idle_ms = 50;
 
-    auto enclave_transport = std::make_shared<rpc::sgx::coro::host::transport>(
+    auto enclave_transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
         "websocket enclave transport", root_service, cli.enclave_path);
     enclave_transport->set_enclave_worker_thread_count(cli.enclave_worker_threads);
     auto startup_options_error = enclave_transport->set_enclave_startup_options(cli.enclave_options);
@@ -261,7 +261,7 @@ auto main(
     }
 
     auto connect_result = coro::sync_wait(
-        (rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, websocket_demo::v1::i_enclave_websocket_server>(
+        (rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, websocket_demo::v1::i_enclave_websocket_server>(
             root_service, "websocket demo enclave", enclave_transport, {}, controller_options)));
     if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
     {

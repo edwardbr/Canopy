@@ -3,43 +3,46 @@
  *   All rights reserved.
  */
 
-#import "rpc/rpc_types.idl"
-
 namespace canopy
 {
     namespace io_uring
     {
+        // Host io_uring controller settings. These belong to the io_uring
+        // base stream, not to generic stream RPC transport settings.
         struct host_controller_options
         {
+            [description="Submission/completion queue depth requested when creating the io_uring instance."]
             uint32_t queue_depth = 256;
+
+            [description="Enable kernel SQPOLL when supported."]
             bool use_sqpoll = true;
+
+            [description="Request IORING_SETUP_SINGLE_ISSUER when supported."]
             bool use_single_issuer = true;
+
+            [description="Request cooperative task running when supported by the kernel."]
             bool use_coop_taskrun = false;
+
+            [description="SQPOLL idle timeout in milliseconds."]
             uint32_t sq_thread_idle_ms = 2000;
+
+            [description="Number of fixed receive/send buffers to prepare for the controller."]
             uint32_t buffer_count = 256;
+
+            [description="Size in bytes of each fixed buffer."]
             uint32_t buffer_size = 4096;
+
+            [description="Register fixed buffers with io_uring when true."]
             bool register_buffers = false;
+
+            [description="Number of fixed file slots to register for accepted or connected descriptors."]
             uint32_t fixed_file_count = 128;
+
+            [description="Register fixed file slots with io_uring when true."]
             bool register_fixed_files = true;
+
+            [description="Release controller resources through the scheduler shutdown path when true."]
             bool cleanup_on_scheduler = true;
-        };
-    }
-}
-
-namespace streaming
-{
-    namespace io_uring
-    {
-        enum receive_timeout_strategy : uint8_t
-        {
-            linked_timeout = 0,
-            nonblocking_poll = 1,
-        };
-
-        struct stream_options
-        {
-            uint64_t max_transfer_size = 0;
-            receive_timeout_strategy timeout_strategy = receive_timeout_strategy::linked_timeout;
         };
     }
 }

@@ -29,12 +29,12 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
     HEADER_ONLY_LIBS ${CANOPY_ENCLAVE_FMT_LIB}
     TRUSTED_LIBS
       rpc_enclave
-      marshal_test_edl_enclave
+      sgx_blocking_transport_edl_enclave
       ${MARSHAL_TEST_TELEMETRY_ENCLAVE_LIBS}
-      transport_sgx_enclave
+      transport_sgx_blocking_enclave
       transport_local_enclave
       common_enclave
-      enclave_marshal_test_idl_enclave
+      sgx_blocking_marshal_idl_enclave
       example_import_idl_enclave
       example_idl_enclave
       example_shared_idl_enclave
@@ -48,7 +48,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND NOT ${CANOPY_BUILD_COROUTINE})
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common/include>"
            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include>"
-           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx/include>"
+           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../transports/sgx_blocking/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
            "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
            "$<INSTALL_INTERFACE:include/marshalled_tests>"
@@ -99,7 +99,7 @@ if(${CANOPY_BUILD_ENCLAVE} AND ${CANOPY_BUILD_COROUTINE})
       transport_sgx_coroutine_enclave
       ${MARSHAL_TEST_COROUTINE_TELEMETRY_ENCLAVE_LIBS}
       streaming_spsc_queue_enclave
-      canopy_coroutine_edl_enclave
+      sgx_coroutine_transport_edl_enclave
       transport_local_enclave
       canopy_io_uring_enclave
       common_enclave

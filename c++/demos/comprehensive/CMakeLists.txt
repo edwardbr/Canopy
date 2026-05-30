@@ -48,27 +48,31 @@ if(CANOPY_BUILD_COROUTINE)
   # ####################################################################################################################
   # tcp
 
-  add_executable(tcp_transport_demo src/transport/tcp/tcp_transport_demo.cpp)
-  list(APPEND COMPREHENSIVE_DEMO_TARGETS tcp_transport_demo)
-  target_compile_definitions(tcp_transport_demo PRIVATE ${CANOPY_DEFINES})
-  target_include_directories(
-    tcp_transport_demo
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-    PRIVATE ${CANOPY_INCLUDES})
-  target_link_libraries(
-    tcp_transport_demo
-    PUBLIC comprehensive_idl
-           transport_local
-           transport_streaming
-           connection_factory
-           streaming_tcp
-           rpc
-           network_config
-           ${CANOPY_LIBRARIES}
-           rpc_log)
-  target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-  target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  set_property(TARGET tcp_transport_demo PROPERTY COMPILE_PDB_NAME tcp_transport_demo)
+  if(TARGET streaming_tcp_coroutine)
+    add_executable(tcp_transport_demo src/transport/tcp/tcp_transport_demo.cpp)
+    list(APPEND COMPREHENSIVE_DEMO_TARGETS tcp_transport_demo)
+    target_compile_definitions(tcp_transport_demo PRIVATE ${CANOPY_DEFINES})
+    target_include_directories(
+      tcp_transport_demo
+      PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+      PRIVATE ${CANOPY_INCLUDES})
+    target_link_libraries(
+      tcp_transport_demo
+      PUBLIC comprehensive_idl
+             transport_local
+             transport_streaming
+             connection_factory
+             streaming_tcp_coroutine
+             rpc
+             network_config
+             ${CANOPY_LIBRARIES}
+             rpc_log)
+    target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+    target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+    set_property(TARGET tcp_transport_demo PROPERTY COMPILE_PDB_NAME tcp_transport_demo)
+  else()
+    message(STATUS "tcp_transport_demo skipped (requires streaming_tcp_coroutine)")
+  endif()
 
   # ####################################################################################################################
   # spsc

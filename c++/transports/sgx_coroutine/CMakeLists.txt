@@ -6,6 +6,24 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  add_subdirectory(sidecar)
+
+  CanopyGenerate(
+    sgx_coroutine_transport_config
+    sgx_coroutine_transport/sgx_coroutine_transport_config.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+    ${CMAKE_BINARY_DIR}/generated
+    ""
+    yas_json
+    dependencies rpc_types_idl json_idl sgx_enclave_runtime_config_idl
+    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+                  ${CMAKE_CURRENT_SOURCE_DIR}/../sgx_common/interfaces
+                  ${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring_config/interfaces
+                  ${CANOPY_INTERFACE_SOURCE_DIR}
+    install_dir ${GENERATED_INSTALL_DIR})
+
+  target_link_libraries(transport_sgx_coroutine_host_headers INTERFACE sgx_coroutine_transport_config_idl)
+
   add_library(transport_sgx_coroutine host/src/transport.cpp)
 
   target_compile_definitions(
@@ -15,6 +33,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     transport_sgx_coroutine
     PUBLIC transport_sgx_coroutine_host_headers
            transport_secure_coroutine_module_headers
+           transport_sgx_coroutine_sidecar_common
            spsc_queue
            streaming_spsc_queue
            transport_streaming
@@ -27,7 +46,12 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             ${CANOPY_LIBRARIES}
             ${CANOPY_SGX_HOST_LIBRARIES}
             rpc::rpc
-            canopy_coroutine_edl)
+            sgx_coroutine_transport_edl)
+  if(TARGET canopy_sgx_coroutine_sidecar)
+    target_compile_definitions(
+      transport_sgx_coroutine PRIVATE
+      CANOPY_SGX_COROUTINE_SIDECAR_EXECUTABLE="$<TARGET_FILE:canopy_sgx_coroutine_sidecar>")
+  endif()
   target_compile_options(transport_sgx_coroutine PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(transport_sgx_coroutine PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
   target_link_directories(transport_sgx_coroutine PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
@@ -88,6 +112,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
     PUBLIC transport_sgx_coroutine_enclave_headers
            transport_secure_coroutine_module_headers
            streaming_spsc_queue_enclave
+           streaming_layer_factory_enclave
            transport_streaming_enclave
            canopy_io_uring_enclave
     PRIVATE yas_common
@@ -101,7 +126,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
             canopy::security_attestation_enclave
             rpc::rpc_enclave
             transport_sgx_coroutine_sgxssl_time_enclave
-            canopy_coroutine_edl_enclave)
+            sgx_coroutine_transport_edl_enclave)
   if(CANOPY_USE_TELEMETRY)
     target_link_libraries(transport_sgx_coroutine_enclave PRIVATE rpc::rpc_telemetry_enclave)
   endif()

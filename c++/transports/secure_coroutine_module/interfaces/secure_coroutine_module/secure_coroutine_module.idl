@@ -8,6 +8,7 @@ typedef int error_code;
 #import "rpc/rpc_types.idl"
 #import "rpc/noop.idl"
 #import "streaming/stream_transport.idl"
+#import "streaming/stream_layers.idl"
 #import "json/json.idl"
 
 // Control contract for secure coroutine modules whose runtime cannot directly
@@ -55,6 +56,18 @@ namespace rpc
                 // validates and converts its own fragment against its own IDL
                 // schema.
                 std::map<std::string, json::v1::object> applications = {};
+                // Runtime-owned startup policy supplied by the transport that
+                // created the secure runtime. The runtime validates and
+                // materialises this against its own IDL types; release runtimes
+                // may ignore host-provided security-critical fields and use
+                // compiled production policy instead.
+                json::v1::object runtime_settings;
+                // Optional wrappers for the transport-owned host/runtime SPSC
+                // stream. The first entry wraps the raw SPSC stream directly;
+                // later entries wrap the previous stream. The runtime must
+                // validate every layer type and may reject or ignore
+                // host-provided security-critical settings in release builds.
+                std::vector<rpc::stream_layers::stream_layer_settings> stream_layers = {};
             };
 
             struct enter_thread_request

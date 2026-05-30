@@ -13,7 +13,9 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <connection_factory/spsc_queue.h>
-#  include <transport/tests/streaming_tcp/setup.h>
+#  include <transport/tests/streaming_layered_spsc/setup.h>
+#  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
+#  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
 #endif
 
@@ -132,10 +134,12 @@ TEST(
         scheduler->process_events(std::chrono::milliseconds{1});
 }
 
-// Keep this suite on the stable TCP and SPSC streaming paths. The current
-// io_uring stream has dedicated typed transport and composition coverage.
-using streaming_transport_regression_implementations
-    = ::testing::Types<streaming_tcp_setup<false, false, false>, streaming_spsc_setup<false, false, false>>;
+// Keep this suite on the active TCP coroutine and SPSC streaming paths.
+using streaming_transport_regression_implementations = ::testing::Types<
+    streaming_tcp_coroutine_setup<false, false, false>,
+    streaming_spsc_setup<false, false, false>,
+    streaming_layered_tcp_coroutine_setup<false, false, false>,
+    streaming_layered_spsc_setup<false, false, false>>;
 
 TYPED_TEST_SUITE(
     streaming_transport_regression_test,

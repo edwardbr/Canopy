@@ -19,7 +19,7 @@ namespace
         enclave_entry_point()
         {
 
-            rpc::sgx::coro::enclave::register_connection_factory<rpc::i_noop, rpc::file_system::i_manager>(
+            rpc::sgx_coroutine_transport::enclave::register_connection_factory<rpc::i_noop, rpc::file_system::i_manager>(
                 "file_system_test_enclave",
                 [](rpc::shared_ptr<rpc::i_noop>, std::shared_ptr<rpc::service> child_service)
                     -> CORO_TASK(rpc::service_connect_result<rpc::file_system::i_manager>)

@@ -6,6 +6,17 @@ cmake_minimum_required(VERSION 3.24)
 
 find_package(OpenSSL REQUIRED)
 
+CanopyGenerate(
+  tls_stream_config
+  tls_stream/tls_stream_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 # Host OpenSSL backend. The SGXSSL handling below only exists to make the same source compile and link inside enclaves.
 add_library(streaming_tls STATIC src/stream.cpp)
 target_include_directories(
@@ -18,13 +29,13 @@ target_link_options(streaming_tls PRIVATE ${CANOPY_LINK_OPTIONS})
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     streaming_tls
-    PUBLIC streaming
+    PUBLIC streaming tls_stream_config_idl
     PRIVATE OpenSSL::Crypto OpenSSL::SSL rpc libcoro)
 else()
   # Blocking-mode TLS drives memory BIOs over a dual-mode streaming::stream; no libcoro dependency.
   target_link_libraries(
     streaming_tls
-    PUBLIC streaming
+    PUBLIC streaming tls_stream_config_idl
     PRIVATE OpenSSL::Crypto OpenSSL::SSL rpc)
 endif()
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -50,7 +61,7 @@ if(CANOPY_BUILD_ENCLAVE)
     target_link_options(streaming_tls_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
     target_link_libraries(
       streaming_tls_enclave
-      PUBLIC streaming_enclave
+      PUBLIC streaming_enclave tls_stream_config_idl_enclave
       PRIVATE rpc::rpc_enclave)
 
     if(CANOPY_SGXSSL_IMPL_LIBS_FOUND)

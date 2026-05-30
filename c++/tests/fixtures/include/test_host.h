@@ -22,7 +22,7 @@
 #include <common/foo_impl.h>
 #include <example/example.h>
 #if defined(CANOPY_BUILD_ENCLAVE) && !defined(CANOPY_BUILD_COROUTINE)
-#  include <transports/sgx/transport.h>
+#  include <transports/sgx_blocking/transport.h>
 #elif defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
 #  include <transports/sgx_coroutine/host/connect.h>
 #  include <transports/sgx_coroutine/host/transport.h>
@@ -48,11 +48,13 @@ public:
         auto serv = current_host_service.lock();
 
 #  ifdef CANOPY_BUILD_COROUTINE
-        auto transport = std::make_shared<rpc::sgx::coro::host::transport>("an enclave", serv, coroutine_enclave_path);
-        auto result = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+        auto transport
+            = std::make_shared<rpc::sgx_coroutine_transport::host::transport>("an enclave", serv, coroutine_enclave_path);
+        auto result = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
             serv, "an enclave", transport, self_host());
 #  else
-        auto transport = std::make_shared<rpc::sgx::enclave_transport>("an enclave", serv, enclave_path);
+        auto transport
+            = std::make_shared<rpc::sgx_blocking_transport::enclave_transport>("an enclave", serv, enclave_path);
         auto result = CO_AWAIT serv->connect_to_zone<yyy::i_host, yyy::i_example>("an enclave", transport, self_host());
 #  endif
         target = std::move(result.output_interface);

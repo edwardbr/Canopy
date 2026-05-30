@@ -5,7 +5,6 @@
 
 #include "benchmark_common.h"
 #include "benchmark_tls_fixture.h"
-#include "websocket_client_stream.h"
 
 #ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
 #  include <streaming/secure_stream.h>
@@ -152,7 +151,7 @@ namespace stream_bench
                 return false;
 
             server = std::make_shared<streaming::websocket::stream>(raw.side_a);
-            client = std::make_shared<websocket_client_stream>(raw.side_b);
+            client = std::make_shared<streaming::websocket::stream>(raw.side_b, streaming::websocket::stream_role::client);
             return true;
         }
 
@@ -205,7 +204,7 @@ namespace stream_bench
                 return false;
 
             server = std::make_shared<streaming::websocket::stream>(tls_a);
-            client = std::make_shared<websocket_client_stream>(tls_b);
+            client = std::make_shared<streaming::websocket::stream>(tls_b, streaming::websocket::stream_role::client);
             return true;
         }
 
@@ -259,7 +258,7 @@ namespace stream_bench
         std::vector<stress_benchmark_job>& stress_jobs)
     {
 #ifdef CANOPY_STREAMING_BENCHMARK_HAS_TLS
-        if (!should_run_stream(cfg, "tls+tcp"))
+        if (!should_run_stream(cfg, "tls+tcp_blocking"))
             return;
 
         if (cfg.run_unidirectional || cfg.run_send_reply)
@@ -267,7 +266,7 @@ namespace stream_bench
             for (const auto blob_size : get_blob_sizes(cfg))
             {
                 standard_jobs.push_back(
-                    standard_benchmark_job{"tls+tcp",
+                    standard_benchmark_job{"tls+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](bench_stats& unidirectional, bench_stats& send_reply)
                         { run_standard_tls_tcp(cfg, wd, blob_size, unidirectional, send_reply); }});
@@ -279,7 +278,7 @@ namespace stream_bench
             for (const auto blob_size : get_stress_blob_sizes(cfg))
             {
                 stress_jobs.push_back(
-                    stress_benchmark_job{"tls+tcp",
+                    stress_benchmark_job{"tls+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](stress_stats& send, stress_stats& recv)
                         { run_stress_tls_tcp(cfg, wd, blob_size, send, recv); }});
@@ -300,7 +299,7 @@ namespace stream_bench
         std::vector<stress_benchmark_job>& stress_jobs)
     {
 #ifdef CANOPY_BUILD_WEBSOCKET
-        if (!should_run_stream(cfg, "ws+tcp"))
+        if (!should_run_stream(cfg, "ws+tcp_blocking"))
             return;
 
         if (cfg.run_unidirectional || cfg.run_send_reply)
@@ -308,7 +307,7 @@ namespace stream_bench
             for (const auto blob_size : get_blob_sizes(cfg))
             {
                 standard_jobs.push_back(
-                    standard_benchmark_job{"ws+tcp",
+                    standard_benchmark_job{"ws+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](bench_stats& unidirectional, bench_stats& send_reply)
                         { run_standard_websocket_tcp(cfg, wd, blob_size, unidirectional, send_reply); }});
@@ -320,7 +319,7 @@ namespace stream_bench
             for (const auto blob_size : get_stress_blob_sizes(cfg))
             {
                 stress_jobs.push_back(
-                    stress_benchmark_job{"ws+tcp",
+                    stress_benchmark_job{"ws+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](stress_stats& send, stress_stats& recv)
                         { run_stress_websocket_tcp(cfg, wd, blob_size, send, recv); }});
@@ -341,7 +340,7 @@ namespace stream_bench
         std::vector<stress_benchmark_job>& stress_jobs)
     {
 #if defined(CANOPY_STREAMING_BENCHMARK_HAS_TLS) && defined(CANOPY_BUILD_WEBSOCKET)
-        if (!should_run_stream(cfg, "tls+ws+tcp"))
+        if (!should_run_stream(cfg, "tls+ws+tcp_blocking"))
             return;
 
         if (cfg.run_unidirectional || cfg.run_send_reply)
@@ -349,7 +348,7 @@ namespace stream_bench
             for (const auto blob_size : get_blob_sizes(cfg))
             {
                 standard_jobs.push_back(
-                    standard_benchmark_job{"tls+ws+tcp",
+                    standard_benchmark_job{"tls+ws+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](bench_stats& unidirectional, bench_stats& send_reply)
                         { run_standard_tls_websocket_tcp(cfg, wd, blob_size, unidirectional, send_reply); }});
@@ -361,7 +360,7 @@ namespace stream_bench
             for (const auto blob_size : get_stress_blob_sizes(cfg))
             {
                 stress_jobs.push_back(
-                    stress_benchmark_job{"tls+ws+tcp",
+                    stress_benchmark_job{"tls+ws+tcp_blocking",
                         blob_size,
                         [&cfg, &wd, blob_size](stress_stats& send, stress_stats& recv)
                         { run_stress_tls_websocket_tcp(cfg, wd, blob_size, send, recv); }});

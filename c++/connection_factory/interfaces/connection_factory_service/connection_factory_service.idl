@@ -1,0 +1,25 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace connection_factory_config
+    {
+        namespace service
+        {
+            // Settings for the service object that owns transports created by
+            // the connection factory. JSON never carries service pointers; it
+            // only controls the name used when the factory must create a root
+            // service itself.
+            struct settings
+            {
+                [description="Root service name used only when the caller did not pass an existing service to the factory."]
+                rpc::optional<std::string> name;
+            };
+        }
+    }
+}

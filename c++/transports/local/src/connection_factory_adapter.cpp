@@ -1,0 +1,57 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#include <connection_factory_components.h>
+
+#include <memory>
+#include <utility>
+
+#include <local_transport/local_transport_config.h>
+#include <local_transport/local_transport_config_schema.h>
+#include <transports/local/transport.h>
+
+namespace rpc::connection_factory::detail
+{
+    namespace
+    {
+        class local_transport_component_factory final : public transport_component_factory
+        {
+        public:
+            auto connect_transport(
+                const json::v1::object& transport_options,
+                const rpc::connection_factory_config::connection_settings& settings,
+                std::shared_ptr<rpc::service> service) const -> transport_connect_context override
+            {
+                auto service_settings = service_settings_from_connection(settings);
+                if (service_settings.error_code != rpc::error::OK())
+                    return {service_settings.error_code, {}, {}, {}};
+
+                auto materialised = materialise_settings<rpc::local_transport::transport_settings>(transport_options);
+                if (materialised.error_code != rpc::error::OK())
+                    return {materialised.error_code, {}, {}, {}};
+                auto local_settings = std::move(materialised.settings);
+
+                rpc::stream_transport::transport_settings service_transport_settings;
+                service_transport_settings.encoding = local_settings.encoding;
+                auto resolved_service = ensure_service(
+                    service_settings.settings, service_transport_settings, std::move(service), "local_rpc_client");
+                if (!resolved_service)
+                    return {rpc::error::INVALID_DATA(), {}, {}, {}};
+
+                auto transport = std::make_shared<rpc::local::child_transport>(
+                    configured_name(local_settings.name, "main child"), resolved_service);
+                auto proxy_name = configured_name(
+                    local_settings.service_proxy_name, configured_name(local_settings.name, "main child"));
+
+                return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+            }
+        };
+    } // namespace
+
+    void register_local_transport_components(transport_component_map& components)
+    {
+        components.emplace("local", std::make_shared<local_transport_component_factory>());
+    }
+} // namespace rpc::connection_factory::detail

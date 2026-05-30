@@ -9,27 +9,85 @@
 
 #include <chrono>
 #include <string>
+#include <type_traits>
+#include <vector>
 
 #include <gtest/gtest.h>
 
+#include <json/config_loader.h>
 #include <json/config.h>
 #include <json/convert.h>
 #include <json/json_dom.h>
 #include <json/json_utils.h>
 #include <json/schema_validator.h>
+#include <connection_factory/connection_factory.h>
 #include <connection_factory/tcp.h>
 #include <connection_factory_config/connection_factory_config_schema.h>
 #include <example_shared/example_shared_schema.h>
+#include <tcp_blocking_stream/tcp_blocking_stream_config_schema.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config_schema.h>
 #include <network_config/network_config_schema.h>
 #include <rpc/rpc_types_schema.h>
 #include <schema_cycle/schema_cycle_schema.h>
 #include <set_fixture/set_fixture_schema.h>
+#ifdef CANOPY_SECURE_STREAM_BACKEND_OPENSSL
+#  include <tls_stream/tls_stream_config_schema.h>
+#endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
+#  include <websocket_stream/websocket_stream_config_schema.h>
+#endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
+#  include <local_transport/local_transport_config.h>
+#endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
+#  include <sgx_coroutine_transport/sgx_coroutine_transport_config_schema.h>
+#endif
+#ifdef CANOPY_HAS_SGX_BLOCKING_TRANSPORT_CONFIG
+#  include <sgx_blocking_transport/sgx_blocking_transport_config_schema.h>
+#endif
+#ifdef CANOPY_HAS_SGX_ENCLAVE_RUNTIME_CONFIG
+#  include <sgx_enclave_runtime/sgx_enclave_runtime_config_schema.h>
+#endif
 
 namespace
 {
     using json::v1::parse;
     using json::v1::convert::from_json_object;
     using json::v1::convert::to_json_object;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    constexpr const char* active_tcp_stream_type = "tcp_coroutine";
+    constexpr const char* inactive_tcp_stream_type = "tcp_blocking";
+    static_assert(std::is_same_v<
+        streaming::tcp::endpoint,
+        rpc::tcp_coroutine_stream::endpoint>);
+    static_assert(std::is_same_v<
+        rpc::tcp::materialise_tcp_options_result,
+        rpc::tcp_coroutine::materialise_tcp_coroutine_options_result>);
+#  ifdef __linux__
+#    ifndef CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE
+#      error "Coroutine Linux builds should register tcp_coroutine in the connection factory"
+#    endif
+#  endif
+#  ifdef CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING
+#    error "Coroutine builds must not register tcp_blocking in the connection factory"
+#  endif
+#else
+    constexpr const char* active_tcp_stream_type = "tcp_blocking";
+    constexpr const char* inactive_tcp_stream_type = "tcp_coroutine";
+    static_assert(std::is_same_v<
+        streaming::tcp::endpoint,
+        rpc::tcp_blocking_stream::endpoint>);
+    static_assert(std::is_same_v<
+        rpc::tcp::materialise_tcp_options_result,
+        rpc::tcp_blocking::materialise_tcp_blocking_options_result>);
+#  ifndef CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING
+#    error "Blocking builds should register tcp_blocking in the connection factory"
+#  endif
+#  ifdef CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE
+#    error "Blocking builds must not register tcp_coroutine in the connection factory"
+#  endif
+#endif
 
     TEST(
         JsonConvert,
@@ -68,7 +126,7 @@ namespace
         ASSERT_TRUE(direct.has_value());
         EXPECT_EQ(direct.value(), "client_transport");
 
-        rpc::connection_factory_config::named_options named;
+        rpc::connection_factory_config::service::settings named;
         named.name = "listener_transport";
         ASSERT_TRUE(named.name.has_value());
         EXPECT_EQ(named.name.value(), "listener_transport");
@@ -105,7 +163,11 @@ namespace
         const auto serialised = to_json_object(typed);
         ASSERT_EQ(serialised.get_type(), json::v1::object::type::map_type);
         const auto& map = serialised.as_map();
+#ifdef CANOPY_BUILD_COROUTINE
+        EXPECT_GE(map.size(), 4u);
+#else
         EXPECT_EQ(map.size(), 4u);
+#endif
         ASSERT_NE(map.find("host"), map.end());
         ASSERT_NE(map.find("port"), map.end());
         ASSERT_NE(map.find("ipv6"), map.end());
@@ -117,17 +179,18 @@ namespace
         NestedStructIsBuiltViaAdl)
     {
         const auto input = parse(R"json({
-            "endpoint": {"host": "10.0.0.1", "port": 18080},
-            "service": {"name": "telemetry"}
+            "type": "stream_rpc",
+            "settings": {"call_timeout": 42}
         })json");
 
-        const auto typed = from_json_object<rpc::connection_factory_config::stream_factory_options>(input);
-        EXPECT_EQ(typed.endpoint.host, "10.0.0.1");
-        EXPECT_EQ(typed.endpoint.port, 18080);
+        const auto typed = from_json_object<rpc::connection_factory_config::typed_settings>(input);
 
-        ASSERT_TRUE(typed.service.has_value());
-        ASSERT_TRUE(typed.service->name.has_value());
-        EXPECT_EQ(*typed.service->name, "telemetry");
+        EXPECT_EQ(typed.type, "stream_rpc");
+        ASSERT_TRUE(typed.settings.has_value());
+        const auto stream_rpc_settings
+            = from_json_object<rpc::stream_transport::transport_settings>(typed.settings.value());
+        ASSERT_TRUE(stream_rpc_settings.call_timeout.has_value());
+        EXPECT_EQ(*stream_rpc_settings.call_timeout, uint64_t{42});
     }
 
     TEST(
@@ -449,27 +512,27 @@ namespace
         JsonConvert,
         ConcreteTcpEndpointDefaultsAbsentAndPresent)
     {
-        // stream_factory_options::endpoint is the IDL-generated concrete TCP
-        // endpoint type. Sparse JSON can omit it; conversion applies the IDL
-        // defaults. Explicit null is handled by overlay policy at the config
-        // boundary rather than by the schema for the concrete field.
-        const auto schema = json::v1::parse(rpc::connection_factory_config::stream_factory_options::get_schema());
+        // TCP endpoint is the IDL-generated concrete TCP config type. Sparse
+        // JSON can omit fields; conversion applies the IDL defaults. Explicit
+        // null is handled by overlay policy at the config boundary rather than
+        // by the schema for the concrete field.
+        const auto schema = json::v1::parse(streaming::tcp::endpoint::get_schema(rpc::encoding::yas_json));
         json::v1::schema::schema_validator validator(schema);
 
         const auto absent = parse(R"json({})json");
         EXPECT_TRUE(validator.validate(absent));
-        const auto typed_absent = from_json_object<rpc::connection_factory_config::stream_factory_options>(absent);
-        EXPECT_EQ(typed_absent.endpoint.host, "127.0.0.1");
-        EXPECT_EQ(typed_absent.endpoint.port, 0);
+        const auto typed_absent = from_json_object<streaming::tcp::endpoint>(absent);
+        EXPECT_EQ(typed_absent.host, "127.0.0.1");
+        EXPECT_EQ(typed_absent.port, 0);
 
-        const auto explicit_null = parse(R"json({"endpoint": null})json");
+        const auto explicit_null = parse(R"json({"host": null})json");
         EXPECT_FALSE(validator.validate(explicit_null));
 
-        const auto valid = parse(R"json({"endpoint": {"host": "10.0.0.1", "port": 8443}})json");
+        const auto valid = parse(R"json({"host": "10.0.0.1", "port": 8443})json");
         EXPECT_TRUE(validator.validate(valid));
-        const auto typed_valid = from_json_object<rpc::connection_factory_config::stream_factory_options>(valid);
-        EXPECT_EQ(typed_valid.endpoint.host, "10.0.0.1");
-        EXPECT_EQ(typed_valid.endpoint.port, 8443);
+        const auto typed_valid = from_json_object<streaming::tcp::endpoint>(valid);
+        EXPECT_EQ(typed_valid.host, "10.0.0.1");
+        EXPECT_EQ(typed_valid.port, 8443);
     }
 
     TEST(
@@ -479,14 +542,12 @@ namespace
         // Wrong type for an inner field (port should be integer) should fail
         // the parent schema. The converter has the same behaviour because
         // from_json_object<uint16_t> throws when given a string.
-        const auto schema = json::v1::parse(rpc::connection_factory_config::stream_factory_options::get_schema());
+        const auto schema = json::v1::parse(streaming::tcp::endpoint::get_schema(rpc::encoding::yas_json));
         json::v1::schema::schema_validator validator(schema);
 
-        const auto bad = parse(R"json({"endpoint": {"host": "10.0.0.1", "port": "not-a-number"}})json");
+        const auto bad = parse(R"json({"host": "10.0.0.1", "port": "not-a-number"})json");
         EXPECT_FALSE(validator.validate(bad));
-        EXPECT_THROW(
-            static_cast<void>(from_json_object<rpc::connection_factory_config::stream_factory_options>(bad)),
-            std::exception);
+        EXPECT_THROW(static_cast<void>(from_json_object<streaming::tcp::endpoint>(bad)), std::exception);
     }
 
     TEST(
@@ -724,16 +785,80 @@ namespace
         // overlay+convert step produces the expected typed result and that
         // user overrides win over the TCP component defaults.
         const auto user_input = json::v1::parse(R"json({
-            "endpoint": {"host": "10.0.0.42", "port": 9000}
+            "host": "10.0.0.42",
+            "port": 9000
         })json");
         const auto materialised = rpc::tcp::materialise_tcp_options(user_input);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
         const auto& typed = materialised.options;
 
-        EXPECT_EQ(typed.endpoint.host, "10.0.0.42");
-        EXPECT_EQ(typed.endpoint.port, 9000);
-        EXPECT_FALSE(typed.endpoint.ipv6);
-        EXPECT_EQ(typed.endpoint.connect_timeout, 5000u);
+        EXPECT_EQ(typed.host, "10.0.0.42");
+        EXPECT_EQ(typed.port, 9000);
+        EXPECT_FALSE(typed.ipv6);
+        EXPECT_EQ(typed.connect_timeout, 5000u);
+    }
+
+    TEST(
+        JsonConvert,
+        TcpFacadeDefaultsMatchActiveBuildMode)
+    {
+        const auto defaults = rpc::tcp::tcp_default_options();
+        ASSERT_EQ(defaults.get_type(), json::v1::object::type::map_type);
+        const auto& defaults_map = defaults.as_map();
+
+        ASSERT_NE(defaults_map.find("host"), defaults_map.end());
+        ASSERT_NE(defaults_map.find("port"), defaults_map.end());
+        ASSERT_NE(defaults_map.find("ipv6"), defaults_map.end());
+        ASSERT_NE(defaults_map.find("connect_timeout"), defaults_map.end());
+
+#ifdef CANOPY_BUILD_COROUTINE
+        EXPECT_NE(defaults_map.find("controller"), defaults_map.end());
+        EXPECT_NE(defaults_map.find("first_port"), defaults_map.end());
+        EXPECT_NE(defaults_map.find("last_port"), defaults_map.end());
+        EXPECT_NE(defaults_map.find("stream"), defaults_map.end());
+#else
+        EXPECT_EQ(defaults_map.find("controller"), defaults_map.end());
+        EXPECT_EQ(defaults_map.find("first_port"), defaults_map.end());
+        EXPECT_EQ(defaults_map.find("last_port"), defaults_map.end());
+        EXPECT_EQ(defaults_map.find("stream"), defaults_map.end());
+#endif
+    }
+
+    TEST(
+        JsonConvert,
+        ConcreteTcpIdlsMaterialiseSparseConfigsIndependently)
+    {
+        const auto blocking_overlay = json::v1::parse(R"json({
+            "port": 12001
+        })json");
+        const auto blocking_schema
+            = json::v1::parse(rpc::tcp_blocking_stream::endpoint::get_schema(rpc::encoding::yas_json));
+        const auto blocking_defaults = to_json_object(rpc::tcp_blocking_stream::endpoint{});
+        const auto blocking_endpoint = json::v1::load_typed_config<rpc::tcp_blocking_stream::endpoint>(
+            blocking_schema, blocking_defaults, blocking_overlay);
+
+        EXPECT_EQ(blocking_endpoint.host, "127.0.0.1");
+        EXPECT_EQ(blocking_endpoint.port, uint16_t{12001});
+        EXPECT_FALSE(blocking_endpoint.ipv6);
+        EXPECT_EQ(blocking_endpoint.connect_timeout, uint64_t{5000});
+
+        const auto coroutine_overlay = json::v1::parse(R"json({
+            "port": 12002,
+            "stream": {"timeout_strategy": "nonblocking_poll"}
+        })json");
+        const auto coroutine_schema
+            = json::v1::parse(rpc::tcp_coroutine_stream::endpoint::get_schema(rpc::encoding::yas_json));
+        const auto coroutine_defaults = to_json_object(rpc::tcp_coroutine_stream::endpoint{});
+        const auto coroutine_endpoint = json::v1::load_typed_config<rpc::tcp_coroutine_stream::endpoint>(
+            coroutine_schema, coroutine_defaults, coroutine_overlay);
+
+        EXPECT_EQ(coroutine_endpoint.host, "127.0.0.1");
+        EXPECT_EQ(coroutine_endpoint.port, uint16_t{12002});
+        EXPECT_FALSE(coroutine_endpoint.ipv6);
+        EXPECT_EQ(coroutine_endpoint.connect_timeout, uint64_t{5000});
+        EXPECT_EQ(
+            coroutine_endpoint.stream.timeout_strategy,
+            rpc::tcp_coroutine_stream::receive_timeout_strategy::nonblocking_poll);
     }
 
     TEST(
@@ -763,21 +888,23 @@ namespace
 
     TEST(
         JsonConvert,
-        TcpOptionsMaterialiserUsesGeneratedEncodingEnum)
+        StreamRpcTransportSettingsMaterialiserUsesGeneratedEncodingEnum)
     {
         const auto valid = json::v1::parse(R"json({
-            "rpc": {"encoding": "yas_binary"}
+            "encoding": "yas_binary"
         })json");
-        const auto materialised = rpc::tcp::materialise_tcp_options(valid);
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<rpc::stream_transport::transport_settings>(valid);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
-        ASSERT_TRUE(materialised.options.rpc.has_value());
-        ASSERT_TRUE(materialised.options.rpc->encoding.has_value());
-        EXPECT_EQ(*materialised.options.rpc->encoding, rpc::encoding::yas_binary);
+        ASSERT_TRUE(materialised.settings.encoding.has_value());
+        EXPECT_EQ(*materialised.settings.encoding, rpc::encoding::yas_binary);
 
         const auto legacy_alias = json::v1::parse(R"json({
-            "rpc": {"encoding": "binary"}
+            "encoding": "binary"
         })json");
-        EXPECT_EQ(rpc::tcp::materialise_tcp_options(legacy_alias).error_code, rpc::error::INVALID_DATA());
+        EXPECT_EQ(
+            rpc::connection_factory::materialise_settings<rpc::stream_transport::transport_settings>(legacy_alias).error_code,
+            rpc::error::INVALID_DATA());
     }
 
     TEST(
@@ -785,23 +912,525 @@ namespace
         IoUringTimeoutStrategyUsesGeneratedEnum)
     {
         const auto valid = json::v1::parse(R"json({
-            "io_uring": {"stream": {"timeout_strategy": "nonblocking_poll"}}
+            "stream": {"timeout_strategy": "nonblocking_poll"}
         })json");
-        const auto materialised = rpc::connection_factory::materialise_options(valid);
-        ASSERT_EQ(materialised.error_code, rpc::error::OK());
-        ASSERT_TRUE(materialised.options.io_uring.has_value());
-        EXPECT_TRUE(materialised.options.io_uring->controller.use_sqpoll);
-        EXPECT_EQ(materialised.options.io_uring->controller.fixed_file_count, uint32_t{128});
-        EXPECT_TRUE(materialised.options.io_uring->controller.register_fixed_files);
+        const auto schema = json::v1::parse(rpc::tcp_coroutine_stream::endpoint::get_schema(rpc::encoding::yas_json));
+        const auto defaults = to_json_object(rpc::tcp_coroutine_stream::endpoint{});
+        const auto materialised
+            = json::v1::load_typed_config<rpc::tcp_coroutine_stream::endpoint>(schema, defaults, valid);
+        EXPECT_TRUE(materialised.controller.use_sqpoll);
+        EXPECT_EQ(materialised.controller.fixed_file_count, uint32_t{128});
+        EXPECT_TRUE(materialised.controller.register_fixed_files);
         EXPECT_EQ(
-            materialised.options.io_uring->stream.timeout_strategy,
-            streaming::io_uring::receive_timeout_strategy::nonblocking_poll);
+            materialised.stream.timeout_strategy, rpc::tcp_coroutine_stream::receive_timeout_strategy::nonblocking_poll);
 
         const auto invalid = json::v1::parse(R"json({
-            "io_uring": {"stream": {"timeout_strategy": "poll_once"}}
+            "stream": {"timeout_strategy": "poll_once"}
         })json");
-        EXPECT_EQ(rpc::connection_factory::materialise_options(invalid).error_code, rpc::error::INVALID_DATA());
+        EXPECT_THROW(
+            static_cast<void>(json::v1::load_typed_config<rpc::tcp_coroutine_stream::endpoint>(schema, defaults, invalid)),
+            std::exception);
     }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    TEST(
+        JsonConvert,
+        TcpCoroutineEndpointValidationAllowsNetworkAddresses)
+    {
+        rpc::tcp_coroutine_stream::endpoint ipv4;
+        ipv4.host = "192.0.2.1";
+        ipv4.port = 443;
+        ipv4.connect_timeout = 123;
+        EXPECT_EQ(rpc::tcp_coroutine::validate_connect_endpoint(ipv4), rpc::error::OK());
+        EXPECT_EQ(
+            rpc::tcp_coroutine::detail::make_tcp_coroutine_runtime_options(ipv4).connect_timeout,
+            std::chrono::milliseconds{123});
+
+        rpc::tcp_coroutine_stream::endpoint ipv6;
+        ipv6.host = "2001:db8::1";
+        ipv6.port = 443;
+        ipv6.ipv6 = true;
+        EXPECT_EQ(rpc::tcp_coroutine::validate_connect_endpoint(ipv6), rpc::error::OK());
+
+        rpc::tcp_coroutine_stream::endpoint missing_port;
+        missing_port.host = "192.0.2.1";
+        EXPECT_EQ(rpc::tcp_coroutine::validate_connect_endpoint(missing_port), rpc::error::INVALID_DATA());
+    }
+#endif
+
+#ifdef CANOPY_SECURE_STREAM_BACKEND_OPENSSL
+    TEST(
+        JsonConvert,
+        TlsLayerSettingsUseOpenSslGeneratedConfig)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "client": {"verify_peer": true},
+            "server": {"verify_peer": "required"}
+        })json");
+
+        const auto materialised = rpc::connection_factory::materialise_settings<rpc::tls_stream::stream_settings>(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        EXPECT_TRUE(materialised.settings.client.verify_peer);
+        EXPECT_EQ(materialised.settings.server.verify_peer, rpc::tls_stream::peer_verification::required);
+
+        const auto sparse = rpc::connection_factory::materialise_settings<rpc::tls_stream::stream_settings>(
+            json::v1::parse(R"json({})json"));
+        ASSERT_EQ(sparse.error_code, rpc::error::OK());
+        EXPECT_FALSE(sparse.settings.client.verify_peer);
+        EXPECT_EQ(sparse.settings.server.verify_peer, rpc::tls_stream::peer_verification::none);
+    }
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
+    TEST(
+        JsonConvert,
+        WebSocketLayerSettingsUseGeneratedConfig)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "role": "client",
+            "keep_alive": {
+                "enabled": true,
+                "interval_ms": 1234,
+                "timeout_ms": 5678
+            }
+        })json");
+
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        ASSERT_TRUE(materialised.settings.role.has_value());
+        EXPECT_EQ(materialised.settings.role.value(), rpc::websocket_stream::endpoint_role::client);
+        EXPECT_TRUE(materialised.settings.keep_alive.enabled);
+        EXPECT_EQ(materialised.settings.keep_alive.interval_ms, uint64_t{1234});
+        EXPECT_EQ(materialised.settings.keep_alive.timeout_ms, uint64_t{5678});
+
+        const auto sparse = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
+            json::v1::parse(R"json({})json"));
+        ASSERT_EQ(sparse.error_code, rpc::error::OK());
+        EXPECT_FALSE(sparse.settings.role.has_value());
+        EXPECT_FALSE(sparse.settings.keep_alive.enabled);
+        EXPECT_EQ(sparse.settings.keep_alive.interval_ms, uint64_t{30000});
+        EXPECT_EQ(sparse.settings.keep_alive.timeout_ms, uint64_t{10000});
+
+        const auto stale_path = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
+            json::v1::parse(R"json({"path": "/rpc"})json"));
+        EXPECT_EQ(stale_path.error_code, rpc::error::INVALID_DATA());
+    }
+#endif
+
+    TEST(
+        JsonConvert,
+        ConnectionSettingsPreserveStreamSpecificBlobs)
+    {
+        const auto valid_json = std::string(R"json({
+            "service": {"type": "service", "settings": {"name": "client"}},
+            "transport": {
+                "type": "stream_rpc",
+                "settings": {"name": "client_transport", "service_proxy_name": "server", "encoding": "nanopb"}
+            },
+            "stream_layers": [
+)json") + R"json(                {"type": ")json"
+                                + active_tcp_stream_type + R"json(", "settings": {"host": "127.0.0.1", "port": 8080}},
+                {"type": "websocket", "settings": {"keep_alive": {"enabled": false}}}
+            ]
+        })json";
+        const auto valid = json::v1::parse(valid_json);
+
+        const auto materialised = rpc::connection_factory::materialise_connection_settings(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        ASSERT_EQ(materialised.settings.stream_layers.size(), 2u);
+        EXPECT_EQ(materialised.settings.stream_layers[0].type, active_tcp_stream_type);
+        EXPECT_EQ(materialised.settings.stream_layers[1].type, "websocket");
+        ASSERT_TRUE(materialised.settings.stream_layers[0].settings.has_value());
+
+        const auto tcp_options
+            = from_json_object<streaming::tcp::endpoint>(materialised.settings.stream_layers[0].settings.value());
+        EXPECT_EQ(tcp_options.host, "127.0.0.1");
+        EXPECT_EQ(tcp_options.port, 8080);
+    }
+
+    TEST(
+        JsonConvert,
+        BuiltInConnectionFactoryMaterialisesSparseTcpSettings)
+    {
+        rpc::stream_layers::stream_layer_settings sparse_tcp;
+        sparse_tcp.type = active_tcp_stream_type;
+        sparse_tcp.settings = parse(R"json({
+            "port": 0
+        })json");
+
+        auto acceptor = SYNC_WAIT(
+            rpc::connection_factory::accept_base_streams(
+                sparse_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        EXPECT_EQ(acceptor.error_code, rpc::error::OK());
+        EXPECT_NE(acceptor.acceptor, nullptr);
+#ifdef CANOPY_BUILD_COROUTINE
+        EXPECT_NE(acceptor.port, uint16_t{0});
+#else
+        EXPECT_EQ(acceptor.port, uint16_t{0});
+#endif
+
+        rpc::stream_layers::stream_layer_settings invalid_tcp;
+        invalid_tcp.type = active_tcp_stream_type;
+        invalid_tcp.settings = parse(R"json({
+            "unexpected_tcp_field": true
+        })json");
+
+        auto invalid = SYNC_WAIT(
+            rpc::connection_factory::accept_base_streams(
+                invalid_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        EXPECT_EQ(invalid.error_code, rpc::error::INVALID_DATA());
+    }
+
+    TEST(
+        JsonConvert,
+        BuiltInConnectionFactoryRejectsInactiveTcpImplementation)
+    {
+        rpc::stream_layers::stream_layer_settings inactive_tcp;
+        inactive_tcp.type = inactive_tcp_stream_type;
+        inactive_tcp.settings = parse(R"json({
+            "port": 0
+        })json");
+
+        auto inactive = SYNC_WAIT(
+            rpc::connection_factory::accept_base_streams(
+                inactive_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        EXPECT_EQ(inactive.error_code, rpc::error::INVALID_DATA());
+        EXPECT_EQ(inactive.acceptor, nullptr);
+    }
+
+    TEST(
+        JsonConvert,
+        ConnectionContextStoresTypedNamedDependencies)
+    {
+        rpc::connection_factory::layered_connection_context context;
+
+        auto unnamed_string = std::make_shared<std::string>("default");
+        auto named_string = std::make_shared<std::string>("named");
+        context.set_dependency(unnamed_string);
+        context.set_dependency(named_string, "alpha");
+
+        EXPECT_EQ(context.get_dependency<std::string>(), unnamed_string);
+        EXPECT_EQ(context.get_dependency<std::string>("alpha"), named_string);
+        EXPECT_EQ(context.get_dependency<std::string>("missing"), nullptr);
+
+        auto strings = context.get_dependencies<std::string>();
+        ASSERT_EQ(strings.size(), 2u);
+        EXPECT_EQ(strings[""], unnamed_string);
+        EXPECT_EQ(strings["alpha"], named_string);
+
+        context.set_dependency<std::string>(std::shared_ptr<std::string>{}, "alpha");
+        EXPECT_EQ(context.get_dependency<std::string>("alpha"), nullptr);
+        strings = context.get_dependencies<std::string>();
+        ASSERT_EQ(strings.size(), 1u);
+        EXPECT_EQ(strings[""], unnamed_string);
+
+        context.set_dependency_value<uint32_t>(42, "answer");
+        auto answer = context.get_dependency<uint32_t>("answer");
+        ASSERT_NE(answer, nullptr);
+        EXPECT_EQ(*answer, uint32_t{42});
+    }
+
+    TEST(
+        JsonConvert,
+        RegisteredConnectionFactoryComponentOwnsTypedMaterialisation)
+    {
+        rpc::connection_factory::layered_connection_context context;
+        bool factory_called = false;
+        std::string materialised_host;
+        uint16_t materialised_port = 0;
+
+        context.register_connect_base_stream(
+            "test_lora",
+            [&](const json::v1::object& settings,
+                std::shared_ptr<rpc::service>,
+                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+            {
+                factory_called = true;
+                auto materialised = rpc::connection_factory::materialise_settings<streaming::tcp::endpoint>(settings);
+                if (materialised.error_code != rpc::error::OK())
+                    CO_RETURN rpc::connection_factory::stream_result{materialised.error_code, {}};
+
+                materialised_host = materialised.settings.host;
+                materialised_port = materialised.settings.port;
+                CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}};
+            });
+
+        rpc::stream_layers::stream_layer_settings layer;
+        layer.type = "test_lora";
+        layer.settings = parse(R"json({
+            "port": 42
+        })json");
+
+        auto result = SYNC_WAIT(rpc::connection_factory::connect_base_stream(layer, {}, context));
+        EXPECT_EQ(result.error_code, rpc::error::OK());
+        EXPECT_TRUE(factory_called);
+        EXPECT_EQ(materialised_host, "127.0.0.1");
+        EXPECT_EQ(materialised_port, uint16_t{42});
+    }
+
+    TEST(
+        JsonConvert,
+        RegisteredStreamLayersAreAppliedFromConnectionSettings)
+    {
+        rpc::connection_factory::layered_connection_context context;
+        std::vector<std::string> calls;
+
+        auto register_layer = [&](const std::string& type)
+        {
+            context.register_stream_layer(
+                type,
+                [&, type](
+                    std::shared_ptr<::streaming::stream> stream,
+                    const json::v1::object& settings,
+                    rpc::connection_factory::layer_direction direction,
+                    const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                {
+                    const auto& settings_map = settings.as_map();
+                    const auto marker = settings_map.find("marker");
+                    if (marker == settings_map.end())
+                        CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
+
+                    calls.push_back(
+                        std::string(direction == rpc::connection_factory::layer_direction::connect ? "connect:" : "accept:")
+                        + type + ":" + marker->second.get<std::string>());
+                    CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), std::move(stream)};
+                });
+        };
+
+        register_layer("test_layer_alpha");
+        register_layer("test_layer_beta");
+
+        const auto valid_json = std::string(R"json({
+            "transport": {"type": "stream_rpc", "settings": {"encoding": "nanopb"}},
+            "stream_layers": [
+)json") + R"json(                {"type": ")json"
+                                + active_tcp_stream_type + R"json(", "settings": {"port": 0}},
+                {"type": "test_layer_alpha", "settings": {"marker": "alpha"}},
+                {"type": "test_layer_beta", "settings": {"marker": "beta"}}
+            ]
+        })json";
+        const auto materialised = rpc::connection_factory::materialise_connection_settings(parse(valid_json));
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        ASSERT_EQ(materialised.settings.stream_layers.size(), 3u);
+
+        auto connected = SYNC_WAIT(
+            rpc::connection_factory::apply_stream_layers(
+                {}, materialised.settings, 1, rpc::connection_factory::layer_direction::connect, context));
+        ASSERT_EQ(connected.error_code, rpc::error::OK());
+        EXPECT_EQ(connected.stream, nullptr);
+        ASSERT_EQ(calls.size(), 2u);
+        EXPECT_EQ(calls[0], "connect:test_layer_alpha:alpha");
+        EXPECT_EQ(calls[1], "connect:test_layer_beta:beta");
+
+        calls.clear();
+        auto accepted = SYNC_WAIT(
+            rpc::connection_factory::apply_stream_layers(
+                {}, materialised.settings, 1, rpc::connection_factory::layer_direction::accept, context));
+        ASSERT_EQ(accepted.error_code, rpc::error::OK());
+        EXPECT_EQ(accepted.stream, nullptr);
+        ASSERT_EQ(calls.size(), 2u);
+        EXPECT_EQ(calls[0], "accept:test_layer_alpha:alpha");
+        EXPECT_EQ(calls[1], "accept:test_layer_beta:beta");
+    }
+
+    TEST(
+        JsonConvert,
+        ConnectionTransportSelectionIsSeparateFromStreamLayers)
+    {
+        rpc::connection_factory_config::connection_settings default_settings;
+        const auto default_transport = rpc::connection_factory::transport_from_connection(default_settings);
+        ASSERT_EQ(default_transport.error_code, rpc::error::OK());
+        EXPECT_EQ(default_transport.type, "stream_rpc");
+        EXPECT_EQ(default_transport.settings, nullptr);
+
+        const auto local_config = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "transport": {
+                "type": "local",
+                "settings": {"name": "child_zone", "service_proxy_name": "child_proxy", "encoding": "nanopb"}
+            }
+        })json"));
+        ASSERT_EQ(local_config.error_code, rpc::error::OK());
+
+        const auto local_transport = rpc::connection_factory::transport_from_connection(local_config.settings);
+        ASSERT_EQ(local_transport.error_code, rpc::error::OK());
+        EXPECT_EQ(local_transport.type, "local");
+        ASSERT_NE(local_transport.settings, nullptr);
+        EXPECT_EQ(
+            rpc::connection_factory::resolve_stream_rpc_settings(local_config.settings).error_code,
+            rpc::error::INVALID_DATA());
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
+        const auto local_settings
+            = rpc::connection_factory::materialise_settings<rpc::local_transport::transport_settings>(
+                *local_transport.settings);
+        ASSERT_EQ(local_settings.error_code, rpc::error::OK());
+        ASSERT_TRUE(local_settings.settings.name.has_value());
+        EXPECT_EQ(local_settings.settings.name.value(), "child_zone");
+        ASSERT_TRUE(local_settings.settings.service_proxy_name.has_value());
+        EXPECT_EQ(local_settings.settings.service_proxy_name.value(), "child_proxy");
+        ASSERT_TRUE(local_settings.settings.encoding.has_value());
+        EXPECT_EQ(local_settings.settings.encoding.value(), rpc::encoding::nanopb);
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
+        const auto sgx_config = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "transport": {
+                "type": "sgx_coroutine",
+                "settings": {
+                    "name": "secure_zone",
+                    "service_proxy_name": "secure_proxy",
+                    "encoding": "yas_binary",
+                    "enclave_path": "/tmp/test_enclave.signed.so",
+                    "worker_thread_count": 2,
+                    "use_sidecar": true,
+                    "enclave": {
+                        "io_uring": { "queue_depth": 128 },
+                        "services": {
+                            "attestation": {
+                                "type": "simulation",
+                                "settings": { "allow_debug_peer": true }
+                            }
+                        }
+                    },
+                    "startup_applications": {
+                        "filesystem": { "root": "/tmp/canopy" }
+                    }
+                }
+            }
+        })json"));
+        ASSERT_EQ(sgx_config.error_code, rpc::error::OK());
+
+        const auto sgx_transport = rpc::connection_factory::transport_from_connection(sgx_config.settings);
+        ASSERT_EQ(sgx_transport.error_code, rpc::error::OK());
+        EXPECT_EQ(sgx_transport.type, "sgx_coroutine");
+        ASSERT_NE(sgx_transport.settings, nullptr);
+
+        const auto sgx_settings
+            = rpc::connection_factory::materialise_settings<rpc::sgx_coroutine_transport::transport_settings>(
+                *sgx_transport.settings);
+        ASSERT_EQ(sgx_settings.error_code, rpc::error::OK());
+        ASSERT_TRUE(sgx_settings.settings.name.has_value());
+        EXPECT_EQ(sgx_settings.settings.name.value(), "secure_zone");
+        ASSERT_TRUE(sgx_settings.settings.service_proxy_name.has_value());
+        EXPECT_EQ(sgx_settings.settings.service_proxy_name.value(), "secure_proxy");
+        ASSERT_TRUE(sgx_settings.settings.encoding.has_value());
+        EXPECT_EQ(sgx_settings.settings.encoding.value(), rpc::encoding::yas_binary);
+        EXPECT_EQ(sgx_settings.settings.enclave_path, "/tmp/test_enclave.signed.so");
+        EXPECT_EQ(sgx_settings.settings.worker_thread_count, 2u);
+        EXPECT_TRUE(sgx_settings.settings.use_sidecar);
+        ASSERT_TRUE(sgx_settings.settings.enclave.has_value());
+        EXPECT_EQ(sgx_settings.settings.enclave.value().io_uring.queue_depth, 128u);
+        ASSERT_EQ(sgx_settings.settings.enclave.value().services.size(), 1u);
+        ASSERT_TRUE(sgx_settings.settings.enclave.value().services.count("attestation"));
+        EXPECT_EQ(sgx_settings.settings.enclave.value().services.at("attestation").type, "simulation");
+        ASSERT_TRUE(sgx_settings.settings.enclave.value().services.at("attestation").settings.has_value());
+        EXPECT_EQ(sgx_settings.settings.startup_applications.size(), 1u);
+        EXPECT_TRUE(sgx_settings.settings.startup_applications.count("filesystem"));
+#endif
+
+#ifdef CANOPY_HAS_SGX_BLOCKING_TRANSPORT_CONFIG
+        const auto sgx_blocking_settings
+            = rpc::connection_factory::materialise_settings<rpc::sgx_blocking_transport::transport_settings>(parse(R"json({
+                "name": "blocking_secure_zone",
+                "service_proxy_name": "blocking_secure_proxy",
+                "encoding": "yas_binary",
+                "enclave_path": "/tmp/blocking_enclave.signed.so",
+                "enclave": {
+                    "io_uring": { "queue_depth": 64 },
+                    "services": {
+                        "attestation": {
+                            "type": "sgx_dcap",
+                            "settings": { "quote_provider": "host" }
+                        }
+                    }
+                }
+            })json"));
+        ASSERT_EQ(sgx_blocking_settings.error_code, rpc::error::OK());
+        ASSERT_TRUE(sgx_blocking_settings.settings.name.has_value());
+        EXPECT_EQ(sgx_blocking_settings.settings.name.value(), "blocking_secure_zone");
+        ASSERT_TRUE(sgx_blocking_settings.settings.service_proxy_name.has_value());
+        EXPECT_EQ(sgx_blocking_settings.settings.service_proxy_name.value(), "blocking_secure_proxy");
+        ASSERT_TRUE(sgx_blocking_settings.settings.encoding.has_value());
+        EXPECT_EQ(sgx_blocking_settings.settings.encoding.value(), rpc::encoding::yas_binary);
+        EXPECT_EQ(sgx_blocking_settings.settings.enclave_path, "/tmp/blocking_enclave.signed.so");
+        ASSERT_TRUE(sgx_blocking_settings.settings.enclave.has_value());
+        EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().io_uring.queue_depth, 64u);
+        ASSERT_TRUE(sgx_blocking_settings.settings.enclave.value().services.count("attestation"));
+        EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().services.at("attestation").type, "sgx_dcap");
+#endif
+    }
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING
+    TEST(
+        JsonConvert,
+        SgxBlockingConnectionFactoryRejectsStreamLayers)
+    {
+        const auto config = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "transport": {
+                "type": "sgx_blocking",
+                "settings": {
+                    "name": "blocking_secure_zone",
+                    "enclave_path": "/tmp/blocking_enclave.signed.so"
+                }
+            },
+            "stream_layers": [
+                { "type": "tls", "settings": { "client": { "verify_peer": false } } }
+            ]
+        })json"));
+        ASSERT_EQ(config.error_code, rpc::error::OK());
+
+        const auto transport = rpc::connection_factory::transport_from_connection(config.settings);
+        ASSERT_EQ(transport.error_code, rpc::error::OK());
+        ASSERT_NE(transport.settings, nullptr);
+
+        const auto context
+            = rpc::connection_factory::detail::make_transport_connect_context(*transport.settings, config.settings, {});
+        EXPECT_EQ(context.error_code, rpc::error::INVALID_DATA());
+        EXPECT_EQ(context.service, nullptr);
+        EXPECT_EQ(context.transport, nullptr);
+    }
+
+    TEST(
+        JsonConvert,
+        SgxBlockingConnectionFactoryCopiesNameToServiceProxyName)
+    {
+        const auto config = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "transport": {
+                "type": "sgx_blocking",
+                "settings": {
+                    "name": "blocking_secure_zone",
+                    "encoding": "yas_binary",
+                    "enclave_path": "/tmp/blocking_enclave.signed.so",
+                    "enclave": {
+                        "io_uring": { "queue_depth": 64 }
+                    }
+                }
+            }
+        })json"));
+        ASSERT_EQ(config.error_code, rpc::error::OK());
+
+        const auto transport = rpc::connection_factory::transport_from_connection(config.settings);
+        ASSERT_EQ(transport.error_code, rpc::error::OK());
+        ASSERT_NE(transport.settings, nullptr);
+
+        auto context
+            = rpc::connection_factory::detail::make_transport_connect_context(*transport.settings, config.settings, {});
+        ASSERT_EQ(context.error_code, rpc::error::OK());
+        ASSERT_NE(context.service, nullptr);
+        ASSERT_NE(context.transport, nullptr);
+        EXPECT_EQ(context.service_proxy_name, "blocking_secure_zone");
+
+        auto enclave_transport
+            = std::dynamic_pointer_cast<rpc::sgx_blocking_transport::enclave_transport>(context.transport);
+        ASSERT_NE(enclave_transport, nullptr);
+        EXPECT_EQ(enclave_transport->get_enclave_path(), "/tmp/blocking_enclave.signed.so");
+
+        const auto runtime_settings = from_json_object<rpc::sgx_enclave_runtime::runtime_settings>(
+            enclave_transport->get_enclave_runtime_settings());
+        EXPECT_EQ(runtime_settings.io_uring.queue_depth, 64u);
+    }
+#endif
 
     TEST(
         JsonConvert,

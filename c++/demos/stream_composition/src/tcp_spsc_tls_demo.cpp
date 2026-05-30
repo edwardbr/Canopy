@@ -43,18 +43,24 @@
 
 #include <streaming/listener.h>
 #include <streaming/spsc_wrapping/stream.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
+#include <streaming/tcp_coroutine/acceptor.h>
+#include <streaming/tcp_coroutine/connector.h>
+#include <streaming/tcp_coroutine/stream.h>
 #include <streaming/secure_stream.h>
 #include <transports/streaming/transport.h>
+
+#include <io_uring/host_io_uring.h>
 
 #include <canopy/network_config/cli_args.h>
 #include <canopy/network_config/endpoint.h>
 #include <canopy/network_config/zone.h>
 
+#include <algorithm>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 // ---------------------------------------------------------------------------
@@ -101,6 +107,47 @@ static bool prepare_demo_cert(
 namespace stream_composition
 {
 #ifdef CANOPY_BUILD_COROUTINE
+    namespace
+    {
+        auto make_tcp_coroutine_controller(
+            std::shared_ptr<coro::scheduler> scheduler,
+            const char* role) -> std::shared_ptr<rpc::io_uring::controller>
+        {
+            rpc::io_uring::linux_io_uring_handle::options handle_options;
+            handle_options.queue_depth = 256;
+            handle_options.buffer_count = 128;
+            handle_options.buffer_size = 64U * 1024U;
+            handle_options.fixed_file_count = 256;
+            handle_options.register_fixed_files = true;
+
+            std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
+            const auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, scheduler);
+            if (error != rpc::error::OK())
+            {
+                RPC_ERROR("{}: failed to create TCP coroutine io_uring handle error={}", role, error);
+                return {};
+            }
+
+            return std::make_shared<rpc::io_uring::controller>(
+                std::move(handle), scheduler.get(), rpc::io_uring::default_controller_options());
+        }
+
+        auto ipv4_address(const canopy::network_config::tcp_endpoint& endpoint) -> std::array<
+            uint8_t,
+            4>
+        {
+            return {endpoint.addr[0], endpoint.addr[1], endpoint.addr[2], endpoint.addr[3]};
+        }
+
+        auto ipv6_address(const canopy::network_config::tcp_endpoint& endpoint) -> std::array<
+            uint8_t,
+            16>
+        {
+            std::array<uint8_t, 16> result{};
+            std::copy(endpoint.addr.begin(), endpoint.addr.end(), result.begin());
+            return result;
+        }
+    } // namespace
 
     CORO_TASK(void)
     run_server(
@@ -126,11 +173,26 @@ namespace stream_composition
             CO_RETURN;
         }
 
-        const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
-                                ? coro::net::domain_t::ipv6
-                                : coro::net::domain_t::ipv4;
-        const coro::net::socket_address endpoint{
-            coro::net::ip_address::from_string(listen_ep.to_string(), domain), listen_ep.port};
+        auto controller = make_tcp_coroutine_controller(scheduler, "Server");
+        if (!controller)
+        {
+            iteration_ok.store(false);
+            CO_RETURN;
+        }
+
+        auto acceptor = std::make_shared<streaming::coroutine::tcp::acceptor>(controller);
+        int listen_error = rpc::error::OK();
+        if (listen_ep.family == canopy::network_config::ip_address_family::ipv6)
+            listen_error = CO_AWAIT acceptor->listen_ipv6(ipv6_address(listen_ep), listen_ep.port);
+        else
+            listen_error = CO_AWAIT acceptor->listen_ipv4(ipv4_address(listen_ep), listen_ep.port);
+
+        if (listen_error != rpc::error::OK())
+        {
+            RPC_ERROR("Server: TCP coroutine listen failed: {}", listen_error);
+            iteration_ok.store(false);
+            CO_RETURN;
+        }
 
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
@@ -143,13 +205,12 @@ namespace stream_composition
             CO_RETURN tls_stm;
         };
 
-        rpc::connection_factory_config::stream_factory_options options;
-        options.listener = rpc::connection_factory_config::named_options{.name = "server_transport"};
-        options.transport = rpc::connection_factory_config::named_options{.name = "server_transport"};
-        options.rpc.emplace();
-        options.rpc->encoding = rpc::encoding::yas_binary;
+        rpc::connection_factory::stream_rpc_connection_settings options;
+        options.listener.name = "server_transport";
+        options.transport.name = "server_transport";
+        options.transport.encoding = rpc::encoding::yas_binary;
         auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc_listener<i_echo, i_echo>(
-            std::make_shared<streaming::tcp::acceptor>(endpoint),
+            std::move(acceptor),
             [](const rpc::shared_ptr<i_echo>&,
                 const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
             {
@@ -203,25 +264,25 @@ namespace stream_composition
 
         RPC_INFO("Client: connecting to {}:{}", connect_ep.to_string(), connect_ep.port);
 
-        const auto domain = connect_ep.family == canopy::network_config::ip_address_family::ipv6
-                                ? coro::net::domain_t::ipv6
-                                : coro::net::domain_t::ipv4;
-        coro::net::tcp::client tcp_client(
-            scheduler,
-            coro::net::socket_address{coro::net::ip_address::from_string(connect_ep.to_string(), domain), connect_ep.port});
-
-        auto conn_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
-        if (conn_status != coro::net::connect_status::connected)
+        auto controller = make_tcp_coroutine_controller(scheduler, "Client");
+        if (!controller)
         {
-            RPC_ERROR("Client: TCP connect failed (status={})", static_cast<int>(conn_status));
+            iteration_ok.store(false);
+            client_finished.set();
+            CO_RETURN;
+        }
+
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, connect_ep.port);
+        if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
+        {
+            RPC_ERROR("Client: TCP coroutine connect failed: {}", tcp_result.error_code);
             iteration_ok.store(false);
             client_finished.set();
             CO_RETURN;
         }
         RPC_INFO("Client: TCP connected");
 
-        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
-        auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+        auto spsc_stm = streaming::spsc_wrapping::stream::create(std::move(tcp_result.connection), scheduler);
 
         auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
@@ -245,11 +306,10 @@ namespace stream_composition
         rpc::shared_ptr<i_echo> local_echo;
         rpc::shared_ptr<i_echo> remote_echo;
 
-        rpc::connection_factory_config::stream_factory_options options;
-        options.transport = rpc::connection_factory_config::named_options{.name = "client_transport"};
-        options.connection = rpc::connection_factory_config::named_options{.name = "echo_server"};
-        options.rpc.emplace();
-        options.rpc->encoding = rpc::encoding::yas_binary;
+        rpc::connection_factory::stream_rpc_connection_settings options;
+        options.transport.name = "client_transport";
+        options.transport.service_proxy_name = "echo_server";
+        options.transport.encoding = rpc::encoding::yas_binary;
         auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc_stream<i_echo, i_echo>(
             local_echo, tls_stm, options, client_service);
         remote_echo = connect_result.output_interface;

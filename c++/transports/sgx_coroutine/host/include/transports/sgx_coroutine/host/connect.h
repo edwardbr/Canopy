@@ -28,7 +28,7 @@
 #include <utility>
 #include <vector>
 
-namespace rpc::sgx::coro::host
+namespace rpc::sgx_coroutine_transport::host
 {
     namespace detail
     {

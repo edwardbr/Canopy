@@ -37,8 +37,8 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
       transport_sgx_coroutine_enclave
       ${SGX_COROUTINE_TEST_TELEMETRY_ENCLAVE_LIBS}
       streaming_spsc_queue_enclave
-      streaming_io_uring_enclave
-      canopy_coroutine_edl_enclave
+      streaming_tcp_coroutine_enclave
+      sgx_coroutine_transport_edl_enclave
       transport_local_enclave
       canopy_io_uring_enclave
       io_uring_test_idl_enclave

@@ -49,7 +49,7 @@
 #if defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
 #  include <transport/tests/sgx_coroutine/setup.h>
 #elif defined(CANOPY_BUILD_ENCLAVE)
-#  include <transport/tests/sgx/setup.h>
+#  include <transport/tests/sgx_blocking/setup.h>
 #endif
 #include "crash_handler.h"
 #include "type_test_fixture.h"

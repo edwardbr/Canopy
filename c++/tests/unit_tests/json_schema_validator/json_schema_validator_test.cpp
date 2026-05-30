@@ -5,6 +5,7 @@
 
 #include <json/schema_validator.h>
 #include <json/json_utils.h>
+#include <connection_factory/connection_factory.h>
 #include <connection_factory/options.h>
 
 #include <gtest/gtest.h>
@@ -23,7 +24,7 @@ namespace
             "required": ["transport", "port"],
             "additionalProperties": false,
             "properties": {
-                "transport": {"type": "string", "enum": ["tcp", "io_uring", "spsc"]},
+                "transport": {"type": "string", "enum": ["tcp_blocking", "tcp_coroutine", "spsc"]},
                 "port": {"type": "integer", "minimum": 1, "maximum": 65535},
                 "tls": {
                     "type": "object",
@@ -38,7 +39,7 @@ namespace
         })json");
 
         const auto valid = parse(R"json({
-            "transport": "io_uring",
+            "transport": "tcp_coroutine",
             "port": 18080,
             "tls": {
                 "certificate_path": "server.crt",
@@ -294,29 +295,55 @@ namespace
 
     TEST(
         JsonSchemaValidator,
-        StreamingFactoryOptionsRejectLegacyAliases)
+        ConnectionSettingsRejectLegacyAliases)
     {
-        const auto valid = rpc::connection_factory::materialise_options(parse(R"json({
-            "endpoint": {"host": "127.0.0.1", "port": 8080},
-            "service": {"name": "service"},
-            "transport": {"name": "transport"},
-            "listener": {"name": "listener"},
-            "connection": {"name": "connection"},
-            "rpc": {"encoding": "nanopb", "call_timeout": 30000},
-            "io_uring": {"controller": {"queue_depth": 256}, "stream": {"timeout_strategy": "linked_timeout"}}
+        const auto valid = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "service": {"type": "service", "settings": {"name": "service"}},
+            "transport": {
+                "type": "stream_rpc",
+                "settings": {"name": "transport", "service_proxy_name": "connection", "encoding": "nanopb", "call_timeout": 30000}
+            },
+            "listener": {"type": "stream_rpc", "settings": {"name": "listener"}}
         })json"));
         EXPECT_EQ(valid.error_code, rpc::error::OK());
 
-        const auto legacy_aliases = rpc::connection_factory::materialise_options(parse(R"json({
-                "host": "127.0.0.1",
-                "port": 8080,
-                "service_name": "service",
-                "transport_name": "transport",
-                "listener_name": "listener",
-                "connection_name": "connection",
-                "encoding": "nanopb",
-                "call_timeout": 30000
-            })json"));
+        const auto legacy_aliases = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "endpoint": {"host": "127.0.0.1", "port": 8080},
+            "tcp_coroutine": {"controller": {"queue_depth": 256}, "stream": {"timeout_strategy": "linked_timeout"}},
+            "host": "127.0.0.1",
+            "port": 8080,
+            "service_name": "service",
+            "transport_name": "transport",
+            "listener_name": "listener",
+            "connection_name": "connection",
+            "encoding": "nanopb",
+            "call_timeout": 30000
+        })json"));
         EXPECT_EQ(legacy_aliases.error_code, rpc::error::INVALID_DATA());
+    }
+
+    TEST(
+        JsonSchemaValidator,
+        ConnectionSettingsAcceptSparseStreamLayersConfig)
+    {
+        const auto valid = rpc::connection_factory::materialise_connection_settings(parse(R"json({
+            "transport": {
+                "type": "stream_rpc",
+                "settings": {"name": "client_transport", "service_proxy_name": "server", "encoding": "nanopb"}
+            },
+            "stream_layers": [
+                {"type": "tcp_blocking", "settings": {"host": "127.0.0.1", "port": 8080}},
+                {"type": "tls", "settings": {"client": {"verify_peer": false}}},
+                {"type": "websocket", "settings": {"keep_alive": {"enabled": false}}},
+                {"type": "compression", "settings": {"algorithm": "zstd", "level": 3}}
+            ]
+        })json"));
+
+        ASSERT_EQ(valid.error_code, rpc::error::OK());
+        ASSERT_EQ(valid.settings.stream_layers.size(), 4u);
+        EXPECT_EQ(valid.settings.stream_layers[0].type, "tcp_blocking");
+        EXPECT_EQ(valid.settings.stream_layers[1].type, "tls");
+        EXPECT_EQ(valid.settings.stream_layers[2].type, "websocket");
+        EXPECT_EQ(valid.settings.stream_layers[3].type, "compression");
     }
 }

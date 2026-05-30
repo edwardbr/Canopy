@@ -477,10 +477,21 @@ namespace rpc::io_uring
             rpc::error::OK(), static_cast<uint32_t>(result.native_result), result.native_result, result.cqe_flags};
     }
 
-    // Creates a direct TCP socket and connects it to 127.0.0.1:port. If the
-    // connect setup fails after socket creation, the direct descriptor is closed.
     CORO_TASK(descriptor_result)
-    controller::connect_tcp_ipv4_loopback(uint16_t port)
+    controller::connect_tcp_ipv4_loopback(
+        uint16_t port,
+        std::chrono::milliseconds timeout)
+    {
+        CO_RETURN CO_AWAIT connect_tcp_ipv4({127, 0, 0, 1}, port, timeout);
+    }
+
+    CORO_TASK(descriptor_result)
+    controller::connect_tcp_ipv4(
+        const std::array<
+            uint8_t,
+            4>& address,
+        uint16_t port,
+        std::chrono::milliseconds timeout)
     {
         auto err = CO_AWAIT ensure_iouring_data();
         if (err != rpc::error::OK())
@@ -494,7 +505,7 @@ namespace rpc::io_uring
                 CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
             }
 
-            auto connect_result = CO_AWAIT handle_->connect_tcp_ipv4_loopback(port);
+            auto connect_result = CO_AWAIT handle_->connect_tcp_ipv4(address, port, timeout);
             if (connect_result.error_code != rpc::error::OK())
             {
                 CO_RETURN connect_result;
@@ -519,7 +530,7 @@ namespace rpc::io_uring
             CO_RETURN socket_result;
         }
 
-        auto address_buffer_result = CO_AWAIT make_loopback_address_buffer(port);
+        auto address_buffer_result = CO_AWAIT make_ipv4_address_buffer(address, port);
         if (address_buffer_result.error_code != rpc::error::OK())
         {
             CO_AWAIT close_direct(socket_result.descriptor);
@@ -530,23 +541,196 @@ namespace rpc::io_uring
         {
             uint32_t descriptor;
             std::shared_ptr<staging_buffer> address_buffer;
-        } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer)};
+            std::shared_ptr<staging_buffer> timeout_buffer;
+            uint64_t address_size;
+        } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv4_sockaddr_size};
 
-        auto connect_result = CO_AWAIT submit_operation(
-            [](detail::sqe_64& sqe, void* data)
+        operation_result connect_result;
+        if (timeout > std::chrono::milliseconds{0})
+        {
+            auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
+            if (timeout_buffer_result.error_code != rpc::error::OK())
             {
-                auto& operation_context = *static_cast<context*>(data);
-                sqe.opcode = detail::io_uring_op_connect;
-                sqe.flags = detail::io_uring_sqe_fixed_file;
-                sqe.fd = static_cast<int32_t>(operation_context.descriptor);
-                sqe.addr = operation_context.address_buffer->address();
-                sqe.off = static_cast<uint64_t>(ipv4_sockaddr_size);
-            },
-            &operation_context);
+                CO_AWAIT close_direct(socket_result.descriptor);
+                CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+            }
+
+            auto timeout_spec = make_kernel_timespec(timeout);
+            std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
+            operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+
+            connect_result = CO_AWAIT submit_linked_operation(
+                [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    connect_sqe.opcode = detail::io_uring_op_connect;
+                    connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
+                    connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    connect_sqe.addr = operation_context.address_buffer->address();
+                    connect_sqe.off = operation_context.address_size;
+
+                    timeout_sqe.opcode = detail::io_uring_op_link_timeout;
+                    timeout_sqe.addr = operation_context.timeout_buffer->address();
+                    timeout_sqe.len = 1;
+                },
+                &operation_context,
+                operation_context.timeout_buffer);
+        }
+        else
+        {
+            connect_result = CO_AWAIT submit_operation(
+                [](detail::sqe_64& sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    sqe.opcode = detail::io_uring_op_connect;
+                    sqe.flags = detail::io_uring_sqe_fixed_file;
+                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    sqe.addr = operation_context.address_buffer->address();
+                    sqe.off = operation_context.address_size;
+                },
+                &operation_context);
+        }
 
         if (connect_result.error_code != rpc::error::OK())
         {
             CO_AWAIT close_direct(socket_result.descriptor);
+            if (is_linked_timeout_result(connect_result.native_result))
+            {
+                CO_RETURN descriptor_result{
+                    rpc::error::CALL_TIMEOUT(), 0, connect_result.native_result, connect_result.cqe_flags};
+            }
+            CO_RETURN descriptor_result{
+                connect_result.error_code, 0, connect_result.native_result, connect_result.cqe_flags};
+        }
+
+        auto no_delay_result = CO_AWAIT set_tcp_no_delay(socket_result.descriptor);
+        if (no_delay_result.error_code != rpc::error::OK())
+        {
+            RPC_WARNING(
+                "direct io_uring TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
+                socket_result.descriptor,
+                no_delay_result.error_code,
+                no_delay_result.native_result);
+        }
+
+        CO_RETURN descriptor_result{
+            rpc::error::OK(), socket_result.descriptor, connect_result.native_result, connect_result.cqe_flags};
+    }
+
+    CORO_TASK(descriptor_result)
+    controller::connect_tcp_ipv6(
+        const std::array<
+            uint8_t,
+            16>& address,
+        uint16_t port,
+        std::chrono::milliseconds timeout)
+    {
+        auto err = CO_AWAIT ensure_iouring_data();
+        if (err != rpc::error::OK())
+        {
+            CO_RETURN descriptor_result{err, 0, 0, 0};
+        }
+        if (!cached_fixed_file_table_available())
+        {
+            if (!handle_)
+            {
+                CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+            }
+
+            auto connect_result = CO_AWAIT handle_->connect_tcp_ipv6(address, port, timeout);
+            if (connect_result.error_code != rpc::error::OK())
+            {
+                CO_RETURN connect_result;
+            }
+
+            auto no_delay_result = CO_AWAIT set_tcp_no_delay(connect_result.descriptor);
+            if (no_delay_result.error_code != rpc::error::OK())
+            {
+                RPC_WARNING(
+                    "descriptor fallback TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
+                    connect_result.descriptor,
+                    no_delay_result.error_code,
+                    no_delay_result.native_result);
+            }
+
+            CO_RETURN connect_result;
+        }
+
+        auto socket_result = CO_AWAIT create_tcp_ipv6_socket();
+        if (socket_result.error_code != rpc::error::OK())
+        {
+            CO_RETURN socket_result;
+        }
+
+        auto address_buffer_result = CO_AWAIT make_ipv6_address_buffer(address, port);
+        if (address_buffer_result.error_code != rpc::error::OK())
+        {
+            CO_AWAIT close_direct(socket_result.descriptor);
+            CO_RETURN descriptor_result{address_buffer_result.error_code, 0, 0, 0};
+        }
+
+        struct context
+        {
+            uint32_t descriptor;
+            std::shared_ptr<staging_buffer> address_buffer;
+            std::shared_ptr<staging_buffer> timeout_buffer;
+            uint64_t address_size;
+        } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv6_sockaddr_size};
+
+        operation_result connect_result;
+        if (timeout > std::chrono::milliseconds{0})
+        {
+            auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
+            if (timeout_buffer_result.error_code != rpc::error::OK())
+            {
+                CO_AWAIT close_direct(socket_result.descriptor);
+                CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+            }
+
+            auto timeout_spec = make_kernel_timespec(timeout);
+            std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
+            operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+
+            connect_result = CO_AWAIT submit_linked_operation(
+                [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    connect_sqe.opcode = detail::io_uring_op_connect;
+                    connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
+                    connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    connect_sqe.addr = operation_context.address_buffer->address();
+                    connect_sqe.off = operation_context.address_size;
+
+                    timeout_sqe.opcode = detail::io_uring_op_link_timeout;
+                    timeout_sqe.addr = operation_context.timeout_buffer->address();
+                    timeout_sqe.len = 1;
+                },
+                &operation_context,
+                operation_context.timeout_buffer);
+        }
+        else
+        {
+            connect_result = CO_AWAIT submit_operation(
+                [](detail::sqe_64& sqe, void* data)
+                {
+                    auto& operation_context = *static_cast<context*>(data);
+                    sqe.opcode = detail::io_uring_op_connect;
+                    sqe.flags = detail::io_uring_sqe_fixed_file;
+                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                    sqe.addr = operation_context.address_buffer->address();
+                    sqe.off = operation_context.address_size;
+                },
+                &operation_context);
+        }
+
+        if (connect_result.error_code != rpc::error::OK())
+        {
+            CO_AWAIT close_direct(socket_result.descriptor);
+            if (is_linked_timeout_result(connect_result.native_result))
+            {
+                CO_RETURN descriptor_result{
+                    rpc::error::CALL_TIMEOUT(), 0, connect_result.native_result, connect_result.cqe_flags};
+            }
             CO_RETURN descriptor_result{
                 connect_result.error_code, 0, connect_result.native_result, connect_result.cqe_flags};
         }

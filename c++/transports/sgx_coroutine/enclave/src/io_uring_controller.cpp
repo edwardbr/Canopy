@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     namespace
     {
@@ -278,8 +278,11 @@ namespace rpc::sgx::coro::enclave
     }
 
     CORO_TASK(rpc::io_uring::descriptor_result)
-    enclave_io_uring_handle::connect_tcp_ipv4_loopback(uint16_t port)
+    enclave_io_uring_handle::connect_tcp_ipv4_loopback(
+        uint16_t port,
+        std::chrono::milliseconds timeout)
     {
+        (void)timeout;
         secure_module::brokered_io_result result;
         secure_module::brokered_io_request request;
         request.operation = secure_module::brokered_io_operation::tcp_connect_ipv4_loopback;

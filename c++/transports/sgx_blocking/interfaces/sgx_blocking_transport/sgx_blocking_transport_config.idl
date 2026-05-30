@@ -1,0 +1,34 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "sgx_enclave_runtime/sgx_enclave_runtime_config.idl"
+
+namespace rpc
+{
+    namespace sgx_blocking_transport
+    {
+        // Host-side settings for the SGX blocking transport. This transport
+        // creates a blocking ECALL-backed enclave child zone and does not use
+        // streaming layers for the host/enclave boundary.
+        struct transport_settings
+        {
+            [description="Name of the parent-side SGX blocking transport."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the enclave service proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads after the SGX transport link is live."]
+            rpc::optional<rpc::encoding> encoding;
+
+            [description="Path to the signed enclave image loaded by sgx_create_enclave. This is required because the factory cannot infer which enclave binary to start."]
+            std::string enclave_path;
+
+            [description="Common enclave runtime startup policy shared with other SGX transports. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
+            rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave;
+        };
+    }
+}

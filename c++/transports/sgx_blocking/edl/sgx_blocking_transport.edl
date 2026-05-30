@@ -1,0 +1,147 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+enclave {
+    from "sgx_tstdc.edl" import *;
+    from "rpc_telemetry.edl" import *;
+
+    trusted {
+        /* define ECALLs here. */
+        public int sgx_blocking_init_enclave(
+            uint64_t enclave_id,
+            size_t req_sz,
+            [in, size=req_sz] const char* req,
+            size_t resp_cap,
+            [out, size=resp_cap] char* resp,
+            [out] size_t* resp_sz
+        );
+        public void sgx_blocking_destroy_enclave();
+
+        public int call_enclave(
+            size_t req_sz,                                      // serialized rpc::send_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::send_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::send_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::send_result blob
+            [out] size_t* resp_sz,                              // actual required serialized response size
+            [user_check] void** retry_buffer                    // enclave-owned retry blob for NEED_MORE_MEMORY retries
+        );
+        
+        public int post_enclave(
+            size_t req_sz,                                      // serialized rpc::post_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::post_params blob
+        );
+        
+        public int try_cast_enclave(
+            size_t req_sz,                                      // serialized rpc::try_cast_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::try_cast_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+        );
+        public int add_ref_enclave(
+            size_t req_sz,                                      // serialized rpc::add_ref_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::add_ref_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+        );
+        public int release_enclave(
+            size_t req_sz,                                      // serialized rpc::release_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::release_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+        );
+
+        public int object_released_enclave(
+            size_t req_sz,                                      // serialized rpc::object_released_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::object_released_params blob
+        );
+
+        public int transport_down_enclave(
+            size_t req_sz,                                      // serialized rpc::transport_down_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::transport_down_params blob
+        );
+
+        public int get_new_zone_id_enclave(
+            size_t req_sz,                                      // serialized rpc::get_new_zone_id_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::get_new_zone_id_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::new_zone_id_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::new_zone_id_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+        );
+    };
+
+    untrusted {
+        int call_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::send_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::send_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::send_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::send_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+            
+
+        int post_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::post_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::post_params blob
+            );            
+
+        // for casting interfaces
+        int try_cast_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::try_cast_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::try_cast_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+
+        // for adding reference count
+        int add_ref_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::add_ref_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::add_ref_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+
+        // for decrementing reference counts
+        int release_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::release_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::release_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+
+        int object_released_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::object_released_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::object_released_params blob
+            );
+
+        int transport_down_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::transport_down_params blob size
+            [in, size=req_sz] const char* req                   // serialized rpc::transport_down_params blob
+            );
+
+        int get_new_zone_id_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::get_new_zone_id_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::get_new_zone_id_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::new_zone_id_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::new_zone_id_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+
+        void rpc_log(int level, [in, size=sz] const char* str, size_t sz);
+        void hang();
+    };
+};

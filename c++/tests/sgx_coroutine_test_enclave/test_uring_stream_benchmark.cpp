@@ -6,7 +6,7 @@
 #include "test_uring.h"
 
 #include <io_uring/tcp.h>
-#include <streaming/io_uring/stream.h>
+#include <streaming/tcp_coroutine/stream.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 
 #include <algorithm>
@@ -37,14 +37,14 @@ namespace io_uring_test_enclave
             uint64_t start_ticks,
             bool send_reply)
         {
-            const auto end_ticks = rpc::sgx::coro::enclave::read_runtime_tick_counter();
+            const auto end_ticks = rpc::sgx_coroutine_transport::enclave::read_runtime_tick_counter();
             const auto elapsed_ticks = end_ticks >= start_ticks ? end_ticks - start_ticks : 0;
             if (elapsed_ticks == 0)
                 return 0;
 
             return static_cast<int64_t>(
-                send_reply ? rpc::sgx::coro::enclave::runtime_ticks_to_microseconds(elapsed_ticks)
-                           : rpc::sgx::coro::enclave::runtime_ticks_to_nanoseconds(elapsed_ticks));
+                send_reply ? rpc::sgx_coroutine_transport::enclave::runtime_ticks_to_microseconds(elapsed_ticks)
+                           : rpc::sgx_coroutine_transport::enclave::runtime_ticks_to_nanoseconds(elapsed_ticks));
         }
 
         io_uring_test::stream_benchmark_stats make_empty_stats(uint32_t payload_size)
@@ -148,8 +148,8 @@ namespace io_uring_test_enclave
         {
             int err = rpc::error::OK();
 
-            auto accept_result
-                = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), acceptor->port());
+            auto accept_result = streaming::coroutine::tcp::make_stream_result(
+                CO_AWAIT acceptor->accept_with_result(), acceptor->port());
             if (accept_result.error_code != rpc::error::OK() || !accept_result.connection)
             {
                 err = accept_result.error_code != rpc::error::OK() ? accept_result.error_code
@@ -245,7 +245,7 @@ namespace io_uring_test_enclave
 
         rpc::io_uring::connector connector(controller_);
         auto connect_result
-            = streaming::io_uring::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
+            = streaming::coroutine::tcp::make_stream_result(CO_AWAIT connector.connect_loopback_with_result(port), port);
         if (connect_result.error_code != rpc::error::OK() || !connect_result.connection)
         {
             CO_AWAIT acceptor->close();
@@ -264,7 +264,7 @@ namespace io_uring_test_enclave
         int err = rpc::error::OK();
         for (uint32_t iteration = 0; iteration < total_iterations; ++iteration)
         {
-            const auto start_ticks = rpc::sgx::coro::enclave::read_runtime_tick_counter();
+            const auto start_ticks = rpc::sgx_coroutine_transport::enclave::read_runtime_tick_counter();
 
             auto send_status = CO_AWAIT client_stream->send(rpc::byte_span(payload));
             if (!send_status.is_ok())

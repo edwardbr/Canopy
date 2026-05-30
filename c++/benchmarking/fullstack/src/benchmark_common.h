@@ -30,7 +30,8 @@ namespace comprehensive::v1
     inline constexpr size_t ipc_warmup_calls = reduced_debug_benchmark_matrix ? 1 : 30;
     inline constexpr size_t spsc_warmup_calls = reduced_debug_benchmark_matrix ? 1 : 20;
     inline constexpr size_t tcp_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
-    inline constexpr size_t io_uring_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
+    inline constexpr size_t tcp_coroutine_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
+    inline constexpr size_t io_uring_warmup_calls = tcp_coroutine_warmup_calls;
 
     struct benchmark_stats
     {
@@ -104,7 +105,7 @@ namespace comprehensive::v1
     benchmark_result run_spsc_benchmark(
         rpc::encoding enc,
         size_t blob_size);
-    benchmark_result run_io_uring_benchmark(
+    benchmark_result run_tcp_coroutine_benchmark(
         rpc::encoding enc,
         size_t blob_size,
         uint16_t port,
@@ -132,19 +133,19 @@ namespace comprehensive::v1
         rpc::encoding enc,
         size_t blob_size);
 #endif
-    benchmark_result run_tcp_benchmark(
+    benchmark_result run_tcp_blocking_benchmark(
         rpc::encoding enc,
         size_t blob_size,
         uint16_t port);
-    benchmark_result run_tls_tcp_benchmark(
+    benchmark_result run_tls_tcp_blocking_benchmark(
         rpc::encoding enc,
         size_t blob_size,
         uint16_t port);
-    benchmark_result run_websocket_tcp_benchmark(
+    benchmark_result run_websocket_tcp_blocking_benchmark(
         rpc::encoding enc,
         size_t blob_size,
         uint16_t port);
-    benchmark_result run_tls_websocket_tcp_benchmark(
+    benchmark_result run_tls_websocket_tcp_blocking_benchmark(
         rpc::encoding enc,
         size_t blob_size,
         uint16_t port);

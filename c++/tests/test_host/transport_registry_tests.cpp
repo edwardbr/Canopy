@@ -10,7 +10,10 @@
 #include <tuple>
 #include <utility>
 
+#include <common/foo_impl.h>
 #include <rpc/rpc.h>
+
+#include "test_host.h"
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <atomic>
@@ -127,9 +130,27 @@ namespace
             std::shared_ptr<rpc::object_stub> stub,
             rpc::connection_settings input_descr) override
         {
-            std::ignore = stub;
             std::ignore = input_descr;
-            CO_RETURN rpc::connect_result{rpc::error::OK(), {}};
+            last_inner_connect_stub = stub;
+
+            if (register_adjacent_route_in_inner_connect)
+            {
+                auto service = get_service();
+                if (!service)
+                    CO_RETURN rpc::connect_result{rpc::error::ZONE_NOT_INITIALISED(), {}};
+                service->add_transport(get_adjacent_zone_id(), shared_from_this());
+            }
+
+            for (uint32_t ref_index = 0; ref_index < inner_connect_stub_refs_to_add; ++ref_index)
+            {
+                if (!stub)
+                    CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
+                auto add_ref_result = CO_AWAIT stub->add_ref(false, false, get_adjacent_zone_id());
+                if (add_ref_result != rpc::error::OK())
+                    CO_RETURN rpc::connect_result{add_ref_result, {}};
+            }
+
+            CO_RETURN rpc::connect_result{inner_connect_error, {}};
         }
 
         CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
@@ -190,6 +211,10 @@ namespace
         uint64_t outbound_release_count{0};
         int outbound_add_ref_error{rpc::error::OK()};
         int outbound_release_error{rpc::error::OK()};
+        bool register_adjacent_route_in_inner_connect{false};
+        uint32_t inner_connect_stub_refs_to_add{0};
+        int inner_connect_error{rpc::error::OK()};
+        std::weak_ptr<rpc::object_stub> last_inner_connect_stub;
         rpc::remote_object last_send_remote_object;
         rpc::caller_zone last_send_caller_zone;
         rpc::remote_object last_add_ref_remote_object;
@@ -301,6 +326,77 @@ namespace
     }
 #endif
 
+    rpc::shared_ptr<yyy::i_host> make_host_interface_for_test()
+    {
+        rpc::shared_ptr<yyy::i_host> local_host(new host());
+        return local_host;
+    }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    rpc::service_connect_result<yyy::i_example> run_connect_to_zone_for_test(
+        const std::shared_ptr<rpc::service>& service,
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::shared_ptr<yyy::i_host> input,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        rpc::service_connect_result<yyy::i_example> result{rpc::error::CALL_TIMEOUT(), {}};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT service->connect_to_zone<yyy::i_host, yyy::i_example>(
+                "transport-registry-child", transport, std::move(input));
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return result;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return result;
+    }
+
+    bool run_notify_all_destinations_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        auto task = [&]() -> coro::task<void>
+        {
+            CO_AWAIT transport->notify_all_destinations_of_disconnect();
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return false;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return done.load();
+    }
+#else
+    rpc::service_connect_result<yyy::i_example> run_connect_to_zone_for_test(
+        const std::shared_ptr<rpc::service>& service,
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::shared_ptr<yyy::i_host> input)
+    {
+        return service->connect_to_zone<yyy::i_host, yyy::i_example>(
+            "transport-registry-child", transport, std::move(input));
+    }
+
+    bool run_notify_all_destinations_for_test(const std::shared_ptr<registry_test_transport>& transport)
+    {
+        transport->notify_all_destinations_of_disconnect();
+        return true;
+    }
+#endif
+
 #ifdef CANOPY_BUILD_COROUTINE
     bool run_proxy_send_for_test(
         const std::shared_ptr<rpc::service_proxy>& proxy,
@@ -350,6 +446,125 @@ namespace
     }
 #endif
 } // namespace
+
+TEST(
+    transport_registry_tests,
+    initialisation_failure_releases_child_refs_to_host_objects)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-init-failure-ref-cleanup", scheduler);
+#else
+    auto service = make_test_service("transport-registry-init-failure-ref-cleanup");
+#endif
+    auto child_zone = rpc::destination_zone{make_local_zone_address(70)};
+
+    auto transport = std::make_shared<registry_test_transport>("failing-init-transport", service);
+    transport->set_adjacent_zone_id(child_zone);
+    transport->register_adjacent_route_in_inner_connect = true;
+    transport->inner_connect_stub_refs_to_add = 2;
+    transport->inner_connect_error = rpc::error::TRANSPORT_ERROR();
+
+    auto input = make_host_interface_for_test();
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_connect_to_zone_for_test(service, transport, input, scheduler);
+#else
+    auto result = run_connect_to_zone_for_test(service, transport, input);
+#endif
+    auto retained_stub = transport->last_inner_connect_stub;
+
+    EXPECT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
+    input = nullptr;
+    result.output_interface = nullptr;
+
+    EXPECT_TRUE(retained_stub.expired());
+    EXPECT_EQ(service->get_transport(child_zone), nullptr);
+    EXPECT_EQ(transport->get_destination_count(), 0);
+}
+
+TEST(
+    transport_registry_tests,
+    transport_down_releases_child_refs_to_host_objects_during_normal_operation)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-live-ref-cleanup", scheduler);
+#else
+    auto service = make_test_service("transport-registry-live-ref-cleanup");
+#endif
+    auto child_zone = rpc::destination_zone{make_local_zone_address(71)};
+
+    auto transport = std::make_shared<registry_test_transport>("live-transport", service);
+    transport->set_adjacent_zone_id(child_zone);
+    transport->register_adjacent_route_in_inner_connect = true;
+    transport->inner_connect_stub_refs_to_add = 2;
+
+    auto input = make_host_interface_for_test();
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_connect_to_zone_for_test(service, transport, input, scheduler);
+#else
+    auto result = run_connect_to_zone_for_test(service, transport, input);
+#endif
+    ASSERT_EQ(result.error_code, rpc::error::OK());
+
+    auto retained_stub = transport->last_inner_connect_stub;
+    input = nullptr;
+    result.output_interface = nullptr;
+
+    ASSERT_FALSE(retained_stub.expired());
+    EXPECT_EQ(transport->get_destination_count(), 1);
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_TRUE(run_notify_transport_down_for_test(service, transport, child_zone, scheduler));
+#else
+    EXPECT_TRUE(run_notify_transport_down_for_test(service, transport, child_zone));
+#endif
+
+    EXPECT_TRUE(retained_stub.expired());
+    EXPECT_EQ(service->get_transport(child_zone), nullptr);
+    EXPECT_EQ(transport->get_destination_count(), 0);
+}
+
+TEST(
+    transport_registry_tests,
+    shutdown_notification_releases_child_refs_to_host_objects)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-shutdown-ref-cleanup", scheduler);
+#else
+    auto service = make_test_service("transport-registry-shutdown-ref-cleanup");
+#endif
+    auto child_zone = rpc::destination_zone{make_local_zone_address(72)};
+
+    auto transport = std::make_shared<registry_test_transport>("shutdown-transport", service);
+    transport->set_adjacent_zone_id(child_zone);
+    transport->register_adjacent_route_in_inner_connect = true;
+    transport->inner_connect_stub_refs_to_add = 2;
+
+    auto input = make_host_interface_for_test();
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_connect_to_zone_for_test(service, transport, input, scheduler);
+#else
+    auto result = run_connect_to_zone_for_test(service, transport, input);
+#endif
+    ASSERT_EQ(result.error_code, rpc::error::OK());
+
+    auto retained_stub = transport->last_inner_connect_stub;
+    input = nullptr;
+    result.output_interface = nullptr;
+
+    ASSERT_FALSE(retained_stub.expired());
+    transport->set_status(rpc::transport_status::DISCONNECTING);
+#ifdef CANOPY_BUILD_COROUTINE
+    EXPECT_TRUE(run_notify_all_destinations_for_test(transport, scheduler));
+#else
+    EXPECT_TRUE(run_notify_all_destinations_for_test(transport));
+#endif
+
+    EXPECT_TRUE(retained_stub.expired());
+    EXPECT_EQ(service->get_transport(child_zone), nullptr);
+    EXPECT_EQ(transport->get_destination_count(), 0);
+}
 
 TEST(
     transport_registry_tests,

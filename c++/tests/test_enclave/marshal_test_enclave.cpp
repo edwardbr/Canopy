@@ -10,26 +10,27 @@
 #include <stdio.h>
 #include <string>
 
+#include <json/json_dom.h>
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
 #  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
-#include <edl/enclave_marshal_test.h>
-#include <trusted/enclave_marshal_test_t.h>
+#include <edl/sgx_blocking_marshal.h>
+#include <trusted/sgx_blocking_transport_t.h>
 #include <common/foo_impl.h>
-#include <transports/sgx/host_transport.h>
+#include <transports/sgx_blocking/host_transport.h>
 #include <example/example.h>
 
 using namespace marshalled_tests;
 
 namespace
 {
-    using namespace rpc::sgx::marshal_test;
+    using namespace rpc::sgx_blocking_transport::marshal;
 
     // std::shared_ptr<rpc::child_service> rpc_server;
-    std::weak_ptr<rpc::sgx::host_transport> g_host_transport;
+    std::weak_ptr<rpc::sgx_blocking_transport::host_transport> g_host_transport;
     uint64_t g_enclave_id = 0;
 
     template<typename T> std::vector<char> to_sgx_blob(const T& value)
@@ -184,7 +185,7 @@ namespace
 
 }
 
-int marshal_test_init_enclave(
+int sgx_blocking_init_enclave(
     uint64_t enclave_id,
     size_t req_sz,
     const char* req,
@@ -199,12 +200,13 @@ int marshal_test_init_enclave(
 
     auto input_descr = from_sgx_request(request);
     g_enclave_id = enclave_id;
+    rpc::sgx_blocking_transport::set_runtime_startup_settings(request.runtime_settings);
 
 #ifdef CANOPY_USE_TELEMETRY
     rpc::telemetry::create_enclave_telemetry_service(rpc::telemetry::telemetry_service_);
 #endif
 
-    auto ht = std::make_shared<rpc::sgx::host_transport>(
+    auto ht = std::make_shared<rpc::sgx_blocking_transport::host_transport>(
         "test_enclave", g_enclave_id, request.child_zone_id, rpc::zone{request.host_remote_object.as_zone()});
 
     g_host_transport = ht;
@@ -226,9 +228,10 @@ int marshal_test_init_enclave(
     return write_blob_response(to_sgx_response(rpc::error::OK(), ret.descriptor), resp_cap, resp, resp_sz);
 }
 
-void marshal_test_destroy_enclave()
+void sgx_blocking_destroy_enclave()
 {
     // rpc_server.reset();
+    rpc::sgx_blocking_transport::set_runtime_startup_settings(json::v1::object{json::v1::map{}});
     g_host_transport.reset();
     g_enclave_id = 0;
 }

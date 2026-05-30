@@ -23,6 +23,9 @@
 #include <variant>
 #include <vector>
 
+#include <rpc/internal/build_modifiers.h>
+
+YAS_WARNINGS_PUSH
 #include <yas/binary_iarchive.hpp>
 #include <yas/binary_oarchive.hpp>
 #include <yas/detail/io/serialization_exceptions.hpp>
@@ -32,6 +35,7 @@
 #include <yas/mem_streams.hpp>
 #include <yas/serialize.hpp>
 #include <yas/std_types.hpp>
+YAS_WARNINGS_POP
 
 #include <fmt/format.h>
 #include <rpc/rpc.h>
@@ -852,13 +856,17 @@ namespace json
         inline object parse(std::string_view text)
         {
             object value;
+            YAS_WARNINGS_PUSH
             yas::load<yas::mem | yas::json | yas::no_header>(yas::intrusive_buffer{text.data(), text.size()}, value);
+            YAS_WARNINGS_POP
             return value;
         }
 
         inline std::string dump(const object& value)
         {
+            YAS_WARNINGS_PUSH
             yas::shared_buffer buffer = yas::save<yas::mem | yas::json | yas::no_header>(value);
+            YAS_WARNINGS_POP
             return std::string(buffer.data.get(), buffer.data.get() + buffer.size);
         }
     } // namespace v1

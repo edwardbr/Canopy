@@ -46,7 +46,7 @@ namespace
         {
             exercise_atomic_smart_ptr_polyfill();
 
-            rpc::sgx::coro::enclave::register_connection_factory<yyy::i_host, io_uring_test::i_test_uring>(
+            rpc::sgx_coroutine_transport::enclave::register_connection_factory<yyy::i_host, io_uring_test::i_test_uring>(
                 "sgx_coroutine_test_enclave",
                 [](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::service> child_service)
                     -> CORO_TASK(rpc::service_connect_result<io_uring_test::i_test_uring>)

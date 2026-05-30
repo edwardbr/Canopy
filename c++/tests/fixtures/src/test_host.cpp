@@ -7,7 +7,7 @@
 #include "common/foo_impl.h"
 #include <cstdint>
 #if defined(CANOPY_BUILD_ENCLAVE) && !defined(CANOPY_BUILD_COROUTINE)
-#  include <transports/sgx/transport.h>
+#  include <transports/sgx_blocking/transport.h>
 #elif defined(CANOPY_BUILD_ENCLAVE) && defined(CANOPY_BUILD_COROUTINE)
 #  include <transports/sgx_coroutine/host/transport.h>
 #endif

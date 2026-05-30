@@ -5,14 +5,15 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
-  set(ENCLAVE_DEPENDANCIES marshal_test_edl rpc_telemetry_edl_header)
-  set(SGX_TRANSPORT_TEST_LIB transport_sgx_test)
+  set(ENCLAVE_DEPENDANCIES sgx_blocking_transport_edl rpc_telemetry_edl_header)
+  set(SGX_TRANSPORT_TEST_LIB transport_sgx_blocking_test)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   set(SGX_COROUTINE_TRANSPORT_LIB transport_sgx_coroutine)
   set(SGX_COROUTINE_TRANSPORT_TEST_LIB transport_sgx_coroutine_test)
   set(SGX_COROUTINE_ENCLAVE_SERVICE_HOST_TEST_LIB transport_sgx_coroutine_enclave_service_host_test)
+  set(SGX_COROUTINE_TRANSPORT_SOURCES sgx_coroutine_transport_test.cpp)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
@@ -78,13 +79,18 @@ if(LIBCORO_IPC_DLL_LOADER_TARGET)
        CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
 endif()
 
+if(TARGET canopy_sgx_coroutine_sidecar)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH="$<TARGET_FILE:canopy_sgx_coroutine_sidecar>")
+endif()
+
 if(CANOPY_BUILD_ENCLAVE AND SGX_HW)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_SGX_HARDWARE_RUNTIME)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
-  # "$<TARGET_FILE:canopy_ipc_child_process>")
+#list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
+#"$<TARGET_FILE:canopy_ipc_child_process>")
   list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
@@ -97,6 +103,7 @@ add_executable(
   post_functionality_test_suite.cpp
   atomic_smart_ptr_tests.cpp
   optimistic_ptr_tests.cpp
+  connection_factory_local_child_test.cpp
   streaming_transport_regression_suite.cpp
   transport_registry_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
@@ -104,6 +111,7 @@ add_executable(
   ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
   ${LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES}
   ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
+  ${SGX_COROUTINE_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
@@ -125,6 +133,7 @@ target_link_libraries(
          -Wl,--no-whole-archive
          yas_common
          rpc::rpc
+         connection_factory
          transport_direct_test
          transport_local
          transport_local_test
@@ -164,12 +173,11 @@ if(CANOPY_BUILD_COROUTINE)
            route_attestation_protocol_idl
            streaming
            streaming_attestation
-           streaming_tcp
            streaming_spsc_queue
            streaming_spsc_wrapping
            canopy::security_attestation
            ${STREAMING_SECURE_STREAM_LIB}
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_WEBSOCKET)
@@ -199,11 +207,14 @@ if(CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
   if(CANOPY_BUILD_ENCLAVE)
     add_dependencies(rpc_test marshal_test_coroutine_enclave)
+    if(TARGET canopy_sgx_coroutine_sidecar)
+      add_dependencies(rpc_test canopy_sgx_coroutine_sidecar)
+    endif()
   endif()
 endif()
 
 include(CTest)
-# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
+#Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
 endif()
@@ -231,11 +242,10 @@ if(CANOPY_BUILD_COROUTINE)
            ${STREAMING_TRANSPORT_LIB}
            ${STREAMING_TRANSPORT_TEST_LIB}
            streaming
-           streaming_tcp
            streaming_spsc_queue
            streaming_spsc_wrapping
            ${STREAMING_SECURE_STREAM_LIB}
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
            args::args
            fmt::fmt-header-only
@@ -247,7 +257,6 @@ if(CANOPY_BUILD_COROUTINE)
            rpc_log)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(timeout_test PRIVATE CANOPY_BUILD_WEBSOCKET)
-    target_link_libraries(timeout_test PRIVATE wslay)
   endif()
   target_compile_options(timeout_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(timeout_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

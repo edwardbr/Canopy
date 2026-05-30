@@ -6,7 +6,7 @@
 #include <transports/secure_coroutine_module/io_uring_data_conversion.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
-#include <trusted/canopy_coroutine_enclave_t.h>
+#include <trusted/sgx_coroutine_transport_t.h>
 #include <sgx_error.h>
 #include <sgx_trts.h>
 #include <cstring>
@@ -27,7 +27,7 @@
 #include <vector>
 #include <secure_coroutine_module/secure_coroutine_module.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     host_transport::host_transport(
         std::string name,

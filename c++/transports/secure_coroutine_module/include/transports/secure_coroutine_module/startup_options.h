@@ -7,9 +7,11 @@
 #include <cstddef>
 #include <map>
 #include <string>
+#include <vector>
 
 #include <rpc/rpc.h>
 #include <secure_coroutine_module/secure_coroutine_module.h>
+#include <streaming/stream_layers.h>
 
 #if !defined(FOR_SGX)
 #  include <exception>
@@ -30,6 +32,7 @@ namespace rpc
             constexpr std::size_t max_startup_option_key_bytes = 128;
             constexpr std::size_t max_startup_option_value_bytes = 4096;
             constexpr std::size_t max_startup_options_total_bytes = 64U * 1024U;
+            constexpr std::size_t max_startup_stream_layer_count = 16;
 
             using startup_applications = std::map<std::string, json::v1::object>;
 
@@ -124,6 +127,38 @@ namespace rpc
                     error = detail::validate_startup_option_resource_budget(application_options, state, 1);
                     if (error != rpc::error::OK())
                         return error;
+                }
+                return rpc::error::OK();
+            }
+
+            inline int validate_startup_runtime_settings_resource_budget(const json::v1::object& runtime_settings)
+            {
+                detail::startup_option_validation_state state;
+                return detail::validate_startup_option_resource_budget(runtime_settings, state, 1);
+            }
+
+            inline int validate_startup_stream_layers_resource_budget(
+                const std::vector<rpc::stream_layers::stream_layer_settings>& layers)
+            {
+                if (layers.size() > max_startup_stream_layer_count)
+                    return rpc::error::RESOURCE_EXHAUSTED();
+
+                detail::startup_option_validation_state state;
+                for (const auto& layer : layers)
+                {
+                    if (layer.type.empty() || layer.type.size() > max_startup_option_key_bytes)
+                        return rpc::error::INVALID_DATA();
+
+                    auto error = detail::add_startup_option_bytes(state, layer.type.size());
+                    if (error != rpc::error::OK())
+                        return error;
+
+                    if (layer.settings)
+                    {
+                        error = detail::validate_startup_option_resource_budget(layer.settings.value(), state, 1);
+                        if (error != rpc::error::OK())
+                            return error;
+                    }
                 }
                 return rpc::error::OK();
             }

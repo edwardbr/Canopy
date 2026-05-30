@@ -612,7 +612,7 @@ namespace rpc::io_uring
         grant_next_staging_buffer_waiter_locked();
     }
 
-    // Allocates a staging buffer and writes an IPv4 loopback sockaddr into it so
+    // Allocates a staging buffer and writes an IPv4 sockaddr into it so
     // bind/connect SQEs can pass a kernel-readable address pointer.
     CORO_TASK(controller::staging_buffer_allocation_result)
     controller::make_ipv4_address_buffer(

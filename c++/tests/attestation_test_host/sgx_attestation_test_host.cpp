@@ -579,11 +579,11 @@ namespace
             rpc::shared_ptr<attestation_test::i_attestation_enclave_test>& test)
         {
             auto transport
-                = std::make_shared<rpc::sgx::coro::host::transport>(name, root_service_->service(), enclave_path_);
+                = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(name, root_service_->service(), enclave_path_);
             transport_refs_.push_back(transport);
             auto result = run_on_manual_scheduler<rpc::service_connect_result<attestation_test::i_attestation_enclave_test>>(
                 scheduler_,
-                rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, attestation_test::i_attestation_enclave_test>(
+                rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, attestation_test::i_attestation_enclave_test>(
                     root_service_->service(), name, std::move(transport), host_));
 
             test = std::move(result.output_interface);
@@ -629,7 +629,7 @@ namespace
         }
 
         void wait_for_transports(
-            const std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>>& transports,
+            const std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>>& transports,
             std::chrono::milliseconds timeout)
         {
             const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -647,7 +647,7 @@ namespace
         std::shared_ptr<coro::scheduler> scheduler_;
         std::unique_ptr<root_service_owner> root_service_;
         rpc::shared_ptr<yyy::i_host> host_;
-        std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transport_refs_;
+        std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>> transport_refs_;
         std::string enclave_path_;
         rpc::shared_ptr<attestation_test::i_attestation_enclave_test> test_a_;
         rpc::shared_ptr<attestation_test::i_attestation_enclave_test> test_b_;

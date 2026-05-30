@@ -25,7 +25,7 @@ namespace streaming
     // Usage:
     //   auto listener = std::make_shared<streaming::listener>(
     //       "my_connection",
-    //       std::make_shared<streaming::tcp::acceptor>(endpoint),
+    //       std::make_shared<streaming::blocking::tcp::acceptor>(endpoint),
     //       rpc::stream_transport::make_connection_callback<i_remote, i_local>(
     //           [](const rpc::shared_ptr<i_remote>& remote,
     //               std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<i_local>)

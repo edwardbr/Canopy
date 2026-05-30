@@ -187,19 +187,17 @@ namespace stream_bench
 #endif
     uint16_t allocate_loopback_port();
 
+#ifndef CANOPY_BUILD_COROUTINE
     struct tcp_stream_pair
     {
         std::shared_ptr<streaming::stream> side_a;
         std::shared_ptr<streaming::stream> side_b;
-#ifdef CANOPY_BUILD_COROUTINE
-        std::shared_ptr<coro::scheduler> scheduler_a;
-        std::shared_ptr<coro::scheduler> scheduler_b;
-#endif
 
         void shutdown();
     };
 
     bool make_tcp_stream_pair(tcp_stream_pair& pair);
+#endif
 
     bench_stats compute_stats(
         std::vector<int64_t> samples,
@@ -301,12 +299,14 @@ namespace stream_bench
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,
         std::vector<stress_benchmark_job>& stress_jobs);
-    void add_tcp_jobs(
+#ifndef CANOPY_BUILD_COROUTINE
+    void add_tcp_blocking_jobs(
         const bench_config& cfg,
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,
         std::vector<stress_benchmark_job>& stress_jobs);
-    void add_io_uring_jobs(
+#endif
+    void add_tcp_coroutine_jobs(
         const bench_config& cfg,
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,
@@ -331,6 +331,7 @@ namespace stream_bench
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,
         std::vector<stress_benchmark_job>& stress_jobs);
+#ifndef CANOPY_BUILD_COROUTINE
     void add_tls_tcp_jobs(
         const bench_config& cfg,
         watchdog& wd,
@@ -346,4 +347,5 @@ namespace stream_bench
         watchdog& wd,
         std::vector<standard_benchmark_job>& standard_jobs,
         std::vector<stress_benchmark_job>& stress_jobs);
+#endif
 }

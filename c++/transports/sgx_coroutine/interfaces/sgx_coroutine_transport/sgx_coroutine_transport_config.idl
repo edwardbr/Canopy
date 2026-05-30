@@ -1,0 +1,54 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+#import "sgx_enclave_runtime/sgx_enclave_runtime_config.idl"
+
+namespace rpc
+{
+    namespace sgx_coroutine_transport
+    {
+        // Host-side settings for the SGX coroutine transport. This is a
+        // transport, not a base stream: it creates the host/enclave RPC
+        // boundary directly and owns the underlying queue stream internally.
+        // Stream layers for that internal stream must be applied by SGX-aware
+        // factory code on both sides of the host/enclave boundary.
+        //
+        // This configuration is intentionally narrow. It carries typed enclave
+        // startup policy, but it must not become a generic pass-through for SGX
+        // bootstrap internals such as ECALL ABI details, shared queue pointers,
+        // startup state pointers, host clock hints, brokered io_uring
+        // descriptors, or enclave debug/security switches. Release enclaves
+        // must sanitize or replace host-provided security-sensitive values with
+        // enclave-owned production policy.
+        struct transport_settings
+        {
+            [description="Name of the parent-side SGX coroutine transport. If service_proxy_name is omitted, this value is also used as the service proxy name."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the enclave service proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads after the SGX transport link is live. This does not change the fixed SGX bootstrap encoding used by the host/enclave startup ABI."]
+            rpc::optional<rpc::encoding> encoding;
+
+            [description="Path to the signed enclave image loaded by sgx_create_enclave. This is required because the factory cannot infer which enclave binary to start."]
+            std::string enclave_path;
+
+            [description="Number of additional enclave worker ECALL threads to start after the main enclave runtime is ready. Zero keeps the single runtime ECALL thread only."]
+            uint32_t worker_thread_count = 0;
+
+            [description="Run the enclave ECALL threads in the canopy_sgx_coroutine_sidecar process instead of the host process. The host transport still owns the RPC connection and detects sidecar process death, converting it into the normal transport_down cleanup path."]
+            bool use_sidecar = false;
+
+            [description="Common enclave runtime startup policy shared with other SGX transports. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
+            rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave;
+
+            [description="Named application startup blobs delivered to the enclave bootstrap. Each value remains application-owned JSON and is validated by that application inside the secure coroutine module. The host transport enforces the secure_coroutine_module startup resource limits before the blobs are sent."]
+            std::map<std::string, json::v1::object> startup_applications = {};
+        };
+    }
+}

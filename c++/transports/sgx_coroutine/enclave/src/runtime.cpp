@@ -6,7 +6,7 @@
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
 #include <io_uring/io_uring_scheduler.h>
-#include <trusted/canopy_coroutine_enclave_t.h>
+#include <trusted/sgx_coroutine_transport_t.h>
 #include <sgx_error.h>
 #include <sgx_trts.h>
 #include <cstring>
@@ -15,6 +15,7 @@
 #  include <rpc/telemetry/i_telemetry_service.h>
 #  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
+#include <streaming/layer_factory/factory.h>
 #include <streaming/stream_transport.h>
 #include <streaming/spsc_queue/stream.h>
 #include <transports/streaming/transport.h>
@@ -42,7 +43,7 @@ namespace rpc
 }
 #endif
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     uint64_t read_runtime_tick_counter() noexcept;
 
@@ -124,6 +125,7 @@ namespace rpc::sgx::coro::enclave
             // attested time synchronisation path can replace that calibration
             // without changing runtime_state layout.
             std::map<std::string, json::v1::object> startup_applications{};
+            json::v1::object startup_settings{json::v1::map{}};
         };
 
         auto runtime_storage() -> runtime_state&
@@ -215,7 +217,7 @@ namespace rpc::sgx::coro::enclave
             auto err = rpc::from_yas_binary(buffer, value);
             if (!err.empty())
             {
-                RPC_ERROR("sgx_coroutine decode failed: {}", err);
+                RPC_ERROR("bootstrap blob decode failed: {}", err);
                 return rpc::error::INVALID_DATA();
             }
             return rpc::error::OK();
@@ -323,6 +325,16 @@ namespace rpc::sgx::coro::enclave
             }
 
             result.error_code = secure_module::validate_startup_applications_resource_budget(result.request.applications);
+            if (result.error_code != rpc::error::OK())
+                return result;
+
+            result.error_code
+                = secure_module::validate_startup_runtime_settings_resource_budget(result.request.runtime_settings);
+            if (result.error_code != rpc::error::OK())
+                return result;
+
+            result.error_code
+                = secure_module::validate_startup_stream_layers_resource_budget(result.request.stream_layers);
             if (result.error_code != rpc::error::OK())
                 return result;
 
@@ -579,6 +591,7 @@ namespace rpc::sgx::coro::enclave
             runtime.scheduler.reset();
             runtime.enclave_zone = {};
             runtime.startup_applications = {};
+            runtime.startup_settings = json::v1::object(json::v1::map{});
             runtime.requested_workers.store(0, std::memory_order_release);
             runtime.attached_workers.store(0, std::memory_order_release);
             runtime.accepting_workers.store(false, std::memory_order_release);
@@ -626,9 +639,10 @@ namespace rpc::sgx::coro::enclave
 #endif
             runtime.enclave_zone = init.request.runtime_zone_id;
             runtime.startup_applications = init.request.applications;
+            runtime.startup_settings = init.request.runtime_settings;
             runtime.startup_state = init.startup_state;
             runtime.startup_error_code = init.startup_error_code;
-            return rpc::sgx::coro::enclave::register_runtime(runtime);
+            return rpc::sgx_coroutine_transport::enclave::register_runtime(runtime);
         }
 
         void prepare_worker_admission(
@@ -661,27 +675,40 @@ namespace rpc::sgx::coro::enclave
             return {};
         }
 
+        struct parent_transport_result
+        {
+            int error_code{rpc::error::OK()};
+            std::shared_ptr<host_transport> transport;
+        };
+
         auto create_parent_host_transport(
             runtime_state& runtime,
             const validated_init_request& init,
-            const std::shared_ptr<rpc::enclave_service>& service) -> std::shared_ptr<host_transport>
+            const std::shared_ptr<rpc::enclave_service>& service) -> parent_transport_result
         {
             auto stream = std::make_shared<::streaming::spsc_queue::stream>(
                 init.enclave_to_host_queue, init.host_to_enclave_queue, runtime.scheduler);
+
+            auto layered_stream = ::streaming::layer_factory::apply_stream_layers(
+                std::move(stream), init.request.stream_layers, 0, ::streaming::layer_factory::layer_direction::accept);
+            if (layered_stream.error_code != rpc::error::OK())
+                return {layered_stream.error_code, {}};
+            if (!layered_stream.stream)
+                return {rpc::error::INVALID_DATA(), {}};
 
             rpc::stream_transport::stream_transport_options transport_options{
                 .call_timeout = std::chrono::milliseconds{0},
                 .call_timeout_sweep = std::chrono::milliseconds{0},
             };
             auto transport = host_transport::create(
-                "sgx_coroutine_enclave", service, std::move(stream), runtime.acceptor_factory, transport_options);
+                "sgx_coroutine_enclave", service, std::move(layered_stream.stream), runtime.acceptor_factory, transport_options);
             if (!transport)
-                return {};
+                return {rpc::error::TRANSPORT_ERROR(), {}};
 
             service->set_parent_transport(transport);
             transport->set_runtime_destroyed_handler(
                 [&runtime]() { runtime.host_transport_destroyed.store(true, std::memory_order_release); });
-            return transport;
+            return {rpc::error::OK(), std::move(transport)};
         }
 
         void stop_runtime(
@@ -725,6 +752,11 @@ namespace rpc::sgx::coro::enclave
         return runtime_storage().startup_applications;
     }
 
+    const json::v1::object& runtime_startup_settings() noexcept
+    {
+        return runtime_storage().startup_settings;
+    }
+
     CORO_TASK(runtime_io_uring_controller_result)
     get_or_create_runtime_io_uring_controller(
         std::shared_ptr<host_transport> transport,
@@ -747,7 +779,8 @@ namespace rpc::sgx::coro::enclave
         std::shared_ptr<rpc::io_uring::controller> controller;
         try
         {
-            controller = std::make_shared<rpc::sgx::coro::enclave::enclave_io_uring_controller>(scheduler, transport);
+            controller = std::make_shared<rpc::sgx_coroutine_transport::enclave::enclave_io_uring_controller>(
+                scheduler, transport);
         }
         catch (const std::bad_alloc&)
         {
@@ -810,7 +843,7 @@ namespace rpc::sgx::coro::enclave
         // - publishing startup transitions for the host;
         // - pumping inline scheduler work when no worker threads are used;
         // - coordinating final cleanup before the enclave can be destroyed.
-        void coroutine_init_enclave(
+        void sgx_coroutine_init_enclave(
             size_t req_sz,
             const char* req,
             uint64_t request_encoding,
@@ -893,18 +926,18 @@ namespace rpc::sgx::coro::enclave
 
             auto service = create_enclave_service(init, runtime.scheduler);
             auto host_runtime_transport = create_parent_host_transport(runtime, init, service);
-            if (!host_runtime_transport)
+            if (host_runtime_transport.error_code != rpc::error::OK())
             {
                 stop_runtime(
                     runtime,
                     startup_state,
                     startup_error_code,
                     secure_module::startup_state::failed,
-                    rpc::error::TRANSPORT_ERROR());
+                    host_runtime_transport.error_code);
                 return;
             }
 
-            publish_parent_transport(runtime, host_runtime_transport);
+            publish_parent_transport(runtime, host_runtime_transport.transport);
             set_startup_status(
                 startup_state, startup_error_code, secure_module::startup_state::runtime_ready, rpc::error::OK());
 
@@ -913,8 +946,8 @@ namespace rpc::sgx::coro::enclave
             // function drops its strong transport reference. After that, normal
             // runtime progress continues until the host requests shutdown or
             // the parent transport is destroyed.
-            std::weak_ptr<host_transport> weak_transport = host_runtime_transport;
-            host_runtime_transport.reset();
+            std::weak_ptr<host_transport> weak_transport = host_runtime_transport.transport;
+            host_runtime_transport.transport.reset();
             while (!runtime.connection_established.load(std::memory_order_acquire)
                    && !runtime.host_transport_destroyed.load(std::memory_order_acquire) && !shutdown_requested(runtime))
             {
@@ -930,7 +963,7 @@ namespace rpc::sgx::coro::enclave
                 }
             }
             service.reset();
-            auto loop_error = rpc::sgx::coro::enclave::run_runtime_loop(runtime, weak_transport);
+            auto loop_error = rpc::sgx_coroutine_transport::enclave::run_runtime_loop(runtime, weak_transport);
 
             // Phase 6: cleanup happens on the master ECALL. Worker ECALLs are
             // asked to leave only after parent transport cleanup has had a
@@ -953,7 +986,7 @@ namespace rpc::sgx::coro::enclave
         // worker is admitted exactly once by index, then runs the scheduler's
         // worker loop until the master ECALL asks workers to stop during
         // cleanup.
-        int coroutine_enter_thread(
+        int sgx_coroutine_enter_thread(
             size_t req_sz,
             const char* req)
         {
@@ -961,12 +994,12 @@ namespace rpc::sgx::coro::enclave
                 return rpc::error::FRAUDULANT_REQUEST();
 
             secure_module::enter_thread_request request{};
-            auto err = rpc::sgx::coro::enclave::decode_yas_blob(
+            auto err = rpc::sgx_coroutine_transport::enclave::decode_yas_blob(
                 rpc::byte_span{reinterpret_cast<const uint8_t*>(req), req_sz}, request);
             if (err != rpc::error::OK())
                 return err;
 
-            auto* runtime_ptr = rpc::sgx::coro::enclave::find_runtime();
+            auto* runtime_ptr = rpc::sgx_coroutine_transport::enclave::find_runtime();
             if (!runtime_ptr)
                 return rpc::error::FRAUDULANT_REQUEST();
             auto& runtime = *runtime_ptr;
@@ -991,7 +1024,7 @@ namespace rpc::sgx::coro::enclave
 
             runtime.attached_workers.fetch_add(1, std::memory_order_acq_rel);
 
-            auto worker_error = rpc::sgx::coro::enclave::run_worker_loop(runtime, request.worker_index);
+            auto worker_error = rpc::sgx_coroutine_transport::enclave::run_worker_loop(runtime, request.worker_index);
             runtime.attached_workers.fetch_sub(1, std::memory_order_acq_rel);
             return worker_error;
         }

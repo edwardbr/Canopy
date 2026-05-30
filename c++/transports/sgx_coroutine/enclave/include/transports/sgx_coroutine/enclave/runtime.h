@@ -23,7 +23,7 @@
 #include <transports/streaming/transport.h>
 #include <utility>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     using acceptor_factory = rpc::connection_handler;
 
@@ -33,6 +33,7 @@ namespace rpc::sgx::coro::enclave
         std::string,
         json::v1::object>&
     runtime_startup_applications() noexcept;
+    [[nodiscard]] const json::v1::object& runtime_startup_settings() noexcept;
     uint64_t runtime_ticks_per_millisecond() noexcept;
     uint64_t read_runtime_tick_counter() noexcept;
     uint64_t runtime_unix_epoch_milliseconds() noexcept;
@@ -68,13 +69,13 @@ namespace rpc::sgx::coro::enclave
         if (input_descr.inbound_interface_id
             != rpc::v4::secure_coroutine_module::i_io_uring_control::get_id(rpc::get_version()))
         {
-            RPC_ERROR("create_child_enclave_zone inbound interface id does not match i_io_uring_control");
+            RPC_ERROR("inbound interface id does not match i_io_uring_control");
             result.error_code = rpc::error::INVALID_INTERFACE_ID();
             CO_RETURN result;
         }
         if (input_descr.outbound_interface_id != Local::get_id(rpc::get_version()))
         {
-            RPC_ERROR("create_child_enclave_zone outbound interface id does not match requested local interface");
+            RPC_ERROR("outbound interface id does not match requested local interface");
             result.error_code = rpc::error::INVALID_INTERFACE_ID();
             CO_RETURN result;
         }
@@ -85,11 +86,12 @@ namespace rpc::sgx::coro::enclave
         }
         if (input_descr.encoding_type == rpc::encoding::not_set)
         {
-            RPC_ERROR("create_child_enclave_zone called without an explicit connection encoding");
+            RPC_ERROR("missing explicit connection encoding");
             result.error_code = rpc::error::INVALID_DATA();
             CO_RETURN result;
         }
-        auto host_transport = std::dynamic_pointer_cast<rpc::sgx::coro::enclave::host_transport>(parent_transport);
+        auto host_transport
+            = std::dynamic_pointer_cast<rpc::sgx_coroutine_transport::enclave::host_transport>(parent_transport);
         if (!host_transport)
         {
             result.error_code = rpc::error::INVALID_CAST();

@@ -4,11 +4,19 @@
 // websocket stream implementation
 #include <streaming/websocket/stream.h>
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
 #include <rpc/rpc.h>
 #include <wslay/wslay.h>
+
+#if defined(FOR_SGX)
+#  include <sgx_error.h>
+#  include <sgx_trts.h>
+#else
+#  include <random>
+#endif
 
 namespace streaming::websocket
 {
@@ -23,21 +31,81 @@ namespace streaming::websocket
             auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
             return remaining.count() > 0 ? remaining : std::chrono::milliseconds{1};
         }
+
+        auto timeout_until(
+            std::chrono::steady_clock::time_point target,
+            std::chrono::steady_clock::time_point now) -> std::chrono::milliseconds
+        {
+            if (now >= target)
+                return std::chrono::milliseconds{0};
+
+            auto timeout = std::chrono::duration_cast<std::chrono::milliseconds>(target - now);
+            return timeout.count() > 0 ? timeout : std::chrono::milliseconds{1};
+        }
+
+        auto make_options(stream_role role) -> stream_options
+        {
+            stream_options options;
+            options.role = role;
+            return options;
+        }
+
+        auto make_ping_payload(uint64_t value) -> std::vector<uint8_t>
+        {
+            std::vector<uint8_t> payload(sizeof(value));
+            for (size_t i = 0; i < payload.size(); ++i)
+                payload[i] = static_cast<uint8_t>((value >> (i * 8)) & 0xff);
+            return payload;
+        }
+
+        auto payload_matches(
+            const std::vector<uint8_t>& expected,
+            const uint8_t* actual,
+            size_t actual_size) -> bool
+        {
+            return expected.size() == actual_size && std::equal(expected.begin(), expected.end(), actual);
+        }
     } // namespace
 
     stream::stream(std::shared_ptr<::streaming::stream> underlying)
+        : stream(
+              std::move(underlying),
+              stream_role::server)
+    {
+    }
+
+    stream::stream(
+        std::shared_ptr<::streaming::stream> underlying,
+        stream_role role)
+        : stream(
+              std::move(underlying),
+              make_options(role))
+    {
+    }
+
+    stream::stream(
+        std::shared_ptr<::streaming::stream> underlying,
+        stream_options options)
         : underlying_(std::move(underlying))
+        , wslay_ctx_(nullptr)
+        , options_(options)
         , raw_recv_buffer_(
               io_chunk_size,
               '\0')
     {
+        if (options_.keep_alive.enabled && options_.keep_alive.interval > std::chrono::milliseconds{0})
+            next_ping_time_ = std::chrono::steady_clock::now() + options_.keep_alive.interval;
+
         wslay_event_callbacks callbacks;
         std::memset(&callbacks, 0, sizeof(callbacks));
         callbacks.recv_callback = recv_callback;
         callbacks.send_callback = send_callback;
+        callbacks.genmask_callback = genmask_callback;
         callbacks.on_msg_recv_callback = on_msg_recv_callback;
 
-        int result = wslay_event_context_server_init(&wslay_ctx_, &callbacks, this);
+        int result = options_.role == stream_role::client
+                         ? wslay_event_context_client_init(&wslay_ctx_, &callbacks, this)
+                         : wslay_event_context_server_init(&wslay_ctx_, &callbacks, this);
         if (result != 0)
         {
             throw std::runtime_error("Failed to initialize wslay context");
@@ -69,12 +137,22 @@ namespace streaming::websocket
 
         while (true)
         {
+            std::chrono::milliseconds receive_timeout;
+            {
+                std::lock_guard<std::mutex> lock(mtx_);
+                if (closed_ || !wslay_ctx_)
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                auto now = std::chrono::steady_clock::now();
+                if (!maybe_queue_keep_alive_locked(now))
+                    CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                receive_timeout = next_receive_timeout_locked(deadline, single_attempt, now);
+            }
+
             if (!CO_AWAIT drive_send())
                 CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
 
             auto [status, span] = CO_AWAIT underlying_->receive(
-                rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()),
-                single_attempt ? std::chrono::milliseconds{0} : remaining_timeout(deadline));
+                rpc::mutable_byte_span(raw_recv_buffer_.data(), raw_recv_buffer_.size()), receive_timeout);
             if (status.is_closed())
             {
                 std::lock_guard<std::mutex> lock(mtx_);
@@ -89,7 +167,13 @@ namespace streaming::websocket
                         CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
                     raw_recv_pos_ = 0;
                     raw_recv_size_ = span.size();
-                    wslay_event_recv(wslay_ctx_);
+                    int receive_result = wslay_event_recv(wslay_ctx_);
+                    if (receive_result != 0)
+                    {
+                        RPC_ERROR("wslay_event_recv error: {}", receive_result);
+                        closed_ = true;
+                        CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                    }
                 }
 
                 if (!CO_AWAIT drive_send())
@@ -249,6 +333,75 @@ namespace streaming::websocket
         CO_RETURN true;
     }
 
+    auto stream::maybe_queue_keep_alive_locked(std::chrono::steady_clock::time_point now) -> bool
+    {
+        if (!options_.keep_alive.enabled || options_.keep_alive.interval <= std::chrono::milliseconds{0})
+            return true;
+
+        if (ping_outstanding_ && options_.keep_alive.timeout > std::chrono::milliseconds{0} && now >= ping_deadline_)
+        {
+            RPC_WARNING("WebSocket keep-alive pong timeout");
+            closed_ = true;
+            return false;
+        }
+
+        if (ping_outstanding_ || now < next_ping_time_)
+            return true;
+
+        pending_ping_payload_ = make_ping_payload(next_ping_id_++);
+        wslay_event_msg msg{};
+        msg.opcode = WSLAY_PING;
+        msg.msg = pending_ping_payload_.data();
+        msg.msg_length = pending_ping_payload_.size();
+        if (wslay_event_queue_msg(wslay_ctx_, &msg) != 0)
+        {
+            closed_ = true;
+            return false;
+        }
+
+        if (options_.keep_alive.timeout > std::chrono::milliseconds{0})
+        {
+            ping_outstanding_ = true;
+            ping_deadline_ = now + options_.keep_alive.timeout;
+        }
+        else
+        {
+            pending_ping_payload_.clear();
+        }
+        next_ping_time_ = now + options_.keep_alive.interval;
+        return true;
+    }
+
+    auto stream::next_receive_timeout_locked(
+        std::chrono::steady_clock::time_point deadline,
+        bool single_attempt,
+        std::chrono::steady_clock::time_point now) const -> std::chrono::milliseconds
+    {
+        if (single_attempt)
+            return std::chrono::milliseconds{0};
+
+        auto timeout = remaining_timeout(deadline);
+        if (!options_.keep_alive.enabled || options_.keep_alive.interval <= std::chrono::milliseconds{0})
+            return timeout;
+
+        if (ping_outstanding_ && options_.keep_alive.timeout > std::chrono::milliseconds{0})
+            return std::min(timeout, timeout_until(ping_deadline_, now));
+
+        return std::min(timeout, timeout_until(next_ping_time_, now));
+    }
+
+    void stream::handle_keep_alive_locked(const wslay_event_on_msg_recv_arg* arg)
+    {
+        if (arg->opcode != WSLAY_PONG || !ping_outstanding_)
+            return;
+
+        if (payload_matches(pending_ping_payload_, arg->msg, arg->msg_length))
+        {
+            ping_outstanding_ = false;
+            pending_ping_payload_.clear();
+        }
+    }
+
     // -----------------------------------------------------------------------
     // wslay callbacks
     // -----------------------------------------------------------------------
@@ -295,6 +448,42 @@ namespace streaming::websocket
         return -1;
     }
 
+    auto stream::genmask_callback(
+        wslay_event_context* ctx,
+        uint8_t* buf,
+        size_t len,
+        void*) -> int
+    {
+#if defined(FOR_SGX)
+        if (sgx_read_rand(buf, len) == SGX_SUCCESS)
+            return 0;
+
+        wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+        return -1;
+#else
+        try
+        {
+            static thread_local std::random_device random_device;
+            for (size_t i = 0; i < len; ++i)
+                buf[i] = static_cast<uint8_t>(random_device());
+            return 0;
+        }
+        catch (...)
+        {
+            static thread_local uint64_t fallback_state = 0x9e3779b97f4a7c15ull;
+            fallback_state ^= static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+            for (size_t i = 0; i < len; ++i)
+            {
+                fallback_state ^= fallback_state << 13;
+                fallback_state ^= fallback_state >> 7;
+                fallback_state ^= fallback_state << 17;
+                buf[i] = static_cast<uint8_t>(fallback_state & 0xff);
+            }
+            return 0;
+        }
+#endif
+    }
+
     void stream::on_msg_recv_callback(
         wslay_event_context* ctx,
         const wslay_event_on_msg_recv_arg* arg,
@@ -304,6 +493,7 @@ namespace streaming::websocket
 
         if (wslay_is_ctrl_frame(arg->opcode))
         {
+            self->handle_keep_alive_locked(arg);
             if (arg->opcode == WSLAY_CONNECTION_CLOSE)
             {
                 RPC_INFO("Connection close received, status code: {}", arg->status_code);
@@ -311,22 +501,11 @@ namespace streaming::websocket
             return;
         }
 
-        if (arg->opcode == WSLAY_TEXT_FRAME)
+        if (arg->opcode == WSLAY_BINARY_FRAME || arg->opcode == WSLAY_TEXT_FRAME)
         {
-            // Echo text frames back
-            wslay_event_msg msg;
-            msg.opcode = arg->opcode;
-            msg.msg = arg->msg;
-            msg.msg_length = arg->msg_length;
-            wslay_event_queue_msg(ctx, &msg);
-            return;
-        }
-
-        // Binary frame: enqueue the payload for consumption via recv()
-        if (arg->opcode == WSLAY_BINARY_FRAME)
-        {
-            RPC_DEBUG("WebSocket binary message received ({} bytes)", arg->msg_length);
+            RPC_DEBUG("WebSocket message received ({} bytes)", arg->msg_length);
             self->decoded_messages_.emplace(arg->msg, arg->msg + arg->msg_length);
+            self->current_msg_offset_ = 0;
         }
     }
 

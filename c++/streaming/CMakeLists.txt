@@ -6,8 +6,9 @@
 cmake_minimum_required(VERSION 3.24)
 
 add_subdirectory(core)
-# tcp, websocket and tls (OpenSSL) are dual-mode. mbedtls/spsc/attestation are still coroutine-only.
-add_subdirectory(tcp)
+# tcp_blocking is generated in all builds but only creates an implementation target in non-coroutine builds.
+# tcp_coroutine is added from the top-level CMake after the low-level io_uring subcomponent is available.
+add_subdirectory(tcp_blocking)
 if(CANOPY_BUILD_WEBSOCKET)
   add_subdirectory(websocket)
 endif()
@@ -23,6 +24,8 @@ if(CANOPY_BUILD_COROUTINE)
   add_subdirectory(spsc_wrapping)
   add_subdirectory(attestation)
 endif()
+
+add_subdirectory(layer_factory)
 
 if(CANOPY_BUILD_TEST
    AND CMAKE_SYSTEM_NAME STREQUAL "Linux"

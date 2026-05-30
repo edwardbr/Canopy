@@ -7,6 +7,19 @@ cmake_minimum_required(VERSION 3.24)
 
 set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET)
 set(CANOPY_HTTP_SERVER_CRYPTO_LIBS)
+set(CANOPY_HTTP_SERVER_TCP_TARGET)
+
+if(CANOPY_BUILD_COROUTINE)
+  if(NOT TARGET streaming_tcp_coroutine)
+    message(FATAL_ERROR "canopy_http_server requires streaming_tcp_coroutine in coroutine builds")
+  endif()
+  set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_coroutine)
+else()
+  if(NOT TARGET streaming_tcp_blocking)
+    message(FATAL_ERROR "canopy_http_server requires streaming_tcp_blocking in blocking builds")
+  endif()
+  set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_blocking)
+endif()
 
 # OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls is
 # still coroutine-only.
@@ -50,7 +63,7 @@ target_link_libraries(
          transport_streaming
          llhttp_static
          rpc
-  PRIVATE streaming_tcp
+  PRIVATE ${CANOPY_HTTP_SERVER_TCP_TARGET}
           streaming_websocket
           ${CANOPY_HTTP_SERVER_CRYPTO_LIBS}
           ${CANOPY_FMT_LIB}

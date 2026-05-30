@@ -4,46 +4,62 @@
  */
 
 #import "rpc/rpc_types.idl"
-#import "io_uring/io_uring_config.idl"
-#import "tcp/tcp_config.idl"
+#import "json/json.idl"
+#import "streaming/stream_layers.idl"
 
 namespace rpc
 {
     namespace connection_factory_config
     {
-        struct named_options
+        // A typed settings blob is the generic envelope used by the connection
+        // factory. The factory owns this envelope only; the implementation
+        // identified by type owns the schema of settings and converts it with
+        // its own generated from_json_object path.
+        //
+        // Examples:
+        //   { "type": "tcp_blocking", "settings": { "host": "127.0.0.1", "port": 8080 } }
+        //   { "type": "tls", "settings": { "client": { "verify_peer": false } } }
+        //   { "type": "websocket", "settings": { "keep_alive": { "enabled": true } } }
+        //   { "type": "stream_rpc", "settings": { "encoding": "nanopb" } }
+        //   { "type": "sgx_blocking", "settings": { "enclave_path": "./enclave.signed.so" } }
+        //   { "type": "sgx_coroutine", "settings": { "enclave_path": "./enclave.signed.so" } }
+        struct typed_settings
         {
-            rpc::optional<std::string> name;
+            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_wrapping, and attestation; transport values include stream_rpc, local, sgx_blocking, and sgx_coroutine."]
+            std::string type;
+
+            [description="Implementation-owned JSON object. The connection factory keeps this opaque and asks the named implementation to materialise it into that implementation's generated IDL settings type."]
+            rpc::optional<json::v1::object> settings;
         };
 
-        struct rpc_options
+        // Declarative connection factory topology.
+        //
+        // service, listener, and transport are optional because most callers
+        // should be able to use the application defaults. When a value is
+        // present, type names the implementation and settings is materialised
+        // by that implementation's own IDL schema.
+        //
+        // stream_layers describes the byte-stream stack in transport order,
+        // from the innermost carrier outward toward RPC. For stream_rpc, the
+        // first entry creates the concrete base stream, such as TCP or SPSC,
+        // and later entries wrap it, such as TLS or WebSocket. For native
+        // transports that own an internal byte stream, such as a sidecar/SPSC
+        // transport, entries are wrappers around the transport-owned base
+        // stream. Non-stream transports, such as local child-zone or direct
+        // function-call transports, do not use stream_layers.
+        struct connection_settings
         {
-            // Human JSON still uses the generated enum names, but the schema and
-            // converter now own that mapping rather than factory helper code.
-            rpc::optional<rpc::encoding> encoding;
-            rpc::optional<uint64_t> call_timeout;
-            rpc::optional<uint64_t> call_timeout_sweep;
-            rpc::optional<uint64_t> shutdown_timeout;
-        };
+            [description="Optional service settings. Type service/root_service selects connection_factory service settings; omit this field to use the supplied service or create the default root service."]
+            rpc::optional<typed_settings> service;
 
-        struct io_uring_options
-        {
-            canopy::io_uring::host_controller_options controller = {};
-            uint16_t port = 0;
-            uint16_t first_port = 26000;
-            uint16_t last_port = 26064;
-            streaming::io_uring::stream_options stream = {};
-        };
+            [description="Optional listener settings used when accepting many stream RPC connections. Type stream_rpc selects connection_factory stream RPC listener settings."]
+            rpc::optional<typed_settings> listener;
 
-        struct stream_factory_options
-        {
-            streaming::tcp::endpoint endpoint = {};
-            rpc::optional<named_options> service;
-            rpc::optional<named_options> transport;
-            rpc::optional<named_options> listener;
-            rpc::optional<named_options> connection;
-            rpc::optional<rpc_options> rpc;
-            rpc::optional<io_uring_options> io_uring;
+            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Native transports may also consume stream_layers when they own an internal byte stream. Non-stream transports reject stream_layers."]
+            rpc::optional<typed_settings> transport;
+
+            [description="Ordered byte-stream layer stack. For stream_rpc the first item is the base stream and following items are wrappers. For stream-backed native transports this list contains wrappers over the transport-owned base stream. Omit this for non-stream transports."]
+            std::vector<rpc::stream_layers::stream_layer_settings> stream_layers = {};
         };
     }
 }

@@ -20,7 +20,7 @@
 #include <json/convert.h>
 #include <json/schema_validator.h>
 #include <rpc/rpc.h>
-#include <streaming/io_uring/stream.h>
+#include <streaming/tcp_coroutine/stream.h>
 #include <streaming/secure_stream.h>
 #include <transports/sgx_coroutine/enclave/runtime.h>
 #include <transports/sgx_coroutine/enclave/service.h>
@@ -306,7 +306,7 @@ namespace websocket_demo::v1
             while (!state->stopping.load(std::memory_order_acquire))
             {
                 auto accept_result
-                    = streaming::io_uring::make_stream_result(CO_AWAIT acceptor->accept_with_result(), port);
+                    = streaming::coroutine::tcp::make_stream_result(CO_AWAIT acceptor->accept_with_result(), port);
                 if (state->stopping.load(std::memory_order_acquire))
                     break;
 
@@ -504,7 +504,7 @@ namespace websocket_demo::v1
             {
                 // The host connects by name. Change this name if you package
                 // several enclave services in one image.
-                rpc::sgx::coro::enclave::register_connection_factory<rpc::i_noop, i_enclave_websocket_server>(
+                rpc::sgx_coroutine_transport::enclave::register_connection_factory<rpc::i_noop, i_enclave_websocket_server>(
                     websocket_demo_app_name,
                     [](rpc::shared_ptr<rpc::i_noop> host, std::shared_ptr<rpc::service> service)
                         -> CORO_TASK(rpc::service_connect_result<i_enclave_websocket_server>)
@@ -524,7 +524,8 @@ namespace websocket_demo::v1
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};
                         }
 
-                        const auto& startup_applications = rpc::sgx::coro::enclave::runtime_startup_applications();
+                        const auto& startup_applications
+                            = rpc::sgx_coroutine_transport::enclave::runtime_startup_applications();
                         const auto startup_options = startup_applications.find(websocket_demo_app_name);
                         if (startup_options == startup_applications.end())
                         {

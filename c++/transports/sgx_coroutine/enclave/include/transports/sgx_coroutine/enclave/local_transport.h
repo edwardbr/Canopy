@@ -12,7 +12,7 @@
 #include <transports/sgx_coroutine/enclave/local_route_transport.h>
 #include <transports/sgx_coroutine/enclave/service.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     class local_parent_transport;
 

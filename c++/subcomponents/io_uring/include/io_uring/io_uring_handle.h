@@ -108,7 +108,29 @@ namespace rpc::io_uring
             CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }
 
-        virtual CORO_TASK(descriptor_result) connect_tcp_ipv4_loopback(uint16_t)
+        virtual CORO_TASK(descriptor_result) connect_tcp_ipv4_loopback(
+            uint16_t,
+            std::chrono::milliseconds)
+        {
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+        }
+
+        virtual CORO_TASK(descriptor_result) connect_tcp_ipv4(
+            const std::array<
+                uint8_t,
+                4>&,
+            uint16_t,
+            std::chrono::milliseconds)
+        {
+            CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
+        }
+
+        virtual CORO_TASK(descriptor_result) connect_tcp_ipv6(
+            const std::array<
+                uint8_t,
+                16>&,
+            uint16_t,
+            std::chrono::milliseconds)
         {
             CO_RETURN descriptor_result{rpc::error::PROTOCOL_ERROR(), 0, 0, 0};
         }

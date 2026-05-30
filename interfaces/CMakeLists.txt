@@ -158,6 +158,18 @@ CanopyGenerate(
   dependencies rpc_types_idl
   install_dir ${GENERATED_INSTALL_DIR})
 
+CanopyGenerate(
+  stream_layers
+  streaming/stream_layers.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  dependencies rpc_types_idl json_idl
+  install_dir ${GENERATED_INSTALL_DIR})
+
 if(CANOPY_BUILD_WEBSOCKET)
   CanopyGenerate(
     websocket_protocol

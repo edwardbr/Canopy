@@ -14,12 +14,8 @@
  *
  *   MISCONCEPTION REPORT:
  *   ---------------------
- *   This demo requires CANOPY_BUILD_COROUTINE=ON because TCP transport uses
- *   libcoro for async I/O operations. The coro::net::tcp::client and
- *   coro::net::tcp::server classes are only available with coroutines.
- *
- *   Without coroutines, you would need to implement a synchronous TCP
- *   transport wrapper, which is not provided in the base Canopy library.
+ *   This demo requires CANOPY_BUILD_COROUTINE=ON and uses the active
+ *   rpc::tcp facade, which maps to the tcp_coroutine stream in this build.
  *
  *   Build and run:
  *   1. cmake --preset Debug_Coroutine
@@ -137,30 +133,29 @@ namespace comprehensive
 {
     namespace v1
     {
-        rpc::connection_factory_config::named_options named_options(const std::string& name)
+        struct tcp_connection_options
         {
-            rpc::connection_factory_config::named_options options;
-            options.name = name;
-            return options;
-        }
+            ::streaming::tcp::endpoint endpoint;
+            rpc::connection_factory::stream_rpc_connection_settings factory;
+        };
 
-        rpc::connection_factory_config::stream_factory_options tcp_options_from_endpoint(
+        tcp_connection_options tcp_options_from_endpoint(
             const canopy::network_config::tcp_endpoint& endpoint,
             const std::string& service_name,
             const std::string& listener_name,
             const std::string& transport_name,
             const std::string& connection_name)
         {
-            rpc::connection_factory_config::stream_factory_options options;
+            tcp_connection_options options;
 
             options.endpoint.host = endpoint.to_string();
             options.endpoint.port = endpoint.port;
             options.endpoint.ipv6 = endpoint.family == canopy::network_config::ip_address_family::ipv6;
 
-            options.service = named_options(service_name);
-            options.listener = named_options(listener_name);
-            options.transport = named_options(transport_name);
-            options.connection = named_options(connection_name);
+            options.factory.service.name = service_name;
+            options.factory.listener.name = listener_name;
+            options.factory.transport.name = transport_name;
+            options.factory.transport.service_proxy_name = connection_name;
             return options;
         }
 
@@ -193,7 +188,8 @@ namespace comprehensive
                     CO_RETURN rpc::service_connect_result<i_calculator>{
                         rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
                 },
-                options,
+                options.endpoint,
+                options.factory,
                 service);
 
             if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
@@ -249,7 +245,7 @@ namespace comprehensive
                 auto options = tcp_options_from_endpoint(
                     connect_ep, "tcp_client", "client_listener", "client_transport", "tcp_server");
                 auto connect_result = CO_AWAIT rpc::tcp::connect_rpc<i_calculator, i_calculator>(
-                    rpc::shared_ptr<i_calculator>(), options, client_service);
+                    rpc::shared_ptr<i_calculator>(), options.endpoint, options.factory, client_service);
                 remote_calculator = connect_result.output_interface;
                 auto error = connect_result.error_code;
 

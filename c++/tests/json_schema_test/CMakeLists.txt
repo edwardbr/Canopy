@@ -39,6 +39,21 @@ target_link_libraries(
          spdlog::spdlog
          rpc_log)
 
+if(TARGET tcp_coroutine_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC tcp_coroutine_stream_config_idl)
+endif()
+if(TARGET tcp_blocking_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC tcp_blocking_stream_config_idl)
+endif()
+if(TARGET sgx_enclave_runtime_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC sgx_enclave_runtime_config_idl)
+  target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_HAS_SGX_ENCLAVE_RUNTIME_CONFIG)
+endif()
+if(TARGET sgx_blocking_transport_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC sgx_blocking_transport_config_idl)
+  target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_HAS_SGX_BLOCKING_TRANSPORT_CONFIG)
+endif()
+
 # Add compile options and link options like test
 target_compile_options(json_schema_metadata_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(json_schema_metadata_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

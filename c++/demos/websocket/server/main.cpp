@@ -131,47 +131,46 @@ namespace
                 },
                 FLD(execution_strategy) coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));
-        // clang-format on
+// clang-format on
 #else
         return std::make_shared<rpc::blocking_executor>();
 #endif
+}
+
+auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<rpc::file_system::i_manager>
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    rpc::io_uring::linux_io_uring_handle::options handle_options;
+    handle_options.queue_depth = 256;
+    handle_options.buffer_count = 64;
+    handle_options.buffer_size = 64U * 1024U;
+    handle_options.register_fixed_files = true;
+    handle_options.fixed_file_count = 256;
+    handle_options.use_sqpoll = true;
+
+    std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
+    auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, executor);
+    if (error != rpc::error::OK())
+    {
+        RPC_ERROR("failed to create websocket static file io_uring handle error={}", error);
+        return {};
     }
 
-    auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<rpc::file_system::i_manager>
-    {
-#ifdef CANOPY_BUILD_COROUTINE
-        rpc::io_uring::linux_io_uring_handle::options handle_options;
-        handle_options.queue_depth = 256;
-        handle_options.buffer_count = 64;
-        handle_options.buffer_size = 64U * 1024U;
-        handle_options.register_fixed_files = true;
-        handle_options.fixed_file_count = 256;
-        handle_options.use_sqpoll = true;
+    rpc::io_uring::controller::options controller_options;
+    controller_options.completion_wait_strategy = rpc::io_uring::wait_strategy::proactor;
+    controller_options.use_caller_buffers_for_transfers = true;
 
-        std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
-        auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, executor);
-        if (error != rpc::error::OK())
-        {
-            RPC_ERROR("failed to create websocket static file io_uring handle error={}", error);
-            return {};
-        }
-
-        rpc::io_uring::controller::options controller_options;
-        controller_options.completion_wait_strategy = rpc::io_uring::wait_strategy::proactor;
-        controller_options.use_caller_buffers_for_transfers = true;
-
-        auto controller
-            = std::make_shared<rpc::io_uring::controller>(std::move(handle), executor.get(), controller_options);
-        return rpc::file_system::create_factory(std::move(controller));
+    auto controller = std::make_shared<rpc::io_uring::controller>(std::move(handle), executor.get(), controller_options);
+    return rpc::file_system::create_factory(std::move(controller));
 #else
         (void)executor;
         return rpc::file_system::create_factory();
 #endif
-    }
+}
 
-    // (Previous async load_tls_credentials helper removed — the
-    // streaming::secure::context(cert_path, key_path) constructor reads
-    // the PEM files synchronously and works in both modes.)
+// (Previous async load_tls_credentials helper removed — the
+// streaming::secure::context(cert_path, key_path) constructor reads
+// the PEM files synchronously and works in both modes.)
 }
 
 auto run_http_server(

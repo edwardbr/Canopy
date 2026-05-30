@@ -47,12 +47,12 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);
 
-            auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+            auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
                 "sgx_io_uring_benchmark_enclave", service, CANOPY_BENCHMARK_SGX_COROUTINE_ENCLAVE_PATH);
 
             rpc::shared_ptr<rpc::i_noop> no_host_interface;
             auto connect_result
-                = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
+                = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
                     service,
                     "sgx_io_uring_benchmark_enclave",
                     transport,
@@ -112,14 +112,14 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             service->set_shutdown_event(shutdown_event);
 
-            auto server_transport = std::make_shared<rpc::sgx::coro::host::transport>(
+            auto server_transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
                 "sgx_io_uring_pair_server_enclave", service, CANOPY_BENCHMARK_SGX_COROUTINE_ENCLAVE_PATH);
-            auto client_transport = std::make_shared<rpc::sgx::coro::host::transport>(
+            auto client_transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
                 "sgx_io_uring_pair_client_enclave", service, CANOPY_BENCHMARK_SGX_COROUTINE_ENCLAVE_PATH);
 
             rpc::shared_ptr<rpc::i_noop> no_host_interface;
             auto server_connect
-                = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
+                = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
                     service,
                     "sgx_io_uring_pair_server_enclave",
                     server_transport,
@@ -136,7 +136,7 @@ namespace comprehensive::v1
             if (result.error == rpc::error::OK())
             {
                 auto client_connect
-                    = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
+                    = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, i_enclave_io_uring_benchmark>(
                         service,
                         "sgx_io_uring_pair_client_enclave",
                         client_transport,

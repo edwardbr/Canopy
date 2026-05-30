@@ -30,7 +30,7 @@ class sgx_coroutine_test_setup
     std::shared_ptr<coro::scheduler> io_scheduler_;
     rpc::shared_ptr<yyy::i_host> i_host_ptr_;
     rpc::shared_ptr<io_uring_test::i_test_uring> i_test_uring_ptr_;
-    std::vector<std::weak_ptr<rpc::sgx::coro::host::transport>> transports_;
+    std::vector<std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>> transports_;
     rpc::io_uring::host_controller::options host_controller_options_;
     std::atomic_bool teardown_interfaces_released_ = false;
     std::atomic_bool teardown_root_shutdown_complete_ = false;
@@ -167,12 +167,12 @@ public:
         i_host_ptr_ = std::move(host_result.output_interface);
 
         auto host_ptr = i_host_ptr_;
-        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+        auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
         auto result = run_on_manual_scheduler<rpc::service_connect_result<io_uring_test::i_test_uring>>(
             io_scheduler_,
-            rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
+            rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
                 root_service_, "main child", transport, host_ptr, host_controller_options_));
 
         i_test_uring_ptr_ = std::move(result.output_interface);
@@ -215,11 +215,11 @@ public:
         if (zone_result.error_code != rpc::error::OK())
             CO_RETURN nullptr;
 
-        auto transport = std::make_shared<rpc::sgx::coro::host::transport>(
+        auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
         transport->set_adjacent_zone_id(zone_result.zone_id);
-        auto result = CO_AWAIT rpc::sgx::coro::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
+        auto result = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
             root_service_, "main child", transport, i_host_ptr_, host_controller_options_);
 
         ptr = std::move(result.output_interface);

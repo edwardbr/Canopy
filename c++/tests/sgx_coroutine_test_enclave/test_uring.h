@@ -9,7 +9,7 @@
 #include <io_uring/controller.h>
 #include <io_uring/tcp.h>
 #include <io_uring_test/test.h>
-#include <streaming/io_uring/stream.h>
+#include <streaming/tcp_coroutine/stream.h>
 
 #include <chrono>
 #include <cstdint>

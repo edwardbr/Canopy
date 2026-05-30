@@ -124,7 +124,24 @@ namespace rpc::io_uring
             uint32_t descriptor,
             uint32_t backlog);
         CORO_TASK(descriptor_result) accept(uint32_t listen_descriptor);
-        CORO_TASK(descriptor_result) connect_tcp_ipv4_loopback(uint16_t port);
+        CORO_TASK(descriptor_result)
+        connect_tcp_ipv4_loopback(
+            uint16_t port,
+            std::chrono::milliseconds timeout);
+        CORO_TASK(descriptor_result)
+        connect_tcp_ipv4(
+            const std::array<
+                uint8_t,
+                4>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout);
+        CORO_TASK(descriptor_result)
+        connect_tcp_ipv6(
+            const std::array<
+                uint8_t,
+                16>& address,
+            uint16_t port,
+            std::chrono::milliseconds timeout);
         CORO_TASK(transfer_result)
         send(
             uint32_t descriptor,

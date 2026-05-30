@@ -6,6 +6,7 @@
 #include <io_uring/linux_io_uring_handle.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <exception>
 #include <fcntl.h>
@@ -104,6 +105,45 @@ namespace rpc::io_uring
             if (native_result < 0)
                 return native_operation_error_result(errno);
             return operation_result{rpc::error::OK(), native_result, 0};
+        }
+
+        auto connect_descriptor(
+            int fd,
+            const sockaddr* address,
+            socklen_t address_size,
+            std::chrono::milliseconds timeout) noexcept -> descriptor_result
+        {
+            auto native_result = ::connect(fd, address, address_size);
+            if (native_result < 0 && errno == EINPROGRESS)
+            {
+                pollfd poll_descriptor{};
+                poll_descriptor.fd = fd;
+                poll_descriptor.events = POLLOUT;
+                const int timeout_ms = timeout.count() > 0 ? static_cast<int>(timeout.count()) : -1;
+
+                const auto poll_result = ::poll(&poll_descriptor, 1, timeout_ms);
+                if (poll_result <= 0)
+                {
+                    if (poll_result == 0)
+                        return descriptor_result{rpc::error::CALL_TIMEOUT(), 0, -ETIMEDOUT, 0};
+                    return native_descriptor_error_result(errno);
+                }
+
+                int socket_error = 0;
+                socklen_t socket_error_size = sizeof(socket_error);
+                if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_size) < 0)
+                    return native_descriptor_error_result(errno);
+                if (socket_error != 0)
+                    return native_descriptor_error_result(socket_error);
+
+                native_result = 0;
+            }
+            else if (native_result < 0)
+            {
+                return native_descriptor_error_result(errno);
+            }
+
+            return descriptor_result{rpc::error::OK(), static_cast<uint32_t>(fd), native_result, 0};
         }
     } // namespace
 
@@ -363,7 +403,21 @@ namespace rpc::io_uring
         CO_RETURN descriptor_result{rpc::error::OK(), static_cast<uint32_t>(fd), fd, 0};
     }
 
-    CORO_TASK(descriptor_result) linux_io_uring_handle::connect_tcp_ipv4_loopback(uint16_t port)
+    CORO_TASK(descriptor_result)
+    linux_io_uring_handle::connect_tcp_ipv4_loopback(
+        uint16_t port,
+        std::chrono::milliseconds timeout)
+    {
+        CO_RETURN CO_AWAIT connect_tcp_ipv4({127, 0, 0, 1}, port, timeout);
+    }
+
+    CORO_TASK(descriptor_result)
+    linux_io_uring_handle::connect_tcp_ipv4(
+        const std::array<
+            uint8_t,
+            4>& address,
+        uint16_t port,
+        std::chrono::milliseconds timeout)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto socket_result = create_socket_locked(AF_INET);
@@ -373,46 +427,48 @@ namespace rpc::io_uring
         sockaddr_in socket_address{};
         socket_address.sin_family = AF_INET;
         socket_address.sin_port = htons(port);
-        socket_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        std::memcpy(&socket_address.sin_addr.s_addr, address.data(), address.size());
 
         const auto fd = static_cast<int>(socket_result.descriptor);
-        auto native_result = ::connect(fd, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(socket_address));
-        if (native_result < 0 && errno == EINPROGRESS)
-        {
-            pollfd poll_descriptor{};
-            poll_descriptor.fd = fd;
-            poll_descriptor.events = POLLOUT;
-
-            const auto poll_result = ::poll(&poll_descriptor, 1, 5000);
-            if (poll_result <= 0)
-            {
-                (void)close_descriptor_locked(static_cast<uint32_t>(fd));
-                CO_RETURN native_descriptor_error_result(poll_result == 0 ? ETIMEDOUT : errno);
-            }
-
-            int socket_error = 0;
-            socklen_t socket_error_size = sizeof(socket_error);
-            if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_size) < 0)
-            {
-                (void)close_descriptor_locked(static_cast<uint32_t>(fd));
-                CO_RETURN native_descriptor_error_result(errno);
-            }
-            if (socket_error != 0)
-            {
-                (void)close_descriptor_locked(static_cast<uint32_t>(fd));
-                CO_RETURN native_descriptor_error_result(socket_error);
-            }
-
-            native_result = 0;
-        }
-        else if (native_result < 0)
+        auto connect_result
+            = connect_descriptor(fd, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(socket_address), timeout);
+        if (connect_result.error_code != rpc::error::OK())
         {
             (void)close_descriptor_locked(static_cast<uint32_t>(fd));
-            CO_RETURN native_descriptor_error_result(errno);
+            CO_RETURN connect_result;
         }
 
-        socket_result.native_result = native_result;
-        CO_RETURN socket_result;
+        CO_RETURN connect_result;
+    }
+
+    CORO_TASK(descriptor_result)
+    linux_io_uring_handle::connect_tcp_ipv6(
+        const std::array<
+            uint8_t,
+            16>& address,
+        uint16_t port,
+        std::chrono::milliseconds timeout)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto socket_result = create_socket_locked(AF_INET6);
+        if (socket_result.error_code != rpc::error::OK())
+            CO_RETURN socket_result;
+
+        sockaddr_in6 socket_address{};
+        socket_address.sin6_family = AF_INET6;
+        socket_address.sin6_port = htons(port);
+        std::memcpy(&socket_address.sin6_addr.s6_addr, address.data(), address.size());
+
+        const auto fd = static_cast<int>(socket_result.descriptor);
+        auto connect_result
+            = connect_descriptor(fd, reinterpret_cast<const sockaddr*>(&socket_address), sizeof(socket_address), timeout);
+        if (connect_result.error_code != rpc::error::OK())
+        {
+            (void)close_descriptor_locked(static_cast<uint32_t>(fd));
+            CO_RETURN connect_result;
+        }
+
+        CO_RETURN connect_result;
     }
 
     CORO_TASK(operation_result) linux_io_uring_handle::set_tcp_no_delay(uint32_t descriptor)

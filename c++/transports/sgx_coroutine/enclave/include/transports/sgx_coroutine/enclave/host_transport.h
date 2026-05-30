@@ -19,7 +19,7 @@
 #include <utility>
 #include <secure_coroutine_module/secure_coroutine_module.h>
 
-namespace rpc::sgx::coro::enclave
+namespace rpc::sgx_coroutine_transport::enclave
 {
     class host_transport : public rpc::stream_transport::transport
     {

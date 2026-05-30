@@ -14,7 +14,7 @@
 #include <rpc/internal/polyfill/event.h>
 
 #include <streaming/listener.h>
-#include <streaming/tcp/acceptor.h>
+#include <streaming/tcp_blocking/acceptor.h>
 
 #include <arpa/inet.h>
 #include <atomic>
@@ -83,10 +83,10 @@ namespace
         std::shared_ptr<rpc::service> svc
             = rpc::root_service::create("blocking_listener_test", rpc::zone{zone_addr}, exec);
 
-        streaming::tcp::endpoint ep;
+        streaming::blocking::tcp::endpoint ep;
         ep.host = "127.0.0.1";
         ep.port = port;
-        auto acc = std::make_shared<streaming::tcp::acceptor>(ep);
+        auto acc = std::make_shared<streaming::blocking::tcp::acceptor>(ep);
 
         std::atomic<int> connections_observed{0};
         rpc::event first_seen;

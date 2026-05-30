@@ -10,7 +10,7 @@ if(NOT CANOPY_BUILD_COROUTINE)
     PRIVATE GTest::gtest_main
             rpc::rpc
             streaming
-            streaming_tcp
+            streaming_tcp_blocking
             rpc_log)
 
   target_include_directories(blocking_listener_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
