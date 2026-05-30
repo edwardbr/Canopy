@@ -32,7 +32,7 @@ namespace rpc
         struct runtime_settings
         {
             [description="Requested io_uring controller policy for enclave runtime services. Debug enclaves may use this directly; release enclaves may replace security-sensitive values with compiled production policy."]
-            canopy::io_uring::host_controller_options io_uring = {};
+            canopy::io_uring::enclave_host_controller_options io_uring = {};
 
             [description="Named enclave runtime services and policy blobs, such as attestation or filesystem configuration. Each named service owns its settings schema."]
             std::map<std::string, rpc::sgx_enclave_runtime::typed_runtime_settings> services = {};

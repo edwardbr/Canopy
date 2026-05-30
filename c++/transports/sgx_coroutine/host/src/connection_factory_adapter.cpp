@@ -9,6 +9,7 @@
 #include <utility>
 
 #include <json/convert.h>
+#include <io_uring/host_io_uring.h>
 #include <sgx_coroutine_transport/sgx_coroutine_transport_config.h>
 #include <sgx_coroutine_transport/sgx_coroutine_transport_config_schema.h>
 #include <transports/sgx_coroutine/host/transport.h>
@@ -55,7 +56,9 @@ namespace rpc::connection_factory::detail
                         = transport->set_enclave_runtime_settings(to_json_object(sgx_settings.enclave.value()));
                     if (runtime_error != rpc::error::OK())
                         return {runtime_error, {}, {}, {}};
-                    transport->set_enclave_io_uring_options(sgx_settings.enclave.value().io_uring);
+                    transport->set_enclave_io_uring_options(
+                        rpc::io_uring::host_controller_options_from_enclave_host_options(
+                            sgx_settings.enclave.value().io_uring));
                 }
                 transport->set_enclave_worker_thread_count(sgx_settings.worker_thread_count);
                 transport->set_use_sidecar(sgx_settings.use_sidecar);

@@ -45,6 +45,9 @@
 #ifdef CANOPY_HAS_SGX_BLOCKING_TRANSPORT_CONFIG
 #  include <sgx_blocking_transport/sgx_blocking_transport_config_schema.h>
 #endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING
+#  include <transports/sgx_blocking/transport.h>
+#endif
 #ifdef CANOPY_HAS_SGX_ENCLAVE_RUNTIME_CONFIG
 #  include <sgx_enclave_runtime/sgx_enclave_runtime_config_schema.h>
 #endif
@@ -918,9 +921,9 @@ namespace
         const auto defaults = to_json_object(rpc::tcp_coroutine_stream::endpoint{});
         const auto materialised
             = json::v1::load_typed_config<rpc::tcp_coroutine_stream::endpoint>(schema, defaults, valid);
-        EXPECT_TRUE(materialised.controller.use_sqpoll);
-        EXPECT_EQ(materialised.controller.fixed_file_count, uint32_t{128});
-        EXPECT_TRUE(materialised.controller.register_fixed_files);
+        EXPECT_FALSE(materialised.controller.use_sqpoll);
+        EXPECT_EQ(materialised.controller.fixed_file_count, uint32_t{0});
+        EXPECT_FALSE(materialised.controller.register_fixed_files);
         EXPECT_EQ(
             materialised.stream.timeout_strategy, rpc::tcp_coroutine_stream::receive_timeout_strategy::nonblocking_poll);
 
@@ -942,9 +945,14 @@ namespace
         ipv4.port = 443;
         ipv4.connect_timeout = 123;
         EXPECT_EQ(rpc::tcp_coroutine::validate_connect_endpoint(ipv4), rpc::error::OK());
-        EXPECT_EQ(
-            rpc::tcp_coroutine::detail::make_tcp_coroutine_runtime_options(ipv4).connect_timeout,
-            std::chrono::milliseconds{123});
+
+        const auto materialised = rpc::tcp_coroutine::materialise_tcp_coroutine_options(json::v1::parse(R"json({
+            "host": "192.0.2.1",
+            "port": 443,
+            "connect_timeout": 123
+        })json"));
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        EXPECT_EQ(materialised.options.connect_timeout, uint32_t{123});
 
         rpc::tcp_coroutine_stream::endpoint ipv6;
         ipv6.host = "2001:db8::1";
@@ -1321,6 +1329,9 @@ namespace
         EXPECT_TRUE(sgx_settings.settings.use_sidecar);
         ASSERT_TRUE(sgx_settings.settings.enclave.has_value());
         EXPECT_EQ(sgx_settings.settings.enclave.value().io_uring.queue_depth, 128u);
+        EXPECT_TRUE(sgx_settings.settings.enclave.value().io_uring.use_sqpoll);
+        EXPECT_EQ(sgx_settings.settings.enclave.value().io_uring.fixed_file_count, 128u);
+        EXPECT_TRUE(sgx_settings.settings.enclave.value().io_uring.register_fixed_files);
         ASSERT_EQ(sgx_settings.settings.enclave.value().services.size(), 1u);
         ASSERT_TRUE(sgx_settings.settings.enclave.value().services.count("attestation"));
         EXPECT_EQ(sgx_settings.settings.enclave.value().services.at("attestation").type, "simulation");
@@ -1356,6 +1367,9 @@ namespace
         EXPECT_EQ(sgx_blocking_settings.settings.enclave_path, "/tmp/blocking_enclave.signed.so");
         ASSERT_TRUE(sgx_blocking_settings.settings.enclave.has_value());
         EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().io_uring.queue_depth, 64u);
+        EXPECT_TRUE(sgx_blocking_settings.settings.enclave.value().io_uring.use_sqpoll);
+        EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().io_uring.fixed_file_count, 128u);
+        EXPECT_TRUE(sgx_blocking_settings.settings.enclave.value().io_uring.register_fixed_files);
         ASSERT_TRUE(sgx_blocking_settings.settings.enclave.value().services.count("attestation"));
         EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().services.at("attestation").type, "sgx_dcap");
 #endif
@@ -1384,8 +1398,8 @@ namespace
         ASSERT_EQ(transport.error_code, rpc::error::OK());
         ASSERT_NE(transport.settings, nullptr);
 
-        const auto context
-            = rpc::connection_factory::detail::make_transport_connect_context(*transport.settings, config.settings, {});
+        const auto context = rpc::connection_factory::detail::make_sgx_blocking_connect_context(
+            *transport.settings, config.settings, {});
         EXPECT_EQ(context.error_code, rpc::error::INVALID_DATA());
         EXPECT_EQ(context.service, nullptr);
         EXPECT_EQ(context.transport, nullptr);
@@ -1414,8 +1428,8 @@ namespace
         ASSERT_EQ(transport.error_code, rpc::error::OK());
         ASSERT_NE(transport.settings, nullptr);
 
-        auto context
-            = rpc::connection_factory::detail::make_transport_connect_context(*transport.settings, config.settings, {});
+        auto context = rpc::connection_factory::detail::make_sgx_blocking_connect_context(
+            *transport.settings, config.settings, {});
         ASSERT_EQ(context.error_code, rpc::error::OK());
         ASSERT_NE(context.service, nullptr);
         ASSERT_NE(context.transport, nullptr);
@@ -1429,6 +1443,9 @@ namespace
         const auto runtime_settings = from_json_object<rpc::sgx_enclave_runtime::runtime_settings>(
             enclave_transport->get_enclave_runtime_settings());
         EXPECT_EQ(runtime_settings.io_uring.queue_depth, 64u);
+        EXPECT_TRUE(runtime_settings.io_uring.use_sqpoll);
+        EXPECT_EQ(runtime_settings.io_uring.fixed_file_count, 128u);
+        EXPECT_TRUE(runtime_settings.io_uring.register_fixed_files);
     }
 #endif
 

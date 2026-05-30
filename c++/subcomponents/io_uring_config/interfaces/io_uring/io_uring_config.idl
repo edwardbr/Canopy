@@ -7,18 +7,20 @@ namespace canopy
 {
     namespace io_uring
     {
-        // Host io_uring controller settings. These belong to the io_uring
-        // base stream, not to generic stream RPC transport settings.
+        // General host io_uring controller settings. These belong to the
+        // io_uring base stream, not to generic stream RPC transport settings.
+        // Defaults are deliberately conservative for ordinary host TCP usage:
+        // no SQPOLL and no fixed-file descriptor table unless a caller opts in.
         struct host_controller_options
         {
             [description="Submission/completion queue depth requested when creating the io_uring instance."]
             uint32_t queue_depth = 256;
 
-            [description="Enable kernel SQPOLL when supported."]
-            bool use_sqpoll = true;
+            [description="Enable kernel SQPOLL when supported. General host streams default this off; enclave brokered io_uring uses enclave_host_controller_options instead."]
+            bool use_sqpoll = false;
 
-            [description="Request IORING_SETUP_SINGLE_ISSUER when supported."]
-            bool use_single_issuer = true;
+            [description="Request IORING_SETUP_SINGLE_ISSUER when supported. This is meaningful only for SQPOLL in the current host controller."]
+            bool use_single_issuer = false;
 
             [description="Request cooperative task running when supported by the kernel."]
             bool use_coop_taskrun = false;
@@ -35,10 +37,51 @@ namespace canopy
             [description="Register fixed buffers with io_uring when true."]
             bool register_buffers = false;
 
-            [description="Number of fixed file slots to register for accepted or connected descriptors."]
+            [description="Number of fixed file slots to register for accepted or connected descriptors. Zero keeps normal process descriptors."]
+            uint32_t fixed_file_count = 0;
+
+            [description="Register fixed file slots with io_uring when true. General host streams default this off; direct-descriptor transports must opt in."]
+            bool register_fixed_files = false;
+
+            [description="Release controller resources through the scheduler shutdown path when true."]
+            bool cleanup_on_scheduler = true;
+        };
+
+        // Production-style io_uring controller policy for enclave/TEE runtime
+        // services where the enclave uses brokered direct descriptors and the
+        // host side owns the kernel io_uring. Debug builds may accept host
+        // overrides; release builds may replace these values with compiled
+        // policy before using them.
+        struct enclave_host_controller_options
+        {
+            [description="Submission/completion queue depth requested for the host-owned ring serving enclave runtime io_uring operations."]
+            uint32_t queue_depth = 256;
+
+            [description="Enable kernel SQPOLL so enclave code can make progress through host-brokered submissions."]
+            bool use_sqpoll = true;
+
+            [description="Request IORING_SETUP_SINGLE_ISSUER when supported for the SQPOLL ring."]
+            bool use_single_issuer = true;
+
+            [description="Request cooperative task running when supported by the kernel. The enclave profile defaults this off because SQPOLL owns submission progress."]
+            bool use_coop_taskrun = false;
+
+            [description="SQPOLL idle timeout in milliseconds."]
+            uint32_t sq_thread_idle_ms = 2000;
+
+            [description="Number of fixed receive/send buffers to prepare for the enclave runtime controller."]
+            uint32_t buffer_count = 256;
+
+            [description="Size in bytes of each fixed buffer."]
+            uint32_t buffer_size = 4096;
+
+            [description="Register fixed buffers with io_uring when true."]
+            bool register_buffers = false;
+
+            [description="Number of fixed file slots to register for brokered enclave descriptors."]
             uint32_t fixed_file_count = 128;
 
-            [description="Register fixed file slots with io_uring when true."]
+            [description="Register fixed file slots with io_uring when true. Enclave direct descriptors require this in production."]
             bool register_fixed_files = true;
 
             [description="Release controller resources through the scheduler shutdown path when true."]

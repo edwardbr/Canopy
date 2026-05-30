@@ -348,13 +348,15 @@ function(
   set(IDL_GENERATOR ${CANOPY_IDL_GENERATOR_EXECUTABLE})
 
   set(PATHS_PARAMS "")
+  set(IDL_SEARCH_PATHS "")
   set(ADDITIONAL_HEADERS "")
   set(RETHROW_STUB_EXCEPTION "")
   set(ADDITIONAL_STUB_HEADER "")
   set(GENERATED_DEPENDENCIES "")
+  set(IDL_FILE_DEPENDENCIES "")
 
   foreach(path ${params_include_paths})
-    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
+    list(APPEND IDL_SEARCH_PATHS "${path}")
   endforeach()
 
   foreach(define ${params_defines})
@@ -378,10 +380,22 @@ function(
       get_target_property(dep_base_dir ${dep}_generate base_dir)
 
       if(dep_base_dir)
-        set(PATHS_PARAMS ${PATHS_PARAMS} --path "${dep_base_dir}")
+        list(APPEND IDL_SEARCH_PATHS "${dep_base_dir}")
       endif()
 
       set(GENERATED_DEPENDENCIES ${GENERATED_DEPENDENCIES} ${dep}_generate)
+      get_target_property(dep_idl_search_paths ${dep}_generate idl_search_paths)
+      if(dep_idl_search_paths)
+        list(APPEND IDL_SEARCH_PATHS ${dep_idl_search_paths})
+      endif()
+      get_target_property(dep_idl_path ${dep}_generate idl_path)
+      if(dep_idl_path)
+        list(APPEND IDL_FILE_DEPENDENCIES "${dep_idl_path}")
+      endif()
+      get_target_property(dep_idl_file_dependencies ${dep}_generate idl_file_dependencies)
+      if(dep_idl_file_dependencies)
+        list(APPEND IDL_FILE_DEPENDENCIES ${dep_idl_file_dependencies})
+      endif()
     else()
       message("target ${dep}_generate does not exist so skipped")
     endif()
@@ -393,10 +407,20 @@ function(
       foreach(include_dir ${include_dirs})
         if(${include_dir} MATCHES "/interfaces/include$")
           string(REPLACE "/interfaces/include" "" idl_dir ${include_dir})
-          set(PATHS_PARAMS ${PATHS_PARAMS} --path ${idl_dir})
+          list(APPEND IDL_SEARCH_PATHS "${idl_dir}")
         endif()
       endforeach()
     endif()
+  endforeach()
+
+  list(REMOVE_DUPLICATES IDL_SEARCH_PATHS)
+  list(REMOVE_DUPLICATES IDL_FILE_DEPENDENCIES)
+  set(IDL_EXPORTED_SEARCH_PATHS "${base_dir}" ${IDL_SEARCH_PATHS})
+  list(REMOVE_DUPLICATES IDL_EXPORTED_SEARCH_PATHS)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${idl} ${IDL_FILE_DEPENDENCIES})
+
+  foreach(path ${IDL_SEARCH_PATHS})
+    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
   endforeach()
 
   if(NOT ${namespace} STREQUAL "")
@@ -485,7 +509,7 @@ function(
     ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY})")
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY})")
 
   add_custom_command(
     OUTPUT ${GENERATOR_OUTPUTS}
@@ -495,7 +519,7 @@ function(
       ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
     COMMENT "Running generator ${idl}")
 
   if(${CANOPY_VERBOSE_GENERATOR})
@@ -509,10 +533,20 @@ function(
 
   add_custom_target(${name}_idl_generate DEPENDS ${GENERATOR_OUTPUTS})
 
-  # Ensure generator executable is built before generating IDL
-  add_dependencies(${name}_idl_generate generator)
+  # Ensure generator executable is built before generating IDL when Canopy is
+  # being built from source. Installed-package consumers may provide only
+  # CANOPY_IDL_GENERATOR_EXECUTABLE.
+  if(TARGET generator)
+    add_dependencies(${name}_idl_generate generator)
+  endif()
 
-  set_target_properties(${name}_idl_generate PROPERTIES base_dir ${base_dir})
+  set_target_properties(
+    ${name}_idl_generate
+    PROPERTIES
+               base_dir "${base_dir}"
+               idl_path "${idl}"
+               idl_file_dependencies "${IDL_FILE_DEPENDENCIES}"
+               idl_search_paths "${IDL_EXPORTED_SEARCH_PATHS}")
 
   # Only compile.proto files if protobuf - compatible formats are enabled
   if(generate_protobuf OR generate_nanopb)
@@ -548,13 +582,19 @@ function(
     endif()
     foreach(dep ${params_dependencies})
       if(TARGET ${dep}_generate)
-        get_target_property(dep_nanopb_src_root ${dep}_generate nanopb_src_root)
-        if(dep_nanopb_src_root)
-          list(APPEND nanopb_include_roots "${dep_nanopb_src_root}")
+        get_target_property(dep_nanopb_include_roots ${dep}_generate nanopb_include_roots)
+        if(dep_nanopb_include_roots)
+          list(APPEND nanopb_include_roots ${dep_nanopb_include_roots})
+        else()
+          get_target_property(dep_nanopb_src_root ${dep}_generate nanopb_src_root)
+          if(dep_nanopb_src_root)
+            list(APPEND nanopb_include_roots "${dep_nanopb_src_root}")
+          endif()
         endif()
       endif()
     endforeach()
     list(REMOVE_DUPLICATES nanopb_include_roots)
+    set_target_properties(${name}_idl_generate PROPERTIES nanopb_include_roots "${nanopb_include_roots}")
     set(nanopb_stamp_file ${proto_dir}/.nanopb_compiled)
     set(nanopb_sources_cmake ${proto_dir}/generated_nanopb_sources.cmake)
     set(nanopb_compile_dependencies ${PROTO_MANIFEST} ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake)

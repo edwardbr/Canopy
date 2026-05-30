@@ -10,16 +10,44 @@
 #include <utility>
 
 #include <io_uring/host_io_uring.h>
-#include <connection_factory/tcp_coroutine_options.h>
 #include <connection_factory/stream_rpc.h>
 #include <streaming/tcp_coroutine/acceptor.h>
+#include <streaming/tcp_coroutine/stream.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 
 namespace rpc::tcp_coroutine
 {
     // High-level stream/RPC factories for TCP coroutine streams backed by io_uring. JSON option normalisation
-    // lives in connection_factory/tcp_coroutine_options.h so direct controller/stream
-    // code can use typed io_uring options without pulling factory mechanics into
-    // the same header.
+    // happens at this boundary; core stream code receives the generated endpoint
+    // IDL type directly.
+
+    struct loopback_port_range
+    {
+        uint16_t first_port{26000};
+        uint16_t last_port{26064};
+    };
+
+    struct loopback_listen_options
+    {
+        // A non-zero port asks for one exact loopback port. Zero means scan the
+        // range below and use the first available port.
+        uint16_t port{0};
+        loopback_port_range port_range{};
+    };
+
+    const json::v1::object& tcp_coroutine_default_options();
+
+    struct materialise_tcp_coroutine_options_result
+    {
+        int error_code{rpc::error::OK()};
+        ::rpc::tcp_coroutine_stream::endpoint options;
+    };
+
+    const json::v1::object& tcp_coroutine_options_schema();
+
+    materialise_tcp_coroutine_options_result materialise_tcp_coroutine_options(const json::v1::object& client_options);
+
+    int validate_connect_endpoint(const ::rpc::tcp_coroutine_stream::endpoint& options) noexcept;
 
     struct runtime
     {
@@ -135,22 +163,17 @@ namespace rpc::tcp_coroutine
         const rpc::connection_factory::stream_rpc_connection_settings& settings,
         std::shared_ptr<rpc::service> service = {})
     {
-        auto runtime_options = detail::make_tcp_coroutine_runtime_options(tcp_coroutine_options, settings);
-        auto resolved_service = rpc::connection_factory::ensure_service(
-            runtime_options.factory_settings, std::move(service), "tcp_coroutine_rpc_client");
+        auto resolved_service
+            = rpc::connection_factory::ensure_service(settings, std::move(service), "tcp_coroutine_rpc_client");
         if (!resolved_service)
             CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
-        auto stream = CO_AWAIT connect_stream(
-            runtime_options.port, runtime_options.controller_options, runtime_options.stream_options, resolved_service);
+        auto stream = CO_AWAIT connect_stream(tcp_coroutine_options, resolved_service);
         if (stream.error_code != rpc::error::OK())
             CO_RETURN rpc::service_connect_result<Out>{stream.error_code, {}};
 
         CO_RETURN CO_AWAIT rpc::connection_factory::connect_rpc_stream<In, Out>(
-            std::move(input_interface),
-            std::move(stream.stream),
-            runtime_options.factory_settings,
-            std::move(resolved_service));
+            std::move(input_interface), std::move(stream.stream), settings, std::move(resolved_service));
     }
 
     template<

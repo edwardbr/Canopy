@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <io_uring/host_controller.h>
+#include <io_uring/host_io_uring.h>
 #include <rpc/rpc.h>
 #include <transports/secure_coroutine_module/io_uring_data_conversion.h>
 
@@ -521,7 +521,8 @@ namespace rpc::sgx_coroutine_transport::host
         const char* name,
         std::shared_ptr<rpc::transport> enclave_transport,
         rpc::shared_ptr<Remote> input_interface,
-        rpc::io_uring::host_controller::options controller_options = {})
+        rpc::io_uring::host_controller::options controller_options
+        = rpc::io_uring::default_enclave_host_controller_options())
     {
         rpc::service_connect_result<Local> result{rpc::error::OK(), {}};
         if (!service || !enclave_transport)

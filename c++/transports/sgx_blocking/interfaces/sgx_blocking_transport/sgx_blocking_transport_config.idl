@@ -27,7 +27,7 @@ namespace rpc
             [description="Path to the signed enclave image loaded by sgx_create_enclave. This is required because the factory cannot infer which enclave binary to start."]
             std::string enclave_path;
 
-            [description="Common enclave runtime startup policy shared with other SGX transports. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
+            [description="Common enclave runtime startup policy shared with other SGX transports. Its io_uring field uses the enclave host controller profile, not the generic host TCP profile. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
             rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave;
         };
     }

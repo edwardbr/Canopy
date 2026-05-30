@@ -82,12 +82,14 @@ function(
   set(IDL_GENERATOR ${CANOPY_IDL_GENERATOR_EXECUTABLE})
 
   set(PATHS_PARAMS "")
+  set(IDL_SEARCH_PATHS "")
+  set(IDL_FILE_DEPENDENCIES "")
   set(GENERATED_DEPENDENCIES "")
   set(ALL_STAMPS "")
   set(PROTO_COPY_STAMPS "")
 
   foreach(path ${params_include_paths})
-    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
+    list(APPEND IDL_SEARCH_PATHS "${path}")
   endforeach()
 
   # ---- Dependency resolution + proto copy helper ---------------------------------
@@ -125,9 +127,21 @@ function(
     if(TARGET ${dep}_generate)
       get_target_property(dep_base_dir ${dep}_generate base_dir)
       if(dep_base_dir)
-        set(PATHS_PARAMS ${PATHS_PARAMS} --path "${dep_base_dir}")
+        list(APPEND IDL_SEARCH_PATHS "${dep_base_dir}")
       endif()
       set(GENERATED_DEPENDENCIES ${GENERATED_DEPENDENCIES} ${dep}_generate)
+      get_target_property(dep_idl_search_paths ${dep}_generate idl_search_paths)
+      if(dep_idl_search_paths)
+        list(APPEND IDL_SEARCH_PATHS ${dep_idl_search_paths})
+      endif()
+      get_target_property(dep_idl_path ${dep}_generate idl_path)
+      if(dep_idl_path)
+        list(APPEND IDL_FILE_DEPENDENCIES "${dep_idl_path}")
+      endif()
+      get_target_property(dep_idl_file_dependencies ${dep}_generate idl_file_dependencies)
+      if(dep_idl_file_dependencies)
+        list(APPEND IDL_FILE_DEPENDENCIES ${dep_idl_file_dependencies})
+      endif()
       _proto_copy_stamp_for(${dep}_generate ${dep} _ignored)
     else()
       message(STATUS "CanopyJavascriptGenerate: target ${dep}_generate does not exist, skipped")
@@ -137,10 +151,18 @@ function(
       foreach(include_dir ${include_dirs})
         if(${include_dir} MATCHES "/interfaces/include$")
           string(REPLACE "/interfaces/include" "" idl_dir2 ${include_dir})
-          set(PATHS_PARAMS ${PATHS_PARAMS} --path ${idl_dir2})
+          list(APPEND IDL_SEARCH_PATHS "${idl_dir2}")
         endif()
       endforeach()
     endif()
+  endforeach()
+
+  list(REMOVE_DUPLICATES IDL_SEARCH_PATHS)
+  list(REMOVE_DUPLICATES IDL_FILE_DEPENDENCIES)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${idl}" ${IDL_FILE_DEPENDENCIES})
+
+  foreach(path ${IDL_SEARCH_PATHS})
+    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
   endforeach()
 
   # Primary IDL's own proto files (target: <idl_basename>_idl_generate)
@@ -166,7 +188,7 @@ function(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_generator_js_output}" "${js_output}"
     COMMAND ${CMAKE_COMMAND} -E touch "${_js_stamp}"
     MAIN_DEPENDENCY "${idl}"
-    DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
     COMMENT "Generating JavaScript proxy/stub for ${idl_basename} into ${output_dir}")
   list(APPEND ALL_STAMPS "${_js_stamp}")
 

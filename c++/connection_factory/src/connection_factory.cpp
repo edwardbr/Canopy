@@ -12,11 +12,24 @@
 #include <connection_factory_components.h>
 #include <streaming/layer_factory/factory.h>
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
+#  include <connection_factory/spsc_queue.h>
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
+#  include <streaming/secure_stream.h>
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
+#  include <security/attestation/service.h>
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
 #  include <transports/local/transport.h>
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
+#  include <io_uring/host_io_uring.h>
 #  include <transports/sgx_coroutine/host/transport.h>
 #endif
 
@@ -439,7 +452,7 @@ namespace rpc::connection_factory
                 });
         }
 
-        rpc::io_uring::host_controller::options controller_options;
+        auto controller_options = rpc::io_uring::default_enclave_host_controller_options();
         if (auto configured_options = context.get_dependency<rpc::io_uring::host_controller::options>())
             controller_options = *configured_options;
         if (auto enclave_options = enclave_transport->get_enclave_io_uring_options())

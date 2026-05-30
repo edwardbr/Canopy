@@ -22,6 +22,34 @@ namespace rpc::io_uring
         return options;
     }
 
+    host_controller::options default_host_controller_options() noexcept
+    {
+        return {};
+    }
+
+    host_controller::options host_controller_options_from_enclave_host_options(
+        const ::canopy::io_uring::enclave_host_controller_options& options) noexcept
+    {
+        host_controller::options result;
+        result.queue_depth = options.queue_depth;
+        result.use_sqpoll = options.use_sqpoll;
+        result.use_single_issuer = options.use_single_issuer;
+        result.use_coop_taskrun = options.use_coop_taskrun;
+        result.sq_thread_idle_ms = options.sq_thread_idle_ms;
+        result.buffer_count = options.buffer_count;
+        result.buffer_size = options.buffer_size;
+        result.register_buffers = options.register_buffers;
+        result.fixed_file_count = options.fixed_file_count;
+        result.register_fixed_files = options.register_fixed_files;
+        result.cleanup_on_scheduler = options.cleanup_on_scheduler;
+        return result;
+    }
+
+    host_controller::options default_enclave_host_controller_options() noexcept
+    {
+        return host_controller_options_from_enclave_host_options(::canopy::io_uring::enclave_host_controller_options{});
+    }
+
     int create_scheduler(
         std::shared_ptr<io_uring_scheduler>& scheduler_owner,
         linux_io_uring_handle::options handle_options,

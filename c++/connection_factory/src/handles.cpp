@@ -8,6 +8,7 @@
 #include <chrono>
 #include <utility>
 
+#include <connection_factory/service.h>
 #include <streaming/listener.h>
 #include <streaming/stream.h>
 #include <streaming/stream_acceptor.h>

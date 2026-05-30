@@ -27,17 +27,19 @@
 #  include <transports/sgx_coroutine/host/connect.h>
 #endif
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
-#  include <connection_factory/spsc_queue.h>
-#endif
-
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
 #  include <streaming/secure_stream.h>
 #endif
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
-#  include <security/attestation/service.h>
-#endif
+namespace rpc::spsc_queue
+{
+    struct queue_pair;
+}
+
+namespace canopy::security::attestation
+{
+    class attestation_service;
+}
 
 namespace rpc::connection_factory
 {

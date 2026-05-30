@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <utility>
@@ -28,6 +29,15 @@ namespace rpc::tcp_coroutine
             std::array<uint8_t, 16> ipv6{};
         };
 
+        struct tcp_coroutine_runtime_options
+        {
+            rpc::connection_factory::stream_rpc_connection_settings factory_settings;
+            rpc::io_uring::host_controller::options controller_options;
+            ::streaming::coroutine::tcp::stream::options stream_options;
+            uint16_t port{0};
+            std::chrono::milliseconds connect_timeout{5000};
+        };
+
         endpoint_address parse_endpoint_address(const ::rpc::tcp_coroutine_stream::endpoint& options) noexcept
         {
             endpoint_address result;
@@ -40,6 +50,21 @@ namespace rpc::tcp_coroutine
 
             if (::inet_pton(AF_INET, options.host.c_str(), result.ipv4.data()) != 1)
                 result.error_code = rpc::error::INVALID_DATA();
+            return result;
+        }
+
+        tcp_coroutine_runtime_options make_tcp_coroutine_runtime_options(
+            ::rpc::tcp_coroutine_stream::endpoint tcp_coroutine_options,
+            rpc::connection_factory::stream_rpc_connection_settings factory_settings
+            = rpc::connection_factory::make_stream_rpc_settings())
+        {
+            tcp_coroutine_runtime_options result;
+            result.factory_settings = std::move(factory_settings);
+            result.controller_options = tcp_coroutine_options.controller;
+            result.stream_options = tcp_coroutine_options.stream;
+            result.port = tcp_coroutine_options.port;
+            result.connect_timeout = std::chrono::milliseconds{
+                static_cast<std::chrono::milliseconds::rep>(tcp_coroutine_options.connect_timeout)};
             return result;
         }
 
@@ -93,23 +118,6 @@ namespace rpc::tcp_coroutine
             return {rpc::error::INVALID_DATA(), {}};
         }
     }
-
-    namespace detail
-    {
-        tcp_coroutine_runtime_options_result make_tcp_coroutine_runtime_options(
-            ::rpc::tcp_coroutine_stream::endpoint tcp_coroutine_options,
-            rpc::connection_factory::stream_rpc_connection_settings factory_settings)
-        {
-            tcp_coroutine_runtime_options_result result;
-            result.factory_settings = std::move(factory_settings);
-            result.controller_options = tcp_coroutine_options.controller;
-            result.stream_options = tcp_coroutine_options.stream;
-            result.port = tcp_coroutine_options.port;
-            result.connect_timeout = std::chrono::milliseconds{
-                static_cast<std::chrono::milliseconds::rep>(tcp_coroutine_options.connect_timeout)};
-            return result;
-        }
-    } // namespace detail
 
     runtime make_runtime(
         rpc::io_uring::host_controller::options controller_options,
@@ -249,7 +257,7 @@ namespace rpc::tcp_coroutine
         const rpc::connection_factory::stream_rpc_connection_settings& factory_settings,
         std::shared_ptr<rpc::service> service)
     {
-        auto runtime_options = detail::make_tcp_coroutine_runtime_options(options, factory_settings);
+        auto runtime_options = make_tcp_coroutine_runtime_options(options, factory_settings);
         auto resolved_service = rpc::connection_factory::ensure_service(
             runtime_options.factory_settings, std::move(service), "tcp_coroutine_stream_accept");
         if (!resolved_service)
@@ -306,7 +314,7 @@ namespace rpc::tcp_coroutine
         if (validation_error != rpc::error::OK())
             CO_RETURN rpc::connection_factory::stream_result{validation_error, {}};
 
-        const auto runtime_options = detail::make_tcp_coroutine_runtime_options(options);
+        const auto runtime_options = make_tcp_coroutine_runtime_options(options);
         auto runtime = make_runtime(runtime_options.controller_options, std::move(service));
         if (runtime.error_code != rpc::error::OK())
             CO_RETURN rpc::connection_factory::stream_result{runtime.error_code, {}};

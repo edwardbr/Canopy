@@ -11,6 +11,8 @@
 #include <utility>
 
 #include <connection_factory/handles.h>
+#include <connection_factory/options.h>
+#include <connection_factory/service.h>
 #include <streaming/listener.h>
 
 namespace rpc::connection_factory

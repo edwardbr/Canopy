@@ -10,7 +10,7 @@
 #include <functional>
 #include <memory>
 
-#include <connection_factory/service.h>
+#include <rpc/rpc.h>
 
 namespace streaming
 {
@@ -19,8 +19,20 @@ namespace streaming
     class stream_acceptor;
 } // namespace streaming
 
+namespace rpc
+{
+    class service;
+
+    namespace stream_transport
+    {
+        class transport;
+    }
+} // namespace rpc
+
 namespace rpc::connection_factory
 {
+    struct stream_rpc_connection_settings;
+
     // These handles are the ownership boundary returned by the simplified
     // factories. They hide transports/listeners from callers that only need a
     // stream or RPC endpoint, while still keeping the service, acceptor, and
