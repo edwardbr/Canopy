@@ -8,7 +8,8 @@
 #include <memory>
 #include <utility>
 
-#include <connection_factory/tcp_blocking.h>
+#include <streaming/tcp_blocking/factory.h>
+#include <tcp_blocking_stream/tcp_blocking_stream_config_schema.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -25,10 +26,10 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service> service,
                 const layered_connection_context&) const -> CORO_TASK(stream_result) override
             {
-                auto endpoint = rpc::tcp_blocking::materialise_tcp_blocking_options(settings);
+                auto endpoint = materialise_settings<rpc::tcp_blocking_stream::endpoint>(settings);
                 if (endpoint.error_code != rpc::error::OK())
                     CO_RETURN stream_result{endpoint.error_code, {}};
-                CO_RETURN CO_AWAIT rpc::tcp_blocking::connect_stream(endpoint.options, std::move(service));
+                CO_RETURN CO_AWAIT rpc::tcp_blocking::connect_stream(endpoint.settings, std::move(service));
             }
 
             auto accept_base(
@@ -36,11 +37,11 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service>,
                 const layered_connection_context&) const -> CORO_TASK(stream_acceptor_result) override
             {
-                auto endpoint = rpc::tcp_blocking::materialise_tcp_blocking_options(settings);
+                auto endpoint = materialise_settings<rpc::tcp_blocking_stream::endpoint>(settings);
                 if (endpoint.error_code != rpc::error::OK())
                     CO_RETURN stream_acceptor_result{endpoint.error_code, {}, {}, 0};
                 CO_RETURN stream_acceptor_result{
-                    rpc::error::OK(), rpc::tcp_blocking::make_acceptor(endpoint.options), {}, endpoint.options.port};
+                    rpc::error::OK(), rpc::tcp_blocking::make_acceptor(endpoint.settings), {}, endpoint.settings.port};
             }
         };
     } // namespace

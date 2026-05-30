@@ -46,7 +46,7 @@ The desired flow is:
 
 ```text
 connection_settings JSON overlay
-  -> materialise connection_factory_config::connection_settings
+  -> materialise connection_factory::connection_settings
   -> for each typed settings entry:
        registry lookup by type
        component factory materialises its own generated IDL type

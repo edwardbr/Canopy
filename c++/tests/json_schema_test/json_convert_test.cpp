@@ -22,7 +22,7 @@
 #include <json/json_utils.h>
 #include <json/schema_validator.h>
 #include <connection_factory/connection_factory.h>
-#include <connection_factory/tcp.h>
+#include <connection_factory/detail/context.h>
 #include <connection_factory_config/connection_factory_config_schema.h>
 #include <example_shared/example_shared_schema.h>
 #include <tcp_blocking_stream/tcp_blocking_stream_config_schema.h>
@@ -31,6 +31,11 @@
 #include <rpc/rpc_types_schema.h>
 #include <schema_cycle/schema_cycle_schema.h>
 #include <set_fixture/set_fixture_schema.h>
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <streaming/tcp_coroutine/factory.h>
+#else
+#  include <streaming/tcp_blocking/factory.h>
+#endif
 #ifdef CANOPY_SECURE_STREAM_BACKEND_OPENSSL
 #  include <tls_stream/tls_stream_config_schema.h>
 #endif
@@ -38,7 +43,7 @@
 #  include <websocket_stream/websocket_stream_config_schema.h>
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
-#  include <local_transport/local_transport_config.h>
+#  include <local_transport/local_transport_config_schema.h>
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
 #  include <sgx_coroutine_transport/sgx_coroutine_transport_config_schema.h>
@@ -65,9 +70,6 @@ namespace
     static_assert(std::is_same_v<
         streaming::tcp::endpoint,
         rpc::tcp_coroutine_stream::endpoint>);
-    static_assert(std::is_same_v<
-        rpc::tcp::materialise_tcp_options_result,
-        rpc::tcp_coroutine::materialise_tcp_coroutine_options_result>);
 #  ifdef __linux__
 #    ifndef CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE
 #      error "Coroutine Linux builds should register tcp_coroutine in the connection factory"
@@ -82,9 +84,6 @@ namespace
     static_assert(std::is_same_v<
         streaming::tcp::endpoint,
         rpc::tcp_blocking_stream::endpoint>);
-    static_assert(std::is_same_v<
-        rpc::tcp::materialise_tcp_options_result,
-        rpc::tcp_blocking::materialise_tcp_blocking_options_result>);
 #  ifndef CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING
 #    error "Blocking builds should register tcp_blocking in the connection factory"
 #  endif
@@ -130,7 +129,7 @@ namespace
         ASSERT_TRUE(direct.has_value());
         EXPECT_EQ(direct.value(), "client_transport");
 
-        rpc::connection_factory_config::service::settings named;
+        rpc::connection_factory::service_settings named;
         named.name = "listener_transport";
         ASSERT_TRUE(named.name.has_value());
         EXPECT_EQ(named.name.value(), "listener_transport");
@@ -187,7 +186,7 @@ namespace
             "settings": {"call_timeout": 42}
         })json");
 
-        const auto typed = from_json_object<rpc::connection_factory_config::typed_settings>(input);
+        const auto typed = from_json_object<rpc::connection_factory::typed_settings>(input);
 
         EXPECT_EQ(typed.type, "stream_rpc");
         ASSERT_TRUE(typed.settings.has_value());
@@ -782,19 +781,18 @@ namespace
 
     TEST(
         JsonConvert,
-        TcpOptionsMaterialiserAppliesDefaultsAndPreservesOverrides)
+        ConnectionFactoryMaterialisesActiveTcpSparseSettings)
     {
-        // Public JSON entry points convert raw options to the typed form
-        // exactly once via rpc::tcp::materialise_tcp_options. Verify the
-        // overlay+convert step produces the expected typed result and that
-        // user overrides win over the TCP component defaults.
+        // Config-driven construction materialises raw JSON at the connection
+        // factory boundary. The typed TCP factory API receives the generated
+        // endpoint type directly and does not expose JSON helpers.
         const auto user_input = json::v1::parse(R"json({
             "host": "10.0.0.42",
             "port": 9000
         })json");
-        const auto materialised = rpc::tcp::materialise_tcp_options(user_input);
+        const auto materialised = rpc::connection_factory::materialise_settings<streaming::tcp::endpoint>(user_input);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
-        const auto& typed = materialised.options;
+        const auto& typed = materialised.settings;
 
         EXPECT_EQ(typed.host, "10.0.0.42");
         EXPECT_EQ(typed.port, 9000);
@@ -804,9 +802,9 @@ namespace
 
     TEST(
         JsonConvert,
-        TcpFacadeDefaultsMatchActiveBuildMode)
+        ActiveTcpDefaultsMatchBuildMode)
     {
-        const auto defaults = rpc::tcp::tcp_default_options();
+        const auto defaults = to_json_object(streaming::tcp::endpoint{});
         ASSERT_EQ(defaults.get_type(), json::v1::object::type::map_type);
         const auto& defaults_map = defaults.as_map();
 
@@ -867,19 +865,21 @@ namespace
 
     TEST(
         JsonConvert,
-        TcpOptionsMaterialiserRejectsInvalidJson)
+        ConnectionFactoryRejectsInvalidActiveTcpJson)
     {
-        // Validation still happens — just once. An unknown top-level key
+        // Validation still happens just once. An unknown top-level key
         // is rejected by the schema before the converter runs.
         const auto bad_input = json::v1::parse(R"json({
             "unsupported_key": 1
         })json");
-        EXPECT_EQ(rpc::tcp::materialise_tcp_options(bad_input).error_code, rpc::error::INVALID_DATA());
+        EXPECT_EQ(
+            rpc::connection_factory::materialise_settings<streaming::tcp::endpoint>(bad_input).error_code,
+            rpc::error::INVALID_DATA());
     }
 
     TEST(
         JsonConvert,
-        TcpOptionsMaterialiserTreatsNullOverlayAsOmitted)
+        ConnectionFactoryTreatsNullActiveTcpOverlayAsOmitted)
     {
         // User config is a sparse overlay, not a complete object to validate
         // before defaults. With the default null policy, null means "not
@@ -887,7 +887,9 @@ namespace
         const auto null_keyed = json::v1::parse(R"json({
             "unsupported_key": null
         })json");
-        EXPECT_EQ(rpc::tcp::materialise_tcp_options(null_keyed).error_code, rpc::error::OK());
+        EXPECT_EQ(
+            rpc::connection_factory::materialise_settings<streaming::tcp::endpoint>(null_keyed).error_code,
+            rpc::error::OK());
     }
 
     TEST(
@@ -947,13 +949,14 @@ namespace
         ipv4.connect_timeout = 123;
         EXPECT_EQ(rpc::tcp_coroutine::validate_connect_endpoint(ipv4), rpc::error::OK());
 
-        const auto materialised = rpc::tcp_coroutine::materialise_tcp_coroutine_options(json::v1::parse(R"json({
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<rpc::tcp_coroutine_stream::endpoint>(json::v1::parse(R"json({
             "host": "192.0.2.1",
             "port": 443,
             "connect_timeout": 123
         })json"));
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
-        EXPECT_EQ(materialised.options.connect_timeout, uint32_t{123});
+        EXPECT_EQ(materialised.settings.connect_timeout, uint64_t{123});
 
         rpc::tcp_coroutine_stream::endpoint ipv6;
         ipv6.host = "2001:db8::1";
@@ -1067,10 +1070,10 @@ namespace
         sparse_tcp.settings = parse(R"json({
             "port": 0
         })json");
+        rpc::connection_factory::connection_settings sparse_tcp_settings;
+        sparse_tcp_settings.stream_layers.push_back(sparse_tcp);
 
-        auto acceptor = SYNC_WAIT(
-            rpc::connection_factory::accept_base_streams(
-                sparse_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        auto acceptor = SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(sparse_tcp_settings));
         EXPECT_EQ(acceptor.error_code, rpc::error::OK());
         EXPECT_NE(acceptor.acceptor, nullptr);
 #ifdef CANOPY_BUILD_COROUTINE
@@ -1084,10 +1087,10 @@ namespace
         invalid_tcp.settings = parse(R"json({
             "unexpected_tcp_field": true
         })json");
+        rpc::connection_factory::connection_settings invalid_tcp_settings;
+        invalid_tcp_settings.stream_layers.push_back(std::move(invalid_tcp));
 
-        auto invalid = SYNC_WAIT(
-            rpc::connection_factory::accept_base_streams(
-                invalid_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        auto invalid = SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(invalid_tcp_settings));
         EXPECT_EQ(invalid.error_code, rpc::error::INVALID_DATA());
     }
 
@@ -1100,10 +1103,10 @@ namespace
         inactive_tcp.settings = parse(R"json({
             "port": 0
         })json");
+        rpc::connection_factory::connection_settings inactive_tcp_settings;
+        inactive_tcp_settings.stream_layers.push_back(std::move(inactive_tcp));
 
-        auto inactive = SYNC_WAIT(
-            rpc::connection_factory::accept_base_streams(
-                inactive_tcp, {}, rpc::connection_factory::layered_connection_context{}));
+        auto inactive = SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(inactive_tcp_settings));
         EXPECT_EQ(inactive.error_code, rpc::error::INVALID_DATA());
         EXPECT_EQ(inactive.acceptor, nullptr);
     }
@@ -1112,7 +1115,8 @@ namespace
         JsonConvert,
         ConnectionFactoryValidatesStreamRpcLayerTopology)
     {
-        rpc::connection_factory_config::connection_settings settings;
+        rpc::connection_factory::connection_settings settings;
+        const rpc::connection_factory::layered_connection_context context;
         const auto layer = [](std::string type, const char* options_json)
         {
             rpc::stream_layers::stream_layer_settings result;
@@ -1124,21 +1128,15 @@ namespace
         settings.stream_layers = {
             layer(active_tcp_stream_type, R"json({"port": 0})json"),
         };
-        EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::connect),
-            rpc::error::OK());
-        EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::accept),
-            rpc::error::OK());
+        auto valid_acceptor = SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(settings, {}, context));
+        EXPECT_EQ(valid_acceptor.error_code, rpc::error::OK());
+        EXPECT_NE(valid_acceptor.acceptor, nullptr);
 
         settings.stream_layers = {
             layer("websocket", R"json({})json"),
         };
         EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::connect),
+            SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(settings, {}, context)).error_code,
             rpc::error::INVALID_DATA());
 
         settings.stream_layers = {
@@ -1146,8 +1144,7 @@ namespace
             layer(active_tcp_stream_type, R"json({"port": 0})json"),
         };
         EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::connect),
+            SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(settings, {}, context)).error_code,
             rpc::error::INVALID_DATA());
 
         settings.stream_layers = {
@@ -1155,16 +1152,14 @@ namespace
             layer("definitely_not_registered", R"json({})json"),
         };
         EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::connect),
+            SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(settings, {}, context)).error_code,
             rpc::error::INVALID_DATA());
 
         settings.stream_layers = {
             layer(inactive_tcp_stream_type, R"json({"port": 0})json"),
         };
         EXPECT_EQ(
-            rpc::connection_factory::validate_stream_rpc_connection_settings(
-                settings, rpc::connection_factory::layer_direction::connect),
+            SYNC_WAIT(rpc::connection_factory::open_stream_acceptor(settings, {}, context)).error_code,
             rpc::error::INVALID_DATA());
     }
 
@@ -1230,8 +1225,10 @@ namespace
         layer.settings = parse(R"json({
             "port": 42
         })json");
+        rpc::connection_factory::connection_settings settings;
+        settings.stream_layers.push_back(std::move(layer));
 
-        auto result = SYNC_WAIT(rpc::connection_factory::connect_base_stream(layer, {}, context));
+        auto result = SYNC_WAIT(rpc::connection_factory::connect_stream(settings, {}, context));
         EXPECT_EQ(result.error_code, rpc::error::OK());
         EXPECT_TRUE(factory_called);
         EXPECT_EQ(materialised_host, "127.0.0.1");
@@ -1244,6 +1241,19 @@ namespace
     {
         rpc::connection_factory::layered_connection_context context;
         std::vector<std::string> calls;
+
+        context.register_connect_base_stream(
+            "test_base",
+            [](const json::v1::object&,
+                std::shared_ptr<rpc::service>,
+                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+            { CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}}; });
+        context.register_accept_single_stream(
+            "test_base",
+            [](const json::v1::object&,
+                std::shared_ptr<rpc::service>,
+                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+            { CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}}; });
 
         auto register_layer = [&](const std::string& type)
         {
@@ -1273,19 +1283,16 @@ namespace
         const auto valid_json = std::string(R"json({
             "transport": {"type": "stream_rpc", "settings": {"encoding": "nanopb"}},
             "stream_layers": [
-)json") + R"json(                {"type": ")json"
-                                + active_tcp_stream_type + R"json(", "settings": {"port": 0}},
+                {"type": "test_base", "settings": {}},
                 {"type": "test_layer_alpha", "settings": {"marker": "alpha"}},
                 {"type": "test_layer_beta", "settings": {"marker": "beta"}}
             ]
-        })json";
+        })json");
         const auto materialised = rpc::connection_factory::materialise_connection_settings(parse(valid_json));
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
         ASSERT_EQ(materialised.settings.stream_layers.size(), 3u);
 
-        auto connected = SYNC_WAIT(
-            rpc::connection_factory::apply_stream_layers(
-                {}, materialised.settings, 1, rpc::connection_factory::layer_direction::connect, context));
+        auto connected = SYNC_WAIT(rpc::connection_factory::connect_stream(materialised.settings, {}, context));
         ASSERT_EQ(connected.error_code, rpc::error::OK());
         EXPECT_EQ(connected.stream, nullptr);
         ASSERT_EQ(calls.size(), 2u);
@@ -1293,9 +1300,7 @@ namespace
         EXPECT_EQ(calls[1], "connect:test_layer_beta:beta");
 
         calls.clear();
-        auto accepted = SYNC_WAIT(
-            rpc::connection_factory::apply_stream_layers(
-                {}, materialised.settings, 1, rpc::connection_factory::layer_direction::accept, context));
+        auto accepted = SYNC_WAIT(rpc::connection_factory::accept_stream(materialised.settings, {}, context));
         ASSERT_EQ(accepted.error_code, rpc::error::OK());
         EXPECT_EQ(accepted.stream, nullptr);
         ASSERT_EQ(calls.size(), 2u);
@@ -1307,8 +1312,8 @@ namespace
         JsonConvert,
         ConnectionTransportSelectionIsSeparateFromStreamLayers)
     {
-        rpc::connection_factory_config::connection_settings default_settings;
-        const auto default_transport = rpc::connection_factory::transport_from_connection(default_settings);
+        rpc::connection_factory::connection_settings default_settings;
+        const auto default_transport = rpc::connection_factory::detail::transport_from_connection(default_settings);
         ASSERT_EQ(default_transport.error_code, rpc::error::OK());
         EXPECT_EQ(default_transport.type, "stream_rpc");
         EXPECT_EQ(default_transport.settings, nullptr);
@@ -1321,12 +1326,12 @@ namespace
         })json"));
         ASSERT_EQ(local_config.error_code, rpc::error::OK());
 
-        const auto local_transport = rpc::connection_factory::transport_from_connection(local_config.settings);
+        const auto local_transport = rpc::connection_factory::detail::transport_from_connection(local_config.settings);
         ASSERT_EQ(local_transport.error_code, rpc::error::OK());
         EXPECT_EQ(local_transport.type, "local");
         ASSERT_NE(local_transport.settings, nullptr);
         EXPECT_EQ(
-            rpc::connection_factory::resolve_stream_rpc_settings(local_config.settings).error_code,
+            rpc::connection_factory::detail::resolve_stream_rpc_settings(local_config.settings).error_code,
             rpc::error::INVALID_DATA());
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
@@ -1370,7 +1375,7 @@ namespace
         })json"));
         ASSERT_EQ(sgx_config.error_code, rpc::error::OK());
 
-        const auto sgx_transport = rpc::connection_factory::transport_from_connection(sgx_config.settings);
+        const auto sgx_transport = rpc::connection_factory::detail::transport_from_connection(sgx_config.settings);
         ASSERT_EQ(sgx_transport.error_code, rpc::error::OK());
         EXPECT_EQ(sgx_transport.type, "sgx_coroutine");
         ASSERT_NE(sgx_transport.settings, nullptr);
@@ -1455,12 +1460,12 @@ namespace
         })json"));
         ASSERT_EQ(config.error_code, rpc::error::OK());
 
-        const auto transport = rpc::connection_factory::transport_from_connection(config.settings);
+        const auto transport = rpc::connection_factory::detail::transport_from_connection(config.settings);
         ASSERT_EQ(transport.error_code, rpc::error::OK());
         ASSERT_NE(transport.settings, nullptr);
 
-        const auto context = rpc::connection_factory::detail::make_sgx_blocking_connect_context(
-            *transport.settings, config.settings, {});
+        const auto context
+            = rpc::connection_factory::detail::make_native_transport_connect_context(transport, config.settings, {});
         EXPECT_EQ(context.error_code, rpc::error::INVALID_DATA());
         EXPECT_EQ(context.service, nullptr);
         EXPECT_EQ(context.transport, nullptr);
@@ -1485,12 +1490,12 @@ namespace
         })json"));
         ASSERT_EQ(config.error_code, rpc::error::OK());
 
-        const auto transport = rpc::connection_factory::transport_from_connection(config.settings);
+        const auto transport = rpc::connection_factory::detail::transport_from_connection(config.settings);
         ASSERT_EQ(transport.error_code, rpc::error::OK());
         ASSERT_NE(transport.settings, nullptr);
 
-        auto context = rpc::connection_factory::detail::make_sgx_blocking_connect_context(
-            *transport.settings, config.settings, {});
+        auto context
+            = rpc::connection_factory::detail::make_native_transport_connect_context(transport, config.settings, {});
         ASSERT_EQ(context.error_code, rpc::error::OK());
         ASSERT_NE(context.service, nullptr);
         ASSERT_NE(context.transport, nullptr);

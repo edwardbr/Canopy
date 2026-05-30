@@ -8,7 +8,8 @@
 #include <memory>
 #include <utility>
 
-#include <connection_factory/tcp_coroutine.h>
+#include <streaming/tcp_coroutine/factory.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config_schema.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -25,11 +26,11 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service> service,
                 const layered_connection_context&) const -> CORO_TASK(stream_result) override
             {
-                auto io_options = rpc::tcp_coroutine::materialise_tcp_coroutine_options(settings);
+                auto io_options = materialise_settings<rpc::tcp_coroutine_stream::endpoint>(settings);
                 if (io_options.error_code != rpc::error::OK())
                     CO_RETURN stream_result{io_options.error_code, {}};
 
-                CO_RETURN CO_AWAIT rpc::tcp_coroutine::connect_stream(io_options.options, std::move(service));
+                CO_RETURN CO_AWAIT rpc::tcp_coroutine::connect_stream(io_options.settings, std::move(service));
             }
 
             auto accept_base(
@@ -37,20 +38,20 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service> service,
                 const layered_connection_context&) const -> CORO_TASK(stream_acceptor_result) override
             {
-                auto io_options = rpc::tcp_coroutine::materialise_tcp_coroutine_options(settings);
+                auto io_options = materialise_settings<rpc::tcp_coroutine_stream::endpoint>(settings);
                 if (io_options.error_code != rpc::error::OK())
                     CO_RETURN stream_acceptor_result{io_options.error_code, {}, {}, 0};
 
                 auto factory_settings = rpc::connection_factory::make_stream_rpc_settings();
                 if (!service)
                 {
-                    auto runtime = rpc::tcp_coroutine::make_runtime(io_options.options.controller);
+                    auto runtime = rpc::tcp_coroutine::make_runtime(io_options.settings.controller);
                     if (runtime.error_code != rpc::error::OK())
                         CO_RETURN stream_acceptor_result{runtime.error_code, {}, {}, 0};
 
                     auto acceptor = std::make_shared<::streaming::coroutine::tcp::acceptor>(
-                        runtime.controller, io_options.options.stream);
-                    auto listen_result = CO_AWAIT rpc::tcp_coroutine::listen_endpoint(acceptor, io_options.options);
+                        runtime.controller, io_options.settings.stream);
+                    auto listen_result = CO_AWAIT rpc::tcp_coroutine::listen_endpoint(acceptor, io_options.settings);
                     if (listen_result.error_code != rpc::error::OK())
                         CO_RETURN stream_acceptor_result{listen_result.error_code, {}, {}, 0};
                     if (listen_result.port == 0)
@@ -61,7 +62,7 @@ namespace rpc::connection_factory::detail
                 }
 
                 auto acceptor = CO_AWAIT rpc::tcp_coroutine::listen_acceptor(
-                    io_options.options, factory_settings, std::move(service));
+                    io_options.settings, factory_settings, std::move(service));
                 if (acceptor.error_code != rpc::error::OK())
                     CO_RETURN stream_acceptor_result{acceptor.error_code, {}, {}, 0};
                 CO_RETURN stream_acceptor_result{

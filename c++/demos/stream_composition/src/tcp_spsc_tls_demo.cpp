@@ -39,7 +39,7 @@
 
 #include <echo_impl.h>
 #include <rpc/rpc.h>
-#include <connection_factory/stream_rpc.h>
+#include <connection_factory/detail/stream_rpc.h>
 
 #include <streaming/listener.h>
 #include <streaming/spsc_wrapping/stream.h>

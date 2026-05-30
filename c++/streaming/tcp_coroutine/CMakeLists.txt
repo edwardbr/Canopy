@@ -25,7 +25,7 @@ endif()
 
 set(STREAMING_TCP_COROUTINE_SOURCES src/acceptor.cpp src/connector.cpp src/stream.cpp)
 
-add_library(streaming_tcp_coroutine STATIC ${STREAMING_TCP_COROUTINE_SOURCES})
+add_library(streaming_tcp_coroutine STATIC ${STREAMING_TCP_COROUTINE_SOURCES} src/factory.cpp)
 target_include_directories(
   streaming_tcp_coroutine
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
@@ -35,7 +35,7 @@ target_compile_options(streaming_tcp_coroutine PRIVATE ${CANOPY_COMPILE_OPTIONS}
 target_link_options(streaming_tcp_coroutine PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_tcp_coroutine
-  PUBLIC streaming canopy_io_uring io_uring_config_idl tcp_coroutine_stream_config_idl
+  PUBLIC streaming transport_streaming canopy_io_uring io_uring_config_idl tcp_coroutine_stream_config_idl
   PRIVATE rpc libcoro)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

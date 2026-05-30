@@ -5,31 +5,218 @@
 
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include <connection_factory/handles.h>
-#include <connection_factory/options.h>
-#include <connection_factory/service.h>
+#include <rpc/rpc.h>
 #include <streaming/listener.h>
+#include <stream_transport/stream_transport_config.h>
+#include <transports/streaming/transport.h>
 
-namespace rpc::connection_factory
+namespace streaming
 {
-    // This header adapts already-created streams and stream acceptors into RPC
-    // transports. Base-stream factories such as tcp, spsc, and io_uring decide
-    // how the stream is created; the helpers here attach Canopy RPC service
-    // lifetime, transport options, listener lifetime, and generated interfaces.
+    class listener;
+    class stream;
+    class stream_acceptor;
+} // namespace streaming
 
-    // Factory called by listener code once a stream transport has discovered
-    // the remote interface. Returning service_connect_result keeps this aligned
-    // with connect_to_zone without exposing the lower-level transport handshake.
+namespace rpc::stream_transport
+{
+    struct service_settings
+    {
+        rpc::optional<std::string> name;
+    };
+
+    struct connection_settings
+    {
+        service_settings service;
+        transport_settings transport;
+        listener_settings listener;
+    };
+
     template<class Remote, class Local>
     using rpc_factory
         = std::function<CORO_TASK(rpc::service_connect_result<Local>)(rpc::shared_ptr<Remote>, std::shared_ptr<rpc::service>)>;
 
     using rpc_transport_observer = std::function<void(std::shared_ptr<rpc::stream_transport::transport>)>;
+
+    std::shared_ptr<::streaming::stream> keep_owner(
+        std::shared_ptr<::streaming::stream> stream,
+        std::shared_ptr<void> owner);
+
+    rpc::executor_ptr make_default_executor();
+
+    std::optional<rpc::encoding> encoding_option(const transport_settings& settings);
+
+    std::string configured_name(
+        const rpc::optional<std::string>& configured,
+        std::string fallback);
+
+    std::string service_name(
+        const service_settings& settings,
+        std::string fallback);
+
+    std::string transport_name(
+        const transport_settings& settings,
+        std::string fallback);
+
+    std::string service_proxy_name(
+        const transport_settings& settings,
+        std::string fallback);
+
+    std::string listener_name(
+        const listener_settings& settings,
+        std::string fallback);
+
+    stream_transport_options transport_options(const transport_settings& settings);
+
+    int configure_service(
+        const std::shared_ptr<rpc::service>& service,
+        const transport_settings& settings);
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const service_settings& service_settings,
+        const transport_settings& transport_settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name);
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name);
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const transport_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name);
+
+    connection_settings make_connection_settings(
+        transport_settings transport = {},
+        service_settings service = {},
+        listener_settings listener = {});
+
+    struct stream_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<::streaming::stream> stream;
+        int32_t native_result{0};
+    };
+
+    struct stream_acceptor_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<::streaming::stream_acceptor> acceptor;
+        std::shared_ptr<void> owner;
+        uint16_t port{0};
+    };
+
+    using stream_callback = std::function<CORO_TASK(void)(std::shared_ptr<::streaming::stream>)>;
+
+    class stream_accept_handle : public std::enable_shared_from_this<stream_accept_handle>
+    {
+    public:
+        stream_accept_handle(
+            std::shared_ptr<::streaming::stream_acceptor> acceptor,
+            std::shared_ptr<rpc::service> service,
+            stream_callback callback,
+            std::shared_ptr<void> owner = {},
+            uint16_t port = 0);
+
+        [[nodiscard]] bool start();
+
+        CORO_TASK(void) stop();
+
+        [[nodiscard]] uint16_t port() const noexcept;
+
+    private:
+        CORO_TASK(void) run(std::shared_ptr<stream_accept_handle> self);
+
+        std::shared_ptr<::streaming::stream_acceptor> acceptor_;
+        std::shared_ptr<rpc::service> service_;
+        rpc::executor_ptr executor_;
+        stream_callback callback_;
+        std::shared_ptr<void> owner_;
+        uint16_t port_{0};
+        rpc::event stopped_;
+        std::atomic<bool> running_{false};
+        std::atomic<bool> stopping_{false};
+    };
+
+    struct stream_accept_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<stream_accept_handle> handle;
+    };
+
+    stream_accept_result accept_streams(
+        std::shared_ptr<::streaming::stream_acceptor> acceptor,
+        stream_callback callback,
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service = {},
+        std::shared_ptr<void> owner = {},
+        uint16_t port = 0);
+
+    class listener_handle
+    {
+    public:
+        listener_handle(
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<::streaming::stream_acceptor> acceptor,
+            std::unique_ptr<::streaming::listener> listener,
+            std::shared_ptr<void> owner = {},
+            uint16_t port = 0);
+        ~listener_handle();
+
+        listener_handle(const listener_handle&) = delete;
+        auto operator=(const listener_handle&) -> listener_handle& = delete;
+
+        CORO_TASK(void) stop();
+
+        [[nodiscard]] std::shared_ptr<rpc::service> service() const;
+        [[nodiscard]] uint16_t port() const noexcept;
+
+    private:
+        std::shared_ptr<rpc::service> service_;
+        std::shared_ptr<::streaming::stream_acceptor> acceptor_;
+        std::unique_ptr<::streaming::listener> listener_;
+        std::shared_ptr<void> owner_;
+        uint16_t port_{0};
+    };
+
+    struct listener_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<listener_handle> handle;
+    };
+
+    class rpc_connection_handle
+    {
+    public:
+        rpc_connection_handle(
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<rpc::stream_transport::transport> transport,
+            std::shared_ptr<void> owner = {});
+
+        [[nodiscard]] std::shared_ptr<rpc::service> service() const;
+        [[nodiscard]] std::shared_ptr<rpc::stream_transport::transport> transport() const;
+
+    private:
+        std::shared_ptr<rpc::service> service_;
+        std::shared_ptr<rpc::stream_transport::transport> transport_;
+        std::shared_ptr<void> owner_;
+    };
+
+    struct rpc_accept_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<rpc_connection_handle> handle;
+    };
 
     struct client_rpc_stream_transport_result
     {
@@ -40,21 +227,19 @@ namespace rpc::connection_factory
 
     client_rpc_stream_transport_result make_client_rpc_stream_transport(
         std::shared_ptr<::streaming::stream> stream,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {});
 
     CORO_TASK(listener_result)
     start_rpc_listener(
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
         ::streaming::listener::connection_callback on_connection,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
         ::streaming::listener::stream_transformer transform_stream = {});
 
-    // Adapt a pre-existing local interface into the factory shape expected by
-    // accept_rpc_* helpers.
     template<
         class Remote,
         class Local>
@@ -69,8 +254,6 @@ namespace rpc::connection_factory
         { CO_RETURN rpc::service_connect_result<Local>{rpc::error::OK(), local_interface}; };
     }
 
-    // Attach an RPC transport to an already-created stream. Transport and
-    // connection names come from the materialised factory options.
     template<
         class In,
         class Out>
@@ -78,7 +261,7 @@ namespace rpc::connection_factory
     connect_rpc_stream(
         rpc::shared_ptr<In> input_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {})
     {
         auto transport_result = make_client_rpc_stream_transport(std::move(stream), settings, std::move(service));
@@ -97,25 +280,23 @@ namespace rpc::connection_factory
     connect_rpc_stream(
         rpc::shared_ptr<In> input_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const rpc::stream_transport::transport_settings& settings,
+        const transport_settings& settings,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT connect_rpc_stream<In, Out>(
-            std::move(input_interface), std::move(stream), make_stream_rpc_settings(settings), std::move(service));
+            std::move(input_interface), std::move(stream), make_connection_settings(settings), std::move(service));
     }
 
     template<
         class Remote,
         class Local>
-    // Accept many RPC connections from a stream_acceptor. Per-connection stream
-    // transforms, such as TLS or WebSocket upgrade, plug in here without the
-    // caller constructing services, listeners, or transports by hand.
-    CORO_TASK(listener_result) accept_rpc_listener(
+    CORO_TASK(listener_result)
+    accept_rpc_listener(
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
         rpc_factory<
             Remote,
             Local> factory,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -152,7 +333,7 @@ namespace rpc::connection_factory
         rpc_factory<
             Remote,
             Local> factory,
-        const rpc::stream_transport::transport_settings& settings,
+        const transport_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -162,7 +343,7 @@ namespace rpc::connection_factory
         CO_RETURN CO_AWAIT accept_rpc_listener<Remote, Local>(
             std::move(acceptor),
             std::move(factory),
-            make_stream_rpc_settings(settings),
+            make_connection_settings(settings),
             std::move(service),
             std::move(owner),
             port,
@@ -177,7 +358,7 @@ namespace rpc::connection_factory
     accept_rpc_listener(
         rpc::shared_ptr<Local> local_interface,
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -198,13 +379,13 @@ namespace rpc::connection_factory
     template<
         class Remote,
         class Local>
-    // Accept a single already-created stream as an RPC connection.
-    CORO_TASK(rpc_accept_result) accept_rpc_stream(
+    CORO_TASK(rpc_accept_result)
+    accept_rpc_stream(
         std::shared_ptr<::streaming::stream> stream,
         rpc_factory<
             Remote,
             Local> factory,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {})
     {
@@ -235,7 +416,7 @@ namespace rpc::connection_factory
     accept_rpc_stream(
         rpc::shared_ptr<Local> local_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {})
     {
@@ -246,4 +427,4 @@ namespace rpc::connection_factory
             std::move(service),
             std::move(owner));
     }
-} // namespace rpc::connection_factory
+} // namespace rpc::stream_transport

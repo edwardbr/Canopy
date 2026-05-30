@@ -10,7 +10,7 @@
 
 #include <local_transport/local_transport_config.h>
 #include <local_transport/local_transport_config_schema.h>
-#include <transports/local/transport.h>
+#include <transports/local/factory.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -21,10 +21,13 @@ namespace rpc::connection_factory::detail
         public:
             auto connect_transport(
                 const json::v1::object& transport_options,
-                const rpc::connection_factory_config::connection_settings& settings,
+                const rpc::connection_factory::connection_settings& settings,
                 std::shared_ptr<rpc::service> service) const -> transport_connect_context override
             {
-                auto service_settings = service_settings_from_connection(settings);
+                if (!settings.stream_layers.empty())
+                    return {rpc::error::INVALID_DATA(), {}, {}, {}};
+
+                auto service_settings = detail::service_settings_from_connection(settings);
                 if (service_settings.error_code != rpc::error::OK())
                     return {service_settings.error_code, {}, {}, {}};
 
@@ -40,12 +43,11 @@ namespace rpc::connection_factory::detail
                 if (!resolved_service)
                     return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-                auto transport = std::make_shared<rpc::local::child_transport>(
-                    configured_name(local_settings.name, "main child"), resolved_service);
-                auto proxy_name = configured_name(
-                    local_settings.service_proxy_name, configured_name(local_settings.name, "main child"));
-
-                return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+                auto result = rpc::local_transport::connect_transport(local_settings, std::move(resolved_service));
+                return {result.error_code,
+                    std::move(result.service),
+                    std::move(result.transport),
+                    std::move(result.service_proxy_name)};
             }
         };
     } // namespace

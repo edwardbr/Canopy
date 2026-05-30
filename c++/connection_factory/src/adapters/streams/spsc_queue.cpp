@@ -9,7 +9,8 @@
 #include <string>
 #include <utility>
 
-#include <connection_factory/spsc_queue.h>
+#include <streaming/spsc_queue/factory.h>
+#include <spsc_queue_stream/spsc_queue_stream_config_schema.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -26,11 +27,11 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service> service,
                 const layered_connection_context& context) const -> CORO_TASK(stream_result) override
             {
-                auto spsc_settings = rpc::spsc_queue::materialise_spsc_queue_options(settings);
+                auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())
                     CO_RETURN stream_result{spsc_settings.error_code, {}};
                 auto queues = context.get_dependency<rpc::spsc_queue::queue_pair>(
-                    spsc_settings.options.queue_pair ? spsc_settings.options.queue_pair.value() : std::string{});
+                    spsc_settings.settings.queue_pair ? spsc_settings.settings.queue_pair.value() : std::string{});
                 if (!queues)
                     CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
                 CO_RETURN CO_AWAIT rpc::spsc_queue::connect_stream(*queues, std::move(service));
@@ -41,11 +42,11 @@ namespace rpc::connection_factory::detail
                 std::shared_ptr<rpc::service> service,
                 const layered_connection_context& context) const -> CORO_TASK(stream_result) override
             {
-                auto spsc_settings = rpc::spsc_queue::materialise_spsc_queue_options(settings);
+                auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())
                     CO_RETURN stream_result{spsc_settings.error_code, {}};
                 auto queues = context.get_dependency<rpc::spsc_queue::queue_pair>(
-                    spsc_settings.options.queue_pair ? spsc_settings.options.queue_pair.value() : std::string{});
+                    spsc_settings.settings.queue_pair ? spsc_settings.settings.queue_pair.value() : std::string{});
                 if (!queues)
                     CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
                 CO_RETURN CO_AWAIT rpc::spsc_queue::accept_stream(*queues, std::move(service));

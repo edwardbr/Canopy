@@ -22,9 +22,10 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
                   ${CANOPY_INTERFACE_SOURCE_DIR}
     install_dir ${GENERATED_INSTALL_DIR})
 
-  target_link_libraries(transport_sgx_coroutine_host_headers INTERFACE sgx_coroutine_transport_config_idl)
+  target_link_libraries(transport_sgx_coroutine_host_headers INTERFACE sgx_coroutine_transport_config_idl
+                                                                  transport_factory)
 
-  add_library(transport_sgx_coroutine host/src/transport.cpp)
+  add_library(transport_sgx_coroutine host/src/transport.cpp host/src/factory.cpp)
 
   target_compile_definitions(
     transport_sgx_coroutine PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE

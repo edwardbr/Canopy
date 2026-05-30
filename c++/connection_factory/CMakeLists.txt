@@ -17,25 +17,10 @@ CanopyGenerate(
                 ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
-CanopyGenerate(
-  connection_factory_service
-  connection_factory_service/connection_factory_service.idl
-  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
-  ${CMAKE_BINARY_DIR}/generated
-  ""
-  yas_json
-  dependencies rpc_types_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
-                ${CANOPY_INTERFACE_SOURCE_DIR}
-  install_dir ${GENERATED_INSTALL_DIR})
-
 add_library(
   connection_factory STATIC
   src/connection_factory.cpp
-  src/handles.cpp
-  src/options.cpp
-  src/service.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../transports/streaming/src/connection_factory_adapter.cpp)
+  src/options.cpp)
 target_include_directories(
   connection_factory
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
@@ -49,7 +34,6 @@ target_link_libraries(
          streaming_layer_factory
          json
          connection_factory_config_idl
-         connection_factory_service_idl
          json_idl
          stream_layers_idl
          io_uring_config_idl)
@@ -57,8 +41,7 @@ target_link_libraries(
 if(TARGET streaming_tcp_blocking)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_blocking/src/connection_factory_helpers.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_blocking/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/streams/tcp_blocking.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_tcp_blocking tcp_blocking_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING)
 endif()
@@ -66,7 +49,7 @@ endif()
 if(TARGET transport_local)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/local/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/transports/local.cpp)
   target_link_libraries(connection_factory PUBLIC transport_local local_transport_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_LOCAL)
 endif()
@@ -74,7 +57,7 @@ endif()
 if(TARGET transport_sgx_coroutine)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/sgx_coroutine/host/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/transports/sgx_coroutine.cpp)
   target_link_libraries(connection_factory PUBLIC transport_sgx_coroutine sgx_coroutine_transport_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE)
 endif()
@@ -82,7 +65,7 @@ endif()
 if(TARGET transport_sgx_blocking)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../transports/sgx_blocking/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/transports/sgx_blocking.cpp)
   target_link_libraries(connection_factory PUBLIC transport_sgx_blocking sgx_blocking_transport_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING)
 endif()
@@ -90,8 +73,7 @@ endif()
 if(TARGET streaming_spsc_queue)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/spsc_queue/src/connection_factory_helpers.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/spsc_queue/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/streams/spsc_queue.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_spsc_queue spsc_queue_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC)
 endif()
@@ -104,8 +86,7 @@ endif()
 if(TARGET streaming_tcp_coroutine)
   target_sources(
     connection_factory
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_coroutine/src/connection_factory_helpers.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/../streaming/tcp_coroutine/src/connection_factory_adapter.cpp)
+    PRIVATE src/adapters/streams/tcp_coroutine.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_tcp_coroutine)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE)
 endif()

@@ -17,15 +17,15 @@ class streaming_layered_tcp_blocking_setup
 {
     std::shared_ptr<rpc::connection_factory::listener_handle> rpc_listener_;
 
-    static rpc::connection_factory_config::connection_settings make_options()
+    static rpc::connection_factory::connection_settings make_options()
     {
-        rpc::connection_factory_config::connection_settings options;
+        rpc::connection_factory::connection_settings options;
         using json::v1::convert::to_json_object;
 
         rpc::stream_transport::transport_settings transport;
         transport.call_timeout = uint64_t{30000};
         transport.call_timeout_sweep = uint64_t{1};
-        rpc::connection_factory_config::typed_settings transport_settings;
+        rpc::connection_factory::typed_settings transport_settings;
         transport_settings.type = "stream_rpc";
         transport_settings.settings = to_json_object(transport);
         options.transport = std::move(transport_settings);

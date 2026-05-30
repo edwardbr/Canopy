@@ -12,7 +12,7 @@
 #include "test_globals.h"
 
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <connection_factory/spsc_queue.h>
+#  include <streaming/spsc_queue/factory.h>
 #  include <transport/tests/streaming_layered_spsc/setup.h>
 #  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_tcp_coroutine/setup.h>

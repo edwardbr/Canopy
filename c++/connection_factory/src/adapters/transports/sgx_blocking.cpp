@@ -8,10 +8,9 @@
 #include <memory>
 #include <utility>
 
-#include <json/convert.h>
 #include <sgx_blocking_transport/sgx_blocking_transport_config.h>
 #include <sgx_blocking_transport/sgx_blocking_transport_config_schema.h>
-#include <transports/sgx_blocking/transport.h>
+#include <transports/sgx_blocking/factory.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -22,13 +21,13 @@ namespace rpc::connection_factory::detail
         public:
             auto connect_transport(
                 const json::v1::object& transport_options,
-                const rpc::connection_factory_config::connection_settings& settings,
+                const rpc::connection_factory::connection_settings& settings,
                 std::shared_ptr<rpc::service> service) const -> transport_connect_context override
             {
                 if (!settings.stream_layers.empty())
                     return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-                auto service_settings = service_settings_from_connection(settings);
+                auto service_settings = detail::service_settings_from_connection(settings);
                 if (service_settings.error_code != rpc::error::OK())
                     return {service_settings.error_code, {}, {}, {}};
 
@@ -37,8 +36,6 @@ namespace rpc::connection_factory::detail
                 if (materialised.error_code != rpc::error::OK())
                     return {materialised.error_code, {}, {}, {}};
                 auto sgx_settings = std::move(materialised.settings);
-                if (sgx_settings.enclave_path.empty())
-                    return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
                 rpc::stream_transport::transport_settings service_transport_settings;
                 service_transport_settings.encoding = sgx_settings.encoding;
@@ -47,21 +44,11 @@ namespace rpc::connection_factory::detail
                 if (!resolved_service)
                     return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-                auto transport = std::make_shared<rpc::sgx_blocking_transport::enclave_transport>(
-                    configured_name(sgx_settings.name, "sgx_blocking_transport"),
-                    resolved_service,
-                    std::move(sgx_settings.enclave_path));
-
-                if (sgx_settings.enclave)
-                {
-                    using json::v1::convert::to_json_object;
-                    transport->set_enclave_runtime_settings(to_json_object(sgx_settings.enclave.value()));
-                }
-
-                auto proxy_name = configured_name(
-                    sgx_settings.service_proxy_name, configured_name(sgx_settings.name, "sgx_blocking_child"));
-
-                return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+                auto result = rpc::sgx_blocking_transport::connect_transport(sgx_settings, std::move(resolved_service));
+                return {result.error_code,
+                    std::move(result.service),
+                    std::move(result.transport),
+                    std::move(result.service_proxy_name)};
             }
         };
     } // namespace

@@ -15,7 +15,7 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
-add_library(streaming_spsc_queue STATIC src/stream.cpp)
+add_library(streaming_spsc_queue STATIC src/stream.cpp src/factory.cpp)
 target_include_directories(
   streaming_spsc_queue
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"

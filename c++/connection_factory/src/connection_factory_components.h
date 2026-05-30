@@ -11,7 +11,8 @@
 #include <unordered_map>
 #include <utility>
 
-#include <connection_factory/connection_factory.h>
+#include <connection_factory/detail/context.h>
+#include <connection_factory/detail/service.h>
 
 namespace rpc::connection_factory::detail
 {
@@ -123,7 +124,7 @@ namespace rpc::connection_factory::detail
 
         virtual auto connect_transport(
             const json::v1::object&,
-            const rpc::connection_factory_config::connection_settings&,
+            const connection_settings&,
             std::shared_ptr<rpc::service>) const -> transport_connect_context
         {
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
@@ -133,8 +134,8 @@ namespace rpc::connection_factory::detail
     using transport_component_map = std::unordered_map<std::string, std::shared_ptr<const transport_component_factory>>;
 
     transport_connect_context make_transport_connect_context(
-        const rpc::connection_factory_config::typed_settings& transport_settings,
-        const rpc::connection_factory_config::connection_settings& settings,
+        const typed_settings& transport_settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service);
 
     template<class Options> auto materialise_layer_settings(const json::v1::object& options) -> std::optional<Options>

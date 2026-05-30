@@ -3,17 +3,18 @@
  *   All rights reserved.
  */
 
-#include <connection_factory/handles.h>
+#include <transports/streaming/factory.h>
 
+#include <algorithm>
 #include <chrono>
+#include <thread>
 #include <utility>
 
-#include <connection_factory/service.h>
 #include <streaming/listener.h>
 #include <streaming/stream.h>
 #include <streaming/stream_acceptor.h>
 
-namespace rpc::connection_factory
+namespace rpc::stream_transport
 {
     namespace
     {
@@ -64,6 +65,132 @@ namespace rpc::connection_factory
         if (!owner)
             return stream;
         return std::make_shared<owning_stream>(std::move(stream), std::move(owner));
+    }
+
+    rpc::executor_ptr make_default_executor()
+    {
+#ifdef CANOPY_BUILD_COROUTINE
+        auto options = rpc::coro::scheduler::options{};
+        options.thread_strategy = rpc::coro::scheduler::thread_strategy_t::spawn;
+        options.pool.thread_count = std::max(1U, std::thread::hardware_concurrency());
+        return rpc::coro::make_shared_scheduler(options);
+#else
+        return std::make_shared<rpc::executor>();
+#endif
+    }
+
+    std::optional<rpc::encoding> encoding_option(const transport_settings& settings)
+    {
+        if (!settings.encoding)
+            return std::nullopt;
+        if (settings.encoding.value() == rpc::encoding::not_set)
+            return std::nullopt;
+        return settings.encoding.value();
+    }
+
+    std::string configured_name(
+        const rpc::optional<std::string>& configured,
+        std::string fallback)
+    {
+        if (!configured)
+            return fallback;
+        return configured.value();
+    }
+
+    std::string service_name(
+        const service_settings& settings,
+        std::string fallback)
+    {
+        return configured_name(settings.name, std::move(fallback));
+    }
+
+    std::string transport_name(
+        const transport_settings& settings,
+        std::string fallback)
+    {
+        return configured_name(settings.name, std::move(fallback));
+    }
+
+    std::string service_proxy_name(
+        const transport_settings& settings,
+        std::string fallback)
+    {
+        if (settings.service_proxy_name)
+            return settings.service_proxy_name.value();
+        return configured_name(settings.name, std::move(fallback));
+    }
+
+    std::string listener_name(
+        const listener_settings& settings,
+        std::string fallback)
+    {
+        return configured_name(settings.name, std::move(fallback));
+    }
+
+    stream_transport_options transport_options(const transport_settings& settings)
+    {
+        stream_transport_options result;
+        if (settings.call_timeout)
+            result.call_timeout = std::chrono::milliseconds(settings.call_timeout.value());
+        if (settings.call_timeout_sweep)
+            result.call_timeout_sweep = std::chrono::milliseconds(settings.call_timeout_sweep.value());
+        if (settings.shutdown_timeout)
+            result.shutdown_timeout = std::chrono::milliseconds(settings.shutdown_timeout.value());
+        return result;
+    }
+
+    int configure_service(
+        const std::shared_ptr<rpc::service>& service,
+        const transport_settings& settings)
+    {
+        if (!service)
+            return rpc::error::OK();
+        if (auto enc = encoding_option(settings))
+            service->set_default_encoding(*enc);
+        return rpc::error::OK();
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const service_settings& settings,
+        const transport_settings& transport_settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        if (service)
+        {
+            configure_service(service, transport_settings);
+            return service;
+        }
+
+        rpc::service_config config;
+        const auto name = service_name(settings, std::move(default_name));
+        auto created = rpc::root_service::create(name.c_str(), config, make_default_executor());
+        configure_service(created, transport_settings);
+        return created;
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        return ensure_service(settings.service, settings.transport, std::move(service), std::move(default_name));
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const transport_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        return ensure_service({}, settings, std::move(service), std::move(default_name));
+    }
+
+    connection_settings make_connection_settings(
+        transport_settings transport,
+        service_settings service,
+        listener_settings listener)
+    {
+        return {std::move(service), std::move(transport), std::move(listener)};
     }
 
     stream_accept_handle::stream_accept_handle(
@@ -167,7 +294,7 @@ namespace rpc::connection_factory
     stream_accept_result accept_streams(
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
         stream_callback callback,
-        const stream_rpc_connection_settings& settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<void> owner,
         uint16_t port)
@@ -243,4 +370,52 @@ namespace rpc::connection_factory
     {
         return transport_;
     }
-} // namespace rpc::connection_factory
+
+    client_rpc_stream_transport_result make_client_rpc_stream_transport(
+        std::shared_ptr<::streaming::stream> stream,
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service)
+    {
+        auto resolved_service = ensure_service(settings, std::move(service), "rpc_client_service");
+        if (!resolved_service)
+            return {rpc::error::INVALID_DATA(), {}, {}};
+
+        auto transport = rpc::stream_transport::make_client(
+            transport_name(settings.transport, "initiator_transport"),
+            resolved_service,
+            std::move(stream),
+            transport_options(settings.transport));
+        if (!transport)
+            return {rpc::error::TRANSPORT_ERROR(), {}, {}};
+
+        return {rpc::error::OK(), std::move(resolved_service), std::move(transport)};
+    }
+
+    CORO_TASK(listener_result)
+    start_rpc_listener(
+        std::shared_ptr<::streaming::stream_acceptor> acceptor,
+        ::streaming::listener::connection_callback on_connection,
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::shared_ptr<void> owner,
+        uint16_t port,
+        ::streaming::listener::stream_transformer transform_stream)
+    {
+        auto resolved_service = ensure_service(settings, std::move(service), "rpc_accept_service");
+        if (!resolved_service)
+            CO_RETURN listener_result{rpc::error::INVALID_DATA(), {}};
+
+        auto listener = std::make_unique<::streaming::listener>(
+            listener_name(settings.listener, "responder_listener"),
+            acceptor,
+            std::move(on_connection),
+            std::move(transform_stream));
+
+        if (!CO_AWAIT listener->start_listening_async(resolved_service))
+            CO_RETURN listener_result{rpc::error::TRANSPORT_ERROR(), {}};
+
+        CO_RETURN listener_result{rpc::error::OK(),
+            std::make_shared<listener_handle>(
+                std::move(resolved_service), std::move(acceptor), std::move(listener), std::move(owner), port)};
+    }
+} // namespace rpc::stream_transport

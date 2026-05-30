@@ -15,13 +15,13 @@ namespace rpc::connection_factory
     {
         auto connection_settings_schema() -> const json::v1::object&
         {
-            static const json::v1::object schema = json::v1::parse(
-                rpc::connection_factory_config::connection_settings::get_schema(rpc::encoding::yas_json));
+            static const json::v1::object schema
+                = json::v1::parse(connection_settings::get_schema(rpc::encoding::yas_json));
             return schema;
         }
 
         bool type_is(
-            const rpc::connection_factory_config::typed_settings& typed,
+            const typed_settings& typed,
             std::string_view expected)
         {
             return typed.type == expected;
@@ -41,7 +41,7 @@ namespace rpc::connection_factory
         try
         {
             return {rpc::error::OK(),
-                json::v1::load_typed_config<rpc::connection_factory_config::connection_settings>(
+                json::v1::load_typed_config<connection_settings>(
                     connection_settings_schema(), default_values, client_overrides)};
         }
         catch (const std::exception&)
@@ -50,24 +50,23 @@ namespace rpc::connection_factory
         }
     }
 
-    const json::v1::object& settings_object(const rpc::connection_factory_config::typed_settings& typed)
+    const json::v1::object& detail::settings_object(const typed_settings& typed)
     {
         if (!typed.settings)
             return empty_options();
         return typed.settings.value();
     }
 
-    const json::v1::object& settings_object(const rpc::stream_layers::stream_layer_settings& typed)
+    const json::v1::object& detail::settings_object(const rpc::stream_layers::stream_layer_settings& typed)
     {
         if (!typed.settings)
             return empty_options();
         return typed.settings.value();
     }
 
-    materialise_settings_result<rpc::connection_factory_config::service::settings> service_settings_from_connection(
-        const rpc::connection_factory_config::connection_settings& settings)
+    materialise_settings_result<service_settings> detail::service_settings_from_connection(
+        const connection_settings& settings)
     {
-        using service_settings = rpc::connection_factory_config::service::settings;
         if (!settings.service)
             return {rpc::error::OK(), {}};
         const auto& typed = settings.service.value();
@@ -76,7 +75,7 @@ namespace rpc::connection_factory
         return materialise_settings<service_settings>(typed);
     }
 
-    transport_selection_result transport_from_connection(const rpc::connection_factory_config::connection_settings& settings)
+    detail::transport_selection_result detail::transport_from_connection(const connection_settings& settings)
     {
         if (!settings.transport)
             return {};
@@ -85,11 +84,11 @@ namespace rpc::connection_factory
         return {rpc::error::OK(), settings.transport->type, &settings.transport.value()};
     }
 
-    materialise_settings_result<rpc::stream_transport::transport_settings> stream_rpc_transport_settings_from_connection(
-        const rpc::connection_factory_config::connection_settings& settings)
+    materialise_settings_result<rpc::stream_transport::transport_settings>
+    detail::stream_rpc_transport_settings_from_connection(const connection_settings& settings)
     {
         using transport_settings = rpc::stream_transport::transport_settings;
-        auto transport = transport_from_connection(settings);
+        auto transport = detail::transport_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
             return {transport.error_code, {}};
         if (transport.type == "stream_rpc" && !transport.settings)
@@ -99,8 +98,8 @@ namespace rpc::connection_factory
         return materialise_settings<transport_settings>(*transport.settings);
     }
 
-    materialise_settings_result<rpc::stream_transport::listener_settings> stream_rpc_listener_settings_from_connection(
-        const rpc::connection_factory_config::connection_settings& settings)
+    materialise_settings_result<rpc::stream_transport::listener_settings>
+    detail::stream_rpc_listener_settings_from_connection(const connection_settings& settings)
     {
         using listener_settings = rpc::stream_transport::listener_settings;
         if (!settings.listener)
@@ -111,21 +110,20 @@ namespace rpc::connection_factory
         return materialise_settings<listener_settings>(typed);
     }
 
-    resolve_stream_rpc_settings_result resolve_stream_rpc_settings(
-        const rpc::connection_factory_config::connection_settings& settings)
+    detail::resolve_stream_rpc_settings_result detail::resolve_stream_rpc_settings(const connection_settings& settings)
     {
-        resolve_stream_rpc_settings_result result;
-        auto service = service_settings_from_connection(settings);
+        detail::resolve_stream_rpc_settings_result result;
+        auto service = detail::service_settings_from_connection(settings);
         if (service.error_code != rpc::error::OK())
             return {service.error_code, {}};
-        result.settings.service = std::move(service.settings);
+        result.settings.service.name = std::move(service.settings.name);
 
-        auto transport = stream_rpc_transport_settings_from_connection(settings);
+        auto transport = detail::stream_rpc_transport_settings_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
             return {transport.error_code, {}};
         result.settings.transport = std::move(transport.settings);
 
-        auto listener = stream_rpc_listener_settings_from_connection(settings);
+        auto listener = detail::stream_rpc_listener_settings_from_connection(settings);
         if (listener.error_code != rpc::error::OK())
             return {listener.error_code, {}};
         result.settings.listener = std::move(listener.settings);
@@ -134,32 +132,29 @@ namespace rpc::connection_factory
 
     stream_rpc_connection_settings make_stream_rpc_settings(
         rpc::stream_transport::transport_settings transport,
-        rpc::connection_factory_config::service::settings service,
+        service_settings service,
         rpc::stream_transport::listener_settings listener)
     {
-        return {std::move(service), std::move(transport), std::move(listener)};
+        rpc::stream_transport::service_settings stream_service;
+        stream_service.name = std::move(service.name);
+        return rpc::stream_transport::make_connection_settings(
+            std::move(transport), std::move(stream_service), std::move(listener));
     }
 
     std::optional<rpc::encoding> encoding_option(const rpc::stream_transport::transport_settings& settings)
     {
-        if (!settings.encoding)
-            return std::nullopt;
-        if (settings.encoding.value() == rpc::encoding::not_set)
-            return std::nullopt;
-        return settings.encoding.value();
+        return rpc::stream_transport::encoding_option(settings);
     }
 
     std::string configured_name(
         const rpc::optional<std::string>& configured,
         std::string fallback)
     {
-        if (!configured)
-            return fallback;
-        return configured.value();
+        return rpc::stream_transport::configured_name(configured, std::move(fallback));
     }
 
     std::string service_name(
-        const rpc::connection_factory_config::service::settings& settings,
+        const service_settings& settings,
         std::string fallback)
     {
         return configured_name(settings.name, std::move(fallback));
@@ -169,35 +164,26 @@ namespace rpc::connection_factory
         const rpc::stream_transport::transport_settings& settings,
         std::string fallback)
     {
-        return configured_name(settings.name, std::move(fallback));
+        return rpc::stream_transport::transport_name(settings, std::move(fallback));
     }
 
     std::string service_proxy_name(
         const rpc::stream_transport::transport_settings& settings,
         std::string fallback)
     {
-        if (settings.service_proxy_name)
-            return settings.service_proxy_name.value();
-        return configured_name(settings.name, std::move(fallback));
+        return rpc::stream_transport::service_proxy_name(settings, std::move(fallback));
     }
 
     std::string listener_name(
         const rpc::stream_transport::listener_settings& settings,
         std::string fallback)
     {
-        return configured_name(settings.name, std::move(fallback));
+        return rpc::stream_transport::listener_name(settings, std::move(fallback));
     }
 
     rpc::stream_transport::stream_transport_options transport_options(
         const rpc::stream_transport::transport_settings& settings)
     {
-        rpc::stream_transport::stream_transport_options result;
-        if (settings.call_timeout)
-            result.call_timeout = std::chrono::milliseconds(settings.call_timeout.value());
-        if (settings.call_timeout_sweep)
-            result.call_timeout_sweep = std::chrono::milliseconds(settings.call_timeout_sweep.value());
-        if (settings.shutdown_timeout)
-            result.shutdown_timeout = std::chrono::milliseconds(settings.shutdown_timeout.value());
-        return result;
+        return rpc::stream_transport::transport_options(settings);
     }
 } // namespace rpc::connection_factory

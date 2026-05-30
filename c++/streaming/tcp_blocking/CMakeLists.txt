@@ -20,7 +20,7 @@ if(CANOPY_BUILD_COROUTINE)
   return()
 endif()
 
-add_library(streaming_tcp_blocking STATIC src/stream.cpp src/socket.cpp src/acceptor.cpp)
+add_library(streaming_tcp_blocking STATIC src/stream.cpp src/socket.cpp src/acceptor.cpp src/factory.cpp)
 target_include_directories(
   streaming_tcp_blocking
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"

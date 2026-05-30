@@ -9,8 +9,18 @@
 
 namespace rpc
 {
-    namespace connection_factory_config
+    namespace connection_factory
     {
+        // Settings for the service object that owns transports created by the
+        // connection factory. JSON never carries service pointers; it only
+        // controls the name used when the factory must create a root service
+        // itself.
+        struct service_settings
+        {
+            [description="Root service name used only when the caller did not pass an existing service to the factory."]
+            rpc::optional<std::string> name;
+        };
+
         // A typed settings blob is the generic envelope used by the connection
         // factory. The factory owns this envelope only; the implementation
         // identified by type owns the schema of settings and converts it with
@@ -49,13 +59,13 @@ namespace rpc
         // function-call transports, do not use stream_layers.
         struct connection_settings
         {
-            [description="Optional service settings. Type service/root_service selects connection_factory service settings; omit this field to use the supplied service or create the default root service."]
+            [description="Optional service settings. Type service/root_service selects connection_factory service_settings; omit this field to use the supplied service or create the default root service."]
             rpc::optional<typed_settings> service;
 
             [description="Optional listener settings used when accepting many stream RPC connections. Type stream_rpc selects connection_factory stream RPC listener settings."]
             rpc::optional<typed_settings> listener;
 
-            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Native transports may also consume stream_layers when they own an internal byte stream. Non-stream transports reject stream_layers."]
+            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Current built-in native transports reject stream_layers; stream-like native transports need explicit support before using this field."]
             rpc::optional<typed_settings> transport;
 
             [description="Ordered byte-stream layer stack. For stream_rpc the first item is the base stream and following items are wrappers. For stream-backed native transports this list contains wrappers over the transport-owned base stream. Omit this for non-stream transports."]

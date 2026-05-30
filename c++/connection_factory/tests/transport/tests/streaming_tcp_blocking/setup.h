@@ -7,14 +7,14 @@
 #include <cstdint>
 #include <string>
 
-#include <connection_factory/tcp_blocking.h>
+#include <streaming/tcp_blocking/factory.h>
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
 class streaming_tcp_blocking_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
-    std::shared_ptr<rpc::connection_factory::listener_handle> rpc_listener_;
+    std::shared_ptr<rpc::stream_transport::listener_handle> rpc_listener_;
 
 protected:
     CORO_TASK(bool) do_coro_setup() override
@@ -33,7 +33,7 @@ protected:
         endpoint.host = std::string("127.0.0.1");
         endpoint.port = uint16_t{8080};
 
-        rpc::connection_factory::stream_rpc_connection_settings options;
+        rpc::stream_transport::connection_settings options;
         options.transport.call_timeout = uint64_t{30000};
         options.transport.call_timeout_sweep = uint64_t{1};
 

@@ -3,20 +3,16 @@
  *   All rights reserved.
  */
 
-#include <connection_factory/tcp_coroutine.h>
+#include <streaming/tcp_coroutine/factory.h>
 
 #include <arpa/inet.h>
 
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <exception>
 #include <utility>
 
-#include <json/config_loader.h>
-#include <json/convert.h>
 #include <streaming/tcp_coroutine/connector.h>
-#include <tcp_coroutine_stream/tcp_coroutine_stream_config_schema.h>
 
 namespace rpc::tcp_coroutine
 {
@@ -31,7 +27,7 @@ namespace rpc::tcp_coroutine
 
         struct tcp_coroutine_runtime_options
         {
-            rpc::connection_factory::stream_rpc_connection_settings factory_settings;
+            rpc::stream_transport::connection_settings factory_settings;
             rpc::io_uring::host_controller::options controller_options;
             ::streaming::coroutine::tcp::stream::options stream_options;
             uint16_t port{0};
@@ -55,8 +51,7 @@ namespace rpc::tcp_coroutine
 
         tcp_coroutine_runtime_options make_tcp_coroutine_runtime_options(
             ::rpc::tcp_coroutine_stream::endpoint tcp_coroutine_options,
-            rpc::connection_factory::stream_rpc_connection_settings factory_settings
-            = rpc::connection_factory::make_stream_rpc_settings())
+            rpc::stream_transport::connection_settings factory_settings = rpc::stream_transport::make_connection_settings())
         {
             tcp_coroutine_runtime_options result;
             result.factory_settings = std::move(factory_settings);
@@ -86,45 +81,12 @@ namespace rpc::tcp_coroutine
         }
     } // namespace
 
-    const json::v1::object& tcp_coroutine_default_options()
-    {
-        static const json::v1::object options = []
-        {
-            ::rpc::tcp_coroutine_stream::endpoint defaults;
-
-            using json::v1::convert::to_json_object;
-            return to_json_object(defaults);
-        }();
-        return options;
-    }
-
-    const json::v1::object& tcp_coroutine_options_schema()
-    {
-        static const json::v1::object schema
-            = json::v1::parse(::rpc::tcp_coroutine_stream::endpoint::get_schema(rpc::encoding::yas_json));
-        return schema;
-    }
-
-    materialise_tcp_coroutine_options_result materialise_tcp_coroutine_options(const json::v1::object& client_options)
-    {
-        try
-        {
-            return {rpc::error::OK(),
-                json::v1::load_typed_config<::rpc::tcp_coroutine_stream::endpoint>(
-                    tcp_coroutine_options_schema(), tcp_coroutine_default_options(), client_options)};
-        }
-        catch (const std::exception&)
-        {
-            return {rpc::error::INVALID_DATA(), {}};
-        }
-    }
-
     runtime make_runtime(
         rpc::io_uring::host_controller::options controller_options,
         std::shared_ptr<rpc::service> service)
     {
         const bool borrowed_scheduler = service && service->get_executor();
-        auto scheduler = borrowed_scheduler ? service->get_executor() : rpc::connection_factory::make_default_executor();
+        auto scheduler = borrowed_scheduler ? service->get_executor() : rpc::stream_transport::make_default_executor();
         if (!scheduler)
             return {rpc::error::TRANSPORT_ERROR(), {}, {}};
 
@@ -228,8 +190,8 @@ namespace rpc::tcp_coroutine
         ::streaming::coroutine::tcp::stream::options stream_options,
         std::shared_ptr<rpc::service> service)
     {
-        auto resolved_service = rpc::connection_factory::ensure_service(
-            rpc::connection_factory::make_stream_rpc_settings(), std::move(service), "tcp_coroutine_stream_accept");
+        auto resolved_service = rpc::stream_transport::ensure_service(
+            rpc::stream_transport::make_connection_settings(), std::move(service), "tcp_coroutine_stream_accept");
         if (!resolved_service)
             CO_RETURN acceptor_result{rpc::error::INVALID_DATA(), {}, {}, {}, 0};
 
@@ -254,11 +216,11 @@ namespace rpc::tcp_coroutine
     CORO_TASK(acceptor_result)
     listen_acceptor(
         const ::rpc::tcp_coroutine_stream::endpoint& options,
-        const rpc::connection_factory::stream_rpc_connection_settings& factory_settings,
+        const rpc::stream_transport::connection_settings& factory_settings,
         std::shared_ptr<rpc::service> service)
     {
         auto runtime_options = make_tcp_coroutine_runtime_options(options, factory_settings);
-        auto resolved_service = rpc::connection_factory::ensure_service(
+        auto resolved_service = rpc::stream_transport::ensure_service(
             runtime_options.factory_settings, std::move(service), "tcp_coroutine_stream_accept");
         if (!resolved_service)
             CO_RETURN acceptor_result{rpc::error::INVALID_DATA(), {}, {}, {}, 0};
@@ -282,7 +244,7 @@ namespace rpc::tcp_coroutine
             listen_result.port};
     }
 
-    CORO_TASK(rpc::connection_factory::stream_result)
+    CORO_TASK(rpc::stream_transport::stream_result)
     connect_stream(
         uint16_t port,
         rpc::io_uring::host_controller::options controller_options,
@@ -290,34 +252,34 @@ namespace rpc::tcp_coroutine
         std::shared_ptr<rpc::service> service)
     {
         if (port == 0)
-            CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN rpc::stream_transport::stream_result{rpc::error::INVALID_DATA(), {}};
 
         auto runtime = make_runtime(controller_options, std::move(service));
         if (runtime.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_result{runtime.error_code, {}};
+            CO_RETURN rpc::stream_transport::stream_result{runtime.error_code, {}};
 
         auto result = CO_AWAIT ::streaming::coroutine::tcp::connect_loopback(runtime.controller, port, stream_options);
         if (result.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_result{result.error_code, {}, result.native_result};
+            CO_RETURN rpc::stream_transport::stream_result{result.error_code, {}, result.native_result};
 
-        CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(),
-            rpc::connection_factory::keep_owner(std::move(result.connection), std::move(runtime.scheduler_owner)),
+        CO_RETURN rpc::stream_transport::stream_result{rpc::error::OK(),
+            rpc::stream_transport::keep_owner(std::move(result.connection), std::move(runtime.scheduler_owner)),
             result.native_result};
     }
 
-    CORO_TASK(rpc::connection_factory::stream_result)
+    CORO_TASK(rpc::stream_transport::stream_result)
     connect_stream(
         const ::rpc::tcp_coroutine_stream::endpoint& options,
         std::shared_ptr<rpc::service> service)
     {
         const auto validation_error = validate_connect_endpoint(options);
         if (validation_error != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_result{validation_error, {}};
+            CO_RETURN rpc::stream_transport::stream_result{validation_error, {}};
 
         const auto runtime_options = make_tcp_coroutine_runtime_options(options);
         auto runtime = make_runtime(runtime_options.controller_options, std::move(service));
         if (runtime.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_result{runtime.error_code, {}};
+            CO_RETURN rpc::stream_transport::stream_result{runtime.error_code, {}};
 
         const auto address = parse_endpoint_address(options);
         ::streaming::coroutine::tcp::stream_result result;
@@ -340,16 +302,16 @@ namespace rpc::tcp_coroutine
                 runtime_options.connect_timeout);
         }
         if (result.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_result{result.error_code, {}, result.native_result};
+            CO_RETURN rpc::stream_transport::stream_result{result.error_code, {}, result.native_result};
 
-        CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(),
-            rpc::connection_factory::keep_owner(std::move(result.connection), std::move(runtime.scheduler_owner)),
+        CO_RETURN rpc::stream_transport::stream_result{rpc::error::OK(),
+            rpc::stream_transport::keep_owner(std::move(result.connection), std::move(runtime.scheduler_owner)),
             result.native_result};
     }
 
-    CORO_TASK(rpc::connection_factory::stream_accept_result)
+    CORO_TASK(rpc::stream_transport::stream_accept_result)
     accept_stream(
-        rpc::connection_factory::stream_callback callback,
+        rpc::stream_transport::stream_callback callback,
         loopback_listen_options listen_options,
         rpc::io_uring::host_controller::options controller_options,
         ::streaming::coroutine::tcp::stream::options stream_options,
@@ -358,30 +320,30 @@ namespace rpc::tcp_coroutine
         auto acceptor_result
             = CO_AWAIT listen_acceptor(listen_options, controller_options, stream_options, std::move(service));
         if (acceptor_result.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_accept_result{acceptor_result.error_code, {}};
+            CO_RETURN rpc::stream_transport::stream_accept_result{acceptor_result.error_code, {}};
 
-        CO_RETURN rpc::connection_factory::accept_streams(
+        CO_RETURN rpc::stream_transport::accept_streams(
             std::move(acceptor_result.acceptor),
             std::move(callback),
-            rpc::connection_factory::make_stream_rpc_settings(),
+            rpc::stream_transport::make_connection_settings(),
             std::move(acceptor_result.service),
             std::move(acceptor_result.owner),
             acceptor_result.port);
     }
 
-    CORO_TASK(rpc::connection_factory::stream_accept_result)
+    CORO_TASK(rpc::stream_transport::stream_accept_result)
     accept_stream(
-        rpc::connection_factory::stream_callback callback,
+        rpc::stream_transport::stream_callback callback,
         const ::rpc::tcp_coroutine_stream::endpoint& options,
-        const rpc::connection_factory::stream_rpc_connection_settings& factory_settings,
+        const rpc::stream_transport::connection_settings& factory_settings,
         std::shared_ptr<rpc::service> service)
     {
         auto rpc_settings = factory_settings;
         auto acceptor_result = CO_AWAIT listen_acceptor(options, rpc_settings, std::move(service));
         if (acceptor_result.error_code != rpc::error::OK())
-            CO_RETURN rpc::connection_factory::stream_accept_result{acceptor_result.error_code, {}};
+            CO_RETURN rpc::stream_transport::stream_accept_result{acceptor_result.error_code, {}};
 
-        CO_RETURN rpc::connection_factory::accept_streams(
+        CO_RETURN rpc::stream_transport::accept_streams(
             std::move(acceptor_result.acceptor),
             std::move(callback),
             std::move(rpc_settings),

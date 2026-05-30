@@ -5,15 +5,19 @@
 
 #include <connection_factory/connection_factory.h>
 
+#include <exception>
+#include <new>
 #include <typeindex>
 #include <utility>
 
-#include <connection_factory/service.h>
+#include <connection_factory/detail/context.h>
+#include <connection_factory/detail/service.h>
 #include <connection_factory_components.h>
 #include <streaming/layer_factory/factory.h>
+#include <streaming/stream.h>
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
-#  include <connection_factory/spsc_queue.h>
+#  include <streaming/spsc_queue/factory.h>
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
@@ -30,6 +34,8 @@
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
 #  include <io_uring/host_io_uring.h>
+#  include <transports/sgx_coroutine/host/rpc_bootstrap.h>
+#  include <transports/sgx_coroutine/host/connect.h>
 #  include <transports/sgx_coroutine/host/transport.h>
 #endif
 
@@ -39,7 +45,7 @@
 
 namespace rpc::connection_factory
 {
-    struct layered_connection_context::impl
+    struct context::impl
     {
         std::unordered_map<std::type_index, std::unordered_map<std::string, std::shared_ptr<void>>> dependencies;
         std::unordered_map<std::string, std::shared_ptr<detail::registered_stream_component_factory>> custom_stream_components;
@@ -84,6 +90,56 @@ namespace rpc::connection_factory
             return type_item->second;
         }
     };
+
+    namespace detail
+    {
+        class connection_factory_access
+        {
+        public:
+            static auto state(context& factory_context) -> std::shared_ptr<context::impl>&
+            {
+                return factory_context.impl_;
+            }
+
+            static auto state(const context& factory_context) -> const std::shared_ptr<context::impl>&
+            {
+                return factory_context.impl_;
+            }
+        };
+
+        [[nodiscard]] int validate_stream_rpc_connection_settings(
+            const connection_settings& settings,
+            layer_direction direction,
+            const context& factory_context);
+
+        auto connect_base_stream(
+            const rpc::stream_layers::stream_layer_settings& layer,
+            std::shared_ptr<rpc::service> service,
+            const context& factory_context) -> CORO_TASK(stream_result);
+
+        auto accept_base_streams(
+            const rpc::stream_layers::stream_layer_settings& layer,
+            std::shared_ptr<rpc::service> service,
+            const context& factory_context) -> CORO_TASK(stream_acceptor_result);
+
+        auto accept_single_base_stream(
+            const rpc::stream_layers::stream_layer_settings& layer,
+            std::shared_ptr<rpc::service> service,
+            const context& factory_context) -> CORO_TASK(stream_result);
+
+        auto apply_stream_layer(
+            std::shared_ptr<::streaming::stream> stream,
+            const rpc::stream_layers::stream_layer_settings& layer,
+            layer_direction direction,
+            const context& factory_context) -> CORO_TASK(stream_result);
+
+        auto apply_stream_layers(
+            std::shared_ptr<::streaming::stream> stream,
+            const connection_settings& settings,
+            size_t first_layer,
+            layer_direction direction,
+            const context& factory_context) -> CORO_TASK(stream_result);
+    } // namespace detail
 
     namespace
     {
@@ -268,30 +324,22 @@ namespace rpc::connection_factory
             return result;
         }
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
-        int validate_sgx_stream_layers(const std::vector<rpc::stream_layers::stream_layer_settings>& layers)
-        {
-            for (const auto& layer : layers)
-            {
-#  ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
-                if (layer.type == "websocket")
-                    continue;
-#  endif
-                return rpc::error::INVALID_DATA();
-            }
-            return rpc::error::OK();
-        }
-#endif
     } // namespace
 
-    layered_connection_context::layered_connection_context()
+    const context& default_context()
+    {
+        static const context factory_context;
+        return factory_context;
+    }
+
+    context::context()
         : impl_(std::make_shared<impl>())
     {
     }
 
-    layered_connection_context::~layered_connection_context() = default;
+    context::~context() = default;
 
-    void layered_connection_context::set_dependency_impl(
+    void context::set_dependency_impl(
         std::type_index type,
         std::string name,
         std::shared_ptr<void> dependency)
@@ -301,7 +349,7 @@ namespace rpc::connection_factory
         impl_->set_dependency(type, std::move(name), std::move(dependency));
     }
 
-    auto layered_connection_context::get_dependency_impl(
+    auto context::get_dependency_impl(
         std::type_index type,
         const std::string& name) const -> std::shared_ptr<void>
     {
@@ -310,7 +358,7 @@ namespace rpc::connection_factory
         return impl_->get_dependency(type, name);
     }
 
-    auto layered_connection_context::get_dependencies_impl(std::type_index type) const -> std::unordered_map<
+    auto context::get_dependencies_impl(std::type_index type) const -> std::unordered_map<
         std::string,
         std::shared_ptr<void>>
     {
@@ -320,39 +368,38 @@ namespace rpc::connection_factory
     }
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
-    void layered_connection_context::set_spsc_queues(rpc::spsc_queue::queue_pair queues)
+    void context::set_spsc_queues(rpc::spsc_queue::queue_pair queues)
     {
         set_dependency_value(std::move(queues));
     }
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-    void layered_connection_context::set_tls_client_context(std::shared_ptr<::streaming::secure::client_context> context)
+    void context::set_tls_client_context(std::shared_ptr<::streaming::secure::client_context> tls_context)
     {
-        set_dependency(std::move(context));
+        set_dependency(std::move(tls_context));
     }
 
-    void layered_connection_context::set_tls_server_context(std::shared_ptr<::streaming::secure::context> context)
+    void context::set_tls_server_context(std::shared_ptr<::streaming::secure::context> tls_context)
     {
-        set_dependency(std::move(context));
+        set_dependency(std::move(tls_context));
     }
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
-    void layered_connection_context::set_stream_scheduler(std::shared_ptr<rpc::executor> executor)
+    void context::set_stream_scheduler(std::shared_ptr<rpc::executor> executor)
     {
         set_dependency(std::move(executor));
     }
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
-    void layered_connection_context::set_attestation_service(
-        std::shared_ptr<canopy::security::attestation::attestation_service> service)
+    void context::set_attestation_service(std::shared_ptr<canopy::security::attestation::attestation_service> service)
     {
         set_dependency(std::move(service));
     }
 
-    void layered_connection_context::register_attestation_service(
+    void context::register_attestation_service(
         std::string name,
         std::shared_ptr<canopy::security::attestation::attestation_service> service)
     {
@@ -360,7 +407,7 @@ namespace rpc::connection_factory
     }
 #endif
 
-    void layered_connection_context::register_connect_base_stream(
+    void context::register_connect_base_stream(
         std::string type,
         base_stream_connect_builder builder)
     {
@@ -369,7 +416,7 @@ namespace rpc::connection_factory
         custom_stream_component(*impl_, type).connect_base_builder = std::move(builder);
     }
 
-    void layered_connection_context::register_accept_base_stream(
+    void context::register_accept_base_stream(
         std::string type,
         base_stream_acceptor_builder builder)
     {
@@ -378,7 +425,7 @@ namespace rpc::connection_factory
         custom_stream_component(*impl_, type).accept_base_builder = std::move(builder);
     }
 
-    void layered_connection_context::register_accept_single_stream(
+    void context::register_accept_single_stream(
         std::string type,
         base_stream_accept_builder builder)
     {
@@ -387,7 +434,7 @@ namespace rpc::connection_factory
         custom_stream_component(*impl_, type).accept_single_base_builder = std::move(builder);
     }
 
-    void layered_connection_context::register_stream_layer(
+    void context::register_stream_layer(
         std::string type,
         stream_layer_builder builder)
     {
@@ -396,8 +443,8 @@ namespace rpc::connection_factory
         custom_stream_component(*impl_, type).stream_layer_builder_fn = std::move(builder);
     }
 
-    int validate_stream_rpc_connection_settings(
-        const rpc::connection_factory_config::connection_settings& settings,
+    int detail::validate_stream_rpc_connection_settings(
+        const connection_settings& settings,
         layer_direction direction,
         const layered_connection_context& context)
     {
@@ -409,10 +456,11 @@ namespace rpc::connection_factory
             if (type.empty())
                 return false;
 
-            if (context.impl_)
+            const auto& context_state = detail::connection_factory_access::state(context);
+            if (context_state)
             {
-                const auto custom = context.impl_->custom_stream_components.find(type);
-                if (custom != context.impl_->custom_stream_components.end())
+                const auto custom = context_state->custom_stream_components.find(type);
+                if (custom != context_state->custom_stream_components.end())
                 {
                     if (direction == layer_direction::connect && custom->second->supports_connect_base())
                         return true;
@@ -442,10 +490,11 @@ namespace rpc::connection_factory
                 return rpc::error::INVALID_DATA();
 
             bool layer_supported = false;
-            if (context.impl_)
+            const auto& context_state = detail::connection_factory_access::state(context);
+            if (context_state)
             {
-                const auto custom = context.impl_->custom_stream_components.find(layer.type);
-                layer_supported = custom != context.impl_->custom_stream_components.end()
+                const auto custom = context_state->custom_stream_components.find(layer.type);
+                layer_supported = custom != context_state->custom_stream_components.end()
                                   && custom->second->supports_stream_layer();
             }
 
@@ -460,59 +509,53 @@ namespace rpc::connection_factory
     }
 
     auto detail::make_transport_connect_context(
-        const rpc::connection_factory_config::typed_settings& transport_settings,
-        const rpc::connection_factory_config::connection_settings& settings,
+        const typed_settings& transport_settings,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service) -> transport_connect_context
     {
         const auto* built_in = built_in_transport_component(transport_settings.type);
         if (built_in)
         {
-            return built_in->connect_transport(settings_object(transport_settings), settings, std::move(service));
+            return built_in->connect_transport(detail::settings_object(transport_settings), settings, std::move(service));
         }
 
         return {rpc::error::INVALID_DATA(), {}, {}, {}};
     }
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
-    auto detail::make_local_child_connect_context(
-        const rpc::connection_factory_config::connection_settings& settings,
-        std::shared_ptr<rpc::service> service) -> local_child_connect_context
+    auto detail::make_native_transport_connect_context(
+        const transport_selection_result& transport,
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service) -> native_transport_connect_context
     {
-        auto transport = transport_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
             return {transport.error_code, {}, {}, {}};
-        if (transport.type != "local" || !transport.settings)
-            return {rpc::error::INVALID_DATA(), {}, {}, {}};
-        if (!settings.stream_layers.empty())
+        if (!transport.settings)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto local = make_transport_connect_context(*transport.settings, settings, std::move(service));
-        if (local.error_code != rpc::error::OK())
-            return {local.error_code, {}, {}, {}};
-        if (!local.service || !local.transport)
+        auto connect_context = make_transport_connect_context(*transport.settings, settings, std::move(service));
+        if (connect_context.error_code != rpc::error::OK())
+            return {connect_context.error_code, {}, {}, {}};
+        if (!connect_context.service || !connect_context.transport)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto local_transport = std::dynamic_pointer_cast<rpc::local::child_transport>(local.transport);
-        if (!local_transport)
-            return {rpc::error::INVALID_DATA(), {}, {}, {}};
-
-        return {
-            rpc::error::OK(), std::move(local.service), std::move(local_transport), std::move(local.service_proxy_name)};
+        return {rpc::error::OK(),
+            std::move(connect_context.service),
+            std::move(connect_context.transport),
+            std::move(connect_context.service_proxy_name)};
     }
-#endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
-    auto detail::make_sgx_coroutine_connect_context(
-        const rpc::connection_factory_config::typed_settings& transport_settings,
-        const rpc::connection_factory_config::connection_settings& settings,
+    auto detail::make_sgx_coroutine_bootstrap_context(
+        const transport_selection_result& transport,
+        const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) -> sgx_coroutine_connect_context
+        const layered_connection_context& context,
+        rpc::shared_ptr<rpc::i_noop> input_interface) -> rpc::sgx_coroutine_transport::host::rpc_bootstrap_context
     {
-        auto layer_validation = validate_sgx_stream_layers(settings.stream_layers);
-        if (layer_validation != rpc::error::OK())
-            return {layer_validation, {}, {}, {}, {}};
+        if (!settings.stream_layers.empty())
+            return {rpc::error::INVALID_DATA(), {}, {}, {}, {}};
 
-        auto connect_context = make_transport_connect_context(transport_settings, settings, std::move(service));
+        auto connect_context = make_native_transport_connect_context(transport, settings, std::move(service));
         if (connect_context.error_code != rpc::error::OK())
             return {connect_context.error_code, {}, {}, {}, {}};
         if (!connect_context.service || !connect_context.transport)
@@ -523,142 +566,119 @@ namespace rpc::connection_factory
         if (!enclave_transport)
             return {rpc::error::INVALID_DATA(), {}, {}, {}, {}};
 
-        if (!settings.stream_layers.empty())
-        {
-            auto layer_error = enclave_transport->set_enclave_stream_layers(settings.stream_layers);
-            if (layer_error != rpc::error::OK())
-                return {layer_error, {}, {}, {}, {}};
-
-            enclave_transport->set_host_stream_layer_applier(
-                [settings, context](std::shared_ptr<::streaming::stream> stream)
-                    -> CORO_TASK(rpc::sgx_coroutine_transport::host::transport::stream_layer_result)
-                {
-                    auto wrapped = CO_AWAIT rpc::connection_factory::apply_stream_layers(
-                        std::move(stream), settings, 0, rpc::connection_factory::layer_direction::connect, context);
-                    CO_RETURN rpc::sgx_coroutine_transport::host::transport::stream_layer_result{
-                        wrapped.error_code, std::move(wrapped.stream)};
-                });
-        }
-
         auto controller_options = rpc::io_uring::default_enclave_host_controller_options();
         if (auto configured_options = context.get_dependency<rpc::io_uring::host_controller::options>())
             controller_options = *configured_options;
         if (auto enclave_options = enclave_transport->get_enclave_io_uring_options())
             controller_options = *enclave_options;
 
+        std::unique_ptr<rpc::io_uring::host_controller> controller;
+        auto controller_error = rpc::io_uring::host_controller::create(
+            controller, controller_options, connect_context.service->get_scheduler());
+        if (controller_error != rpc::error::OK())
+            return {controller_error, {}, {}, {}, {}};
+
+        rpc::shared_ptr<rpc::v4::secure_coroutine_module::i_io_uring_control> control;
+        try
+        {
+            control = rpc::shared_ptr<rpc::v4::secure_coroutine_module::i_io_uring_control>(
+                new rpc::sgx_coroutine_transport::host::detail::enclave_io_uring_control(
+                    std::move(controller), std::move(input_interface)));
+        }
+        catch (const std::bad_alloc&)
+        {
+            RPC_ERROR("bad_alloc while creating enclave io_uring control interface");
+            std::terminate();
+        }
+
         return {rpc::error::OK(),
             std::move(connect_context.service),
             std::move(enclave_transport),
             std::move(connect_context.service_proxy_name),
-            std::move(controller_options)};
+            std::move(control)};
     }
 #endif
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING
-    auto detail::make_sgx_blocking_connect_context(
-        const rpc::connection_factory_config::typed_settings& transport_settings,
-        const rpc::connection_factory_config::connection_settings& settings,
-        std::shared_ptr<rpc::service> service) -> native_transport_connect_context
-    {
-        if (!settings.stream_layers.empty())
-            return {rpc::error::INVALID_DATA(), {}, {}, {}};
-
-        auto connect_context = make_transport_connect_context(transport_settings, settings, std::move(service));
-        if (connect_context.error_code != rpc::error::OK())
-            return {connect_context.error_code, {}, {}, {}};
-        if (!connect_context.service || !connect_context.transport)
-            return {rpc::error::INVALID_DATA(), {}, {}, {}};
-
-        auto enclave_transport
-            = std::dynamic_pointer_cast<rpc::sgx_blocking_transport::enclave_transport>(connect_context.transport);
-        if (!enclave_transport)
-            return {rpc::error::INVALID_DATA(), {}, {}, {}};
-
-        return {rpc::error::OK(),
-            std::move(connect_context.service),
-            std::move(enclave_transport),
-            std::move(connect_context.service_proxy_name)};
-    }
-#endif
-
-    auto connect_base_stream(
+    auto detail::connect_base_stream(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
         const layered_connection_context& context) -> CORO_TASK(stream_result)
     {
-        auto& state = *context.impl_;
+        auto& state = *detail::connection_factory_access::state(context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_connect_base())
         {
-            CO_RETURN CO_AWAIT custom->second->connect_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT custom->second->connect_base(detail::settings_object(layer), std::move(service), context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_connect_base())
         {
-            CO_RETURN CO_AWAIT built_in->connect_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->connect_base(detail::settings_object(layer), std::move(service), context);
         }
 
         CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
     }
 
-    auto accept_base_streams(
+    auto detail::accept_base_streams(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
         const layered_connection_context& context) -> CORO_TASK(stream_acceptor_result)
     {
-        auto& state = *context.impl_;
+        auto& state = *detail::connection_factory_access::state(context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_accept_base())
         {
-            CO_RETURN CO_AWAIT custom->second->accept_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT custom->second->accept_base(detail::settings_object(layer), std::move(service), context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_accept_base())
         {
-            CO_RETURN CO_AWAIT built_in->accept_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->accept_base(detail::settings_object(layer), std::move(service), context);
         }
 
         CO_RETURN stream_acceptor_result{rpc::error::INVALID_DATA(), {}, {}, 0};
     }
 
-    auto accept_single_base_stream(
+    auto detail::accept_single_base_stream(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
         const layered_connection_context& context) -> CORO_TASK(stream_result)
     {
-        auto& state = *context.impl_;
+        auto& state = *detail::connection_factory_access::state(context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_accept_single_base())
         {
-            CO_RETURN CO_AWAIT custom->second->accept_single_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT custom->second->accept_single_base(
+                detail::settings_object(layer), std::move(service), context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_accept_single_base())
         {
-            CO_RETURN CO_AWAIT built_in->accept_single_base(settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->accept_single_base(detail::settings_object(layer), std::move(service), context);
         }
 
         CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
     }
 
-    auto apply_stream_layer(
+    auto detail::apply_stream_layer(
         std::shared_ptr<::streaming::stream> stream,
         const rpc::stream_layers::stream_layer_settings& layer,
         layer_direction direction,
         const layered_connection_context& context) -> CORO_TASK(stream_result)
     {
-        auto& state = *context.impl_;
+        auto& state = *detail::connection_factory_access::state(context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_stream_layer())
         {
-            CO_RETURN CO_AWAIT custom->second->wrap_stream(std::move(stream), settings_object(layer), direction, context);
+            CO_RETURN CO_AWAIT custom->second->wrap_stream(
+                std::move(stream), detail::settings_object(layer), direction, context);
         }
 
         auto layer_context = make_streaming_layer_context(state, layer.type);
@@ -667,9 +687,9 @@ namespace rpc::connection_factory
         CO_RETURN stream_result{wrapped.error_code, std::move(wrapped.stream)};
     }
 
-    auto apply_stream_layers(
+    auto detail::apply_stream_layers(
         std::shared_ptr<::streaming::stream> stream,
-        const rpc::connection_factory_config::connection_settings& settings,
+        const connection_settings& settings,
         size_t first_layer,
         layer_direction direction,
         const layered_connection_context& context) -> CORO_TASK(stream_result)
@@ -679,13 +699,150 @@ namespace rpc::connection_factory
 
         for (auto layer_index = first_layer; layer_index < settings.stream_layers.size(); ++layer_index)
         {
-            auto result
-                = CO_AWAIT apply_stream_layer(std::move(stream), settings.stream_layers[layer_index], direction, context);
+            auto result = CO_AWAIT detail::apply_stream_layer(
+                std::move(stream), settings.stream_layers[layer_index], direction, context);
             if (result.error_code != rpc::error::OK())
                 CO_RETURN result;
             stream = std::move(result.stream);
         }
 
         CO_RETURN stream_result{rpc::error::OK(), std::move(stream)};
+    }
+
+    CORO_TASK(stream_acceptor_result)
+    open_stream_acceptor(
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        const context& factory_context)
+    {
+        auto topology_error
+            = detail::validate_stream_rpc_connection_settings(settings, layer_direction::accept, factory_context);
+        if (topology_error != rpc::error::OK())
+            CO_RETURN stream_acceptor_result{topology_error, {}, {}, 0};
+
+        CO_RETURN CO_AWAIT detail::accept_base_streams(settings.stream_layers.front(), std::move(service), factory_context);
+    }
+
+    auto detail::make_accept_stream_transformer(
+        const connection_settings& settings,
+        size_t first_layer,
+        const context& factory_context) -> ::streaming::listener::stream_transformer
+    {
+        if (first_layer >= settings.stream_layers.size())
+            return {};
+
+        return [settings, factory_context, first_layer](std::shared_ptr<::streaming::stream> stream)
+                   -> CORO_TASK(std::optional<std::shared_ptr<::streaming::stream>>)
+        {
+            auto wrapped = CO_AWAIT detail::apply_stream_layers(
+                std::move(stream), settings, first_layer, layer_direction::accept, factory_context);
+            if (wrapped.error_code != rpc::error::OK())
+                CO_RETURN std::nullopt;
+            CO_RETURN std::optional<std::shared_ptr<::streaming::stream>>(std::move(wrapped.stream));
+        };
+    }
+
+    CORO_TASK(stream_result)
+    connect_stream(
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        const context& factory_context)
+    {
+        auto topology_error
+            = detail::validate_stream_rpc_connection_settings(settings, layer_direction::connect, factory_context);
+        if (topology_error != rpc::error::OK())
+            CO_RETURN stream_result{topology_error, {}};
+
+        auto service_settings = detail::service_settings_from_connection(settings);
+        if (service_settings.error_code != rpc::error::OK())
+            CO_RETURN stream_result{service_settings.error_code, {}};
+
+        auto resolved_service = ensure_service(service_settings.settings, {}, std::move(service), "layered_stream_client");
+        if (!resolved_service)
+            CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
+
+        auto stream
+            = CO_AWAIT detail::connect_base_stream(settings.stream_layers.front(), resolved_service, factory_context);
+        if (stream.error_code != rpc::error::OK())
+            CO_RETURN stream;
+
+        CO_RETURN CO_AWAIT detail::apply_stream_layers(
+            std::move(stream.stream), settings, 1, layer_direction::connect, factory_context);
+    }
+
+    CORO_TASK(stream_result)
+    accept_stream(
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        const context& factory_context)
+    {
+        auto topology_error
+            = detail::validate_stream_rpc_connection_settings(settings, layer_direction::accept, factory_context);
+        if (topology_error != rpc::error::OK())
+            CO_RETURN stream_result{topology_error, {}};
+
+        auto service_settings = detail::service_settings_from_connection(settings);
+        if (service_settings.error_code != rpc::error::OK())
+            CO_RETURN stream_result{service_settings.error_code, {}};
+
+        auto resolved_service = ensure_service(service_settings.settings, {}, std::move(service), "layered_stream_accept");
+        if (!resolved_service)
+            CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
+
+        auto accepted_stream = CO_AWAIT detail::accept_single_base_stream(
+            settings.stream_layers.front(), resolved_service, factory_context);
+        if (accepted_stream.error_code != rpc::error::OK())
+            CO_RETURN accepted_stream;
+
+        CO_RETURN CO_AWAIT detail::apply_stream_layers(
+            std::move(accepted_stream.stream), settings, 1, layer_direction::accept, factory_context);
+    }
+
+    CORO_TASK(stream_accept_result)
+    accept_streams(
+        stream_callback callback,
+        const connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        const context& factory_context)
+    {
+        if (!callback)
+            CO_RETURN stream_accept_result{rpc::error::INVALID_DATA(), {}};
+
+        auto service_settings = detail::service_settings_from_connection(settings);
+        if (service_settings.error_code != rpc::error::OK())
+            CO_RETURN stream_accept_result{service_settings.error_code, {}};
+
+        auto resolved_service = ensure_service(service_settings.settings, {}, std::move(service), "layered_stream_accept");
+        if (!resolved_service)
+            CO_RETURN stream_accept_result{rpc::error::INVALID_DATA(), {}};
+
+        auto acceptor = CO_AWAIT open_stream_acceptor(settings, resolved_service, factory_context);
+        if (acceptor.error_code != rpc::error::OK())
+            CO_RETURN stream_accept_result{acceptor.error_code, {}};
+
+        auto stream_settings = make_stream_rpc_settings({}, service_settings.settings);
+        auto wrapped_callback = [settings, factory_context, callback = std::move(callback)](
+                                    std::shared_ptr<::streaming::stream> stream) mutable -> CORO_TASK(void)
+        {
+            auto wrapped = CO_AWAIT detail::apply_stream_layers(
+                std::move(stream), settings, 1, layer_direction::accept, factory_context);
+            if (wrapped.error_code != rpc::error::OK())
+            {
+                if (wrapped.stream)
+                    CO_AWAIT wrapped.stream->set_closed();
+                CO_RETURN;
+            }
+
+            CO_AWAIT callback(std::move(wrapped.stream));
+            CO_RETURN;
+        };
+
+        CO_RETURN accept_streams(
+            std::move(acceptor.acceptor),
+            std::move(wrapped_callback),
+            stream_settings,
+            std::move(resolved_service),
+            std::move(acceptor.owner),
+            acceptor.port);
     }
 } // namespace rpc::connection_factory

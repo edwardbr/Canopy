@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include <connection_factory/tcp_coroutine.h>
+#include <streaming/tcp_coroutine/factory.h>
 #include <transport/tests/streaming_setup_base.h>
 
 template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
@@ -15,7 +15,7 @@ class streaming_tcp_coroutine_setup
 {
     using base = streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>;
 
-    std::shared_ptr<rpc::connection_factory::listener_handle> rpc_listener_;
+    std::shared_ptr<rpc::stream_transport::listener_handle> rpc_listener_;
 
 protected:
     CORO_TASK(bool) do_coro_setup() override
@@ -32,7 +32,7 @@ protected:
 
         ::rpc::tcp_coroutine_stream::endpoint accept_tcp_coroutine_options;
 
-        rpc::connection_factory::stream_rpc_connection_settings accept_factory_options;
+        rpc::stream_transport::connection_settings accept_factory_options;
         accept_factory_options.transport.call_timeout = uint64_t{30000};
         accept_factory_options.transport.call_timeout_sweep = uint64_t{1};
 
@@ -54,7 +54,7 @@ protected:
         ::rpc::tcp_coroutine_stream::endpoint connect_tcp_coroutine_options;
         connect_tcp_coroutine_options.port = rpc_listener_->port();
 
-        rpc::connection_factory::stream_rpc_connection_settings connect_factory_options;
+        rpc::stream_transport::connection_settings connect_factory_options;
         connect_factory_options.transport.call_timeout = uint64_t{30000};
         connect_factory_options.transport.call_timeout_sweep = uint64_t{1};
 

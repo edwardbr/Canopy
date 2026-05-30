@@ -60,8 +60,8 @@ namespace streaming::coroutine::tcp
         stream::options stream_options,
         std::chrono::milliseconds timeout)
     {
-        connector connection_factory(std::move(controller), stream_options);
-        CO_RETURN CO_AWAIT connection_factory.connect_loopback(port, timeout);
+        connector tcp_connector(std::move(controller), stream_options);
+        CO_RETURN CO_AWAIT tcp_connector.connect_loopback(port, timeout);
     }
 
     CORO_TASK(stream_result)
@@ -74,8 +74,8 @@ namespace streaming::coroutine::tcp
         stream::options stream_options,
         std::chrono::milliseconds timeout)
     {
-        connector connection_factory(std::move(controller), stream_options);
-        CO_RETURN CO_AWAIT connection_factory.connect_ipv4(address, port, timeout);
+        connector tcp_connector(std::move(controller), stream_options);
+        CO_RETURN CO_AWAIT tcp_connector.connect_ipv4(address, port, timeout);
     }
 
     CORO_TASK(stream_result)
@@ -88,7 +88,7 @@ namespace streaming::coroutine::tcp
         stream::options stream_options,
         std::chrono::milliseconds timeout)
     {
-        connector connection_factory(std::move(controller), stream_options);
-        CO_RETURN CO_AWAIT connection_factory.connect_ipv6(address, port, timeout);
+        connector tcp_connector(std::move(controller), stream_options);
+        CO_RETURN CO_AWAIT tcp_connector.connect_ipv6(address, port, timeout);
     }
 } // namespace streaming::coroutine::tcp

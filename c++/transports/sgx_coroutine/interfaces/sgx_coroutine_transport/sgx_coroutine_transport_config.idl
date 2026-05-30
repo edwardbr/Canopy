@@ -12,10 +12,11 @@ namespace rpc
     namespace sgx_coroutine_transport
     {
         // Host-side settings for the SGX coroutine transport. This is a
-        // transport, not a base stream: it creates the host/enclave RPC
-        // boundary directly and owns the underlying queue stream internally.
-        // Stream layers for that internal stream must be applied by SGX-aware
-        // factory code on both sides of the host/enclave boundary.
+        // transport, not a base stream in the current connection factory API:
+        // it creates the host/enclave RPC boundary directly and owns the
+        // underlying queue stream internally. Future SGX-aware stream-layer
+        // support will need coordinated host/enclave startup and handshake
+        // logic rather than the normal external stream-layer sequence.
         //
         // This configuration is intentionally narrow. It carries typed enclave
         // startup policy, but it must not become a generic pass-through for SGX

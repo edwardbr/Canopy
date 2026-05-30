@@ -18,8 +18,8 @@
  */
 
 #include <demo_impl.h>
-#include <connection_factory/spsc_queue.h>
 #include <rpc/rpc.h>
+#include <streaming/spsc_queue/factory.h>
 #include <comprehensive/comprehensive_stub.h>
 #include <iostream>
 #include <thread>

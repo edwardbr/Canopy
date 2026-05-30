@@ -14,8 +14,8 @@
  *
  *   MISCONCEPTION REPORT:
  *   ---------------------
- *   This demo requires CANOPY_BUILD_COROUTINE=ON and uses the active
- *   rpc::tcp facade, which maps to the tcp_coroutine stream in this build.
+ *   This demo requires CANOPY_BUILD_COROUTINE=ON and uses the typed
+ *   tcp_coroutine stream factory directly.
  *
  *   Build and run:
  *   1. cmake --preset Debug_Coroutine
@@ -32,8 +32,8 @@
  */
 
 #include <demo_impl.h>
-#include <connection_factory/tcp.h>
 #include <rpc/rpc.h>
+#include <streaming/tcp_coroutine/factory.h>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -181,7 +181,7 @@ namespace comprehensive
 
             auto options = tcp_options_from_endpoint(
                 listen_ep, "tcp_server", "server_transport", "server_transport", "tcp_server");
-            auto accept_result = CO_AWAIT rpc::tcp::accept_rpc<i_calculator, i_calculator>(
+            auto accept_result = CO_AWAIT rpc::tcp_coroutine::accept_rpc<i_calculator, i_calculator>(
                 [](const rpc::shared_ptr<i_calculator>&,
                     const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
                 {
@@ -244,7 +244,7 @@ namespace comprehensive
 
                 auto options = tcp_options_from_endpoint(
                     connect_ep, "tcp_client", "client_listener", "client_transport", "tcp_server");
-                auto connect_result = CO_AWAIT rpc::tcp::connect_rpc<i_calculator, i_calculator>(
+                auto connect_result = CO_AWAIT rpc::tcp_coroutine::connect_rpc<i_calculator, i_calculator>(
                     rpc::shared_ptr<i_calculator>(), options.endpoint, options.factory, client_service);
                 remote_calculator = connect_result.output_interface;
                 auto error = connect_result.error_code;

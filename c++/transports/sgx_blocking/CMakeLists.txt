@@ -23,7 +23,7 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
 
   add_subdirectory(edl)
 
-  add_library(transport_sgx_blocking src/transport.cpp)
+  add_library(transport_sgx_blocking src/transport.cpp src/factory.cpp)
   target_compile_definitions(
     transport_sgx_blocking PRIVATE ${CANOPY_DEFINES} CANOPY_BUILD_ENCLAVE
                                    CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG=${CANOPY_SGX_CREATE_ENCLAVE_DEBUG_FLAG})
@@ -33,7 +33,7 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
     PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     transport_sgx_blocking
-    PUBLIC sgx_blocking_transport_config_idl
+    PUBLIC transport_factory sgx_blocking_transport_config_idl
     PRIVATE yas_common
             sgx_blocking_marshal_idl
             rpc_types_idl

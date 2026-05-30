@@ -18,7 +18,7 @@ CanopyGenerate(
 
 # transport_streaming is dual-mode. Coroutine builds use libcoro; blocking builds dispatch the three loops to
 # rpc::blocking_executor via the SPAWN macro and use rpc::event for completion signalling.
-add_library(transport_streaming src/transport.cpp)
+add_library(transport_streaming src/transport.cpp src/factory.cpp)
 
 target_compile_definitions(transport_streaming PRIVATE ${CANOPY_DEFINES})
 
@@ -28,9 +28,9 @@ target_include_directories(
   PRIVATE ${CANOPY_INCLUDES})
 
 if(CANOPY_BUILD_COROUTINE)
-  target_link_libraries(
-    transport_streaming
-    PUBLIC streaming json stream_transport_config_idl
+target_link_libraries(
+  transport_streaming
+  PUBLIC streaming json stream_transport_config_idl
     PRIVATE yas_common
             streaming_transport_idl
             rpc_types_idl
@@ -41,6 +41,14 @@ else()
     transport_streaming
     PUBLIC streaming json stream_transport_config_idl
     PRIVATE yas_common streaming_transport_idl rpc_types_idl ${CANOPY_LIBRARIES})
+endif()
+
+if(TARGET streaming_tcp_blocking)
+  target_link_libraries(streaming_tcp_blocking PUBLIC transport_streaming)
+endif()
+
+if(TARGET streaming_spsc_queue)
+  target_link_libraries(streaming_spsc_queue PUBLIC transport_streaming)
 endif()
 
 target_compile_options(transport_streaming PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
