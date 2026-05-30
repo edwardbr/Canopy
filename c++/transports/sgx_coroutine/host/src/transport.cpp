@@ -214,6 +214,42 @@ namespace rpc::sgx_coroutine_transport::host
             return ::kill(pid, 0) == 0 || errno == EPERM;
         }
 
+        pid_t waitpid_nointr(
+            pid_t pid,
+            int* status,
+            int options) noexcept
+        {
+            pid_t wait_result = -1;
+            do
+            {
+                wait_result = ::waitpid(pid, status, options);
+            } while (wait_result < 0 && errno == EINTR);
+            return wait_result;
+        }
+
+        bool read_exact_nointr(
+            int fd,
+            void* data,
+            size_t size) noexcept
+        {
+            auto* bytes = static_cast<uint8_t*>(data);
+            size_t bytes_read_total = 0;
+            while (bytes_read_total < size)
+            {
+                auto bytes_read = ::read(fd, bytes + bytes_read_total, size - bytes_read_total);
+                if (bytes_read < 0)
+                {
+                    if (errno == EINTR)
+                        continue;
+                    return false;
+                }
+                if (bytes_read == 0)
+                    return false;
+                bytes_read_total += static_cast<size_t>(bytes_read);
+            }
+            return true;
+        }
+
         [[nodiscard]] std::string path_basename(std::string_view path)
         {
             auto pos = path.find_last_of('/');
@@ -416,12 +452,12 @@ namespace rpc::sgx_coroutine_transport::host
             // active before exposing child_pid_ to the rest of the transport.
             ::close(ready_pipe[1]);
             uint8_t ready = 0;
-            auto bytes_read = ::read(ready_pipe[0], &ready, sizeof(ready));
+            auto ready_received = read_exact_nointr(ready_pipe[0], &ready, sizeof(ready));
             ::close(ready_pipe[0]);
-            if (bytes_read != sizeof(ready) || ready != 1)
+            if (!ready_received || ready != 1)
             {
                 int status = 0;
-                ::waitpid(child_pid, &status, 0);
+                waitpid_nointr(child_pid, &status, 0);
                 return rpc::error::TRANSPORT_ERROR();
             }
 
@@ -435,7 +471,7 @@ namespace rpc::sgx_coroutine_transport::host
                 shutdown_requested_.store(true, std::memory_order_release);
                 ::kill(child_pid, SIGKILL);
                 int status = 0;
-                ::waitpid(child_pid, &status, 0);
+                waitpid_nointr(child_pid, &status, 0);
                 child_reaped_.store(true, std::memory_order_release);
                 child_pid_.store(-1, std::memory_order_release);
                 return rpc::error::RESOURCE_EXHAUSTED();
@@ -520,11 +556,7 @@ namespace rpc::sgx_coroutine_transport::host
                 return;
 
             int status = 0;
-            pid_t wait_result = -1;
-            do
-            {
-                wait_result = ::waitpid(child_pid, &status, 0);
-            } while (wait_result < 0 && errno == EINTR);
+            waitpid_nointr(child_pid, &status, 0);
 
             child_reaped_.store(true, std::memory_order_release);
             child_pid_.store(-1, std::memory_order_release);

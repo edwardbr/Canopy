@@ -10,6 +10,7 @@
 #include <chrono>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -1105,6 +1106,66 @@ namespace
                 inactive_tcp, {}, rpc::connection_factory::layered_connection_context{}));
         EXPECT_EQ(inactive.error_code, rpc::error::INVALID_DATA());
         EXPECT_EQ(inactive.acceptor, nullptr);
+    }
+
+    TEST(
+        JsonConvert,
+        ConnectionFactoryValidatesStreamRpcLayerTopology)
+    {
+        rpc::connection_factory_config::connection_settings settings;
+        const auto layer = [](std::string type, const char* options_json)
+        {
+            rpc::stream_layers::stream_layer_settings result;
+            result.type = std::move(type);
+            result.settings = parse(options_json);
+            return result;
+        };
+
+        settings.stream_layers = {
+            layer(active_tcp_stream_type, R"json({"port": 0})json"),
+        };
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::connect),
+            rpc::error::OK());
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::accept),
+            rpc::error::OK());
+
+        settings.stream_layers = {
+            layer("websocket", R"json({})json"),
+        };
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::connect),
+            rpc::error::INVALID_DATA());
+
+        settings.stream_layers = {
+            layer(active_tcp_stream_type, R"json({"port": 0})json"),
+            layer(active_tcp_stream_type, R"json({"port": 0})json"),
+        };
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::connect),
+            rpc::error::INVALID_DATA());
+
+        settings.stream_layers = {
+            layer(active_tcp_stream_type, R"json({"port": 0})json"),
+            layer("definitely_not_registered", R"json({})json"),
+        };
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::connect),
+            rpc::error::INVALID_DATA());
+
+        settings.stream_layers = {
+            layer(inactive_tcp_stream_type, R"json({"port": 0})json"),
+        };
+        EXPECT_EQ(
+            rpc::connection_factory::validate_stream_rpc_connection_settings(
+                settings, rpc::connection_factory::layer_direction::connect),
+            rpc::error::INVALID_DATA());
     }
 
     TEST(

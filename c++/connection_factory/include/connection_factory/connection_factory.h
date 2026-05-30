@@ -199,6 +199,10 @@ namespace rpc::connection_factory
             const rpc::stream_layers::stream_layer_settings&,
             layer_direction,
             const layered_connection_context&) -> CORO_TASK(stream_result);
+        friend int validate_stream_rpc_connection_settings(
+            const rpc::connection_factory_config::connection_settings&,
+            layer_direction,
+            const layered_connection_context&);
     };
 
     auto connect_base_stream(
@@ -222,6 +226,11 @@ namespace rpc::connection_factory
         size_t first_layer,
         layer_direction direction,
         const layered_connection_context& context) -> CORO_TASK(stream_result);
+
+    [[nodiscard]] int validate_stream_rpc_connection_settings(
+        const rpc::connection_factory_config::connection_settings& settings,
+        layer_direction direction,
+        const layered_connection_context& context = {});
 
     namespace detail
     {
@@ -413,8 +422,9 @@ namespace rpc::connection_factory
                 std::move(input_interface), transport, settings, std::move(service), context);
         }
 
-        if (settings.stream_layers.empty())
-            CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
+        auto topology_error = validate_stream_rpc_connection_settings(settings, layer_direction::connect, context);
+        if (topology_error != rpc::error::OK())
+            CO_RETURN rpc::service_connect_result<Out>{topology_error, {}};
 
         const auto& base_layer = settings.stream_layers.front();
 
@@ -458,8 +468,9 @@ namespace rpc::connection_factory
         if (transport.type != "stream_rpc")
             CO_RETURN layered_accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
-        if (settings.stream_layers.empty())
-            CO_RETURN layered_accept_result{rpc::error::INVALID_DATA(), {}, {}};
+        auto topology_error = validate_stream_rpc_connection_settings(settings, layer_direction::accept, context);
+        if (topology_error != rpc::error::OK())
+            CO_RETURN layered_accept_result{topology_error, {}, {}};
 
         auto rpc_settings = resolve_stream_rpc_settings(settings);
         if (rpc_settings.error_code != rpc::error::OK())

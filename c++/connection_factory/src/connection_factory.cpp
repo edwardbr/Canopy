@@ -187,6 +187,31 @@ namespace rpc::connection_factory
             return found->second.get();
         }
 
+        bool built_in_stream_layer_supported(const std::string& type)
+        {
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
+            if (type == "websocket")
+                return true;
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
+            if (type == "tls")
+                return true;
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
+            if (type == "spsc_wrapping" || type == "spsc_wrapper")
+                return true;
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
+            if (type == "attestation" || type == "attestation_stream")
+                return true;
+#endif
+
+            return false;
+        }
+
         template<class State>
         auto custom_stream_component(
             State& state,
@@ -369,6 +394,69 @@ namespace rpc::connection_factory
         if (!impl_)
             impl_ = std::make_shared<impl>();
         custom_stream_component(*impl_, type).stream_layer_builder_fn = std::move(builder);
+    }
+
+    int validate_stream_rpc_connection_settings(
+        const rpc::connection_factory_config::connection_settings& settings,
+        layer_direction direction,
+        const layered_connection_context& context)
+    {
+        if (settings.stream_layers.empty())
+            return rpc::error::INVALID_DATA();
+
+        const auto component_supports_base = [&](const std::string& type)
+        {
+            if (type.empty())
+                return false;
+
+            if (context.impl_)
+            {
+                const auto custom = context.impl_->custom_stream_components.find(type);
+                if (custom != context.impl_->custom_stream_components.end())
+                {
+                    if (direction == layer_direction::connect && custom->second->supports_connect_base())
+                        return true;
+                    if (direction == layer_direction::accept
+                        && (custom->second->supports_accept_base() || custom->second->supports_accept_single_base()))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            const auto* built_in = built_in_stream_component(type);
+            if (!built_in)
+                return false;
+            if (direction == layer_direction::connect)
+                return built_in->supports_connect_base();
+            return built_in->supports_accept_base() || built_in->supports_accept_single_base();
+        };
+
+        if (!component_supports_base(settings.stream_layers.front().type))
+            return rpc::error::INVALID_DATA();
+
+        for (size_t layer_index = 1; layer_index < settings.stream_layers.size(); ++layer_index)
+        {
+            const auto& layer = settings.stream_layers[layer_index];
+            if (layer.type.empty())
+                return rpc::error::INVALID_DATA();
+
+            bool layer_supported = false;
+            if (context.impl_)
+            {
+                const auto custom = context.impl_->custom_stream_components.find(layer.type);
+                layer_supported = custom != context.impl_->custom_stream_components.end()
+                                  && custom->second->supports_stream_layer();
+            }
+
+            if (!layer_supported)
+                layer_supported = built_in_stream_layer_supported(layer.type);
+
+            if (!layer_supported)
+                return rpc::error::INVALID_DATA();
+        }
+
+        return rpc::error::OK();
     }
 
     auto detail::make_transport_connect_context(
@@ -586,6 +674,9 @@ namespace rpc::connection_factory
         layer_direction direction,
         const layered_connection_context& context) -> CORO_TASK(stream_result)
     {
+        if (first_layer > settings.stream_layers.size())
+            CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
+
         for (auto layer_index = first_layer; layer_index < settings.stream_layers.size(); ++layer_index)
         {
             auto result

@@ -13,8 +13,10 @@
 #  include <atomic>
 #  include <chrono>
 #  include <memory>
+#  include <utility>
 
 #  if defined(__linux__)
+#    include <cerrno>
 #    include <csignal>
 #    include <unistd.h>
 #  endif
@@ -107,6 +109,106 @@ namespace
         ASSERT_TRUE(pump_until(
             scheduler, [&]() { return released.load(std::memory_order_acquire); }, std::chrono::milliseconds{5000}));
     }
+
+    bool process_is_alive(pid_t pid)
+    {
+        if (pid <= 0)
+            return false;
+        return ::kill(pid, 0) == 0 || errno == EPERM;
+    }
+}
+
+TEST(
+    sgx_coroutine_sidecar_transport_test,
+    sidecar_startup_exit_reports_error_and_host_continues)
+{
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{
+            .thread_strategy = coro::scheduler::thread_strategy_t::manual,
+            .pool = coro::thread_pool::options{.thread_count = 1},
+        }));
+    auto root_service = rpc::root_service::create("sidecar failed startup host", rpc::DEFAULT_PREFIX, scheduler);
+    current_host_service = root_service;
+
+    auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
+        "sidecar failed startup child", root_service, coroutine_enclave_path);
+    transport->set_use_sidecar(true);
+    transport->set_sidecar_executable_path("/bin/false");
+
+    auto connect_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
+        scheduler,
+        rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+            root_service, "sidecar failed startup child", transport, nullptr));
+
+    EXPECT_EQ(connect_result.error_code, rpc::error::TRANSPORT_ERROR());
+    EXPECT_EQ(connect_result.output_interface, nullptr);
+    EXPECT_TRUE(
+        pump_until(scheduler, [&]() { return transport->sidecar_pid_for_test() <= 0; }, std::chrono::milliseconds{5000}));
+
+    rpc::get_new_zone_id_params zone_params;
+    zone_params.protocol_version = rpc::get_version();
+    auto zone_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::new_zone_id_result>(
+        scheduler, root_service->get_new_zone_id(std::move(zone_params)), std::chrono::milliseconds{1000});
+    EXPECT_EQ(zone_result.error_code, rpc::error::OK());
+
+    auto transport_ref = std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>(transport);
+    release_sidecar_test_state(scheduler, root_service, connect_result.output_interface);
+    transport.reset();
+    EXPECT_TRUE(pump_until(scheduler, [&]() { return transport_ref.expired(); }, std::chrono::milliseconds{5000}));
+
+    scheduler->shutdown();
+}
+
+TEST(
+    sgx_coroutine_sidecar_transport_test,
+    sidecar_clean_shutdown_stops_child_process_and_host_continues)
+{
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{
+            .thread_strategy = coro::scheduler::thread_strategy_t::manual,
+            .pool = coro::thread_pool::options{.thread_count = 1},
+        }));
+    auto root_service = rpc::root_service::create("sidecar clean shutdown host", rpc::DEFAULT_PREFIX, scheduler);
+    current_host_service = root_service;
+
+    auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
+        "sidecar clean shutdown child", root_service, coroutine_enclave_path);
+    transport->set_use_sidecar(true);
+    transport->set_sidecar_executable_path(CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH);
+
+    auto connect_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
+        scheduler,
+        rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, yyy::i_example>(
+            root_service, "sidecar clean shutdown child", transport, nullptr));
+
+    ASSERT_EQ(connect_result.error_code, rpc::error::OK());
+    ASSERT_NE(connect_result.output_interface, nullptr);
+
+    const auto sidecar_pid = transport->sidecar_pid_for_test();
+    ASSERT_GT(sidecar_pid, 0);
+
+    release_sidecar_output_interface(scheduler, connect_result.output_interface);
+    EXPECT_TRUE(pump_until(
+        scheduler,
+        [&]() { return transport->get_status() == rpc::transport_status::DISCONNECTED; },
+        std::chrono::milliseconds{5000}));
+    EXPECT_TRUE(pump_until(
+        scheduler,
+        [&]() { return transport->sidecar_pid_for_test() <= 0 || !process_is_alive(sidecar_pid); },
+        std::chrono::milliseconds{5000}));
+
+    rpc::get_new_zone_id_params zone_params;
+    zone_params.protocol_version = rpc::get_version();
+    auto zone_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::new_zone_id_result>(
+        scheduler, root_service->get_new_zone_id(std::move(zone_params)), std::chrono::milliseconds{1000});
+    EXPECT_EQ(zone_result.error_code, rpc::error::OK());
+
+    auto transport_ref = std::weak_ptr<rpc::sgx_coroutine_transport::host::transport>(transport);
+    release_sidecar_test_state(scheduler, root_service, connect_result.output_interface);
+    transport.reset();
+    EXPECT_TRUE(pump_until(scheduler, [&]() { return transport_ref.expired(); }, std::chrono::milliseconds{5000}));
+
+    scheduler->shutdown();
 }
 
 TEST(
