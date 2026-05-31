@@ -729,8 +729,8 @@ namespace streaming::attestation
             co_return true;
         }
 
-        std::shared_ptr<::streaming::stream> underlying;
-        stream_options options;
+        const std::shared_ptr<::streaming::stream> underlying;
+        const stream_options options;
         canopy::security::attestation::security_context context;
         bool complete{false};
     };

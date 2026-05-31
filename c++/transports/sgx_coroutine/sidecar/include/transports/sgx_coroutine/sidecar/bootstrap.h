@@ -46,10 +46,10 @@ namespace rpc::sgx_coroutine_transport::sidecar
 
     class bootstrap
     {
-        std::string enclave_path_;
-        std::string shared_memory_file_;
-        uint32_t worker_thread_count_{0};
-        bool create_shared_memory_file_{false};
+        const std::string enclave_path_{};
+        const std::string shared_memory_file_{};
+        const uint32_t worker_thread_count_{0};
+        const bool create_shared_memory_file_{false};
 
     public:
         bootstrap() = default;

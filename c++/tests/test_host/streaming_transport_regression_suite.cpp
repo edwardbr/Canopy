@@ -360,11 +360,12 @@ namespace
         std::string method = "GET",
         std::string key = "dGhlIHNhbXBsZSBub25jZQ==",
         std::string version = "13",
-        std::string connection = "keep-alive, Upgrade") -> std::string
+        std::string connection = "keep-alive, Upgrade",
+        std::string extra_headers = {}) -> std::string
     {
         return method + " /rpc HTTP/1.1\r\n" + "Host: example.test\r\n" + "Upgrade: websocket\r\n"
                + "Connection: " + connection + "\r\n" + "Sec-WebSocket-Key: " + key + "\r\n"
-               + "Sec-WebSocket-Version: " + version + "\r\n" + "\r\n";
+               + "Sec-WebSocket-Version: " + version + "\r\n" + extra_headers + "\r\n";
     }
 
     auto run_http_upgrade_request(
@@ -852,6 +853,122 @@ TEST(
 
     EXPECT_FALSE(called->load(std::memory_order_acquire));
     EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    MissingHostRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto request = std::string("GET /rpc HTTP/1.1\r\n") + "Upgrade: websocket\r\n" + "Connection: Upgrade\r\n"
+                   + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" + "Sec-WebSocket-Version: 13\r\n" + "\r\n";
+    auto response = sent_http_text(run_http_upgrade_request(request, called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    AllowedHostAcceptsMatchingUpgrade)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_hosts.push_back("EXAMPLE.TEST");
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    DisallowedHostRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_hosts.push_back("api.example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    AllowedOriginAcceptsMatchingUpgrade)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.require_websocket_origin = true;
+    limits.allowed_websocket_origins.push_back("https://example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: HTTPS://EXAMPLE.TEST\r\n"),
+        called,
+        limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    RequiredOriginRejectsMissingBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.require_websocket_origin = true;
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    DisallowedOriginRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_origins.push_back("https://example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: https://attacker.test\r\n"),
+        called,
+        limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    NullOriginRejectsUnlessExplicitlyAllowed)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request("GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: null\r\n"),
+        called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+
+    called->store(false, std::memory_order_release);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_origins.push_back("null");
+    response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request("GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: null\r\n"),
+        called,
+        limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
 }
 
 TEST(

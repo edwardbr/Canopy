@@ -51,8 +51,7 @@ namespace canopy::http_server
         auto timeout_from_ms(uint64_t value) -> std::chrono::milliseconds
         {
             const auto max_value = static_cast<uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
-            return std::chrono::milliseconds{
-                static_cast<std::chrono::milliseconds::rep>(std::min(value, max_value))};
+            return std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(std::min(value, max_value))};
         }
 
         char ascii_lower(char value)
@@ -108,6 +107,17 @@ namespace canopy::http_server
                 value.remove_prefix(comma + 1);
             }
             return false;
+        }
+
+        bool matches_allowed_value(
+            std::string_view value,
+            const std::vector<std::string>& allowed_values)
+        {
+            value = trim_ascii(value);
+            return std::any_of(
+                allowed_values.begin(),
+                allowed_values.end(),
+                [value](const std::string& allowed) { return ascii_iequals(value, trim_ascii(allowed)); });
         }
 
         auto decode_base64(std::string_view input) -> std::optional<std::vector<unsigned char>>
@@ -172,10 +182,18 @@ namespace canopy::http_server
             return !value.empty() && value != "0";
         }
 
-        auto validate_websocket_upgrade_request(const request& request) -> std::optional<std::string>
+        auto validate_websocket_upgrade_request(
+            const request& request,
+            const client_connection_limits& limits) -> std::optional<std::string>
         {
             if (request.method != "GET")
                 return "WebSocket upgrade method must be GET";
+
+            auto host = find_header(request, "Host");
+            if (!host || trim_ascii(*host).empty())
+                return "Missing WebSocket Host header";
+            if (!limits.allowed_websocket_hosts.empty() && !matches_allowed_value(*host, limits.allowed_websocket_hosts))
+                return "WebSocket Host is not allowed";
 
             auto upgrade = find_header(request, "Upgrade");
             if (!upgrade || !ascii_iequals(trim_ascii(*upgrade), "websocket"))
@@ -196,6 +214,22 @@ namespace canopy::http_server
             auto decoded_key = decode_base64(*key);
             if (!decoded_key || decoded_key->size() != websocket_client_key_bytes)
                 return "Invalid Sec-WebSocket-Key header";
+
+            auto origin = find_header(request, "Origin");
+            if (origin && trim_ascii(*origin).empty())
+                return "Empty WebSocket Origin header";
+            if (limits.require_websocket_origin && !origin)
+                return "Missing WebSocket Origin header";
+            if (origin)
+            {
+                const auto origin_value = trim_ascii(*origin);
+                if (!limits.allowed_websocket_origins.empty()
+                    && !matches_allowed_value(origin_value, limits.allowed_websocket_origins))
+                    return "WebSocket Origin is not allowed";
+                if (ascii_iequals(origin_value, "null")
+                    && !matches_allowed_value(origin_value, limits.allowed_websocket_origins))
+                    return "WebSocket Origin is not allowed";
+            }
 
             if (!request.body.empty() || has_nonzero_content_length(request))
                 return "WebSocket upgrade request must not contain a body";
@@ -449,7 +483,7 @@ namespace canopy::http_server
 
     auto client_connection::handle_websocket_upgrade(const request& request) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
-        if (auto validation_error = validate_websocket_upgrade_request(request))
+        if (auto validation_error = validate_websocket_upgrade_request(request, limits_))
         {
             RPC_WARNING("Rejecting WebSocket upgrade: {}", *validation_error);
             auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
@@ -527,11 +561,10 @@ namespace canopy::http_server
                             timeout_from_ms(limits_.receive_poll_timeout_ms));
                         if (read_status.is_timeout())
                         {
-                            const auto timed_out = !ctx.headers_complete
-                                                       ? timeout_expired(
-                                                           request_started, timeout_from_ms(limits_.header_timeout_ms))
-                                                       : timeout_expired(
-                                                           request_started, timeout_from_ms(limits_.request_timeout_ms));
+                            const auto timed_out
+                                = !ctx.headers_complete
+                                      ? timeout_expired(request_started, timeout_from_ms(limits_.header_timeout_ms))
+                                      : timeout_expired(request_started, timeout_from_ms(limits_.request_timeout_ms));
                             if (timed_out)
                             {
                                 RPC_WARNING("HTTP client timed out while sending a request");

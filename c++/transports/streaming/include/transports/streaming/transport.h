@@ -148,10 +148,10 @@ namespace rpc::stream_transport
         std::chrono::steady_clock::time_point disconnecting_since_{};
 
         // Outbound call timeout: calls pending longer than this are failed with CALL_TIMEOUT
-        std::chrono::milliseconds call_timeout_;
+        const std::chrono::milliseconds call_timeout_;
         // How often the sweep loop checks for timed-out calls
-        std::chrono::milliseconds call_timeout_sweep_;
-        std::chrono::milliseconds shutdown_timeout_;
+        const std::chrono::milliseconds call_timeout_sweep_;
+        const std::chrono::milliseconds shutdown_timeout_;
 
         struct activity_tracker
         {

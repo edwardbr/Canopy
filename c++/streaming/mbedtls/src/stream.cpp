@@ -771,9 +771,9 @@ namespace streaming::mbedtls
             }
         }
 
-        std::shared_ptr<::streaming::stream> underlying;
-        std::shared_ptr<context> tls_context;
-        std::shared_ptr<client_context> tls_client_context;
+        const std::shared_ptr<::streaming::stream> underlying;
+        const std::shared_ptr<context> tls_context{};
+        const std::shared_ptr<client_context> tls_client_context{};
         mbedtls_ssl_config config{};
         mbedtls_ssl_context ssl{};
         rng_context rng;

@@ -32,8 +32,9 @@ namespace rpc::sgx_blocking_transport
 
         std::shared_ptr<enclave_owner> enclave_owner_;
         uint64_t eid_ = 0;
-        std::string enclave_path_;
-        json::v1::object enclave_runtime_settings_{json::v1::map{}};
+        const std::string enclave_path_;
+        std::shared_ptr<const json::v1::object> enclave_runtime_settings_{
+            std::make_shared<const json::v1::object>(json::v1::map{})};
 
     public:
         enclave_transport(
@@ -60,7 +61,15 @@ namespace rpc::sgx_blocking_transport
 
         const std::string& get_enclave_path() const { return enclave_path_; }
         void set_enclave_runtime_settings(json::v1::object settings);
-        [[nodiscard]] const json::v1::object& get_enclave_runtime_settings() const { return enclave_runtime_settings_; }
+        [[nodiscard]] const json::v1::object& get_enclave_runtime_settings() const
+        {
+            if (!enclave_runtime_settings_)
+            {
+                static const json::v1::object empty_settings{json::v1::map{}};
+                return empty_settings;
+            }
+            return *enclave_runtime_settings_;
+        }
     };
 }
 

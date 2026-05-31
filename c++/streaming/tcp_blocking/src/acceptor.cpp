@@ -29,15 +29,24 @@ namespace streaming::blocking::tcp
 
 #ifdef CANOPY_BUILD_COROUTINE
 
+    namespace
+    {
+        endpoint endpoint_from_socket_address(const coro::net::socket_address& endpoint_addr)
+        {
+            endpoint ep;
+            ep.host = endpoint_addr.ip().to_string();
+            ep.port = endpoint_addr.port();
+            ep.ipv6 = endpoint_addr.domain() == coro::net::domain_t::ipv6;
+            return ep;
+        }
+    } // namespace
+
     acceptor::acceptor(
         const coro::net::socket_address& endpoint_addr,
         coro::net::tcp::server::options opts)
-        : opts_(opts)
+        : endpoint_(endpoint_from_socket_address(endpoint_addr))
+        , opts_(std::move(opts))
     {
-        // Extract host/port from the libcoro socket_address for round-tripping.
-        endpoint_.host = endpoint_addr.ip().to_string();
-        endpoint_.port = endpoint_addr.port();
-        endpoint_.ipv6 = endpoint_addr.domain() == coro::net::domain_t::ipv6;
     }
 
     acceptor::~acceptor() = default;

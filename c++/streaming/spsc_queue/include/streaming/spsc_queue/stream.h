@@ -51,11 +51,11 @@ namespace streaming::spsc_queue
         [[nodiscard]] auto get_peer_info() const -> peer_info override;
 
     private:
-        queue_type* send_queue_;
-        queue_type* recv_queue_;
-        std::shared_ptr<queue_type> send_queue_owner_;
-        std::shared_ptr<queue_type> recv_queue_owner_;
-        std::weak_ptr<rpc::coro::scheduler> scheduler_;
+        queue_type* const send_queue_;
+        queue_type* const recv_queue_;
+        const std::shared_ptr<queue_type> send_queue_owner_{};
+        const std::shared_ptr<queue_type> recv_queue_owner_{};
+        const std::weak_ptr<rpc::coro::scheduler> scheduler_;
         std::vector<uint8_t> leftover_;
         size_t leftover_offset_{0};
         std::atomic<bool> closed_{false};

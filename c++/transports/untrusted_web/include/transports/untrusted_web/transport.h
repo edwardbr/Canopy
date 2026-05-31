@@ -119,6 +119,6 @@ namespace rpc::untrusted_web
         std::shared_ptr<streaming::stream> stream_;
         rpc::object local_object_id_{0};
         connection_handler handler_;
-        rpc::untrusted_web::transport_settings settings_;
+        const rpc::untrusted_web::transport_settings settings_;
     };
 }

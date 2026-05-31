@@ -61,13 +61,13 @@ namespace streaming::blocking::tcp
         void stop() override;
 
     private:
-        endpoint endpoint_;
+        const endpoint endpoint_;
         std::atomic<bool> stop_{false};
-        std::chrono::milliseconds poll_timeout_{std::chrono::milliseconds(10)};
+        const std::chrono::milliseconds poll_timeout_{std::chrono::milliseconds(10)};
 
 #ifdef CANOPY_BUILD_COROUTINE
         std::shared_ptr<rpc::executor> executor_;
-        coro::net::tcp::server::options opts_;
+        const coro::net::tcp::server::options opts_{};
         std::shared_ptr<coro::net::tcp::server> server_;
 #else
         int listen_fd_{-1};

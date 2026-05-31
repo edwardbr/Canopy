@@ -8,9 +8,11 @@
 // found by ADL through `json::v1::convert::tag<T>`.
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -69,6 +71,24 @@ namespace
     using json::v1::parse;
     using json::v1::convert::from_json_object;
     using json::v1::convert::to_json_object;
+
+    TEST(
+        JsonConvert,
+        JsonDomRawKeepsNestedContainersConst)
+    {
+        using raw_type
+            = std::remove_cv_t<std::remove_reference_t<decltype(std::declval<const json::v1::object&>().raw())>>;
+        using array_slot = std::variant_alternative_t<json::v1::object::ARRAY_TYPE_INDEX, raw_type>;
+        using map_slot = std::variant_alternative_t<json::v1::object::MAP_TYPE_INDEX, raw_type>;
+
+        static_assert(std::is_same_v<array_slot, std::unique_ptr<const json::v1::array>>);
+        static_assert(std::is_same_v<map_slot, std::unique_ptr<const json::v1::map>>);
+
+        const auto value = parse(R"json({"items":[{"name":"immutable"}]})json");
+        const auto& items = value.as_map().at("items").as_array();
+        ASSERT_EQ(items.size(), size_t{1});
+        EXPECT_EQ(items.front().as_map().at("name").get<std::string>(), "immutable");
+    }
 
 #ifdef CANOPY_BUILD_COROUTINE
     constexpr const char* active_tcp_stream_type = "tcp_coroutine";
@@ -1094,7 +1114,10 @@ namespace
             "max_pending_input_bytes": 1024,
             "receive_poll_timeout_ms": 5,
             "header_timeout_ms": 100,
-            "request_timeout_ms": 200
+            "request_timeout_ms": 200,
+            "allowed_websocket_hosts": ["example.test", "api.example.test:443"],
+            "require_websocket_origin": true,
+            "allowed_websocket_origins": ["https://example.test"]
         })json");
 
         const auto materialised
@@ -1110,6 +1133,12 @@ namespace
         EXPECT_EQ(materialised.settings.receive_poll_timeout_ms, uint64_t{5});
         EXPECT_EQ(materialised.settings.header_timeout_ms, uint64_t{100});
         EXPECT_EQ(materialised.settings.request_timeout_ms, uint64_t{200});
+        ASSERT_EQ(materialised.settings.allowed_websocket_hosts.size(), size_t{2});
+        EXPECT_EQ(materialised.settings.allowed_websocket_hosts[0], "example.test");
+        EXPECT_EQ(materialised.settings.allowed_websocket_hosts[1], "api.example.test:443");
+        EXPECT_TRUE(materialised.settings.require_websocket_origin);
+        ASSERT_EQ(materialised.settings.allowed_websocket_origins.size(), size_t{1});
+        EXPECT_EQ(materialised.settings.allowed_websocket_origins[0], "https://example.test");
 
         const auto sparse = rpc::connection_factory::materialise_settings<canopy::http_server::client_connection_limits>(
             json::v1::parse(R"json({})json"));
@@ -1124,6 +1153,9 @@ namespace
         EXPECT_EQ(sparse.settings.receive_poll_timeout_ms, uint64_t{250});
         EXPECT_EQ(sparse.settings.header_timeout_ms, uint64_t{10000});
         EXPECT_EQ(sparse.settings.request_timeout_ms, uint64_t{30000});
+        EXPECT_TRUE(sparse.settings.allowed_websocket_hosts.empty());
+        EXPECT_FALSE(sparse.settings.require_websocket_origin);
+        EXPECT_TRUE(sparse.settings.allowed_websocket_origins.empty());
     }
 #endif
 

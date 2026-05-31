@@ -106,10 +106,10 @@ namespace streaming::websocket
 #else
         std::mutex send_mtx_;
 #endif
-        std::shared_ptr<::streaming::stream> underlying_;
+        const std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context* wslay_ctx_{nullptr};
-        ::rpc::websocket_stream::stream_settings settings_;
-        ::rpc::websocket_stream::endpoint_role role_{::rpc::websocket_stream::endpoint_role::server};
+        const ::rpc::websocket_stream::stream_settings settings_;
+        const ::rpc::websocket_stream::endpoint_role role_{::rpc::websocket_stream::endpoint_role::server};
         std::string raw_recv_buffer_;
         size_t raw_recv_size_{0};
         size_t raw_recv_pos_{0};

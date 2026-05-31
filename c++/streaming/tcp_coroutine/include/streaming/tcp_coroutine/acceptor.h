@@ -60,10 +60,10 @@ namespace streaming::coroutine::tcp
     private:
         static CORO_TASK(void) close_acceptor(std::shared_ptr<rpc::io_uring::acceptor> acceptor);
 
-        std::shared_ptr<rpc::io_uring::controller> controller_;
+        const std::shared_ptr<rpc::io_uring::controller> controller_;
         std::shared_ptr<rpc::io_uring::acceptor> acceptor_;
         std::shared_ptr<rpc::coro::scheduler> scheduler_;
-        stream::options stream_options_;
+        const stream::options stream_options_;
         std::atomic<bool> stopping_{false};
     };
 } // namespace streaming::coroutine::tcp

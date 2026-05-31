@@ -121,9 +121,9 @@ namespace streaming::openssl_tls
         [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
 
     private:
-        std::shared_ptr<::streaming::stream> underlying_;
-        std::shared_ptr<context> tls_ctx_;
-        std::shared_ptr<client_context> tls_client_ctx_;
+        const std::shared_ptr<::streaming::stream> underlying_;
+        const std::shared_ptr<context> tls_ctx_{};
+        const std::shared_ptr<client_context> tls_client_ctx_{};
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr};
         BIO* wbio_{nullptr};

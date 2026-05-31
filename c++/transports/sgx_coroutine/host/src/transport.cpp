@@ -724,7 +724,7 @@ namespace rpc::sgx_coroutine_transport::host
 
     void transport::set_enclave_worker_thread_count(uint32_t worker_thread_count)
     {
-        enclave_worker_thread_count_.store(worker_thread_count, std::memory_order_release);
+        enclave_worker_thread_count_ = worker_thread_count;
     }
 
     void transport::set_use_sidecar(bool use_sidecar)
@@ -758,7 +758,6 @@ namespace rpc::sgx_coroutine_transport::host
         if (validation_error != rpc::error::OK())
             return validation_error;
 
-        std::lock_guard lock(enclave_startup_options_mutex_);
         enclave_startup_applications_ = std::move(applications);
         return rpc::error::OK();
     }
@@ -779,20 +778,17 @@ namespace rpc::sgx_coroutine_transport::host
         if (validation_error != rpc::error::OK())
             return validation_error;
 
-        std::lock_guard lock(enclave_startup_options_mutex_);
-        enclave_runtime_settings_ = std::move(settings);
+        enclave_runtime_settings_ = std::make_shared<const json::v1::object>(std::move(settings));
         return rpc::error::OK();
     }
 
     void transport::set_enclave_io_uring_options(rpc::io_uring::host_controller::options options)
     {
-        std::lock_guard lock(enclave_startup_options_mutex_);
         enclave_io_uring_options_ = std::move(options);
     }
 
     void transport::set_host_stream_layer_applier(stream_layer_applier applier)
     {
-        std::lock_guard lock(enclave_startup_options_mutex_);
         host_stream_layer_applier_ = std::move(applier);
     }
 
@@ -802,7 +798,6 @@ namespace rpc::sgx_coroutine_transport::host
         if (validation_error != rpc::error::OK())
             return validation_error;
 
-        std::lock_guard lock(enclave_startup_options_mutex_);
         enclave_stream_layers_ = std::move(layers);
         return rpc::error::OK();
     }
@@ -996,11 +991,8 @@ namespace rpc::sgx_coroutine_transport::host
 
         stream_layer_applier host_stream_layer_applier;
         std::vector<rpc::stream_layers::stream_layer_settings> enclave_stream_layers;
-        {
-            std::lock_guard lock(enclave_startup_options_mutex_);
-            host_stream_layer_applier = host_stream_layer_applier_;
-            enclave_stream_layers = enclave_stream_layers_;
-        }
+        host_stream_layer_applier = host_stream_layer_applier_;
+        enclave_stream_layers = enclave_stream_layers_;
 
         if (!enclave_stream_layers.empty())
         {
@@ -1021,14 +1013,11 @@ namespace rpc::sgx_coroutine_transport::host
         }
 
         // spawn the main thread for this enclave
-        const auto worker_thread_count = enclave_worker_thread_count_.load(std::memory_order_acquire);
+        const auto worker_thread_count = enclave_worker_thread_count_;
         std::map<std::string, json::v1::object> startup_applications;
-        json::v1::object runtime_settings(json::v1::map{});
-        {
-            std::lock_guard lock(enclave_startup_options_mutex_);
-            startup_applications = enclave_startup_applications_;
-            runtime_settings = enclave_runtime_settings_;
-        }
+        std::shared_ptr<const json::v1::object> runtime_settings;
+        startup_applications = enclave_startup_applications_;
+        runtime_settings = enclave_runtime_settings_;
 
         if (pending_sidecar_owner)
         {
@@ -1046,7 +1035,7 @@ namespace rpc::sgx_coroutine_transport::host
             request.ticks_per_millisecond = host_ticks_per_millisecond();
             request.initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
             request.applications = std::move(startup_applications);
-            request.runtime_settings = std::move(runtime_settings);
+            request.runtime_settings = runtime_settings ? *runtime_settings : get_enclave_runtime_settings();
             request.stream_layers = std::move(enclave_stream_layers);
 
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
@@ -1147,7 +1136,7 @@ namespace rpc::sgx_coroutine_transport::host
             request.ticks_per_millisecond = host_ticks_per_millisecond();
             request.initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
             request.applications = std::move(startup_applications);
-            request.runtime_settings = std::move(runtime_settings);
+            request.runtime_settings = runtime_settings ? *runtime_settings : get_enclave_runtime_settings();
             request.stream_layers = std::move(enclave_stream_layers);
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
             auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));

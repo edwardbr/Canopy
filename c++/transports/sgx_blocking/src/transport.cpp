@@ -346,7 +346,7 @@ namespace rpc::sgx_blocking_transport
 
     void enclave_transport::set_enclave_runtime_settings(json::v1::object settings)
     {
-        enclave_runtime_settings_ = std::move(settings);
+        enclave_runtime_settings_ = std::make_shared<const json::v1::object>(std::move(settings));
     }
 
     CORO_TASK(rpc::connect_result)
@@ -407,11 +407,12 @@ namespace rpc::sgx_blocking_transport
 
         register_host_transport(eid_, std::static_pointer_cast<enclave_transport>(shared_from_this()));
 
+        auto runtime_settings = enclave_runtime_settings_;
         auto init_request = to_sgx_blob(to_sgx_request(
             input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address(),
             input_descr.encoding_type,
             adjacent_zone_id,
-            enclave_runtime_settings_));
+            runtime_settings ? *runtime_settings : get_enclave_runtime_settings()));
         std::vector<char> init_response_blob(1024);
         int err_code = rpc::error::OK();
         size_t init_response_size = 0;

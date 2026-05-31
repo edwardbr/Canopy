@@ -23,7 +23,7 @@ namespace rpc::c_abi
         dynamic_library_loader loader_;
         canopy_child_context child_ctx_ = nullptr;
         canopy_allocator_vtable allocator_{};
-        std::string library_path_;
+        const std::string library_path_;
 
         static canopy_byte_buffer cb_alloc(
             void* allocator_ctx,

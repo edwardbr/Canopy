@@ -26,7 +26,7 @@ namespace streaming::coroutine::tcp
         connector(const connector&) = delete;
         connector& operator=(const connector&) = delete;
         connector(connector&&) = default;
-        connector& operator=(connector&&) = default;
+        connector& operator=(connector&&) = delete;
 
         CORO_TASK(stream_result)
         connect_loopback(
@@ -48,8 +48,8 @@ namespace streaming::coroutine::tcp
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
 
     private:
-        std::shared_ptr<rpc::io_uring::controller> controller_;
-        stream::options stream_options_;
+        const std::shared_ptr<rpc::io_uring::controller> controller_;
+        const stream::options stream_options_;
     };
 
     CORO_TASK(stream_result)

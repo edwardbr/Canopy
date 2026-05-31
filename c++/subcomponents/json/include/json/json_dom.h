@@ -383,7 +383,7 @@ namespace json
         {
         public:
             using container_type
-                = std::variant<std::string, number, bool, std::nullptr_t, std::unique_ptr<array>, std::unique_ptr<map>>;
+                = std::variant<std::string, number, bool, std::nullptr_t, std::unique_ptr<const array>, std::unique_ptr<const map>>;
 
             static constexpr size_t STRING_TYPE_INDEX = 0;
             static constexpr size_t DOUBLE_TYPE_INDEX = 1;
@@ -705,13 +705,13 @@ namespace json
                 [this](const auto& value)
                 {
                     using value_type = std::decay_t<decltype(value)>;
-                    if constexpr (std::is_same_v<value_type, std::unique_ptr<array>>)
+                    if constexpr (std::is_same_v<value_type, std::unique_ptr<const array>>)
                     {
                         if (!value)
                             throw std::invalid_argument("invalid JSON array");
                         value_ = std::make_unique<array>(*value);
                     }
-                    else if constexpr (std::is_same_v<value_type, std::unique_ptr<map>>)
+                    else if constexpr (std::is_same_v<value_type, std::unique_ptr<const map>>)
                     {
                         if (!value)
                             throw std::invalid_argument("invalid JSON map");
@@ -766,7 +766,7 @@ namespace json
 
         inline const array& object::as_array() const
         {
-            const auto& value = std::get<std::unique_ptr<array>>(value_);
+            const auto& value = std::get<std::unique_ptr<const array>>(value_);
             if (!value)
                 throw std::invalid_argument("invalid JSON array");
             return *value;
@@ -774,7 +774,7 @@ namespace json
 
         inline const map& object::as_map() const
         {
-            const auto& value = std::get<std::unique_ptr<map>>(value_);
+            const auto& value = std::get<std::unique_ptr<const map>>(value_);
             if (!value)
                 throw std::invalid_argument("invalid JSON map");
             return *value;

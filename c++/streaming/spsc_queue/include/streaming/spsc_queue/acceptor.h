@@ -40,9 +40,9 @@ namespace streaming::spsc_queue
         void stop() override { stop_ = true; }
 
     private:
-        queue_type* send_q_;
-        queue_type* recv_q_;
-        std::shared_ptr<rpc::coro::scheduler> scheduler_;
+        queue_type* const send_q_;
+        queue_type* const recv_q_;
+        const std::shared_ptr<rpc::coro::scheduler> scheduler_;
         bool accepted_ = false;
         bool stop_ = false;
     };

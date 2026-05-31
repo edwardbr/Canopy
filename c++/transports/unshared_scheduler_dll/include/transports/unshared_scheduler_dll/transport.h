@@ -36,7 +36,7 @@ namespace rpc::unshared_scheduler_dll
 
         void* dll_ctx_ = nullptr;
         dll_begin_table dll_begin_;
-        std::string library_path_;
+        const std::string library_path_;
 
         static int host_begin_send(
             void* ctx,

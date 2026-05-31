@@ -47,8 +47,8 @@ namespace streaming::compression
         [[nodiscard]] auto get_peer_info() const -> peer_info override;
 
     private:
-        std::shared_ptr<::streaming::stream> underlying_;
-        ::rpc::compression_stream::stream_settings settings_;
+        const std::shared_ptr<::streaming::stream> underlying_;
+        const ::rpc::compression_stream::stream_settings settings_;
         ZSTD_CCtx_s* compression_context_{nullptr};
         ZSTD_DCtx_s* decompression_context_{nullptr};
         std::vector<uint8_t> send_buffer_;

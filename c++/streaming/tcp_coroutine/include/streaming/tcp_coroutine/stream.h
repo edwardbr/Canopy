@@ -50,9 +50,9 @@ namespace streaming::coroutine::tcp
         [[nodiscard]] streaming::peer_info get_peer_info() const override;
 
     private:
-        std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor_;
-        uint16_t peer_port_{0};
-        options options_;
+        const std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor_;
+        const uint16_t peer_port_{0};
+        const options options_;
         std::atomic<bool> closed_{false};
     };
 

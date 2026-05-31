@@ -52,7 +52,7 @@ namespace rpc::shared_scheduler_dll
         void* lib_handle_ = nullptr;
 
         // Path to the shared object
-        std::string library_path_;
+        const std::string library_path_;
 
         // Host scheduler used to defer final keep-alive release until after a
         // DLL-originated destructor callback has unwound out of DLL code.

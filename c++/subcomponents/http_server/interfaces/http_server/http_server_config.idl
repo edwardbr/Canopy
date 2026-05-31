@@ -47,6 +47,15 @@ namespace canopy
 
             [description="Milliseconds allowed for a client to complete the whole HTTP request after headers start. Zero disables the request deadline."]
             uint64_t request_timeout_ms = 30000;
+
+            [description="Allowed HTTP Host header values for WebSocket upgrades. Values are matched exactly after ASCII case-folding and trimming, including any port. Empty accepts any non-empty Host header."]
+            std::vector<std::string> allowed_websocket_hosts = {};
+
+            [description="When true, WebSocket upgrades must include a non-empty Origin header. If allowed_websocket_origins is also set, the Origin must match that allow-list."]
+            bool require_websocket_origin = false;
+
+            [description="Allowed Origin header values for WebSocket upgrades. Values are matched exactly after ASCII case-folding and trimming. Empty disables Origin allow-listing; the literal origin 'null' is rejected unless explicitly listed here."]
+            std::vector<std::string> allowed_websocket_origins = {};
         };
     }
 }

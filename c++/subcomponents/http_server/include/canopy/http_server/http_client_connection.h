@@ -111,7 +111,7 @@ namespace canopy::http_server
 
         std::shared_ptr<streaming::stream> stream_;
         handler_set handlers_;
-        client_connection_limits limits_;
+        const client_connection_limits limits_;
     };
 
     auto status_text(int status_code) -> std::string;

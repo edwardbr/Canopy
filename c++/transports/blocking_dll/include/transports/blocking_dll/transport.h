@@ -62,7 +62,7 @@ namespace rpc::blocking_dll
         void* lib_handle_ = nullptr;
 
         // Path to the shared object
-        std::string library_path_;
+        const std::string library_path_;
 
         // Called by parent_transport (DLL side) when it disconnects
         void on_dll_disconnected();
