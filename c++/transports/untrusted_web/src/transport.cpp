@@ -64,6 +64,11 @@ namespace rpc::untrusted_web
                 return false;
             return std::chrono::steady_clock::now() - started >= timeout_from_ms(timeout_ms);
         }
+
+        bool is_set(rpc::interface_ordinal value)
+        {
+            return value.is_set();
+        }
     }
 
     transport::transport(
@@ -211,6 +216,11 @@ namespace rpc::untrusted_web
             RPC_ERROR("[untrusted_web] invalid connect_request: {}", parse_err);
             CO_RETURN;
         }
+        if (!is_set(req.inbound_interface_id) || !is_set(req.outbound_interface_id) || req.remote_object_id.object_id == 0)
+        {
+            RPC_WARNING("[untrusted_web] rejecting incomplete handshake request");
+            CO_RETURN;
+        }
 
         // make a client object id from the client-supplied object id and the server-assigned zone id
         auto client_object_r = get_adjacent_zone_id().with_object(req.remote_object_id.object_id);
@@ -257,6 +267,13 @@ namespace rpc::untrusted_web
             CO_RETURN;
         }
         auto output_descr = std::move(handler_ret.output_descriptor);
+        if (!output_descr.is_set() || !output_descr.get_object_id().is_set()
+            || !output_descr.get_address().same_zone(get_zone_id().get_address()))
+        {
+            RPC_WARNING("[untrusted_web] handler returned an invalid or non-local server object");
+            CO_RETURN;
+        }
+        set_local_object_id(output_descr.get_object_id());
 
         // Send connect_response in an envelope with the server-side callable object.
         websocket_protocol::v1::connect_response connect_resp;
@@ -342,6 +359,12 @@ namespace rpc::untrusted_web
         tracker.reset();
         RPC_DEBUG("receive_consumer_loop exiting for zone {}", get_zone_id().get_subnet());
         CO_RETURN;
+    }
+
+    bool transport::is_allowed_client_destination(const rpc::remote_object& destination) const
+    {
+        return local_object_id_.is_set() && destination.get_object_id() == local_object_id_
+               && destination.get_address().same_zone(get_zone_id().get_address());
     }
 
     CORO_TASK(void)
@@ -519,13 +542,21 @@ namespace rpc::untrusted_web
             CO_RETURN; // no reply.
         }
 
+        const auto destination = rpc::remote_object(to_zone_address(request.destination_zone_id));
+        if (!is_allowed_client_destination(destination))
+        {
+            RPC_WARNING("[untrusted_web] closing connection after request targeted an unadvertised object");
+            CO_AWAIT stream_->set_closed();
+            CO_RETURN;
+        }
+
         auto send_result = CO_AWAIT inbound_send(
             rpc::send_params{
                 FLD(protocol_version) rpc::get_version(),
                 FLD(encoding_type) request.encoding,
                 FLD(tag) request.tag,
                 FLD(caller_zone_id) get_adjacent_zone_id(),
-                FLD(remote_object_id) rpc::remote_object(to_zone_address(request.destination_zone_id)),
+                FLD(remote_object_id) destination,
                 FLD(interface_id) request.interface_id,
                 FLD(method_id) request.method_id,
                 FLD(in_data) request.data,

@@ -45,14 +45,14 @@ namespace rpc
             [description="Protocol-level WebSocket ping/pong keep-alive settings."]
             keep_alive_settings keep_alive = {};
 
-            [description="Maximum reassembled WebSocket message payload bytes accepted from the peer. Zero preserves the historical unbounded behaviour; public endpoints should set a finite value."]
-            uint64_t max_message_bytes = 0;
+            [description="Maximum reassembled WebSocket message payload bytes accepted from the peer. Zero disables this limit; public endpoints should keep a finite value."]
+            uint64_t max_message_bytes = 1048576;
 
-            [description="Maximum payload bytes accepted in a single WebSocket frame before the frame is handed to WSLay. Zero preserves the historical unbounded behaviour; public endpoints should set a finite value."]
-            uint64_t max_frame_payload_bytes = 0;
+            [description="Maximum payload bytes accepted in a single WebSocket frame before the frame is handed to WSLay. Zero disables this limit; public endpoints should keep a finite value."]
+            uint64_t max_frame_payload_bytes = 1048576;
 
-            [description="Maximum complete WebSocket messages that may be queued inside the stream while the caller is still draining earlier messages. Zero preserves the historical unbounded behaviour."]
-            uint64_t max_decoded_messages = 0;
+            [description="Maximum complete WebSocket messages that may be queued inside the stream while the caller is still draining earlier messages. Zero disables this limit."]
+            uint64_t max_decoded_messages = 16;
         };
     }
 }

@@ -107,6 +107,7 @@ namespace rpc::untrusted_web
         CORO_TASK(void) stub_handle_send(websocket_protocol::v1::envelope request);
 
         void set_local_object_id(rpc::object id) { local_object_id_ = id; }
+        [[nodiscard]] bool is_allowed_client_destination(const rpc::remote_object& destination) const;
 
         CORO_TASK(void)
         cleanup(

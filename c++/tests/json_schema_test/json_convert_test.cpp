@@ -1036,9 +1036,9 @@ namespace
         EXPECT_FALSE(sparse.settings.keep_alive.enabled);
         EXPECT_EQ(sparse.settings.keep_alive.interval_ms, uint64_t{30000});
         EXPECT_EQ(sparse.settings.keep_alive.timeout_ms, uint64_t{10000});
-        EXPECT_EQ(sparse.settings.max_message_bytes, uint64_t{0});
-        EXPECT_EQ(sparse.settings.max_frame_payload_bytes, uint64_t{0});
-        EXPECT_EQ(sparse.settings.max_decoded_messages, uint64_t{0});
+        EXPECT_EQ(sparse.settings.max_message_bytes, uint64_t{1048576});
+        EXPECT_EQ(sparse.settings.max_frame_payload_bytes, uint64_t{1048576});
+        EXPECT_EQ(sparse.settings.max_decoded_messages, uint64_t{16});
 
         const auto stale_path = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
             json::v1::parse(R"json({"path": "/rpc"})json"));
