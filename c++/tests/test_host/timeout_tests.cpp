@@ -615,7 +615,7 @@ protected:
         }
 
         auto ws_stm = std::make_shared<streaming::websocket::stream>(
-            std::move(tcp_result.connection), streaming::websocket::stream_role::client);
+            std::move(tcp_result.connection), rpc::websocket_stream::endpoint_role::client);
         auto initiator = rpc::stream_transport::make_client(
             "initiator", root_service_, std::move(ws_stm), timeout_transport_options());
 
@@ -653,15 +653,15 @@ TEST(
     auto scheduler = make_websocket_test_scheduler();
     auto pair = make_websocket_spsc_pair(scheduler);
 
-    streaming::websocket::stream_options client_options;
-    client_options.role = streaming::websocket::stream_role::client;
+    rpc::websocket_stream::stream_settings client_options;
+    client_options.role = rpc::websocket_stream::endpoint_role::client;
     client_options.keep_alive.enabled = true;
-    client_options.keep_alive.interval = std::chrono::milliseconds{1};
-    client_options.keep_alive.timeout = std::chrono::milliseconds{250};
+    client_options.keep_alive.interval_ms = 1;
+    client_options.keep_alive.timeout_ms = 250;
 
     auto client = std::make_shared<streaming::websocket::stream>(pair.client_base, client_options);
     auto server
-        = std::make_shared<streaming::websocket::stream>(pair.server_base, streaming::websocket::stream_role::server);
+        = std::make_shared<streaming::websocket::stream>(pair.server_base, rpc::websocket_stream::endpoint_role::server);
 
     bool client_timed_out = false;
     bool server_timed_out = false;

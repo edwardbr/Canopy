@@ -64,6 +64,7 @@ namespace canopy::http_server
             request parsed_request;
             std::string current_header_field;
             std::string current_header_value;
+            size_t header_count{0};
             bool reading_header_value{false};
             bool headers_complete{false};
             bool message_complete{false};
@@ -92,7 +93,7 @@ namespace canopy::http_server
             size_t length);
         static int on_message_complete(llhttp_t* parser);
 
-        static void flush_header(parser_request_context& ctx);
+        static bool flush_header(parser_request_context& ctx);
         static auto build_http_response(
             const response& response,
             bool keep_alive) -> std::string;

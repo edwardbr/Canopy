@@ -1004,7 +1004,9 @@ namespace
                 "enabled": true,
                 "interval_ms": 1234,
                 "timeout_ms": 5678
-            }
+            },
+            "max_message_bytes": 1000000,
+            "max_decoded_messages": 4
         })json");
 
         const auto materialised
@@ -1015,6 +1017,8 @@ namespace
         EXPECT_TRUE(materialised.settings.keep_alive.enabled);
         EXPECT_EQ(materialised.settings.keep_alive.interval_ms, uint64_t{1234});
         EXPECT_EQ(materialised.settings.keep_alive.timeout_ms, uint64_t{5678});
+        EXPECT_EQ(materialised.settings.max_message_bytes, uint64_t{1000000});
+        EXPECT_EQ(materialised.settings.max_decoded_messages, uint64_t{4});
 
         const auto sparse = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
             json::v1::parse(R"json({})json"));
@@ -1023,6 +1027,8 @@ namespace
         EXPECT_FALSE(sparse.settings.keep_alive.enabled);
         EXPECT_EQ(sparse.settings.keep_alive.interval_ms, uint64_t{30000});
         EXPECT_EQ(sparse.settings.keep_alive.timeout_ms, uint64_t{10000});
+        EXPECT_EQ(sparse.settings.max_message_bytes, uint64_t{0});
+        EXPECT_EQ(sparse.settings.max_decoded_messages, uint64_t{0});
 
         const auto stale_path = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
             json::v1::parse(R"json({"path": "/rpc"})json"));

@@ -5,6 +5,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <optional>
+#include <string_view>
+#include <vector>
 
 #include <fmt/format.h>
 #include <llhttp.h>
@@ -26,9 +30,165 @@ namespace canopy::http_server
 {
     namespace
     {
+        constexpr size_t max_http_url_bytes = 4096;
+        constexpr size_t max_http_header_name_bytes = 256;
+        constexpr size_t max_http_header_value_bytes = 8192;
+        constexpr size_t max_http_header_count = 128;
+        constexpr size_t max_http_body_bytes = 1024 * 1024;
+        constexpr size_t max_http_pending_input_bytes = 64 * 1024;
+        constexpr size_t websocket_client_key_bytes = 16;
+
+        char ascii_lower(char value)
+        {
+            return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
+        }
+
+        auto trim_ascii(std::string_view input) -> std::string_view
+        {
+            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front())))
+                input.remove_prefix(1);
+            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))
+                input.remove_suffix(1);
+            return input;
+        }
+
+        bool ascii_iequals(
+            std::string_view lhs,
+            std::string_view rhs)
+        {
+            return lhs.size() == rhs.size()
+                   && std::equal(
+                       lhs.begin(),
+                       lhs.end(),
+                       rhs.begin(),
+                       [](char left, char right) { return ascii_lower(left) == ascii_lower(right); });
+        }
+
+        auto find_header(
+            const request& request,
+            std::string_view name) -> std::optional<std::string_view>
+        {
+            for (const auto& [field, value] : request.headers)
+            {
+                if (ascii_iequals(field, name))
+                    return value;
+            }
+            return std::nullopt;
+        }
+
+        bool header_contains_token(
+            std::string_view value,
+            std::string_view token)
+        {
+            while (!value.empty())
+            {
+                const auto comma = value.find(',');
+                auto part = trim_ascii(value.substr(0, comma));
+                if (ascii_iequals(part, token))
+                    return true;
+                if (comma == std::string_view::npos)
+                    break;
+                value.remove_prefix(comma + 1);
+            }
+            return false;
+        }
+
+        auto decode_base64(std::string_view input) -> std::optional<std::vector<unsigned char>>
+        {
+            input = trim_ascii(input);
+            if (input.empty() || input.size() % 4 != 0)
+                return std::nullopt;
+
+            size_t padding = 0;
+            for (auto it = input.rbegin(); it != input.rend() && *it == '='; ++it)
+                ++padding;
+            if (padding > 2)
+                return std::nullopt;
+
+            for (size_t i = 0; i < input.size(); ++i)
+            {
+                const auto c = static_cast<unsigned char>(input[i]);
+                const bool base64_char = std::isalnum(c) || c == '+' || c == '/';
+                const bool padding_char = c == '=';
+                if (!base64_char && !padding_char)
+                    return std::nullopt;
+                if (padding_char && i < input.size() - padding)
+                    return std::nullopt;
+            }
+
+#if defined(CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
+            size_t decoded_length = 0;
+            auto size_result = mbedtls_base64_decode(
+                nullptr, 0, &decoded_length, reinterpret_cast<const unsigned char*>(input.data()), input.size());
+            if (size_result != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL || decoded_length == 0)
+                return std::nullopt;
+
+            std::vector<unsigned char> decoded(decoded_length);
+            auto decode_result = mbedtls_base64_decode(
+                decoded.data(),
+                decoded.size(),
+                &decoded_length,
+                reinterpret_cast<const unsigned char*>(input.data()),
+                input.size());
+            if (decode_result != 0)
+                return std::nullopt;
+            decoded.resize(decoded_length);
+            return decoded;
+#elif defined(CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
+            std::vector<unsigned char> decoded((input.size() / 4) * 3);
+            const auto decoded_length = EVP_DecodeBlock(
+                decoded.data(), reinterpret_cast<const unsigned char*>(input.data()), static_cast<int>(input.size()));
+            if (decoded_length < 0 || static_cast<size_t>(decoded_length) < padding)
+                return std::nullopt;
+            decoded.resize(static_cast<size_t>(decoded_length) - padding);
+            return decoded;
+#endif
+        }
+
+        bool has_nonzero_content_length(const request& request)
+        {
+            auto header = find_header(request, "Content-Length");
+            if (!header)
+                return false;
+
+            auto value = trim_ascii(*header);
+            return !value.empty() && value != "0";
+        }
+
+        auto validate_websocket_upgrade_request(const request& request) -> std::optional<std::string>
+        {
+            if (request.method != "GET")
+                return "WebSocket upgrade method must be GET";
+
+            auto upgrade = find_header(request, "Upgrade");
+            if (!upgrade || !ascii_iequals(trim_ascii(*upgrade), "websocket"))
+                return "Missing or invalid WebSocket Upgrade header";
+
+            auto connection = find_header(request, "Connection");
+            if (!connection || !header_contains_token(*connection, "Upgrade"))
+                return "Missing WebSocket Connection upgrade token";
+
+            auto version = find_header(request, "Sec-WebSocket-Version");
+            if (!version || trim_ascii(*version) != "13")
+                return "Missing or invalid WebSocket version";
+
+            auto key = find_header(request, "Sec-WebSocket-Key");
+            if (!key)
+                return "Missing Sec-WebSocket-Key header";
+
+            auto decoded_key = decode_base64(*key);
+            if (!decoded_key || decoded_key->size() != websocket_client_key_bytes)
+                return "Invalid Sec-WebSocket-Key header";
+
+            if (!request.body.empty() || has_nonzero_content_length(request))
+                return "WebSocket upgrade request must not contain a body";
+
+            return std::nullopt;
+        }
+
         auto calculate_ws_accept(std::string_view client_key) -> std::string
         {
-            std::string combined = std::string(client_key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+            std::string combined = std::string(trim_ascii(client_key)) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 #if defined(CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
             std::array<unsigned char, 20> hash{};
@@ -100,6 +260,8 @@ namespace canopy::http_server
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.method.append(at, length);
+        if (ctx->parsed_request.method.size() > max_http_header_name_bytes)
+            return -1;
         return 0;
     }
 
@@ -110,6 +272,8 @@ namespace canopy::http_server
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.url.append(at, length);
+        if (ctx->parsed_request.url.size() > max_http_url_bytes)
+            return -1;
         return 0;
     }
 
@@ -122,10 +286,13 @@ namespace canopy::http_server
 
         if (ctx->reading_header_value)
         {
-            flush_header(*ctx);
+            if (!flush_header(*ctx))
+                return -1;
         }
 
         ctx->current_header_field.append(at, length);
+        if (ctx->current_header_field.size() > max_http_header_name_bytes)
+            return -1;
         ctx->reading_header_value = false;
         return 0;
     }
@@ -137,6 +304,8 @@ namespace canopy::http_server
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->current_header_value.append(at, length);
+        if (ctx->current_header_value.size() > max_http_header_value_bytes)
+            return -1;
         ctx->reading_header_value = true;
         return 0;
     }
@@ -144,7 +313,8 @@ namespace canopy::http_server
     int client_connection::on_headers_complete(llhttp_t* parser)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
-        flush_header(*ctx);
+        if (!flush_header(*ctx))
+            return -1;
         ctx->headers_complete = true;
         return 0;
     }
@@ -156,6 +326,8 @@ namespace canopy::http_server
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
         ctx->parsed_request.body.append(at, length);
+        if (ctx->parsed_request.body.size() > max_http_body_bytes)
+            return -1;
         return 0;
     }
 
@@ -166,16 +338,21 @@ namespace canopy::http_server
         return 0;
     }
 
-    void client_connection::flush_header(parser_request_context& ctx)
+    bool client_connection::flush_header(parser_request_context& ctx)
     {
         if (ctx.current_header_field.empty())
         {
-            return;
+            return true;
         }
+
+        ++ctx.header_count;
+        if (ctx.header_count > max_http_header_count)
+            return false;
 
         ctx.parsed_request.headers[ctx.current_header_field] = ctx.current_header_value;
         ctx.current_header_field.clear();
         ctx.current_header_value.clear();
+        return true;
     }
 
     auto client_connection::build_http_response(
@@ -242,10 +419,11 @@ namespace canopy::http_server
 
     auto client_connection::handle_websocket_upgrade(const request& request) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
-        auto key_it = request.headers.find("Sec-WebSocket-Key");
-        if (key_it == request.headers.end())
+        if (auto validation_error = validate_websocket_upgrade_request(request))
         {
-            RPC_ERROR("Missing Sec-WebSocket-Key header");
+            RPC_WARNING("Rejecting WebSocket upgrade: {}", *validation_error);
+            auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
+            CO_AWAIT stream_->send(rpc::byte_span{error_response});
             CO_RETURN nullptr;
         }
 
@@ -257,7 +435,15 @@ namespace canopy::http_server
             CO_RETURN nullptr;
         }
 
-        std::string accept_key = calculate_ws_accept(key_it->second);
+        auto key = find_header(request, "Sec-WebSocket-Key");
+        RPC_ASSERT(key.has_value());
+        std::string accept_key = calculate_ws_accept(*key);
+        if (accept_key.empty())
+        {
+            auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
+            CO_AWAIT stream_->send(rpc::byte_span{error_response});
+            CO_RETURN nullptr;
+        }
         auto handshake_response = build_websocket_handshake_response(accept_key);
 
         auto wsstatus = CO_AWAIT stream_->send(rpc::byte_span{handshake_response});
@@ -338,6 +524,13 @@ namespace canopy::http_server
                         RPC_DEBUG("Received {} bytes, first bytes: {}", read_span.size(), preview);
 
                         pending_input.append(reinterpret_cast<const char*>(read_span.data()), read_span.size());
+                        if (pending_input.size() > max_http_pending_input_bytes)
+                        {
+                            RPC_WARNING("HTTP request exceeded pending input limit");
+                            auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
+                            CO_AWAIT stream_->send(rpc::byte_span{error_response});
+                            CO_RETURN nullptr;
+                        }
                     }
 
                     auto err = llhttp_execute(&parser, pending_input.data(), pending_input.size());

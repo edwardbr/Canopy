@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 #include <rpc/rpc.h>
@@ -74,11 +75,37 @@ namespace streaming::websocket
             return timeout.count() > 0 ? timeout : std::chrono::milliseconds{1};
         }
 
-        auto make_options(stream_role role) -> stream_options
+        auto to_milliseconds(uint64_t value) -> std::chrono::milliseconds
         {
-            stream_options options;
-            options.role = role;
-            return options;
+            const auto max_value = static_cast<uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
+            return std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(std::min(value, max_value))};
+        }
+
+        auto keep_alive_interval(const ::rpc::websocket_stream::stream_settings& settings) -> std::chrono::milliseconds
+        {
+            return to_milliseconds(settings.keep_alive.interval_ms);
+        }
+
+        auto keep_alive_timeout(const ::rpc::websocket_stream::stream_settings& settings) -> std::chrono::milliseconds
+        {
+            return to_milliseconds(settings.keep_alive.timeout_ms);
+        }
+
+        auto make_settings(::rpc::websocket_stream::endpoint_role role) -> ::rpc::websocket_stream::stream_settings
+        {
+            ::rpc::websocket_stream::stream_settings settings;
+            settings.role = role;
+            return settings;
+        }
+
+        auto concrete_role(
+            const ::rpc::websocket_stream::stream_settings& settings,
+            ::rpc::websocket_stream::endpoint_role default_role) -> ::rpc::websocket_stream::endpoint_role
+        {
+            if (!settings.role)
+                return default_role;
+
+            return settings.role.value();
         }
 
         auto make_ping_payload(uint64_t value) -> std::vector<uint8_t>
@@ -113,31 +140,36 @@ namespace streaming::websocket
     stream::stream(std::shared_ptr<::streaming::stream> underlying)
         : stream(
               std::move(underlying),
-              stream_role::server)
+              ::rpc::websocket_stream::endpoint_role::server)
     {
     }
 
     stream::stream(
         std::shared_ptr<::streaming::stream> underlying,
-        stream_role role)
+        ::rpc::websocket_stream::endpoint_role role)
         : stream(
               std::move(underlying),
-              make_options(role))
+              make_settings(role),
+              role)
     {
     }
 
     stream::stream(
         std::shared_ptr<::streaming::stream> underlying,
-        stream_options options)
+        ::rpc::websocket_stream::stream_settings settings,
+        ::rpc::websocket_stream::endpoint_role default_role)
         : underlying_(std::move(underlying))
         , wslay_ctx_(nullptr)
-        , options_(options)
+        , settings_(std::move(settings))
+        , role_(concrete_role(
+              settings_,
+              default_role))
         , raw_recv_buffer_(
               io_chunk_size,
               '\0')
     {
-        if (options_.keep_alive.enabled && options_.keep_alive.interval > std::chrono::milliseconds{0})
-            next_ping_time_ = std::chrono::steady_clock::now() + options_.keep_alive.interval;
+        if (settings_.keep_alive.enabled && keep_alive_interval(settings_) > std::chrono::milliseconds{0})
+            next_ping_time_ = std::chrono::steady_clock::now() + keep_alive_interval(settings_);
 
         wslay_event_callbacks callbacks;
         std::memset(&callbacks, 0, sizeof(callbacks));
@@ -146,7 +178,7 @@ namespace streaming::websocket
         callbacks.genmask_callback = genmask_callback;
         callbacks.on_msg_recv_callback = on_msg_recv_callback;
 
-        int result = options_.role == stream_role::client
+        int result = role_ == ::rpc::websocket_stream::endpoint_role::client
                          ? wslay_event_context_client_init(&wslay_ctx_, &callbacks, this)
                          : wslay_event_context_server_init(&wslay_ctx_, &callbacks, this);
         if (result != 0)
@@ -223,6 +255,8 @@ namespace streaming::websocket
                         closed_ = true;
                         CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
                     }
+                    if (closed_)
+                        CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
                 }
 
                 if (!CO_AWAIT drive_send())
@@ -384,10 +418,12 @@ namespace streaming::websocket
 
     auto stream::maybe_queue_keep_alive_locked(std::chrono::steady_clock::time_point now) -> bool
     {
-        if (!options_.keep_alive.enabled || options_.keep_alive.interval <= std::chrono::milliseconds{0})
+        const auto interval = keep_alive_interval(settings_);
+        const auto timeout = keep_alive_timeout(settings_);
+        if (!settings_.keep_alive.enabled || interval <= std::chrono::milliseconds{0})
             return true;
 
-        if (ping_outstanding_ && options_.keep_alive.timeout > std::chrono::milliseconds{0} && now >= ping_deadline_)
+        if (ping_outstanding_ && timeout > std::chrono::milliseconds{0} && now >= ping_deadline_)
         {
             RPC_WARNING("WebSocket keep-alive pong timeout");
             closed_ = true;
@@ -408,16 +444,16 @@ namespace streaming::websocket
             return false;
         }
 
-        if (options_.keep_alive.timeout > std::chrono::milliseconds{0})
+        if (timeout > std::chrono::milliseconds{0})
         {
             ping_outstanding_ = true;
-            ping_deadline_ = now + options_.keep_alive.timeout;
+            ping_deadline_ = now + timeout;
         }
         else
         {
             pending_ping_payload_.clear();
         }
-        next_ping_time_ = now + options_.keep_alive.interval;
+        next_ping_time_ = now + interval;
         return true;
     }
 
@@ -454,9 +490,9 @@ namespace streaming::websocket
                 const bool masked = (second & websocket_mask_bit) != 0;
                 validator_length_code_ = second & websocket_payload_length_mask;
 
-                if (options_.role == stream_role::server && !masked)
+                if (role_ == ::rpc::websocket_stream::endpoint_role::server && !masked)
                     return false;
-                if (options_.role == stream_role::client && masked)
+                if (role_ == ::rpc::websocket_stream::endpoint_role::client && masked)
                     return false;
                 if (is_control_opcode(validator_opcode_) && validator_length_code_ > websocket_max_inline_payload_length)
                     return false;
@@ -495,7 +531,8 @@ namespace streaming::websocket
                     return false;
 
                 validator_payload_remaining_ = validator_extended_length_;
-                validator_mask_remaining_ = options_.role == stream_role::server ? websocket_mask_key_bytes : 0;
+                validator_mask_remaining_
+                    = role_ == ::rpc::websocket_stream::endpoint_role::server ? websocket_mask_key_bytes : 0;
                 validator_state_ = validator_mask_remaining_ != 0 ? validator_state_mask_key : validator_state_payload;
                 break;
             }
@@ -534,10 +571,12 @@ namespace streaming::websocket
             return std::chrono::milliseconds{0};
 
         auto timeout = remaining_timeout(deadline);
-        if (!options_.keep_alive.enabled || options_.keep_alive.interval <= std::chrono::milliseconds{0})
+        const auto interval = keep_alive_interval(settings_);
+        const auto timeout_value = keep_alive_timeout(settings_);
+        if (!settings_.keep_alive.enabled || interval <= std::chrono::milliseconds{0})
             return timeout;
 
-        if (ping_outstanding_ && options_.keep_alive.timeout > std::chrono::milliseconds{0})
+        if (ping_outstanding_ && timeout_value > std::chrono::milliseconds{0})
             return std::min(timeout, timeout_until(ping_deadline_, now));
 
         return std::min(timeout, timeout_until(next_ping_time_, now));
@@ -656,6 +695,25 @@ namespace streaming::websocket
 
         if (arg->opcode == WSLAY_BINARY_FRAME || arg->opcode == WSLAY_TEXT_FRAME)
         {
+            if (self->settings_.max_message_bytes != 0 && arg->msg_length > self->settings_.max_message_bytes)
+            {
+                RPC_WARNING(
+                    "WebSocket message too large: {} bytes limit={}", arg->msg_length, self->settings_.max_message_bytes);
+                self->closed_ = true;
+                wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                return;
+            }
+            if (self->settings_.max_decoded_messages != 0
+                && self->decoded_messages_.size() >= self->settings_.max_decoded_messages)
+            {
+                RPC_WARNING(
+                    "WebSocket decoded message queue full: {} messages limit={}",
+                    self->decoded_messages_.size(),
+                    self->settings_.max_decoded_messages);
+                self->closed_ = true;
+                wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                return;
+            }
             RPC_DEBUG("WebSocket message received ({} bytes)", arg->msg_length);
             self->decoded_messages_.emplace(arg->msg, arg->msg + arg->msg_length);
             self->current_msg_offset_ = 0;

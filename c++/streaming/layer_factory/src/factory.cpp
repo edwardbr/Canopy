@@ -120,38 +120,6 @@ namespace streaming::layer_factory
         }
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_WEBSOCKET
-        auto websocket_role(
-            const ::rpc::websocket_stream::stream_settings& settings,
-            layer_direction direction) -> ::streaming::websocket::stream_role
-        {
-            if (!settings.role)
-            {
-                return direction == layer_direction::accept ? ::streaming::websocket::stream_role::server
-                                                            : ::streaming::websocket::stream_role::client;
-            }
-
-            switch (settings.role.value())
-            {
-            case ::rpc::websocket_stream::endpoint_role::server:
-                return ::streaming::websocket::stream_role::server;
-            case ::rpc::websocket_stream::endpoint_role::client:
-            default:
-                return ::streaming::websocket::stream_role::client;
-            }
-        }
-
-        auto websocket_stream_options(
-            const ::rpc::websocket_stream::stream_settings& settings,
-            layer_direction direction) -> ::streaming::websocket::stream_options
-        {
-            ::streaming::websocket::stream_options options;
-            options.role = websocket_role(settings, direction);
-            options.keep_alive.enabled = settings.keep_alive.enabled;
-            options.keep_alive.interval = std::chrono::milliseconds(settings.keep_alive.interval_ms);
-            options.keep_alive.timeout = std::chrono::milliseconds(settings.keep_alive.timeout_ms);
-            return options;
-        }
-
         auto apply_websocket_layer(
             std::shared_ptr<::streaming::stream> stream,
             const rpc::stream_layers::stream_layer_settings& layer,
@@ -164,7 +132,10 @@ namespace streaming::layer_factory
 
             return {rpc::error::OK(),
                 std::make_shared<::streaming::websocket::stream>(
-                    std::move(stream), websocket_stream_options(*settings, direction))};
+                    std::move(stream),
+                    std::move(*settings),
+                    direction == layer_direction::accept ? ::rpc::websocket_stream::endpoint_role::server
+                                                         : ::rpc::websocket_stream::endpoint_role::client)};
         }
 #endif
 

@@ -17,31 +17,13 @@
 #  include <rpc/internal/coro_runtime/mutex.h>
 #endif
 #include <streaming/stream.h>
+#include <websocket_stream/websocket_stream_config.h>
 
 struct wslay_event_context;
 struct wslay_event_on_msg_recv_arg;
 
 namespace streaming::websocket
 {
-    enum class stream_role
-    {
-        client,
-        server
-    };
-
-    struct keep_alive_options
-    {
-        bool enabled{false};
-        std::chrono::milliseconds interval{std::chrono::milliseconds{30000}};
-        std::chrono::milliseconds timeout{std::chrono::milliseconds{10000}};
-    };
-
-    struct stream_options
-    {
-        stream_role role{stream_role::server};
-        keep_alive_options keep_alive;
-    };
-
     // WebSocket stream over any streaming::stream. wslay's context is not
     // thread-safe, so this wrapper serializes access to wslay-owned state while
     // leaving underlying stream I/O outside the lock.
@@ -51,10 +33,11 @@ namespace streaming::websocket
         explicit stream(std::shared_ptr<::streaming::stream> underlying);
         stream(
             std::shared_ptr<::streaming::stream> underlying,
-            stream_role role);
+            ::rpc::websocket_stream::endpoint_role role);
         stream(
             std::shared_ptr<::streaming::stream> underlying,
-            stream_options options);
+            ::rpc::websocket_stream::stream_settings settings,
+            ::rpc::websocket_stream::endpoint_role default_role = ::rpc::websocket_stream::endpoint_role::server);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -124,7 +107,8 @@ namespace streaming::websocket
 #endif
         std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context* wslay_ctx_{nullptr};
-        stream_options options_;
+        ::rpc::websocket_stream::stream_settings settings_;
+        ::rpc::websocket_stream::endpoint_role role_{::rpc::websocket_stream::endpoint_role::server};
         std::string raw_recv_buffer_;
         size_t raw_recv_size_{0};
         size_t raw_recv_pos_{0};
