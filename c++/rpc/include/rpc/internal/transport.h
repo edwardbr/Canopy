@@ -159,6 +159,7 @@ namespace rpc
         std::atomic<int64_t> destination_count_ = 0;
 
         std::atomic<transport_status> status_{transport_status::CONNECTING};
+        std::atomic<bool> start_called_{false};
 
         template<typename Params>
         bool resolve_payload_encoding_from_service(
@@ -359,7 +360,13 @@ namespace rpc
          *
          * Delegates to inner_connect() which derived classes implement.
          *
-         * Thread-Safety: Implementation-specific (varies by derived class)
+         * Lifecycle: one-shot. A transport instance may be started by either
+         * connect() or accept(), but not both, and the start operation cannot
+         * be retried. Derived inner_connect() implementations may therefore
+         * treat their startup configuration as construction-time state.
+         *
+         * Thread-Safety: concurrent duplicate starts are rejected before
+         * entering the derived transport.
          */
         CORO_TASK(connect_result)
         connect(
@@ -372,7 +379,12 @@ namespace rpc
          *
          * Delegates to inner_accept() which derived classes implement.
          *
-         * Thread-Safety: Implementation-specific (varies by derived class)
+         * Lifecycle: one-shot. A transport instance may be started by either
+         * accept() or connect(), but not both, and the start operation cannot
+         * be retried.
+         *
+         * Thread-Safety: concurrent duplicate starts are rejected before
+         * entering the derived transport.
          */
         CORO_TASK(int) accept();
 
@@ -466,12 +478,15 @@ namespace rpc
          * - SPSC: Queue initialization
          * - Local: Direct function call to child zone creation
          *
-         * Thread-Safety: Implementation-specific
+         * Called at most once by transport::connect().
          */
         virtual CORO_TASK(connect_result) inner_connect(
             std::shared_ptr<rpc::object_stub> stub,
             connection_settings input_descr) = 0;
 
+        /**
+         * Called at most once by transport::accept().
+         */
         virtual CORO_TASK(int) inner_accept() = 0;
 
         /**

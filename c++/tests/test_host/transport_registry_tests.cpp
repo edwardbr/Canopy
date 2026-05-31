@@ -130,6 +130,7 @@ namespace
             std::shared_ptr<rpc::object_stub> stub,
             rpc::connection_settings input_descr) override
         {
+            ++inner_connect_count;
             std::ignore = input_descr;
             last_inner_connect_stub = stub;
 
@@ -153,7 +154,11 @@ namespace
             CO_RETURN rpc::connect_result{inner_connect_error, {}};
         }
 
-        CORO_TASK(int) inner_accept() override { CO_RETURN rpc::error::OK(); }
+        CORO_TASK(int) inner_accept() override
+        {
+            ++inner_accept_count;
+            CO_RETURN rpc::error::OK();
+        }
 
         CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override
         {
@@ -213,6 +218,8 @@ namespace
         int outbound_release_error{rpc::error::OK()};
         bool register_adjacent_route_in_inner_connect{false};
         uint32_t inner_connect_stub_refs_to_add{0};
+        uint32_t inner_connect_count{0};
+        uint32_t inner_accept_count{0};
         int inner_connect_error{rpc::error::OK()};
         std::weak_ptr<rpc::object_stub> last_inner_connect_stub;
         rpc::remote_object last_send_remote_object;
@@ -227,6 +234,55 @@ namespace
     };
 
 #ifdef CANOPY_BUILD_COROUTINE
+    rpc::connect_result run_transport_connect_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::connection_settings settings,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        rpc::connect_result result{rpc::error::CALL_TIMEOUT(), {}};
+
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT transport->connect({}, std::move(settings));
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return result;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return result;
+    }
+
+    int run_transport_accept_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        int result = rpc::error::CALL_TIMEOUT();
+
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT transport->accept();
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return result;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return result;
+    }
+
     bool run_inbound_add_ref_for_test(
         const std::shared_ptr<rpc::transport>& transport,
         rpc::add_ref_params params,
@@ -381,6 +437,18 @@ namespace
         return done.load();
     }
 #else
+    rpc::connect_result run_transport_connect_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::connection_settings settings)
+    {
+        return transport->connect({}, std::move(settings));
+    }
+
+    int run_transport_accept_for_test(const std::shared_ptr<registry_test_transport>& transport)
+    {
+        return transport->accept();
+    }
+
     rpc::service_connect_result<yyy::i_example> run_connect_to_zone_for_test(
         const std::shared_ptr<rpc::service>& service,
         const std::shared_ptr<registry_test_transport>& transport,
@@ -446,6 +514,63 @@ namespace
     }
 #endif
 } // namespace
+
+TEST(
+    transport_lifecycle_tests,
+    connect_invokes_inner_connect_once)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-connect-once", scheduler);
+#else
+    auto service = make_test_service("transport-connect-once");
+#endif
+
+    auto transport = std::make_shared<registry_test_transport>("connect-once-transport", service);
+    rpc::connection_settings settings;
+    settings.encoding_type = rpc::encoding::yas_binary;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    auto first = run_transport_connect_for_test(transport, settings, scheduler);
+    auto second = run_transport_connect_for_test(transport, settings, scheduler);
+#else
+    auto first = run_transport_connect_for_test(transport, settings);
+    auto second = run_transport_connect_for_test(transport, settings);
+#endif
+
+    EXPECT_EQ(first.error_code, rpc::error::OK());
+    EXPECT_EQ(second.error_code, rpc::error::INVALID_DATA());
+    EXPECT_EQ(transport->inner_connect_count, 1u);
+}
+
+TEST(
+    transport_lifecycle_tests,
+    accept_and_connect_share_one_start_slot)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-start-once", scheduler);
+#else
+    auto service = make_test_service("transport-start-once");
+#endif
+
+    auto transport = std::make_shared<registry_test_transport>("start-once-transport", service);
+    rpc::connection_settings settings;
+    settings.encoding_type = rpc::encoding::yas_binary;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    auto accept_result = run_transport_accept_for_test(transport, scheduler);
+    auto connect_result = run_transport_connect_for_test(transport, settings, scheduler);
+#else
+    auto accept_result = run_transport_accept_for_test(transport);
+    auto connect_result = run_transport_connect_for_test(transport, settings);
+#endif
+
+    EXPECT_EQ(accept_result, rpc::error::OK());
+    EXPECT_EQ(connect_result.error_code, rpc::error::INVALID_DATA());
+    EXPECT_EQ(transport->inner_accept_count, 1u);
+    EXPECT_EQ(transport->inner_connect_count, 0u);
+}
 
 TEST(
     transport_registry_tests,
