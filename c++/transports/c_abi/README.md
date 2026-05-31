@@ -10,7 +10,7 @@ Low-level C++ support for the shared `c_abi/` transport boundary.
 ## Purpose
 
 This directory is the C++ home for cross-language transport integration work.
-It should not change the existing `dynamic_library` transport behaviour.
+It should not change the existing `blocking_dll` transport behaviour.
 
 The first responsibility here is simple:
 
@@ -18,9 +18,9 @@ The first responsibility here is simple:
 - resolve those symbols safely
 - provide a small C++ wrapper that higher-level integration work can build on
 
-## Relationship To `dynamic_library`
+## Relationship To `blocking_dll`
 
-- `../dynamic_library/` remains the existing C++ transport
+- `../blocking_dll/` remains the existing C++ transport
 - `../c_abi/` is for the new shared ABI path
 - this directory is where C++ integration code for that ABI should live
 

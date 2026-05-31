@@ -4,7 +4,7 @@
 #include "http_client_connection.h"
 
 #include <websocket_demo/websocket_demo.h>
-#include <transports/websocket/transport.h>
+#include <transports/untrusted_web/factory.h>
 
 namespace websocket_demo
 {
@@ -15,17 +15,19 @@ namespace websocket_demo
             const canopy::http_server::request& parsed_request,
             std::shared_ptr<streaming::stream> stream)
         {
+            (void)parsed_request;
             auto calculator_factory = calculator_factory_;
-            auto transpt
-                = CO_AWAIT websocket_protocol::transport::create<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
-                    service_,
+            rpc::untrusted_web::transport_settings settings;
+            settings.inactivity_timeout_ms = 5 * 60 * 1000;
+            auto accepted
+                = CO_AWAIT rpc::untrusted_web::accept_rpc<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
                     stream,
                     [calculator_factory](
                         const rpc::shared_ptr<websocket_demo::v1::i_context_event>& sink,
                         const std::shared_ptr<rpc::service>& svc)
                         -> CORO_TASK(rpc::service_connect_result<websocket_demo::v1::i_calculator>)
                     {
-                        std::ignore = svc;
+                        (void)svc;
                         auto local = calculator_factory ? calculator_factory() : nullptr;
                         if (!local)
                         {
@@ -48,8 +50,12 @@ namespace websocket_demo
                         }
                         CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
                             rpc::error::OK(), std::move(local)};
-                    });
-            CO_RETURN transpt;
+                    },
+                    std::move(settings),
+                    service_);
+            if (accepted.error_code != rpc::error::OK())
+                CO_RETURN nullptr;
+            CO_RETURN accepted.transport;
         }
     }
 }

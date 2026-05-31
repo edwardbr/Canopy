@@ -147,7 +147,7 @@ if(CANOPY_BUILD_COROUTINE)
     add_subdirectory(wslay)
 
     # llhttp for HTTP parsing. Prefer the generated C sources when present so SGX build hosts do not need a modern
-    # Node.js toolchain just to compile the websocket transport.
+    # Node.js toolchain just to compile the untrusted_web transport and demo.
     set(CANOPY_LLHTTP_GENERATED_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c")
     set(CANOPY_LLHTTP_GENERATED_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h")
     option(CANOPY_LLHTTP_GENERATE_FROM_TYPESCRIPT "Regenerate llhttp C sources from TypeScript" OFF)

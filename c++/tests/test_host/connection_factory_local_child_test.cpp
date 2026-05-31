@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -47,6 +48,37 @@ namespace
         auto add_error = CO_AWAIT connect_result.output_interface->add(20, 22, result);
         CO_RETURN add_error == rpc::error::OK() && result == 42;
     }
+
+#ifndef CANOPY_BUILD_COROUTINE
+    CORO_TASK(bool)
+    run_blocking_dll_connection_factory_test(std::shared_ptr<rpc::service> service)
+    {
+        auto config = std::string(R"json({
+            "transport": {
+                "type": "blocking_dll",
+                "settings": {
+                    "name": "configured_blocking_dll",
+                    "encoding": "nanopb",
+                    "dynamic_library_path": ")json")
+                      + CANOPY_TEST_DLL_PATH + R"json("
+                }
+            }
+        })json";
+        auto settings = rpc::connection_factory::materialise_connection_settings(json::v1::parse(config));
+        if (settings.error_code != rpc::error::OK())
+            CO_RETURN false;
+
+        rpc::shared_ptr<yyy::i_host> local_host(new host());
+        auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<yyy::i_host, yyy::i_example>(
+            local_host, settings.settings, std::move(service));
+        if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
+            CO_RETURN false;
+
+        int result = 0;
+        auto add_error = CO_AWAIT connect_result.output_interface->add(20, 22, result);
+        CO_RETURN add_error == rpc::error::OK() && result == 42;
+    }
+#endif
 }
 
 TEST(
@@ -83,3 +115,13 @@ TEST(
     EXPECT_TRUE(run_local_child_connection_factory_test(std::move(service)));
 #endif
 }
+
+#ifndef CANOPY_BUILD_COROUTINE
+TEST(
+    ConnectionFactoryBlockingDllRpc,
+    SparseConfigCreatesBlockingDllZone)
+{
+    auto service = rpc::root_service::create("blocking_dll_config_parent", rpc::DEFAULT_PREFIX);
+    EXPECT_TRUE(run_blocking_dll_connection_factory_test(std::move(service)));
+}
+#endif

@@ -2,14 +2,14 @@
 
 const proto = require('./generated/websocket_demo_proto.js');
 const WebsocketDemo = require('./generated/websocket_demo.js');
-const CanopyWebsocketTransport = require('./generated/canopy_websocket_transport.js');
+const CanopyUntrustedWebTransport = require('./generated/untrusted_web_transport.js');
 
 const WS_URL = process.env.WS_URL || 'ws://localhost:8888';
 const TransportProto = proto.protobuf.websocket_protocol_v1;
 const AppProto = proto.protobuf.websocket_demo_v1;
 const encoding = process.env.CANOPY_WEBSOCKET_DEMO_ENCODING === 'PROTOCOL_BUFFERS'
-    ? CanopyWebsocketTransport.ENCODING_PROTOCOL_BUFFERS
-    : CanopyWebsocketTransport.ENCODING_NANOPB;
+    ? CanopyUntrustedWebTransport.ENCODING_PROTOCOL_BUFFERS
+    : CanopyUntrustedWebTransport.ENCODING_NANOPB;
 
 console.log('WebSocket Calculator RPC Test Suite');
 console.log('====================================\n');
@@ -21,7 +21,7 @@ let testsFailed = 0;
 async function runCalculatorTest(operation, method, first, second, expected) {
     console.log(`Testing: ${first} ${operation} ${second} = ${expected}`);
 
-    const transport = new CanopyWebsocketTransport({
+    const transport = new CanopyUntrustedWebTransport({
         url: WS_URL,
         proto: TransportProto,
         appProto: AppProto,

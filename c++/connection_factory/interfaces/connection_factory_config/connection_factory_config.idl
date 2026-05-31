@@ -32,11 +32,12 @@ namespace rpc
         //   { "type": "websocket", "settings": { "keep_alive": { "enabled": true } } }
         //   { "type": "stream_rpc", "settings": { "encoding": "nanopb" } }
         //   { "type": "ipc_spsc", "settings": { "use_sidecar": true, "dynamic_library_path": "./plugin.so" } }
+        //   { "type": "blocking_dll", "settings": { "dynamic_library_path": "./plugin.so" } }
         //   { "type": "sgx_blocking", "settings": { "enclave_path": "./enclave.signed.so" } }
         //   { "type": "sgx_coroutine", "settings": { "enclave_path": "./enclave.signed.so" } }
         struct typed_settings
         {
-            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_wrapping, and attestation; transport values include stream_rpc, local, ipc_spsc, sgx_blocking, and sgx_coroutine."]
+            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_wrapping, and attestation; transport values include stream_rpc, local, ipc_spsc, blocking_dll, sgx_blocking, and sgx_coroutine."]
             std::string type;
 
             [description="Implementation-owned JSON object. The connection factory keeps this opaque and asks the named implementation to materialise it into that implementation's generated IDL settings type."]
@@ -66,7 +67,7 @@ namespace rpc
             [description="Optional listener settings used when accepting many stream RPC connections. Type stream_rpc selects connection_factory stream RPC listener settings."]
             rpc::optional<typed_settings> listener;
 
-            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Native transport values include local, ipc_spsc, sgx_blocking, and sgx_coroutine. Current built-in native transports reject stream_layers; stream-like native transports need explicit support before using this field."]
+            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Native transport values include local, ipc_spsc, blocking_dll, sgx_blocking, and sgx_coroutine. Current built-in native transports reject stream_layers; stream-like native transports need explicit support before using this field."]
             rpc::optional<typed_settings> transport;
 
             [description="Ordered byte-stream layer stack. For stream_rpc the first item is the base stream and following items are wrappers. For stream-backed native transports this list contains wrappers over the transport-owned base stream. Omit this for non-stream transports."]

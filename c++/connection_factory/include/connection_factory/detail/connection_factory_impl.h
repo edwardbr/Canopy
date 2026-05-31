@@ -112,6 +112,15 @@ namespace rpc::connection_factory
             if (!transport.settings)
                 CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
+            if (transport.type == "local")
+            {
+                // Local child-zone transports need the explicit child factory
+                // callback supplied to connect_local_child_rpc. A plain
+                // connect_rpc call does not know how to construct the child
+                // zone's local object.
+                CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
+            }
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
             if (transport.type == "sgx_coroutine")
             {
@@ -129,14 +138,15 @@ namespace rpc::connection_factory
             }
 #endif
 
-#if !defined(CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE) && !defined(CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING)
-            (void)input_interface;
-            (void)settings;
-            (void)service;
             (void)factory_context;
-#endif
+            auto connect_context = make_native_transport_connect_context(transport, settings, std::move(service));
+            if (connect_context.error_code != rpc::error::OK())
+                CO_RETURN rpc::service_connect_result<Out>{connect_context.error_code, {}};
+            if (!connect_context.service || !connect_context.transport)
+                CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
-            CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
+            CO_RETURN CO_AWAIT connect_context.service->template connect_to_zone<In, Out>(
+                connect_context.service_proxy_name.c_str(), std::move(connect_context.transport), std::move(input_interface));
         }
     } // namespace detail
 

@@ -17,6 +17,9 @@
 #  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
+#  ifdef CANOPY_BUILD_WEBSOCKET
+#    include <transports/untrusted_web/factory.h>
+#  endif
 #endif
 
 #include "type_test_fixture.h"
@@ -133,6 +136,18 @@ TEST(
     for (int i = 0; i < 100 && !scheduler->empty(); ++i)
         scheduler->process_events(std::chrono::milliseconds{1});
 }
+
+#  ifdef CANOPY_BUILD_WEBSOCKET
+TEST(
+    UntrustedWebFactory,
+    RejectsMissingStreamAndHandler)
+{
+    auto result = coro::sync_wait(rpc::untrusted_web::accept_transport(nullptr, {}));
+    EXPECT_EQ(result.error_code, rpc::error::INVALID_DATA());
+    EXPECT_FALSE(result.service);
+    EXPECT_FALSE(result.transport);
+}
+#  endif
 
 // Keep this suite on the active TCP coroutine and SPSC streaming paths.
 using streaming_transport_regression_implementations = ::testing::Types<

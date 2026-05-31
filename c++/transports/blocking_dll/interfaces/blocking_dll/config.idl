@@ -1,0 +1,33 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace blocking_dll
+    {
+        // Settings for the blocking native dynamic-library transport.
+        //
+        // This transport loads a shared library into the host process and uses
+        // direct blocking function calls across the host/library boundary. It
+        // is intentionally not a stream transport and does not support stream
+        // layers.
+        struct transport_settings
+        {
+            [description="Name of the host-side dynamic-library transport. If service_proxy_name is omitted, this value is also used as the service proxy name."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the loaded-library service proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads after the dynamic-library transport link is live. Omit or use not_set to keep the service default."]
+            rpc::optional<rpc::encoding> encoding;
+
+            [description="Path to the shared library loaded into the host process. The library must export the blocking dynamic-library ABI entry point."]
+            std::string dynamic_library_path;
+        };
+    }
+}

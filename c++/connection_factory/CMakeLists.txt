@@ -54,6 +54,14 @@ if(TARGET transport_local)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_LOCAL)
 endif()
 
+if(TARGET transport_blocking_dll AND NOT CANOPY_BUILD_COROUTINE)
+  target_sources(
+    connection_factory
+    PRIVATE src/adapters/transports/blocking_dll.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_blocking_dll blocking_dll_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_BLOCKING_DLL)
+endif()
+
 if(TARGET transport_ipc_spsc)
   target_sources(
     connection_factory

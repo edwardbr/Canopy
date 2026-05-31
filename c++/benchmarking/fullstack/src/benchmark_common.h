@@ -129,7 +129,7 @@ namespace comprehensive::v1
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_dynamic_library_benchmark(
+    run_blocking_dll_benchmark(
         rpc::encoding enc,
         size_t blob_size);
 #endif

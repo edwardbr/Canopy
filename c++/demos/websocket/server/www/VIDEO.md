@@ -72,7 +72,7 @@ interface i_context_event
 encoded VP8 chunk. `flags` bit 0 = keyframe, bit 1 = end-of-stream.
 
 **Why one shared callback instead of a dedicated `i_video_stream`:** the
-websocket transport binds a single typed inbound sink per connection from its
+untrusted_web transport binds a single typed inbound sink per connection from its
 `create<Remote, Local>` template, and the JS proxy cannot yet marshal an
 interface-reference *argument* into the bit-packed `zone_address` wire format
 the C++ nanopb stub expects (this is why a JS-initiated `set_callback` /
@@ -129,7 +129,7 @@ separate `i_video_stream` is a generator/transport task tracked in Roadmap.
 The non-enclave `websocket_server` executable picks these up unconditionally;
 the enclave variant is gated as before by `CANOPY_BUILD_ENCLAVE`.
 
-### Transport (`c++/transports/websocket/`)
+### Transport (`c++/transports/untrusted_web/`)
 
 Two fixes were required and both are general improvements, not video-specific:
 
@@ -151,7 +151,7 @@ Two fixes were required and both are general improvements, not video-specific:
   addition to the existing stub-side dispatch. Previously `[post]` rendered
   stub-only, which was fine for chat (enclave → browser only) but not for
   video ingress (browser → enclave).
-* `c++/transports/websocket/js/canopy_websocket_transport.js` — new
+* `c++/transports/untrusted_web/js/untrusted_web_transport.js` — new
   `callPost(interfaceId, methodId, bytes)` wrapping a `MSG_POST` envelope with
   no pending-response bookkeeping.
 

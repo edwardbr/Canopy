@@ -37,7 +37,7 @@ namespace websocket_demo::v1
     // Change this if you want to expose your own application service:
     //   1. replace the IDL interface in websocket_demo.idl,
     //   2. return your service object from this factory,
-    //   3. update websocket_handler.cpp so the websocket transport binds the
+    //   3. update websocket_handler.cpp so the untrusted_web transport binds the
     //      matching inbound/outbound interfaces.
     rpc::shared_ptr<i_calculator> create_websocket_demo_instance(const std::shared_ptr<rpc::service>& service);
 

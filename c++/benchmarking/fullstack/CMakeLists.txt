@@ -12,7 +12,7 @@ project(
   VERSION 1.0.0
   LANGUAGES CXX)
 
-include(CanopyCreateDynamicLibrary)
+include(CanopyCreateBlockingDll)
 include(CanopyCreateUnsharedSchedulerDll)
 include(CanopyCreateSharedSchedulerDll)
 include(CanopyCreateIpcSpscDynamicLibrary)
@@ -113,8 +113,8 @@ if(CANOPY_BUILD_COROUTINE)
       CONFIG benchmark_sgx_coroutine_enclave.config.${SGX_MODE}.xml)
   endif()
 else()
-  canopycreatedynamiclibrary(
-    canopy_benchmark_dll
+  CanopyCreateBlockingDll(
+    canopy_benchmark_blocking_dll
     SOURCES
     src/dll_init.cpp
     LINK_LIBRARIES
@@ -171,7 +171,8 @@ if(CANOPY_BUILD_COROUTINE)
   endif()
 else()
   target_sources(benchmark PRIVATE src/benchmark_tcp_blocking.cpp)
-  target_compile_definitions(benchmark PRIVATE CANOPY_BENCHMARK_DLL_PATH="$<TARGET_FILE:canopy_benchmark_dll>")
+  target_compile_definitions(
+    benchmark PRIVATE CANOPY_BENCHMARK_BLOCKING_DLL_PATH="$<TARGET_FILE:canopy_benchmark_blocking_dll>")
 endif()
 target_include_directories(benchmark PRIVATE "${CANOPY_CPP_SOURCE_DIR}/benchmarking/fullstack/src"
                                              "${CANOPY_CPP_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})
@@ -202,7 +203,7 @@ if(CANOPY_BUILD_COROUTINE)
     target_link_libraries(benchmark PUBLIC transport_sgx_coroutine)
   endif()
 else()
-  target_link_libraries(benchmark PUBLIC transport_dynamic_library streaming_tcp_blocking rpc_log)
+  target_link_libraries(benchmark PUBLIC transport_blocking_dll streaming_tcp_blocking rpc_log)
 endif()
 target_compile_options(benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
@@ -220,7 +221,7 @@ if(CANOPY_BUILD_COROUTINE)
     add_dependencies(benchmark canopy_benchmark_sgx_coroutine_enclave)
   endif()
 else()
-  add_dependencies(benchmark canopy_benchmark_dll)
+  add_dependencies(benchmark canopy_benchmark_blocking_dll)
 endif()
 
 if(CANOPY_ENABLE_CLANG_TIDY)

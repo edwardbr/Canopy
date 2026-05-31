@@ -43,10 +43,10 @@ if(CANOPY_BUILD_COROUTINE)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
-  set(DLL_TRANSPORT_SOURCES type_test_dll_suite.cpp)
-  set(DLL_TRANSPORT_LIB transport_dynamic_library)
-  set(DLL_TRANSPORT_TEST_LIB transport_dynamic_library_test)
-  set(DLL_TEST_TARGET canopy_example_dll)
+  set(DLL_TRANSPORT_SOURCES type_test_blocking_dll_suite.cpp)
+  set(DLL_TRANSPORT_LIB transport_blocking_dll)
+  set(DLL_TRANSPORT_TEST_LIB transport_blocking_dll_test)
+  set(DLL_TEST_TARGET canopy_example_blocking_dll)
   set(C_ABI_DLL_TRANSPORT_SOURCES type_test_c_abi_dll_suite.cpp)
   set(C_ABI_DLL_TRANSPORT_LIB transport_c_abi)
   set(C_ABI_DLL_TRANSPORT_TEST_LIB transport_c_abi_test)
@@ -188,7 +188,8 @@ if(CANOPY_BUILD_COROUTINE)
            canopy::security_attestation
            ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
-           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:transport_untrusted_web>)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_WEBSOCKET)
   endif()

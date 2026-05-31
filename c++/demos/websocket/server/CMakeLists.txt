@@ -61,6 +61,7 @@ else()
   endforeach()
 
   list(APPEND WEBSOCKET_DEMO_OPTIONAL_SRCS llama_server_engine.cpp)
+  list(APPEND WEBSOCKET_DEMO_OPTIONAL_DEFINES CANOPY_LLAMA_CPP_NO_GLOBAL_JSON_ALIAS)
   list(
     APPEND
     WEBSOCKET_DEMO_OPTIONAL_LIBS
@@ -69,12 +70,12 @@ else()
     common)
 endif()
 
-if(TARGET transport_websocket)
-  target_compile_definitions(transport_websocket
+if(TARGET transport_untrusted_web)
+  target_compile_definitions(transport_untrusted_web
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
-if(TARGET transport_websocket_enclave)
-  target_compile_definitions(transport_websocket_enclave
+if(TARGET transport_untrusted_web_enclave)
+  target_compile_definitions(transport_untrusted_web_enclave
                              PRIVATE CANOPY_WEBSOCKET_ENCODING=${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE})
 endif()
 
@@ -119,7 +120,7 @@ target_link_libraries(
          transport_streaming
          connection_factory
          streaming_transport_idl
-         transport_websocket
+         transport_untrusted_web
          websocket_demo_idl
          ${WEBSOCKET_DEMO_OPTIONAL_LIBS}
          rpc
@@ -163,7 +164,7 @@ if(CANOPY_BUILD_ENCLAVE
    AND TARGET canopy_file_system_enclave
    AND TARGET json_enclave
    AND TARGET streaming_tcp_coroutine_enclave
-   AND TARGET transport_websocket_enclave
+   AND TARGET transport_untrusted_web_enclave
    AND WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET)
   set(WEBSOCKET_DEMO_ENCLAVE_SRCS
       enclave_websocket_server.cpp
@@ -196,7 +197,7 @@ if(CANOPY_BUILD_ENCLAVE
            streaming_tcp_coroutine_enclave
            ${WEBSOCKET_DEMO_ENCLAVE_SECURE_STREAM_TARGET}
            streaming_websocket_enclave
-           transport_websocket_enclave
+           transport_untrusted_web_enclave
            transport_sgx_coroutine_enclave
     PRIVATE rpc::rpc_enclave json_enclave ${CANOPY_ENCLAVE_FMT_LIB})
 
@@ -239,7 +240,7 @@ if(CANOPY_BUILD_ENCLAVE
         streaming_websocket_enclave
         transport_streaming_enclave
         streaming_transport_idl_enclave
-        transport_websocket_enclave
+        transport_untrusted_web_enclave
         transport_sgx_coroutine_enclave
         ${WEBSOCKET_DEMO_TELEMETRY_ENCLAVE_LIBS}
         streaming_spsc_queue_enclave

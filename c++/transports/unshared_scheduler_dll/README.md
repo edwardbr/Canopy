@@ -32,7 +32,7 @@ The DLL author provides:
 The transport library provides `canopy_unshared_scheduler_dll_start` and the rest of the
 cross-boundary begin/complete callback plumbing.
 
-## Difference from `dynamic_library`
+## Difference from `blocking_dll`
 
 - coroutine build only
 - non-blocking begin/complete callback ABI
@@ -65,7 +65,7 @@ test exercises this contract with a test-only DLL static probe.
 
 ## Related transports
 
-- `../dynamic_library/`
+- `../blocking_dll/`
   - blocking in-process DLL transport
 - `../ipc_spsc/`
   - SPSC-backed IPC transport used when the child must live in another process

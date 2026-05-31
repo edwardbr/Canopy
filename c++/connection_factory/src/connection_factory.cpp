@@ -221,6 +221,10 @@ namespace rpc::connection_factory
                 detail::register_local_transport_components(result);
 #endif
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_BLOCKING_DLL
+                detail::register_blocking_dll_components(result);
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
                 detail::register_ipc_spsc_components(result);
 #endif

@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/websocket/js/canopy_websocket_transport.js")
+set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/untrusted_web/js/untrusted_web_transport.js")
 set(demo_idl websocket_demo/websocket_demo.idl)
 
 set(CANOPY_WEBSOCKET_DEMO_ENCODING

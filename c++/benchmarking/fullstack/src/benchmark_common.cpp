@@ -208,7 +208,7 @@ namespace comprehensive::v1
             io_uring_warmup_calls);
 #else
         fmt::print(
-            "Warmup: local={} calls, dynamic_library={} calls, tcp={} calls (not included in timing)\n",
+            "Warmup: local={} calls, blocking_dll={} calls, tcp={} calls (not included in timing)\n",
             local_warmup_calls,
             dll_warmup_calls,
             tcp_warmup_calls);

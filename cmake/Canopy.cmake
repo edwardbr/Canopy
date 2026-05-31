@@ -164,7 +164,7 @@ if(NOT DEPENDENCIES_LOADED)
   endif()
 
   # CANOPY_BUILD_WEBSOCKET works in both coroutine and blocking builds; the WS framing stream (streaming_websocket)
-  # operates over a dual-mode streaming::stream and wraps the pure-C wslay library. transport_websocket and higher
+  # operates over a dual-mode streaming::stream and wraps the pure-C wslay library. transport_untrusted_web and higher
   # layers (TLS, http_server, the WS demo) may still gate on CANOPY_BUILD_COROUTINE individually until their own
   # dual-mode work lands.
 

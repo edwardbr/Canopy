@@ -15,7 +15,7 @@
 namespace rpc::c_abi
 {
     // Parent-side transport for children that expose the shared c_abi dynamic
-    // library boundary. This mirrors rpc::dynamic_library::child_transport
+    // library boundary. This mirrors rpc::blocking_dll::child_transport
     // closely, but all cross-language communication flows through the neutral
     // canopy_dll_* entry points and explicit type translation.
     class child_transport : public rpc::transport

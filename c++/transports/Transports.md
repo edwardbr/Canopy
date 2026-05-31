@@ -14,7 +14,7 @@ small child-process runtimes that exist to support those transports.
   - Test and fixture transport used for in-memory connectivity.
 - `local/`
   - Parent/child transport for in-process zone hierarchies without DLL loading.
-- `dynamic_library/`
+- `blocking_dll/`
   - Blocking in-process DLL transport. The host loads a shared object and talks
     to it through a C ABI.
 - `shared_scheduler_dll/`
@@ -28,6 +28,11 @@ small child-process runtimes that exist to support those transports.
     io_uring compositions. The core stream transport, TCP, OpenSSL TLS, and
     WebSocket paths are dual-mode; SPSC, IPC, io_uring, and SGX stream
     compositions remain coroutine-only or conditionally built.
+- `untrusted_web/`
+  - Browser-facing RPC bridge for WebSocket clients. It uses the
+    `websocket_protocol` wire messages but is named for the trust boundary:
+    public web clients are untrusted and subject to size, handshake, decode,
+    and inactivity limits.
 - `ipc_spsc/`
   - Process-owning coroutine transport built on top of `stream_transport`. It
     creates a shared-memory SPSC queue pair, can spawn a child-host sidecar, and
@@ -45,7 +50,7 @@ There are now three distinct concerns which used to be more tightly coupled:
 
 Those are implemented as:
 
-- `dynamic_library/`, `shared_scheduler_dll/`, and
+- `blocking_dll/`, `shared_scheduler_dll/`, and
   `unshared_scheduler_dll/`
   - DLL loading in the current process
 - `ipc_spsc/`
@@ -71,7 +76,7 @@ These are helper executables and peer bootstrap APIs, not transports in their ow
 ## Practical combinations
 
 - In-process DLL zone:
-  - `dynamic_library/`, `shared_scheduler_dll/`, or
+  - `blocking_dll/`, `shared_scheduler_dll/`, or
     `unshared_scheduler_dll/`
 - Out-of-process DLL zone:
   - `ipc_spsc/` + `canopy_ipc_spsc_sidecar_process`

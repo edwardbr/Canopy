@@ -1630,8 +1630,8 @@ int main(
         filters,
         encodings,
         blob_sizes,
-        "dll",
-        [](rpc::encoding enc, size_t blob_size) { return run_dynamic_library_benchmark(enc, blob_size); });
+        "blocking_dll",
+        [](rpc::encoding enc, size_t blob_size) { return run_blocking_dll_benchmark(enc, blob_size); });
 #else
     add_transport_jobs(
         jobs,

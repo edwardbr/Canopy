@@ -33,7 +33,7 @@ The transport library provides `canopy_shared_scheduler_dll_create`.
 That entry point is called synchronously during connection to exchange raw
 `coro::task` function pointers for host-to-DLL and DLL-to-host calls.
 
-## Difference from `dynamic_library`
+## Difference from `blocking_dll`
 
 - coroutine build only
 - direct coroutine function-pointer ABI
@@ -80,7 +80,7 @@ test exercises this contract with a test-only DLL static probe.
 
 ## Related transports
 
-- `../dynamic_library/`
+- `../blocking_dll/`
   - blocking in-process DLL transport
 - `../ipc_spsc/`
   - SPSC-backed IPC transport used when the child must live in another process

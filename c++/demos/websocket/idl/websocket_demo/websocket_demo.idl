@@ -28,7 +28,7 @@ namespace websocket_demo
 
         // Inbound callback interface (enclave -> browser). Hosts both LLM
         // token streaming (piece) and video egress (push_frame). Sharing one
-        // interface here is pragmatic: the websocket transport binds a single
+        // interface here is pragmatic: the untrusted_web transport binds a single
         // typed sink per connection from its [Remote, Local] template, and
         // the JS-side proxy for outbound interface-ref params is not wired
         // up yet. Keeping push_frame here lets the existing chat handshake

@@ -248,7 +248,7 @@ function connect() {
 
     // One stub for everything server-initiated. piece() handles streamed LLM
     // tokens; push_frame() handles stylized video frames. Sharing one stub
-    // because the websocket transport binds a single typed sink per
+    // because the untrusted_web transport binds a single typed sink per
     // connection — see the comment on i_context_event in the IDL.
     eventStub = new WebsocketDemo.i_context_event_stub({
         piece: function(text) {
@@ -264,11 +264,11 @@ function connect() {
         }
     });
 
-    transport = new CanopyWebsocketTransport({
+    transport = new CanopyUntrustedWebTransport({
         url: wsUrl,
         proto: transportProto,
         appProto: appProto,
-        encoding: config.encoding || CanopyWebsocketTransport.ENCODING_NANOPB,
+        encoding: config.encoding || CanopyUntrustedWebTransport.ENCODING_NANOPB,
         inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
         outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
         onOpen: function(t) {
