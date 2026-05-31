@@ -860,6 +860,31 @@ namespace rpc
         std::string out_json_schema;
     };
 
+    // Selects the audience/shape of a schema returned by interface introspection
+    // (i_marshaller::get_schema). Mirrors the host-side json_schema::schema_flavor
+    // used by the generator: `config` is the full authoring schema, `mcp` the
+    // minimal tool schema.
+    enum schema_flavor : uint8_t
+    {
+        config = 0,
+        mcp = 1
+    };
+
+    // Runtime description of one interface and its callable methods, returned by
+    // schema introspection (i_marshaller::get_schema). `interface_id` and each
+    // method's `function_info::id` are what a caller relays through send();
+    // `qualified_name` + `function_info::name` are the stable, human/agent-facing
+    // identity. `schema` is the whole-interface JSON schema in the requested
+    // flavor; `methods` carries per-method in/out JSON schemas.
+    struct interface_descriptor
+    {
+        interface_ordinal interface_id;
+        std::string qualified_name;
+        bool deprecated;
+        std::string schema;
+        std::vector<function_info> methods;
+    };
+
     struct telemetry_event
     {
         zone zone_id;

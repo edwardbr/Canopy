@@ -2989,18 +2989,31 @@ namespace protobuf_generator
                 }
                 else
                 {
-                    // nested struct type - recursively copy fields
+                    // nested struct type — round-trip through the nested type's
+                    // own protobuf_serialise rather than copying its fields by
+                    // hand. Field-by-field recursion touches members directly,
+                    // which fails for strong-typedef fields whose storage is
+                    // private (e.g. rpc::method::id). This mirrors the scalar
+                    // nested-struct path and delegates to the authoritative
+                    // converter, so any nesting depth is handled correctly.
                     const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
                     if (nested_struct)
                     {
-                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_struct_to_proto_copy(
-                            root_entity,
-                            nested_struct,
-                            cpp_var + "." + member_name,
-                            "(*" + proto_var + ".mutable_" + field_accessor + "())",
-                            cpp,
-                            indent);
+                        cpp("{}// Serialize nested struct {} for field {}", indent, field_type, field_name);
+                        cpp("{}{{", indent);
+                        cpp("{}    std::vector<char> {}_buf;", indent, field_name);
+                        cpp("{}    {}.{}.protobuf_serialise({}_buf);", indent, cpp_var, member_name, field_name);
+                        cpp("{}    if (!{}.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            indent,
+                            proto_var,
+                            field_accessor,
+                            field_name,
+                            field_name);
+                        cpp("{}        throw std::runtime_error(\"Failed to parse nested {} for field {}\");",
+                            indent,
+                            field_type,
+                            field_name);
+                        cpp("{}}}", indent);
                     }
                 }
             }
@@ -3060,18 +3073,31 @@ namespace protobuf_generator
                 }
                 else
                 {
-                    // nested struct type - recursively copy fields
+                    // nested struct type — round-trip through the nested type's
+                    // own protobuf_deserialise (see the serialize counterpart for
+                    // why field-by-field recursion is avoided).
                     const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
                     if (nested_struct)
                     {
-                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_proto_to_struct_copy(
-                            root_entity,
-                            nested_struct,
-                            proto_var + "." + field_accessor + "()",
-                            cpp_var + "." + member_name,
-                            cpp,
-                            indent);
+                        cpp("{}// Deserialize nested struct {} for field {}", indent, field_type, field_name);
+                        cpp("{}{{", indent);
+                        cpp("{}    std::vector<char> {}_buf({}.{}().ByteSizeLong());",
+                            indent,
+                            field_name,
+                            proto_var,
+                            field_accessor);
+                        cpp("{}    if (!{}.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            indent,
+                            proto_var,
+                            field_accessor,
+                            field_name,
+                            field_name);
+                        cpp("{}        throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                            indent,
+                            field_type,
+                            field_name);
+                        cpp("{}    {}.{}.protobuf_deserialise({}_buf);", indent, cpp_var, member_name, field_name);
+                        cpp("{}}}", indent);
                     }
                 }
             }

@@ -4,42 +4,12 @@
  */
 #pragma once
 
-#include <string>
 #include <vector>
 
 // rpc_types.h, types.h, error_codes.h, and serialiser.h are included by rpc.h
 
 namespace rpc
 {
-    // Selects the audience/shape of a schema returned by interface introspection
-    // (i_marshaller::get_schema). Mirrors the host-side json_schema::schema_flavor
-    // used by the generator: `config` is the full authoring schema, `mcp` the
-    // minimal tool schema.
-    enum class schema_flavor : uint8_t
-    {
-        config = 0,
-        mcp = 1
-    };
-
-    // Runtime description of one interface and its callable methods. Hand-written
-    // (rather than IDL-defined) so it can reuse rpc::function_info by value
-    // without forcing a protobuf/nanopb converter for a vector-of-struct whose
-    // element carries a strong-typedef field. Serialized, when sent over the
-    // wire, by the marshaller protocol layer alongside the other *_params/_result
-    // bundles below.
-    //
-    // `interface_id` and each method's `function_info::id` are what a caller
-    // relays through send(); `qualified_name` + `function_info::name` are the
-    // stable, human/agent-facing identity. `schema` is the whole-interface JSON
-    // schema in the requested flavor; `methods` carries per-method in/out schemas.
-    struct interface_descriptor
-    {
-        interface_ordinal interface_id;
-        std::string qualified_name;
-        bool deprecated = false;
-        std::string schema;
-        std::vector<function_info> methods;
-    };
 
     // Input parameter bundles for i_marshaller methods.
     // All reference parameters are owned by-value to satisfy
