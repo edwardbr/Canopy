@@ -344,8 +344,19 @@ namespace rpc::sgx_blocking_transport
     {
     }
 
+    bool enclave_transport::reject_configuration_change_after_start(const char* setting_name) const
+    {
+        if (!configuration_locked_.load(std::memory_order_acquire))
+            return false;
+
+        RPC_WARNING("SGX blocking transport configuration cannot change after inner_connect starts: {}", setting_name);
+        return true;
+    }
+
     void enclave_transport::set_enclave_runtime_settings(json::v1::object settings)
     {
+        if (reject_configuration_change_after_start("runtime_settings"))
+            return;
         enclave_runtime_settings_ = std::make_shared<const json::v1::object>(std::move(settings));
     }
 
@@ -354,6 +365,8 @@ namespace rpc::sgx_blocking_transport
         std::shared_ptr<rpc::object_stub> stub,
         rpc::connection_settings input_descr)
     {
+        configuration_locked_.store(true, std::memory_order_release);
+
         sgx_launch_token_t token = {0};
         int updated = 0;
 #    ifdef _WIN32

@@ -1291,16 +1291,20 @@ namespace rpc
                 }
             }
             CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
+            auto adjacent_zone_id = child_transport->get_adjacent_zone_id();
+            if (adjacent_zone_id.get_subnet() != 0)
+                remove_transport_if_matches(adjacent_zone_id, child_transport.get());
             result.error_code = err_code;
             CO_RETURN result;
         }
 
         // Demarshal output interface if provided
+        std::shared_ptr<rpc::service_proxy> new_service_proxy;
         if (output_descr.get_object_id() != 0 && output_descr.is_set())
         {
             auto proxy_transport = add_transport(child_transport->get_adjacent_zone_id(), child_transport);
             // Create service_proxy for this connection
-            auto new_service_proxy = rpc::service_proxy::create(
+            new_service_proxy = rpc::service_proxy::create(
                 name, shared_from_this(), proxy_transport, child_transport->get_adjacent_zone_id());
             new_service_proxy->set_encoding(input_descr.encoding_type);
 
@@ -1311,6 +1315,28 @@ namespace rpc
                 = CO_AWAIT rpc::proxy_bind_out_param<out_param_type, rpc::shared_ptr>(new_service_proxy, 0, output_descr);
             err_code = bind_result.error_code;
             result.output_interface = std::move(bind_result.iface);
+        }
+
+        if (err_code != rpc::error::OK())
+        {
+            if (input_stub)
+            {
+                CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id());
+
+                std::lock_guard g(stub_control_);
+                if (stub_created && input_stub->get_shared_count() == 0 && input_stub->get_optimistic_count() == 0)
+                    input_stub->dont_keep_alive();
+            }
+
+            CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
+            if (new_service_proxy)
+                remove_zone_proxy_if_matches(new_service_proxy->get_destination_zone_id(), new_service_proxy.get());
+            auto adjacent_zone_id = child_transport->get_adjacent_zone_id();
+            if (adjacent_zone_id.get_subnet() != 0)
+                remove_transport_if_matches(adjacent_zone_id, child_transport.get());
+
+            result.error_code = err_code;
+            CO_RETURN result;
         }
 
         // we release the stub here because we did an add_ref in inner_connect.

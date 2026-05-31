@@ -108,6 +108,7 @@ namespace rpc::sgx_coroutine_transport::host
         static void destroy_enclave_owner_async(
             std::shared_ptr<enclave_owner> owner,
             rpc::coro::scheduler_ptr scheduler) noexcept;
+        [[nodiscard]] bool reject_configuration_change_after_start(const char* setting_name) const;
 
     protected:
         void on_destination_count_zero() override;
@@ -163,6 +164,7 @@ namespace rpc::sgx_coroutine_transport::host
 
     private:
         std::atomic<bool> enclave_shutdown_started_{false};
+        std::atomic<bool> configuration_locked_{false};
         uint32_t enclave_worker_thread_count_{0};
         std::mutex status_transition_mutex_;
         rpc::v4::secure_coroutine_module::startup_applications enclave_startup_applications_{};

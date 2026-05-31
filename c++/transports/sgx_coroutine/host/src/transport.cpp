@@ -722,23 +722,40 @@ namespace rpc::sgx_coroutine_transport::host
             begin_clean_disconnect();
     }
 
+    bool transport::reject_configuration_change_after_start(const char* setting_name) const
+    {
+        if (!configuration_locked_.load(std::memory_order_acquire))
+            return false;
+
+        RPC_WARNING("SGX coroutine transport configuration cannot change after inner_connect starts: {}", setting_name);
+        return true;
+    }
+
     void transport::set_enclave_worker_thread_count(uint32_t worker_thread_count)
     {
+        if (reject_configuration_change_after_start("worker_thread_count"))
+            return;
         enclave_worker_thread_count_ = worker_thread_count;
     }
 
     void transport::set_use_sidecar(bool use_sidecar)
     {
+        if (reject_configuration_change_after_start("use_sidecar"))
+            return;
         use_sidecar_ = use_sidecar;
     }
 
     void transport::set_sidecar_executable_path(std::string sidecar_executable_path)
     {
+        if (reject_configuration_change_after_start("sidecar_executable_path"))
+            return;
         sidecar_executable_path_ = std::move(sidecar_executable_path);
     }
 
     void transport::set_peer_to_peer_shared_memory_file(std::string shared_memory_file)
     {
+        if (reject_configuration_change_after_start("peer_to_peer_shared_memory_file"))
+            return;
         peer_to_peer_shared_memory_file_ = std::move(shared_memory_file);
     }
 
@@ -753,6 +770,9 @@ namespace rpc::sgx_coroutine_transport::host
 
     int transport::set_enclave_startup_applications(rpc::v4::secure_coroutine_module::startup_applications applications)
     {
+        if (reject_configuration_change_after_start("startup_applications"))
+            return rpc::error::INVALID_DATA();
+
         auto validation_error
             = rpc::v4::secure_coroutine_module::validate_startup_applications_resource_budget(applications);
         if (validation_error != rpc::error::OK())
@@ -764,6 +784,9 @@ namespace rpc::sgx_coroutine_transport::host
 
     int transport::set_enclave_startup_options(json::v1::object options)
     {
+        if (reject_configuration_change_after_start("startup_options"))
+            return rpc::error::INVALID_DATA();
+
         auto materialised = rpc::v4::secure_coroutine_module::materialise_startup_applications(options);
         if (materialised.error_code != rpc::error::OK())
             return materialised.error_code;
@@ -773,6 +796,9 @@ namespace rpc::sgx_coroutine_transport::host
 
     int transport::set_enclave_runtime_settings(json::v1::object settings)
     {
+        if (reject_configuration_change_after_start("runtime_settings"))
+            return rpc::error::INVALID_DATA();
+
         auto validation_error
             = rpc::v4::secure_coroutine_module::validate_startup_runtime_settings_resource_budget(settings);
         if (validation_error != rpc::error::OK())
@@ -784,16 +810,23 @@ namespace rpc::sgx_coroutine_transport::host
 
     void transport::set_enclave_io_uring_options(rpc::io_uring::host_controller::options options)
     {
+        if (reject_configuration_change_after_start("io_uring_options"))
+            return;
         enclave_io_uring_options_ = std::move(options);
     }
 
     void transport::set_host_stream_layer_applier(stream_layer_applier applier)
     {
+        if (reject_configuration_change_after_start("host_stream_layer_applier"))
+            return;
         host_stream_layer_applier_ = std::move(applier);
     }
 
     int transport::set_enclave_stream_layers(std::vector<rpc::stream_layers::stream_layer_settings> layers)
     {
+        if (reject_configuration_change_after_start("stream_layers"))
+            return rpc::error::INVALID_DATA();
+
         auto validation_error = rpc::v4::secure_coroutine_module::validate_startup_stream_layers_resource_budget(layers);
         if (validation_error != rpc::error::OK())
             return validation_error;
@@ -937,6 +970,8 @@ namespace rpc::sgx_coroutine_transport::host
         std::shared_ptr<rpc::object_stub> stub,
         rpc::connection_settings input_descr)
     {
+        configuration_locked_.store(true, std::memory_order_release);
+
         auto svc = get_service();
         if (!svc)
         {

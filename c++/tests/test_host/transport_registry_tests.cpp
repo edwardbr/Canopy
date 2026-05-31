@@ -96,6 +96,44 @@ namespace
         }
     };
 
+    class bind_failure_registry_service final : public rpc::root_service
+    {
+    public:
+#ifdef CANOPY_BUILD_COROUTINE
+        bind_failure_registry_service(
+            const char* name,
+            rpc::zone zone_id,
+            const std::shared_ptr<coro::scheduler>& scheduler)
+            : rpc::root_service(
+                  name,
+                  zone_id,
+                  scheduler)
+        {
+        }
+#else
+        bind_failure_registry_service(
+            const char* name,
+            rpc::zone zone_id)
+            : rpc::root_service(
+                  name,
+                  zone_id)
+        {
+        }
+#endif
+
+    private:
+        std::shared_ptr<rpc::service_proxy> get_zone_proxy(
+            rpc::caller_zone caller_zone_id,
+            rpc::destination_zone destination_zone_id,
+            bool& new_proxy_added) override
+        {
+            std::ignore = caller_zone_id;
+            std::ignore = destination_zone_id;
+            new_proxy_added = false;
+            return nullptr;
+        }
+    };
+
     std::shared_ptr<registry_test_service> make_registry_test_service(
         const std::string& name
 #ifdef CANOPY_BUILD_COROUTINE
@@ -109,6 +147,22 @@ namespace
         return std::make_shared<registry_test_service>(name.c_str(), local_zone, scheduler);
 #else
         return std::make_shared<registry_test_service>(name.c_str(), local_zone);
+#endif
+    }
+
+    std::shared_ptr<bind_failure_registry_service> make_bind_failure_registry_service(
+        const std::string& name
+#ifdef CANOPY_BUILD_COROUTINE
+        ,
+        const std::shared_ptr<coro::scheduler>& scheduler
+#endif
+    )
+    {
+        auto local_zone = rpc::zone{make_local_zone_address(1)};
+#ifdef CANOPY_BUILD_COROUTINE
+        return std::make_shared<bind_failure_registry_service>(name.c_str(), local_zone, scheduler);
+#else
+        return std::make_shared<bind_failure_registry_service>(name.c_str(), local_zone);
 #endif
     }
 
@@ -151,7 +205,7 @@ namespace
                     CO_RETURN rpc::connect_result{add_ref_result, {}};
             }
 
-            CO_RETURN rpc::connect_result{inner_connect_error, {}};
+            CO_RETURN rpc::connect_result{inner_connect_error, inner_connect_output_descriptor};
         }
 
         CORO_TASK(int) inner_accept() override
@@ -221,6 +275,7 @@ namespace
         uint32_t inner_connect_count{0};
         uint32_t inner_accept_count{0};
         int inner_connect_error{rpc::error::OK()};
+        rpc::remote_object inner_connect_output_descriptor{};
         std::weak_ptr<rpc::object_stub> last_inner_connect_stub;
         rpc::remote_object last_send_remote_object;
         rpc::caller_zone last_send_caller_zone;
@@ -603,6 +658,67 @@ TEST(
     result.output_interface = nullptr;
 
     EXPECT_TRUE(retained_stub.expired());
+    EXPECT_EQ(service->get_transport(child_zone), nullptr);
+    EXPECT_EQ(transport->get_destination_count(), 0);
+}
+
+TEST(
+    transport_registry_tests,
+    initialisation_failure_removes_route_without_input_stub)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-registry-init-failure-route-cleanup", scheduler);
+#else
+    auto service = make_test_service("transport-registry-init-failure-route-cleanup");
+#endif
+    auto child_zone = rpc::destination_zone{make_local_zone_address(72)};
+
+    auto transport = std::make_shared<registry_test_transport>("failing-route-only-transport", service);
+    transport->set_adjacent_zone_id(child_zone);
+    transport->register_adjacent_route_in_inner_connect = true;
+    transport->inner_connect_error = rpc::error::TRANSPORT_ERROR();
+
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_connect_to_zone_for_test(service, transport, {}, scheduler);
+#else
+    auto result = run_connect_to_zone_for_test(service, transport, {});
+#endif
+
+    EXPECT_EQ(result.error_code, rpc::error::TRANSPORT_ERROR());
+    EXPECT_EQ(service->get_transport(child_zone), nullptr);
+    EXPECT_EQ(transport->get_destination_count(), 0);
+}
+
+TEST(
+    transport_registry_tests,
+    output_binding_failure_removes_partial_connection_route)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_bind_failure_registry_service("transport-registry-bind-failure-route-cleanup", scheduler);
+#else
+    auto service = make_bind_failure_registry_service("transport-registry-bind-failure-route-cleanup");
+#endif
+    auto child_zone = rpc::destination_zone{make_local_zone_address(73)};
+    auto foreign_zone = rpc::destination_zone{make_local_zone_address(173)};
+
+    auto output_object = foreign_zone.with_object(rpc::object{1});
+    ASSERT_TRUE(output_object);
+
+    auto transport = std::make_shared<registry_test_transport>("failing-output-bind-transport", service);
+    transport->set_adjacent_zone_id(child_zone);
+    transport->register_adjacent_route_in_inner_connect = true;
+    transport->inner_connect_output_descriptor = *output_object;
+
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_connect_to_zone_for_test(service, transport, {}, scheduler);
+#else
+    auto result = run_connect_to_zone_for_test(service, transport, {});
+#endif
+
+    EXPECT_EQ(result.error_code, rpc::error::ZONE_NOT_FOUND());
+    EXPECT_EQ(result.output_interface, nullptr);
     EXPECT_EQ(service->get_transport(child_zone), nullptr);
     EXPECT_EQ(transport->get_destination_count(), 0);
 }

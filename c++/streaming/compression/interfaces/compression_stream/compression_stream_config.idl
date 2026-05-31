@@ -38,6 +38,9 @@ namespace rpc
 
             [description="Maximum decompressed bytes allowed from one compressed input chunk, expressed as a multiplier of compressed bytes. Zero disables this guard; public endpoints should set a finite value."]
             uint64_t max_expansion_ratio = 0;
+
+            [description="Maximum decompressed bytes allowed from one compressed input chunk. Zero disables this guard. This is an absolute cap that still applies when max_expansion_ratio is disabled."]
+            uint64_t max_decompressed_chunk_bytes = 16777216;
         };
     }
 }

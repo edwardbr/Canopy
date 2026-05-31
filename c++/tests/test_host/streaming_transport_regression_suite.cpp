@@ -572,6 +572,55 @@ TEST(
 }
 
 TEST(
+    CompressionStream,
+    MaxDecompressedChunkBytesCloses)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+    rpc::compression_stream::stream_settings sender_settings;
+    sender_settings.level = 10;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, sender_settings);
+
+    std::vector<uint8_t> payload(8192, 'x');
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    rpc::compression_stream::stream_settings receiver_settings;
+    receiver_settings.max_expansion_ratio = 0;
+    receiver_settings.max_decompressed_chunk_bytes = 1024;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, receiver_settings);
+
+    std::array<uint8_t, 8192> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed() || !status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
+    CompressionStream,
+    MalformedCompressedInputCloses)
+{
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    inbound_underlying->push(std::vector<uint8_t>{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01});
+
+    rpc::compression_stream::stream_settings settings;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, settings);
+
+    std::array<uint8_t, 256> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_FALSE(status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
     CompressionLayerFactory,
     AppliesCompressionLayer)
 {

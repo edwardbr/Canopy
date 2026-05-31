@@ -35,8 +35,7 @@ namespace streaming::compression
 
         auto make_error_status() -> rpc::io_status
         {
-            return rpc::io_status{
-                FLD(type) rpc::io_status::kind::native, FLD(native_code) rpc::error::TRANSPORT_ERROR()};
+            return rpc::io_status{FLD(type) rpc::io_status::kind::native, FLD(native_code) rpc::error::TRANSPORT_ERROR()};
         }
     } // namespace
 
@@ -207,15 +206,22 @@ namespace streaming::compression
 
     bool stream::expansion_limit_exceeded(size_t produced_bytes)
     {
+        const auto max_uint64 = std::numeric_limits<uint64_t>::max();
+        if (produced_bytes > max_uint64 - current_input_chunk_output_bytes_)
+            return true;
+        current_input_chunk_output_bytes_ += produced_bytes;
+
+        if (settings_.max_decompressed_chunk_bytes != 0
+            && current_input_chunk_output_bytes_ > settings_.max_decompressed_chunk_bytes)
+            return true;
+
         if (settings_.max_expansion_ratio == 0 || current_input_chunk_bytes_ == 0)
             return false;
 
-        const auto max_uint64 = std::numeric_limits<uint64_t>::max();
         const auto compressed_bytes = current_input_chunk_bytes_;
         if (settings_.max_expansion_ratio > max_uint64 / compressed_bytes)
             return false;
 
-        current_input_chunk_output_bytes_ += produced_bytes;
         return current_input_chunk_output_bytes_ > compressed_bytes * settings_.max_expansion_ratio;
     }
 

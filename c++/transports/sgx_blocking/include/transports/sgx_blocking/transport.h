@@ -8,6 +8,7 @@
 
 #  include <memory>
 #  include <string>
+#  include <atomic>
 
 #  include <json/json_dom.h>
 #  include <rpc/rpc.h>
@@ -35,6 +36,8 @@ namespace rpc::sgx_blocking_transport
         const std::string enclave_path_;
         std::shared_ptr<const json::v1::object> enclave_runtime_settings_{
             std::make_shared<const json::v1::object>(json::v1::map{})};
+        std::atomic<bool> configuration_locked_{false};
+        [[nodiscard]] bool reject_configuration_change_after_start(const char* setting_name) const;
 
     public:
         enclave_transport(

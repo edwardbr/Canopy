@@ -1076,7 +1076,8 @@ namespace
             "level": 5,
             "send_buffer_bytes": 32768,
             "receive_buffer_bytes": 32768,
-            "max_expansion_ratio": 32
+            "max_expansion_ratio": 32,
+            "max_decompressed_chunk_bytes": 1048576
         })json");
 
         const auto materialised
@@ -1087,6 +1088,7 @@ namespace
         EXPECT_EQ(materialised.settings.send_buffer_bytes, uint64_t{32768});
         EXPECT_EQ(materialised.settings.receive_buffer_bytes, uint64_t{32768});
         EXPECT_EQ(materialised.settings.max_expansion_ratio, uint64_t{32});
+        EXPECT_EQ(materialised.settings.max_decompressed_chunk_bytes, uint64_t{1048576});
 
         const auto sparse = rpc::connection_factory::materialise_settings<rpc::compression_stream::stream_settings>(
             json::v1::parse(R"json({})json"));
@@ -1096,6 +1098,7 @@ namespace
         EXPECT_EQ(sparse.settings.send_buffer_bytes, uint64_t{16384});
         EXPECT_EQ(sparse.settings.receive_buffer_bytes, uint64_t{16384});
         EXPECT_EQ(sparse.settings.max_expansion_ratio, uint64_t{0});
+        EXPECT_EQ(sparse.settings.max_decompressed_chunk_bytes, uint64_t{16777216});
     }
 #endif
 

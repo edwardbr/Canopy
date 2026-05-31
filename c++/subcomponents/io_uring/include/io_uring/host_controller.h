@@ -58,7 +58,7 @@ namespace rpc::io_uring
         static void close_state_now(const std::shared_ptr<state>& state) noexcept;
         static CORO_TASK(void) close_state_on_scheduler(std::shared_ptr<state> state);
 
-        options options_;
+        const options options_;
         // The controller may outlive the scheduler during transport teardown.
         // Keep this weak so delayed descriptor cleanup cannot extend the
         // scheduler lifetime and make benchmark/test shutdown look hung.

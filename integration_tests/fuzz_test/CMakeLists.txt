@@ -151,3 +151,43 @@ if(CANOPY_BUILD_TEST)
 
   gtest_discover_tests(fuzz_test_gtest)
 endif()
+
+if(CANOPY_BUILD_COROUTINE
+   AND CANOPY_BUILD_WEBSOCKET
+   AND TARGET canopy_http_server
+   AND TARGET transport_untrusted_web)
+  include(GoogleTest)
+
+  add_executable(untrusted_web_fuzz_gtest untrusted_web_fuzz_gtest.cpp)
+
+  target_link_libraries(
+    untrusted_web_fuzz_gtest
+    PRIVATE rpc::rpc
+            streaming
+            streaming_websocket
+            canopy_http_server
+            transport_untrusted_web
+            websocket_protocol_idl
+            ${LINK_LIBS}
+            rpc_log
+            GTest::gtest_main)
+
+  target_include_directories(
+    untrusted_web_fuzz_gtest
+    PRIVATE ${CANOPY_CPP_SOURCE_DIR}/tests/fixtures/include ${CANOPY_CPP_SOURCE_DIR}/tests/common/include
+            ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
+
+  target_compile_features(untrusted_web_fuzz_gtest PRIVATE cxx_std_20)
+  target_compile_definitions(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_DEFINES})
+  target_compile_options(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_options(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+  target_link_directories(untrusted_web_fuzz_gtest PUBLIC ${SGX_LIBRARY_PATH})
+  set_property(TARGET untrusted_web_fuzz_gtest PROPERTY COMPILE_PDB_NAME untrusted_web_fuzz_gtest)
+
+  if(CANOPY_USE_TELEMETRY)
+    target_compile_definitions(untrusted_web_fuzz_gtest PRIVATE CANOPY_USE_TELEMETRY)
+    target_link_libraries(untrusted_web_fuzz_gtest PRIVATE rpc_telemetry)
+  endif()
+
+  gtest_discover_tests(untrusted_web_fuzz_gtest)
+endif()
