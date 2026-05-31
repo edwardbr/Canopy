@@ -1788,7 +1788,8 @@ namespace json_schema
         const class_entity& root_entity,
         std::ostream& os,
         const std::string& schema_title,
-        const std::string& root_definition_name)
+        const std::string& root_definition_name,
+        const schema_profile& profile)
     {
         json_writer writer(os);
         std::vector<OrderedDefinitionItem> ordered_defs;
@@ -1810,6 +1811,10 @@ namespace json_schema
 
         writer.open_object();
         writer.write_string_property("$schema", "http://json-schema.org/draft-07/schema#");
+        // $id is config-profile-only and opt-in: emitted solely when a stable
+        // id_path has been supplied, so existing callers stay byte-identical.
+        if (profile.emit_id && !profile.id_path.empty())
+            writer.write_string_property("$id", profile.id_base + profile.id_path);
         writer.write_string_property(
             "title", root_definition_name.empty() ? schema_title : schema_title + "::" + root_definition_name);
         if (!root_definition_name.empty())
@@ -2034,12 +2039,18 @@ namespace json_schema
     void write_schema_document_start(
         std::ostream& os,
         const std::string& schema_title,
-        const std::string& root_definition_name = {})
+        const std::string& root_definition_name,
+        const schema_profile& profile)
     {
         os << "    std::string schema;\n";
         os << "    schema += R\"canopy_json(\n";
         os << "{\n\n";
         os << "  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n";
+        // $id mirrors write_json_schema_document: opt-in, config-profile only, so
+        // the embedded-string accessor stays byte-identical for existing callers
+        // and matches the standalone .json document when an id_path is supplied.
+        if (profile.emit_id && !profile.id_path.empty())
+            os << "  \"$id\": \"" << profile.id_base << profile.id_path << "\",\n";
         os << "  \"title\": \""
            << (root_definition_name.empty() ? schema_title : schema_title + "::" + root_definition_name) << "\"";
         if (!root_definition_name.empty())
@@ -2194,16 +2205,18 @@ namespace json_schema
     void write_json_schema(
         const class_entity& root_entity,
         std::ostream& os,
-        const std::string& schema_title)
+        const std::string& schema_title,
+        const schema_profile& profile)
     {
-        write_json_schema_document(root_entity, os, schema_title, {});
+        write_json_schema_document(root_entity, os, schema_title, {}, profile);
     }
 
     void write_cpp_schema_accessors(
         const class_entity& root_entity,
         std::ostream& os,
         const std::string& schema_title,
-        const std::string& schema_function_name)
+        const std::string& schema_function_name,
+        const schema_profile& profile)
     {
         std::vector<OrderedDefinitionItem> ordered_defs;
         std::map<std::string, DefinitionInfoVariant> definition_info_map;
@@ -2263,7 +2276,7 @@ namespace json_schema
         os << "        }\n\n";
         os << "        inline std::string " << schema_function_name << "()\n";
         os << "        {\n";
-        write_schema_document_start(os, schema_title);
+        write_schema_document_start(os, schema_title, {}, profile);
         for (const auto& definition_name : all_definition_names)
         {
             os << "            " << detail_namespace << "::append_definition(\n";
@@ -2305,7 +2318,7 @@ namespace json_schema
             os << "    if (encoding != ::rpc::encoding::yas_json)\n";
             os << "        throw std::invalid_argument(\"JSON schema is only available as "
                   "rpc::encoding::yas_json\");\n";
-            write_schema_document_start(os, schema_title, accessor.first);
+            write_schema_document_start(os, schema_title, accessor.first, profile);
             for (const auto& definition_name : definition_names)
             {
                 os << "    ::canopy::generated_schema::" << detail_namespace << "::append_definition(\n";
@@ -2361,7 +2374,7 @@ namespace json_schema
             os << "    if (encoding != ::rpc::encoding::yas_json)\n";
             os << "        throw std::invalid_argument(\"JSON schema is only available as "
                   "rpc::encoding::yas_json\");\n";
-            write_schema_document_start(os, schema_title, interface_definition_name);
+            write_schema_document_start(os, schema_title, interface_definition_name, profile);
             os << "    ::canopy::generated_schema::" << detail_namespace << "::append_definition(\n";
             os << "        schema,\n";
             os << "        \"" << interface_definition_name << "\",\n";

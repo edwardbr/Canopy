@@ -6,6 +6,7 @@
 #pragma once
 
 #include "coreclasses.h" // Your parser API header
+#include "json_schema/schema_profile.h"
 #include <iostream>
 #include <set>
 #include <string>
@@ -17,13 +18,15 @@ namespace json_schema
     void write_json_schema(
         const class_entity& root_entity,
         std::ostream& os,
-        const std::string& schema_title = "Generated Schema");
+        const std::string& schema_title = "Generated Schema",
+        const schema_profile& profile = config_strict_profile());
 
     void write_cpp_schema_accessors(
         const class_entity& root_entity,
         std::ostream& os,
         const std::string& schema_title,
-        const std::string& schema_function_name);
+        const std::string& schema_function_name,
+        const schema_profile& profile = config_strict_profile());
 
     // Emits ADL overloads `from_json_object(tag<T>, const json::v1::object&)`
     // and `to_json_object(const T&)` for each non-template IDL struct reachable
