@@ -16,7 +16,7 @@
 #  include <rpc/rpc.h>
 
 #  include "type_test_fixture.h"
-#  include <transport/tests/ipc_spsc_transport/setup.h>
+#  include <transport/tests/ipc_spsc/setup.h>
 
 using namespace marshalled_tests;
 
@@ -201,7 +201,7 @@ namespace
     harness_result spawn_pdeathsig_harness()
     {
         // The test process and harness process use this pipe to pass back the spawned IPC child pid.
-        // Parent reads once; harness writes once after ipc_spsc_transport has fully created the child.
+        // Parent reads once; harness writes once after ipc_spsc has fully created the child.
         int pipe_fds[2] = {-1, -1};
         EXPECT_EQ(::pipe(pipe_fds), 0);
 
@@ -221,10 +221,10 @@ namespace
             [[maybe_unused]] auto ok = dll_zone.set_subnet(dll_zone.get_subnet() + 10);
             RPC_ASSERT(ok);
 
-            auto transport = rpc::ipc_spsc_transport::make_client(
+            auto transport = rpc::ipc_spsc::make_client(
                 "pdeathsig child",
                 service,
-                rpc::ipc_spsc_transport::options{
+                rpc::ipc_spsc::options{
                     .process_executable = CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH,
                     .dll_path = CANOPY_TEST_IPC_SPSC_DLL_PATH,
                     .dll_zone = dll_zone,
@@ -256,7 +256,7 @@ namespace
 
 #    if defined(CANOPY_TEST_IPC_SPSC_PEER_PROCESS_PATH)
 TEST(
-    ipc_spsc_transport_process_pairing,
+    ipc_spsc_process_pairing,
     independent_acceptor_and_connector_processes_connect_over_named_shared_file)
 {
     auto shared_memory_file = make_unique_ipc_peer_file();
@@ -287,7 +287,7 @@ TEST(
 #    endif
 
 TEST(
-    ipc_spsc_transport_process_lifetime,
+    ipc_spsc_process_lifetime,
     child_dies_when_parent_dies_unexpectedly)
 {
     // Become the subreaper so that when the harness dies the grandchild (IPC child process)

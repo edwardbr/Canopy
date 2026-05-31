@@ -25,14 +25,14 @@ if(CANOPY_BUILD_COROUTINE)
   else()
     set(STREAMING_SECURE_STREAM_LIB streaming_tls)
   endif()
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_dll_scheduled_dll_suite.cpp)
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB transport_libcoro_dll_scheduled_dynamic_library)
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_dll_scheduled_dynamic_library_test)
-  set(LIBCORO_DLL_SCHEDULED_TEST_TARGET canopy_libcoro_dll_scheduled_example_dll)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_host_scheduled_dll_suite.cpp)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB transport_libcoro_host_scheduled_dynamic_library)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_host_scheduled_dynamic_library_test)
-  set(LIBCORO_HOST_SCHEDULED_TEST_TARGET canopy_libcoro_host_scheduled_example_dll)
+  set(UNSHARED_SCHEDULER_TRANSPORT_SOURCES type_test_unshared_scheduler_dll_suite.cpp)
+  set(UNSHARED_SCHEDULER_TRANSPORT_LIB transport_unshared_scheduler_dll)
+  set(UNSHARED_SCHEDULER_TRANSPORT_TEST_LIB transport_unshared_scheduler_dll_test)
+  set(UNSHARED_SCHEDULER_TEST_TARGET canopy_unshared_scheduler_example_dll)
+  set(SHARED_SCHEDULER_TRANSPORT_SOURCES type_test_shared_scheduler_dll_suite.cpp)
+  set(SHARED_SCHEDULER_TRANSPORT_LIB transport_shared_scheduler_dll)
+  set(SHARED_SCHEDULER_TRANSPORT_TEST_LIB transport_shared_scheduler_dll_test)
+  set(SHARED_SCHEDULER_TEST_TARGET canopy_shared_scheduler_example_dll)
   set(IPC_SPSC_TRANSPORT_SOURCES type_test_ipc_spsc_suite.cpp)
   set(IPC_SPSC_DLL_HOST_TRANSPORT_LIB transport_ipc_spsc_dll_host)
   set(IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB transport_ipc_spsc_dll_host_test)
@@ -61,14 +61,14 @@ if(C_ABI_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_C_ABI_DLL_PATH="$<TARGET_FILE:${C_ABI_DLL_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_DLL_SCHEDULED_TEST_TARGET)
+if(UNSHARED_SCHEDULER_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_SCHEDULED_TEST_TARGET}>")
+       CANOPY_TEST_UNSHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:${UNSHARED_SCHEDULER_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_HOST_SCHEDULED_TEST_TARGET)
+if(SHARED_SCHEDULER_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_HOST_SCHEDULED_TEST_TARGET}>")
+       CANOPY_TEST_SHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:${SHARED_SCHEDULER_TEST_TARGET}>")
 endif()
 
 if(IPC_SPSC_DLL_TEST_TARGET)
@@ -118,8 +118,8 @@ add_executable(
   transport_registry_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${C_ABI_DLL_TRANSPORT_SOURCES}
-  ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
-  ${LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES}
+  ${UNSHARED_SCHEDULER_TRANSPORT_SOURCES}
+  ${SHARED_SCHEDULER_TRANSPORT_SOURCES}
   ${IPC_SPSC_TRANSPORT_SOURCES}
   ${SGX_COROUTINE_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
@@ -151,10 +151,10 @@ target_link_libraries(
          ${DLL_TRANSPORT_TEST_LIB}
          ${C_ABI_DLL_TRANSPORT_LIB}
          ${C_ABI_DLL_TRANSPORT_TEST_LIB}
-         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB}
-         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB}
-         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB}
-         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB}
+         ${UNSHARED_SCHEDULER_TRANSPORT_LIB}
+         ${UNSHARED_SCHEDULER_TRANSPORT_TEST_LIB}
+         ${SHARED_SCHEDULER_TRANSPORT_LIB}
+         ${SHARED_SCHEDULER_TRANSPORT_TEST_LIB}
          ${IPC_SPSC_DLL_HOST_TRANSPORT_LIB}
          ${IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB}
          ${IPC_TRANSPORT_TEST_LIB}
@@ -244,8 +244,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  add_dependencies(rpc_test ${LIBCORO_DLL_SCHEDULED_TEST_TARGET})
-  add_dependencies(rpc_test ${LIBCORO_HOST_SCHEDULED_TEST_TARGET})
+  add_dependencies(rpc_test ${UNSHARED_SCHEDULER_TEST_TARGET})
+  add_dependencies(rpc_test ${SHARED_SCHEDULER_TEST_TARGET})
   add_dependencies(rpc_test ${IPC_SPSC_DLL_TEST_TARGET} ${IPC_SPSC_DLL_LOADER_TARGET} ${IPC_SPSC_PEER_PROCESS_TARGET})
   if(CANOPY_BUILD_ENCLAVE)
     add_dependencies(rpc_test marshal_test_coroutine_enclave)

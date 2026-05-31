@@ -83,12 +83,12 @@ namespace comprehensive::v1
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_libcoro_dll_scheduled_dynamic_library_benchmark(
+    run_unshared_scheduler_dll_benchmark(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_libcoro_host_scheduled_dynamic_library_benchmark(
+    run_shared_scheduler_dll_benchmark(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::encoding enc,
         size_t blob_size);

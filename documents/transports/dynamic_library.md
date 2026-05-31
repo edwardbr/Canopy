@@ -118,7 +118,7 @@ as unavailable until that target is reworked and re-enabled.
 | Variant | Export owned by child | User-implemented entry point |
 |--------|------------------------|-------------------------------|
 | Blocking DLL | `canopy_dll_*` | `canopy_dll_init` |
-| Blocking language-neutral DLL | `canopy_dll_*` using `c_abi/dynamic_library/canopy_dynamic_library.h` types | `canopy_dll_init` |
+| Blocking language-neutral DLL | `canopy_dll_*` using `c_abi/dynamic_library/dynamic_library.h` types | `canopy_dll_init` |
 | Host-scheduled coroutine DLL | `canopy_libcoro_host_scheduled_dll_create` plus direct coroutine function pointers | `canopy_libcoro_host_scheduled_dll_init` |
 | DLL-scheduled coroutine DLL | `canopy_libcoro_dll_scheduled_dll_start` plus begin/complete callbacks | `canopy_libcoro_dll_scheduled_dll_init` |
 | Coroutine SPSC DLL | `canopy_libcoro_spsc_dll_start` | `canopy_libcoro_spsc_dll_init` |
@@ -408,7 +408,7 @@ stored during `canopy_dll_init`.
 `rpc::c_abi` is the non-coroutine dynamic-library transport for language-neutral
 shared-object boundaries.  It uses the same high-level parent/child-zone shape as
 `rpc::dynamic_library`, but the ABI structs and function pointer types are
-defined in `c_abi/dynamic_library/canopy_dynamic_library.h` instead of passing
+defined in `c_abi/dynamic_library/dynamic_library.h` instead of passing
 C++ RPC structs directly across the boundary.
 
 Use this transport when the child may be implemented by C, Rust, or another
@@ -727,7 +727,7 @@ failures or test harness failure paths where normal unwinding is not possible.
 - `transports/dynamic_library/include/transports/dynamic_library/dll_abi.h` — C ABI types
 - `transports/dynamic_library/include/transports/dynamic_library/transport.h` — `child_transport`
 - `transports/dynamic_library/include/transports/dynamic_library/dll_transport.h` — `parent_transport`, `init_child_zone`, `dll_context`
-- `c_abi/dynamic_library/canopy_dynamic_library.h` — language-neutral dynamic-library ABI
+- `c_abi/dynamic_library/dynamic_library.h` — language-neutral dynamic-library ABI
 - `transports/c_abi/include/transports/c_abi/transport.h` — C ABI `child_transport`
 - `transports/c_abi/include/transports/c_abi/dynamic_library_loader.h` — C ABI loader and required entry-point table
 - `transports/libcoro_host_scheduled_dynamic_library/include/transports/libcoro_host_scheduled_dynamic_library/dll_abi.h` — host-scheduled coroutine DLL ABI types

@@ -25,6 +25,16 @@ if(TARGET transport_ipc_spsc)
   target_compile_definitions(connection_factory_api_test PRIVATE CANOPY_HAS_IPC_SPSC_TRANSPORT_FACTORY)
 endif()
 
+if(TARGET transport_shared_scheduler_dll)
+  target_link_libraries(connection_factory_api_test PRIVATE transport_shared_scheduler_dll)
+  target_compile_definitions(connection_factory_api_test PRIVATE CANOPY_HAS_SHARED_SCHEDULER_DLL_TRANSPORT_FACTORY)
+endif()
+
+if(TARGET transport_unshared_scheduler_dll)
+  target_link_libraries(connection_factory_api_test PRIVATE transport_unshared_scheduler_dll)
+  target_compile_definitions(connection_factory_api_test PRIVATE CANOPY_HAS_UNSHARED_SCHEDULER_DLL_TRANSPORT_FACTORY)
+endif()
+
 if(TARGET transport_sgx_coroutine)
   target_link_libraries(connection_factory_api_test PRIVATE transport_sgx_coroutine)
   target_compile_definitions(connection_factory_api_test PRIVATE CANOPY_HAS_SGX_COROUTINE_TRANSPORT_FACTORY)

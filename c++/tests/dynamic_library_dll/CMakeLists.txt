@@ -12,7 +12,7 @@ if(NOT CANOPY_BUILD_COROUTINE)
   canopycreatedynamiclibrary(
     canopy_example_dll
     SOURCES
-    src/canopy_dll_init.cpp
+    src/dll_init.cpp
     LINK_LIBRARIES
     transport_local
     common_tests

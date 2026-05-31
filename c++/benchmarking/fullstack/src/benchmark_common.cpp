@@ -193,7 +193,8 @@ namespace comprehensive::v1
             trim_each_side);
 #ifdef CANOPY_BUILD_COROUTINE
         fmt::print(
-            "Warmup: local={} calls, libcoro_dll={} calls, libcoro_host={} calls, ipc={} calls, spsc={} calls, "
+            "Warmup: local={} calls, unshared_scheduler_dll={} calls, shared_scheduler_dll={} calls, ipc={} calls, "
+            "spsc={} calls, "
             "io_uring={} calls, tcp={} calls, sgx_io_uring={} calls, sgx_io_uring_pair={} calls "
             "(not included in timing)\n",
             local_warmup_calls,

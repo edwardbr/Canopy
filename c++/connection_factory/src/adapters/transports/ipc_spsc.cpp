@@ -8,15 +8,15 @@
 #include <memory>
 #include <utility>
 
-#include <ipc_spsc_transport/ipc_spsc_transport_config.h>
-#include <ipc_spsc_transport/ipc_spsc_transport_config_schema.h>
-#include <transports/ipc_spsc_transport/factory.h>
+#include <ipc_spsc/config.h>
+#include <ipc_spsc/config_schema.h>
+#include <transports/ipc_spsc/factory.h>
 
 namespace rpc::connection_factory::detail
 {
     namespace
     {
-        class ipc_spsc_transport_component_factory final : public transport_component_factory
+        class ipc_spsc_component_factory final : public transport_component_factory
         {
         public:
             auto connect_transport(
@@ -35,7 +35,7 @@ namespace rpc::connection_factory::detail
                 if (service_settings.error_code != rpc::error::OK())
                     return {service_settings.error_code, {}, {}, {}};
 
-                auto materialised = materialise_settings<rpc::ipc_spsc_transport::transport_settings>(transport_options);
+                auto materialised = materialise_settings<rpc::ipc_spsc::transport_settings>(transport_options);
                 if (materialised.error_code != rpc::error::OK())
                     return {materialised.error_code, {}, {}, {}};
                 auto ipc_settings = std::move(materialised.settings);
@@ -47,7 +47,7 @@ namespace rpc::connection_factory::detail
                 if (!resolved_service)
                     return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-                auto result = rpc::ipc_spsc_transport::connect_transport(ipc_settings, std::move(resolved_service));
+                auto result = rpc::ipc_spsc::connect_transport(ipc_settings, std::move(resolved_service));
                 return {result.error_code,
                     std::move(result.service),
                     std::move(result.transport),
@@ -56,10 +56,9 @@ namespace rpc::connection_factory::detail
         };
     } // namespace
 
-    void register_ipc_spsc_transport_components(transport_component_map& components)
+    void register_ipc_spsc_components(transport_component_map& components)
     {
-        auto factory = std::make_shared<ipc_spsc_transport_component_factory>();
-        components.emplace("ipc_spsc", factory);
-        components.emplace("ipc_spsc_transport", std::move(factory));
+        auto factory = std::make_shared<ipc_spsc_component_factory>();
+        components.emplace("ipc_spsc", std::move(factory));
     }
 } // namespace rpc::connection_factory::detail

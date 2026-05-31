@@ -55,7 +55,7 @@ add_custom_command(
 
 add_custom_target(canopy_rust_dynamic_library_test_child ALL DEPENDS "${CANOPY_RUST_TEST_CHILD_LIB}")
 
-add_library(canopy_probe_c_abi_dll SHARED cxx_probe_dll/canopy_dll_init.cpp)
+add_library(canopy_probe_c_abi_dll SHARED cxx_probe_dll/dll_init.cpp)
 
 target_compile_definitions(canopy_probe_c_abi_dll PRIVATE ${CANOPY_DEFINES} CANOPY_C_ABI_DLL_BUILDING)
 

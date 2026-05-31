@@ -8,7 +8,15 @@
 #include <transports/local/factory.h>
 
 #ifdef CANOPY_HAS_IPC_SPSC_TRANSPORT_FACTORY
-#  include <transports/ipc_spsc_transport/factory.h>
+#  include <transports/ipc_spsc/factory.h>
+#endif
+
+#ifdef CANOPY_HAS_UNSHARED_SCHEDULER_DLL_TRANSPORT_FACTORY
+#  include <transports/unshared_scheduler_dll/factory.h>
+#endif
+
+#ifdef CANOPY_HAS_SHARED_SCHEDULER_DLL_TRANSPORT_FACTORY
+#  include <transports/shared_scheduler_dll/factory.h>
 #endif
 
 #ifdef CANOPY_HAS_SGX_BLOCKING_TRANSPORT_FACTORY
@@ -40,7 +48,7 @@ TEST(
     DirectIpcSpscTransportFactoryExposesImplementationOwnedTypedSettings)
 {
 #ifdef CANOPY_HAS_IPC_SPSC_TRANSPORT_FACTORY
-    rpc::ipc_spsc_transport::transport_settings settings;
+    rpc::ipc_spsc::transport_settings settings;
     settings.name = "api-test-ipc-spsc";
     settings.use_sidecar = true;
     settings.sidecar_executable_path = "/tmp/not-started-by-api-test";
@@ -55,6 +63,39 @@ TEST(
     EXPECT_EQ(settings.peer_to_peer_shared_memory_file, "/tmp/not-opened-by-api-test");
     EXPECT_TRUE(settings.create_peer_to_peer_shared_memory_file);
     EXPECT_TRUE(settings.unlink_peer_to_peer_shared_memory_file_on_close);
+#endif
+
+    SUCCEED();
+}
+
+TEST(
+    ConnectionFactoryApi,
+    DirectCoroutineDynamicLibraryTransportFactoriesExposeImplementationOwnedTypedSettings)
+{
+#ifdef CANOPY_HAS_SHARED_SCHEDULER_DLL_TRANSPORT_FACTORY
+    rpc::shared_scheduler_dll::transport_settings shared_settings;
+    shared_settings.name = "api-test-shared-scheduler-dll";
+    shared_settings.service_proxy_name = "api-test-shared-scheduler-child";
+    shared_settings.encoding = rpc::encoding::yas_json;
+    shared_settings.dynamic_library_path = "/tmp/not-loaded-by-api-test.so";
+
+    EXPECT_EQ(shared_settings.name.value(), "api-test-shared-scheduler-dll");
+    EXPECT_EQ(shared_settings.service_proxy_name.value(), "api-test-shared-scheduler-child");
+    EXPECT_EQ(shared_settings.encoding.value(), rpc::encoding::yas_json);
+    EXPECT_EQ(shared_settings.dynamic_library_path, "/tmp/not-loaded-by-api-test.so");
+#endif
+
+#ifdef CANOPY_HAS_UNSHARED_SCHEDULER_DLL_TRANSPORT_FACTORY
+    rpc::unshared_scheduler_dll::transport_settings unshared_settings;
+    unshared_settings.name = "api-test-unshared-scheduler-dll";
+    unshared_settings.service_proxy_name = "api-test-unshared-scheduler-child";
+    unshared_settings.encoding = rpc::encoding::yas_json;
+    unshared_settings.dynamic_library_path = "/tmp/not-loaded-by-api-test.so";
+
+    EXPECT_EQ(unshared_settings.name.value(), "api-test-unshared-scheduler-dll");
+    EXPECT_EQ(unshared_settings.service_proxy_name.value(), "api-test-unshared-scheduler-child");
+    EXPECT_EQ(unshared_settings.encoding.value(), rpc::encoding::yas_json);
+    EXPECT_EQ(unshared_settings.dynamic_library_path, "/tmp/not-loaded-by-api-test.so");
 #endif
 
     SUCCEED();

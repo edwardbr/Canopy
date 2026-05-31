@@ -6,7 +6,7 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
-#  include <c_abi/dynamic_library/canopy_dynamic_library.h>
+#  include <c_abi/dynamic_library/dynamic_library.h>
 #  include <rpc/rpc.h>
 
 #  include <atomic>

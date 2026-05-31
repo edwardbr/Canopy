@@ -92,7 +92,7 @@ assume packed blobs for now.
 
 The shared header is:
 
-- [`canopy_dynamic_library.h`](/var/home/edward/projects/Canopy/c_abi/dynamic_library/canopy_dynamic_library.h)
+- [`dynamic_library.h`](/var/home/edward/projects/Canopy/c_abi/dynamic_library/dynamic_library.h)
 
 Implementers should read the inline comments in that header, not just the type
 names. The header carries local preconditions for pointer validity, borrowed

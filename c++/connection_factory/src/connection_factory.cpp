@@ -222,7 +222,15 @@ namespace rpc::connection_factory
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
-                detail::register_ipc_spsc_transport_components(result);
+                detail::register_ipc_spsc_components(result);
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SHARED_SCHEDULER_DLL
+                detail::register_shared_scheduler_dll_components(result);
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_UNSHARED_SCHEDULER_DLL
+                detail::register_unshared_scheduler_dll_components(result);
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING

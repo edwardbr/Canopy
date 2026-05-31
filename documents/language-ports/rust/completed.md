@@ -45,7 +45,7 @@ be translated to other language backends without carrying that history in
 - Added the shared ABI home at [`../c_abi/README.md`](../../../c_abi/README.md).
 - Added the first neutral dynamic-library ABI draft under:
   - [`../c_abi/dynamic_library/README.md`](../../../c_abi/dynamic_library/README.md)
-  - [`../c_abi/dynamic_library/canopy_dynamic_library.h`](../../../c_abi/dynamic_library/canopy_dynamic_library.h)
+  - [`../c_abi/dynamic_library/dynamic_library.h`](../../../c_abi/dynamic_library/dynamic_library.h)
 - Added the first substantial address/object identity port in `rpc_types`:
   - packed `ZoneAddress` creation and capability parsing
   - address getters, subnet/object setters, `zone_only`, `with_object`, and `same_zone`

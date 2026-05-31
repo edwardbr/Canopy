@@ -305,7 +305,7 @@ namespace
         fmt::print(", dll");
 #else
         fmt::print(
-            ", libcoro_dll_scheduled, libcoro_host_scheduled, ipc_direct, ipc_dll, spsc, io_uring, "
+            ", unshared_scheduler_dll, shared_scheduler_dll, ipc_direct, ipc_dll, spsc, io_uring, "
             "io_uring_proactor_4k, io_uring_proactor_64k, io_uring_cooperative_4k, io_uring_cooperative_64k");
 #  ifdef CANOPY_BENCHMARK_SGX_COROUTINE
         fmt::print(
@@ -1638,11 +1638,11 @@ int main(
         filters,
         encodings,
         blob_sizes,
-        "libcoro_dll_scheduled",
+        "unshared_scheduler_dll",
         [](rpc::encoding enc, size_t blob_size)
         {
             auto scheduler = make_benchmark_scheduler();
-            return coro::sync_wait(run_libcoro_dll_scheduled_dynamic_library_benchmark(scheduler, enc, blob_size));
+            return coro::sync_wait(run_unshared_scheduler_dll_benchmark(scheduler, enc, blob_size));
         });
 
     add_transport_jobs(
@@ -1650,11 +1650,11 @@ int main(
         filters,
         encodings,
         blob_sizes,
-        "libcoro_host_scheduled",
+        "shared_scheduler_dll",
         [](rpc::encoding enc, size_t blob_size)
         {
             auto scheduler = make_benchmark_scheduler();
-            return coro::sync_wait(run_libcoro_host_scheduled_dynamic_library_benchmark(scheduler, enc, blob_size));
+            return coro::sync_wait(run_shared_scheduler_dll_benchmark(scheduler, enc, blob_size));
         });
 
     add_transport_jobs(

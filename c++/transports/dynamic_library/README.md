@@ -37,9 +37,9 @@ The transport library provides the rest of the exported `canopy_dll_*` ABI.
 
 ## Related transports
 
-- `../libcoro_host_scheduled_dynamic_library/`
+- `../shared_scheduler_dll/`
   - coroutine in-process DLL loading using the host scheduler
-- `../libcoro_dll_scheduled_dynamic_library/`
+- `../unshared_scheduler_dll/`
   - coroutine in-process DLL loading with a DLL-owned scheduler
-- `../ipc_spsc_transport/`
+- `../ipc_spsc/`
   - SPSC-backed IPC transport for out-of-process child hosting

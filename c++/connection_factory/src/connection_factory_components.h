@@ -151,7 +151,9 @@ namespace rpc::connection_factory::detail
     void register_spsc_queue_stream_components(stream_component_map& components);
 
     void register_local_transport_components(transport_component_map& components);
-    void register_ipc_spsc_transport_components(transport_component_map& components);
+    void register_ipc_spsc_components(transport_component_map& components);
+    void register_unshared_scheduler_dll_components(transport_component_map& components);
+    void register_shared_scheduler_dll_components(transport_component_map& components);
     void register_sgx_blocking_transport_components(transport_component_map& components);
     void register_sgx_coroutine_transport_components(transport_component_map& components);
 } // namespace rpc::connection_factory::detail
