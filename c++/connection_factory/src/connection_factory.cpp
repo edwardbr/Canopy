@@ -266,6 +266,11 @@ namespace rpc::connection_factory
                 return true;
 #endif
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
+            if (type == "compression" || type == "zstd")
+                return true;
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
             if (type == "tls")
                 return true;

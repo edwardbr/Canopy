@@ -53,6 +53,10 @@ if(TARGET sgx_blocking_transport_config_idl)
   target_link_libraries(json_schema_metadata_test PUBLIC sgx_blocking_transport_config_idl)
   target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_HAS_SGX_BLOCKING_TRANSPORT_CONFIG)
 endif()
+if(TARGET compression_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC compression_stream_config_idl)
+  target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION)
+endif()
 
 # Add compile options and link options like test
 target_compile_options(json_schema_metadata_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})

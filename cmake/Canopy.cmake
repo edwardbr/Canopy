@@ -188,6 +188,7 @@ if(NOT DEPENDENCIES_LOADED)
         ON
         CACHE BOOL "Build bundled Mbed TLS support from c++/submodules/mbedtls" FORCE)
   endif()
+  option(CANOPY_BUILD_COMPRESSION "Build compression stream support from c++/submodules/zstd" OFF)
 
   # ####################################################################################################################
   # Debug Options
@@ -355,6 +356,7 @@ if(NOT DEPENDENCIES_LOADED)
   message("CANOPY_PRODUCTION_RELEASE ${CANOPY_PRODUCTION_RELEASE}")
   message("CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS ${CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS}")
   message("CANOPY_BUILD_MBEDTLS ${CANOPY_BUILD_MBEDTLS}")
+  message("CANOPY_BUILD_COMPRESSION ${CANOPY_BUILD_COMPRESSION}")
   message("CMAKE_VERBOSE_MAKEFILE ${CMAKE_VERBOSE_MAKEFILE}")
   message("CMAKE_RULE_MESSAGES ${CMAKE_RULE_MESSAGES}")
   message("CANOPY_ENABLE_CLANG_TIDY ${CANOPY_ENABLE_CLANG_TIDY}")
@@ -424,6 +426,7 @@ if(NOT DEPENDENCIES_LOADED)
       message(STATUS "CANOPY_BUILD_COROUTINE: ${CANOPY_BUILD_COROUTINE}")
       message(STATUS "CANOPY_BUILD_TEST: ${CANOPY_BUILD_TEST}")
       message(STATUS "CANOPY_BUILD_WEBSOCKET: ${CANOPY_BUILD_WEBSOCKET}")
+      message(STATUS "CANOPY_BUILD_COMPRESSION: ${CANOPY_BUILD_COMPRESSION}")
       message(STATUS "CANOPY_BUILD_DEMOS: ${CANOPY_BUILD_DEMOS}")
       set(CANOPY_REQUIRED_SUBMODULES
           c++/submodules/yas
@@ -449,6 +452,9 @@ if(NOT DEPENDENCIES_LOADED)
       endif()
       if(CANOPY_BUILD_MBEDTLS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/mbedtls)
+      endif()
+      if(CANOPY_BUILD_COMPRESSION)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/zstd)
       endif()
       if(CANOPY_BUILD_DEMOS
          AND CANOPY_BUILD_WEBSOCKET
@@ -671,7 +677,7 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_IO_URING_SQPOLL_FLAG)
   endif()
 
-  # OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls
+  # OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls
   # is still coroutine-only.
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     if(CANOPY_BUILD_COROUTINE)

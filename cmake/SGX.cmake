@@ -427,9 +427,9 @@ function(canopy_configure_sgxssl_for_enclave)
   set(CANOPY_SGXSSL_ENCLAVE_LINK_LIBRARIES
       ""
       PARENT_SCOPE)
-  set(CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL
+  set(CANOPY_STREAMING_OPENSSL_TLS_ENCLAVE_HAS_SGXSSL_IMPL
       FALSE
-      CACHE INTERNAL "True when streaming_tls_enclave links SGXSSL implementation archives" FORCE)
+      CACHE INTERNAL "True when streaming_openssl_tls_enclave links SGXSSL implementation archives" FORCE)
 
   if(WIN32)
     message(STATUS "SGXSSL enclave support is not configured on Windows by this helper.")
@@ -707,9 +707,9 @@ function(canopy_configure_sgxssl_for_enclave)
                           "Set CANOPY_SGX_TLS_LIB_DIR to the SGX SDK lib64 directory.")
     endif()
 
-    set(CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL
+    set(CANOPY_STREAMING_OPENSSL_TLS_ENCLAVE_HAS_SGXSSL_IMPL
         TRUE
-        CACHE INTERNAL "True when streaming_tls_enclave links SGXSSL implementation archives" FORCE)
+        CACHE INTERNAL "True when streaming_openssl_tls_enclave links SGXSSL implementation archives" FORCE)
 
     # libsgx_tsgxssl contains registration/glue objects that may not be referenced directly by every consumer. Mark it
     # whole-archive so FindSGX keeps those objects in the final enclave link.

@@ -15,8 +15,9 @@ add_subdirectory(subcomponents/spsc_queue)
 add_subdirectory(subcomponents/json)
 add_subdirectory(subcomponents/io_uring_config)
 
-# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking, tls,
-# mbedtls, spsc, attestation, websocket) gate themselves on CANOPY_BUILD_COROUTINE in their own CMakeLists.
+# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking,
+# openssl_tls, mbedtls, spsc, attestation, websocket, compression) gate themselves on build options in their own
+# CMakeLists.
 add_subdirectory(streaming)
 
 if(CANOPY_BUILD_COROUTINE)

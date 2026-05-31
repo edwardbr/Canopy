@@ -63,7 +63,7 @@ endif()
 
 if(CANOPY_BUILD_TEST
    AND TARGET transport_streaming
-   AND TARGET streaming_tls
+   AND TARGET streaming_openssl_tls
    AND TARGET streaming_websocket)
   add_executable(tcp_coroutine_stream_composition_fit tests/stream_composition_fit.cpp)
   target_include_directories(tcp_coroutine_stream_composition_fit PRIVATE ${CANOPY_INCLUDES})
@@ -73,7 +73,7 @@ if(CANOPY_BUILD_TEST
   target_link_libraries(
     tcp_coroutine_stream_composition_fit
     PRIVATE streaming_tcp_coroutine
-            streaming_tls
+            streaming_openssl_tls
             streaming_websocket
             transport_streaming
             rpc_log)
@@ -85,7 +85,7 @@ if(CANOPY_BUILD_TEST
    AND CANOPY_BUILD_ENCLAVE
    AND TARGET streaming_tcp_coroutine_enclave
    AND TARGET transport_streaming_enclave
-   AND TARGET streaming_tls_enclave
+   AND TARGET streaming_openssl_tls_enclave
    AND TARGET streaming_websocket_enclave)
   add_library(tcp_coroutine_stream_composition_fit_enclave STATIC tests/stream_composition_fit.cpp)
   target_include_directories(tcp_coroutine_stream_composition_fit_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
@@ -94,7 +94,7 @@ if(CANOPY_BUILD_TEST
                                                                          ${CANOPY_WARN_OK_ENCLAVE})
   target_link_options(tcp_coroutine_stream_composition_fit_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
   target_link_libraries(
-    tcp_coroutine_stream_composition_fit_enclave PRIVATE streaming_tcp_coroutine_enclave streaming_tls_enclave
+    tcp_coroutine_stream_composition_fit_enclave PRIVATE streaming_tcp_coroutine_enclave streaming_openssl_tls_enclave
                                                     streaming_websocket_enclave transport_streaming_enclave)
   set_property(TARGET tcp_coroutine_stream_composition_fit_enclave PROPERTY COMPILE_PDB_NAME
                                                                        tcp_coroutine_stream_composition_fit_enclave)

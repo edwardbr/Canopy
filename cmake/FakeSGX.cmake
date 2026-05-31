@@ -74,9 +74,9 @@ function(canopy_configure_sgxssl_for_enclave)
   set(CANOPY_SGXSSL_ENCLAVE_LINK_LIBRARIES
       ""
       PARENT_SCOPE)
-  set(CANOPY_STREAMING_TLS_ENCLAVE_HAS_SGXSSL_IMPL
+  set(CANOPY_STREAMING_OPENSSL_TLS_ENCLAVE_HAS_SGXSSL_IMPL
       FALSE
-      CACHE INTERNAL "True when streaming_tls_enclave links SGXSSL implementation archives" FORCE)
+      CACHE INTERNAL "True when streaming_openssl_tls_enclave links SGXSSL implementation archives" FORCE)
 endfunction()
 
 add_library(canopy_fake_sgx_runtime SHARED "${CANOPY_FAKE_SGX_ROOT}/src/fake_sgx.cpp")

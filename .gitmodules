@@ -68,3 +68,8 @@
 	url = https://github.com/webmproject/libvpx.git
 	shallow = true
 	update = none
+[submodule "c++/submodules/zstd"]
+	path = c++/submodules/zstd
+	url = https://github.com/facebook/zstd.git
+	shallow = true
+	update = none

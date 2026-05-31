@@ -21,7 +21,7 @@ else()
   set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_blocking)
 endif()
 
-# OpenSSL TLS is dual-mode (streaming_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls is
+# OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls is
 # still coroutine-only.
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
   if(NOT CANOPY_BUILD_COROUTINE)
@@ -35,10 +35,10 @@ if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
   set(CANOPY_HTTP_SERVER_CRYPTO_LIBS canopy_mbedtls_crypto)
 elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
   find_package(OpenSSL REQUIRED)
-  if(NOT TARGET streaming_tls)
-    message(FATAL_ERROR "canopy_http_server requires streaming_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
+  if(NOT TARGET streaming_openssl_tls)
+    message(FATAL_ERROR "canopy_http_server requires streaming_openssl_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
   endif()
-  set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET streaming_tls)
+  set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET streaming_openssl_tls)
   set(CANOPY_HTTP_SERVER_CRYPTO_LIBS OpenSSL::SSL OpenSSL::Crypto)
 else()
   message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
@@ -86,8 +86,8 @@ if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
       set(CANOPY_HTTP_SERVER_ENCLAVE_CRYPTO_LIBS canopy_mbedtls_crypto)
     endif()
   endif()
-elseif(TARGET streaming_tls_enclave)
-  set(CANOPY_HTTP_SERVER_ENCLAVE_SECURE_STREAM_TARGET streaming_tls_enclave)
+elseif(TARGET streaming_openssl_tls_enclave)
+  set(CANOPY_HTTP_SERVER_ENCLAVE_SECURE_STREAM_TARGET streaming_openssl_tls_enclave)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE

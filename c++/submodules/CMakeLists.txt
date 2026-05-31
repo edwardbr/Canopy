@@ -413,3 +413,28 @@ if(CANOPY_BUILD_MBEDTLS)
 
   message(STATUS "Mbed TLS configured from c++/submodules/mbedtls")
 endif()
+
+if(CANOPY_BUILD_COMPRESSION)
+  set(CANOPY_ZSTD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zstd")
+
+  if(NOT EXISTS "${CANOPY_ZSTD_SOURCE_DIR}/build/cmake/CMakeLists.txt")
+    message(FATAL_ERROR "Compression stream support is enabled, but the zstd submodule was not populated at "
+                        "${CANOPY_ZSTD_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency bootstrap "
+                        "can initialise c++/submodules/zstd, or reconfigure with -DCANOPY_BUILD_COMPRESSION=OFF.")
+  endif()
+
+  set(ZSTD_BUILD_PROGRAMS
+      OFF
+      CACHE BOOL "Disable zstd command line programs" FORCE)
+  set(ZSTD_BUILD_TESTS
+      OFF
+      CACHE BOOL "Disable zstd tests" FORCE)
+  set(ZSTD_BUILD_SHARED
+      OFF
+      CACHE BOOL "Disable zstd shared library" FORCE)
+  set(ZSTD_BUILD_STATIC
+      ON
+      CACHE BOOL "Build zstd static library" FORCE)
+  add_subdirectory("${CANOPY_ZSTD_SOURCE_DIR}/build/cmake" "${CMAKE_CURRENT_BINARY_DIR}/zstd")
+  message(STATUS "Zstandard configured from ${CANOPY_ZSTD_SOURCE_DIR}")
+endif()

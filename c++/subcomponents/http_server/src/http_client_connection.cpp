@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -30,13 +31,21 @@ namespace canopy::http_server
 {
     namespace
     {
-        constexpr size_t max_http_url_bytes = 4096;
-        constexpr size_t max_http_header_name_bytes = 256;
-        constexpr size_t max_http_header_value_bytes = 8192;
-        constexpr size_t max_http_header_count = 128;
-        constexpr size_t max_http_body_bytes = 1024 * 1024;
-        constexpr size_t max_http_pending_input_bytes = 64 * 1024;
         constexpr size_t websocket_client_key_bytes = 16;
+
+        bool exceeds_limit(
+            size_t value,
+            uint64_t limit)
+        {
+            return limit != 0 && static_cast<uint64_t>(value) > limit;
+        }
+
+        bool timeout_expired(
+            std::chrono::steady_clock::time_point started,
+            std::chrono::milliseconds limit)
+        {
+            return limit > std::chrono::milliseconds{0} && std::chrono::steady_clock::now() - started >= limit;
+        }
 
         char ascii_lower(char value)
         {
@@ -247,9 +256,11 @@ namespace canopy::http_server
 
     client_connection::client_connection(
         std::shared_ptr<streaming::stream> stream,
-        handler_set handlers)
+        handler_set handlers,
+        client_connection_limits limits)
         : stream_(std::move(stream))
         , handlers_(std::move(handlers))
+        , limits_(limits)
     {
     }
 
@@ -259,8 +270,9 @@ namespace canopy::http_server
         size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
+        const auto& limits = limits_for(*ctx);
         ctx->parsed_request.method.append(at, length);
-        if (ctx->parsed_request.method.size() > max_http_header_name_bytes)
+        if (exceeds_limit(ctx->parsed_request.method.size(), limits.max_method_bytes))
             return -1;
         return 0;
     }
@@ -271,8 +283,9 @@ namespace canopy::http_server
         size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
+        const auto& limits = limits_for(*ctx);
         ctx->parsed_request.url.append(at, length);
-        if (ctx->parsed_request.url.size() > max_http_url_bytes)
+        if (exceeds_limit(ctx->parsed_request.url.size(), limits.max_url_bytes))
             return -1;
         return 0;
     }
@@ -283,6 +296,7 @@ namespace canopy::http_server
         size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
+        const auto& limits = limits_for(*ctx);
 
         if (ctx->reading_header_value)
         {
@@ -291,7 +305,7 @@ namespace canopy::http_server
         }
 
         ctx->current_header_field.append(at, length);
-        if (ctx->current_header_field.size() > max_http_header_name_bytes)
+        if (exceeds_limit(ctx->current_header_field.size(), limits.max_header_name_bytes))
             return -1;
         ctx->reading_header_value = false;
         return 0;
@@ -303,8 +317,9 @@ namespace canopy::http_server
         size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
+        const auto& limits = limits_for(*ctx);
         ctx->current_header_value.append(at, length);
-        if (ctx->current_header_value.size() > max_http_header_value_bytes)
+        if (exceeds_limit(ctx->current_header_value.size(), limits.max_header_value_bytes))
             return -1;
         ctx->reading_header_value = true;
         return 0;
@@ -325,8 +340,9 @@ namespace canopy::http_server
         size_t length)
     {
         auto* ctx = static_cast<parser_request_context*>(parser->data);
+        const auto& limits = limits_for(*ctx);
         ctx->parsed_request.body.append(at, length);
-        if (ctx->parsed_request.body.size() > max_http_body_bytes)
+        if (exceeds_limit(ctx->parsed_request.body.size(), limits.max_body_bytes))
             return -1;
         return 0;
     }
@@ -338,6 +354,12 @@ namespace canopy::http_server
         return 0;
     }
 
+    auto client_connection::limits_for(const parser_request_context& ctx) -> const client_connection_limits&
+    {
+        static const client_connection_limits defaults;
+        return ctx.limits != nullptr ? *ctx.limits : defaults;
+    }
+
     bool client_connection::flush_header(parser_request_context& ctx)
     {
         if (ctx.current_header_field.empty())
@@ -346,7 +368,7 @@ namespace canopy::http_server
         }
 
         ++ctx.header_count;
-        if (ctx.header_count > max_http_header_count)
+        if (exceeds_limit(ctx.header_count, limits_for(ctx).max_header_count))
             return false;
 
         ctx.parsed_request.headers[ctx.current_header_field] = ctx.current_header_value;
@@ -482,6 +504,8 @@ namespace canopy::http_server
             while (true)
             {
                 parser_request_context ctx;
+                ctx.limits = &limits_;
+                const auto request_started = std::chrono::steady_clock::now();
                 llhttp_reset(&parser);
                 parser.data = &ctx;
 
@@ -491,7 +515,23 @@ namespace canopy::http_server
                     if (pending_input.empty())
                     {
                         auto [read_status, read_span] = CO_AWAIT stream_->receive(
-                            rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()});
+                            rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()},
+                            limits_.receive_poll_timeout);
+                        if (read_status.is_timeout())
+                        {
+                            const auto timed_out = !ctx.headers_complete
+                                                       ? timeout_expired(request_started, limits_.header_timeout)
+                                                       : timeout_expired(request_started, limits_.request_timeout);
+                            if (timed_out)
+                            {
+                                RPC_WARNING("HTTP client timed out while sending a request");
+                                auto error_response
+                                    = build_http_response(make_text_response(408, "Request Timeout"), false);
+                                CO_AWAIT stream_->send(rpc::byte_span{error_response});
+                                CO_RETURN nullptr;
+                            }
+                            continue;
+                        }
                         if (!read_status.is_ok() || read_span.empty())
                         {
                             if (read_status.is_closed() || read_span.empty())
@@ -524,7 +564,7 @@ namespace canopy::http_server
                         RPC_DEBUG("Received {} bytes, first bytes: {}", read_span.size(), preview);
 
                         pending_input.append(reinterpret_cast<const char*>(read_span.data()), read_span.size());
-                        if (pending_input.size() > max_http_pending_input_bytes)
+                        if (exceeds_limit(pending_input.size(), limits_.max_pending_input_bytes))
                         {
                             RPC_WARNING("HTTP request exceeded pending input limit");
                             auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
@@ -614,6 +654,8 @@ namespace canopy::http_server
             return "Not Found";
         case 405:
             return "Method Not Allowed";
+        case 408:
+            return "Request Timeout";
         case 500:
             return "Internal Server Error";
         case 501:

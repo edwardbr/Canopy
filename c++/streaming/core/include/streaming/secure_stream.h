@@ -18,17 +18,17 @@ namespace streaming::secure
 } // namespace streaming::secure
 
 #elif defined(CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
-#  include <streaming/tls/stream.h>
+#  include <streaming/openssl_tls/stream.h>
 
 namespace streaming::secure
 {
-    using client_context = ::streaming::tls::client_context;
-    using client_context_options = ::streaming::tls::client_context_options;
-    using context = ::streaming::tls::context;
-    using peer_verification = ::streaming::tls::peer_verification;
-    using pem_credentials = ::streaming::tls::pem_credentials;
-    using server_context_options = ::streaming::tls::server_context_options;
-    using stream = ::streaming::tls::stream;
+    using client_context = ::streaming::openssl_tls::client_context;
+    using client_context_options = ::streaming::openssl_tls::client_context_options;
+    using context = ::streaming::openssl_tls::context;
+    using peer_verification = ::streaming::openssl_tls::peer_verification;
+    using pem_credentials = ::streaming::openssl_tls::pem_credentials;
+    using server_context_options = ::streaming::openssl_tls::server_context_options;
+    using stream = ::streaming::openssl_tls::stream;
 } // namespace streaming::secure
 
 #else

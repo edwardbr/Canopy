@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// tls stream implementation using OpenSSL memory BIOs
-#include <streaming/tls/stream.h>
+// OpenSSL TLS stream implementation using memory BIOs.
+#include <streaming/openssl_tls/stream.h>
 
 #include <array>
 #include <chrono>
@@ -15,7 +15,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509_vfy.h>
 
-namespace streaming::tls
+namespace streaming::openssl_tls
 {
     // A zero receive timeout is a poll for the current stream implementations,
     // not a blocking wait. Use a bounded wait during handshakes so the peer's
@@ -741,4 +741,4 @@ namespace streaming::tls
         CO_RETURN;
     }
 
-} // namespace streaming::tls
+} // namespace streaming::openssl_tls

@@ -20,14 +20,19 @@ if(TARGET streaming_websocket)
   target_link_libraries(streaming_layer_factory PUBLIC streaming_websocket websocket_stream_config_idl)
 endif()
 
-if(TARGET streaming_tls)
+if(TARGET streaming_openssl_tls)
   target_compile_definitions(streaming_layer_factory PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
                                                             CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG)
-  target_link_libraries(streaming_layer_factory PUBLIC streaming_tls tls_stream_config_idl)
+  target_link_libraries(streaming_layer_factory PUBLIC streaming_openssl_tls openssl_tls_stream_config_idl)
 elseif(TARGET streaming_mbedtls)
   target_compile_definitions(streaming_layer_factory PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
                                                             CANOPY_STREAMING_LAYER_FACTORY_HAS_MBEDTLS_CONFIG)
   target_link_libraries(streaming_layer_factory PUBLIC streaming_mbedtls mbedtls_stream_config_idl)
+endif()
+
+if(TARGET streaming_compression)
+  target_compile_definitions(streaming_layer_factory PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_COMPRESSION)
+  target_link_libraries(streaming_layer_factory PUBLIC streaming_compression compression_stream_config_idl)
 endif()
 
 if(TARGET streaming_spsc_wrapping)
@@ -60,10 +65,11 @@ if(CANOPY_BUILD_ENCLAVE)
     target_link_libraries(streaming_layer_factory_enclave PUBLIC streaming_websocket_enclave
                                                          websocket_stream_config_idl_enclave)
   endif()
-  if(TARGET streaming_tls_enclave AND TARGET tls_stream_config_idl_enclave)
+  if(TARGET streaming_openssl_tls_enclave AND TARGET openssl_tls_stream_config_idl_enclave)
     target_compile_definitions(streaming_layer_factory_enclave PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
                                                                       CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG)
-    target_link_libraries(streaming_layer_factory_enclave PUBLIC streaming_tls_enclave tls_stream_config_idl_enclave)
+    target_link_libraries(streaming_layer_factory_enclave PUBLIC streaming_openssl_tls_enclave
+                                                                 openssl_tls_stream_config_idl_enclave)
   endif()
   if(TARGET streaming_attestation_enclave AND TARGET attestation_stream_config_idl_enclave)
     target_compile_definitions(streaming_layer_factory_enclave PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION)

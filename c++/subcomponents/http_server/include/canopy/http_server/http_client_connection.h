@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -41,6 +44,20 @@ namespace canopy::http_server
         = std::function<CORO_TASK(std::shared_ptr<rpc::transport>)(const request&, std::shared_ptr<streaming::stream>)>;
     using rest_request_selector = std::function<bool(const request&)>;
 
+    struct client_connection_limits
+    {
+        uint64_t max_method_bytes{256};
+        uint64_t max_url_bytes{4096};
+        uint64_t max_header_name_bytes{256};
+        uint64_t max_header_value_bytes{8192};
+        uint64_t max_header_count{128};
+        uint64_t max_body_bytes{1024 * 1024};
+        uint64_t max_pending_input_bytes{64 * 1024};
+        std::chrono::milliseconds receive_poll_timeout{250};
+        std::chrono::milliseconds header_timeout{10000};
+        std::chrono::milliseconds request_timeout{30000};
+    };
+
     struct handler_set
     {
         coroutine_request_handler webpage_handler;
@@ -54,7 +71,8 @@ namespace canopy::http_server
     public:
         explicit client_connection(
             std::shared_ptr<streaming::stream> stream,
-            handler_set handlers);
+            handler_set handlers,
+            client_connection_limits limits = {});
 
         auto handle() -> CORO_TASK(std::shared_ptr<rpc::transport>);
 
@@ -62,6 +80,7 @@ namespace canopy::http_server
         struct parser_request_context
         {
             request parsed_request;
+            const client_connection_limits* limits{nullptr};
             std::string current_header_field;
             std::string current_header_value;
             size_t header_count{0};
@@ -93,6 +112,7 @@ namespace canopy::http_server
             size_t length);
         static int on_message_complete(llhttp_t* parser);
 
+        static auto limits_for(const parser_request_context& ctx) -> const client_connection_limits&;
         static bool flush_header(parser_request_context& ctx);
         static auto build_http_response(
             const response& response,
@@ -104,6 +124,7 @@ namespace canopy::http_server
 
         std::shared_ptr<streaming::stream> stream_;
         handler_set handlers_;
+        client_connection_limits limits_;
     };
 
     auto status_text(int status_code) -> std::string;

@@ -19,7 +19,7 @@ typedef struct bio_st BIO;
 typedef struct ssl_ctx_st SSL_CTX;
 typedef struct ssl_st SSL;
 
-namespace streaming::tls
+namespace streaming::openssl_tls
 {
     enum class peer_verification
     {
@@ -138,4 +138,4 @@ namespace streaming::tls
         auto feed_rbio(std::chrono::milliseconds timeout) -> CORO_TASK(rpc::io_status);
         auto drain_wbio() -> CORO_TASK(bool);
     };
-} // namespace streaming::tls
+} // namespace streaming::openssl_tls

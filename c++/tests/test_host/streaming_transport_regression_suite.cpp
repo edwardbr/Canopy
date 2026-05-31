@@ -22,6 +22,10 @@
 #  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
+#  ifdef CANOPY_BUILD_COMPRESSION
+#    include <streaming/compression/stream.h>
+#    include <streaming/layer_factory/factory.h>
+#  endif
 #  ifdef CANOPY_BUILD_WEBSOCKET
 #    ifdef CANOPY_BUILD_HTTP_SERVER
 #      include <canopy/http_server/http_client_connection.h>
@@ -48,7 +52,7 @@ namespace
         return rpc::byte_span{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
     }
 
-#  ifdef CANOPY_BUILD_WEBSOCKET
+#  if defined(CANOPY_BUILD_WEBSOCKET) || defined(CANOPY_BUILD_COMPRESSION)
     class scripted_stream final : public streaming::stream
     {
     public:
@@ -126,7 +130,9 @@ namespace
         std::vector<std::vector<uint8_t>> sent_;
         bool closed_{false};
     };
+#  endif
 
+#  ifdef CANOPY_BUILD_WEBSOCKET
     auto make_test_scheduler() -> std::shared_ptr<coro::scheduler>
     {
         return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -357,7 +363,8 @@ namespace
 
     auto run_http_upgrade_request(
         const std::string& wire_request,
-        std::shared_ptr<std::atomic_bool> upgrade_handler_called) -> std::vector<std::vector<uint8_t>>
+        std::shared_ptr<std::atomic_bool> upgrade_handler_called,
+        canopy::http_server::client_connection_limits limits = {}) -> std::vector<std::vector<uint8_t>>
     {
         auto stream = std::make_shared<scripted_stream>();
         stream->push(std::vector<uint8_t>(wire_request.begin(), wire_request.end()));
@@ -374,7 +381,7 @@ namespace
             CO_RETURN nullptr;
         };
 
-        canopy::http_server::client_connection connection(stream, std::move(handlers));
+        canopy::http_server::client_connection connection(stream, std::move(handlers), limits);
         (void)coro::sync_wait(connection.handle());
         return stream->sent_messages();
     }
@@ -490,6 +497,89 @@ TEST(
         scheduler->process_events(std::chrono::milliseconds{1});
 }
 
+#  ifdef CANOPY_BUILD_COMPRESSION
+TEST(
+    CompressionStream,
+    ZstdRoundTripPreservesByteStream)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+
+    rpc::compression_stream::stream_settings settings;
+    settings.level = 1;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, settings);
+
+    std::vector<uint8_t> payload(4096);
+    for (size_t i = 0; i < payload.size(); ++i)
+        payload[i] = static_cast<uint8_t>('A' + (i % 17));
+
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, settings);
+    std::vector<uint8_t> received;
+    std::array<uint8_t, 257> buffer{};
+    while (received.size() < payload.size())
+    {
+        auto [status, span]
+            = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+        ASSERT_TRUE(status.is_ok());
+        received.insert(received.end(), span.data(), span.data() + span.size());
+    }
+
+    EXPECT_EQ(received, payload);
+}
+
+TEST(
+    CompressionStream,
+    ExpansionRatioLimitCloses)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+    rpc::compression_stream::stream_settings sender_settings;
+    sender_settings.level = 10;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, sender_settings);
+
+    std::vector<uint8_t> payload(8192, 'x');
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    rpc::compression_stream::stream_settings receiver_settings;
+    receiver_settings.max_expansion_ratio = 1;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, receiver_settings);
+
+    std::array<uint8_t, 8192> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed() || !status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
+    CompressionLayerFactory,
+    AppliesCompressionLayer)
+{
+    rpc::stream_layers::stream_layer_settings layer;
+    layer.type = "compression";
+    layer.settings = json::v1::parse(R"json({"level": 1, "max_expansion_ratio": 16})json");
+
+    auto result = streaming::layer_factory::apply_stream_layer(
+        std::make_shared<scripted_stream>(), layer, streaming::layer_factory::layer_direction::connect);
+
+    EXPECT_EQ(result.error_code, rpc::error::OK());
+    EXPECT_TRUE(result.stream);
+}
+#  endif
+
 #  ifdef CANOPY_BUILD_WEBSOCKET
 TEST(
     UntrustedWebFactory,
@@ -573,6 +663,92 @@ TEST(
     auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
 
     std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    OversizedFramePayloadClosesBeforeWslay)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>(9, 0x41)));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_frame_payload_bytes = 8;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    FragmentedMessageOverLimitClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    auto first = make_client_frame(0x2, std::vector<uint8_t>(5, 0x41), true, false);
+    auto second = make_client_frame(0x0, std::vector<uint8_t>(4, 0x42), true, true);
+    first.insert(first.end(), second.begin(), second.end());
+    underlying->push(std::move(first));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_message_bytes = 8;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    ContinuationWithoutFragmentClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x0, std::vector<uint8_t>{0x41}));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    NewDataFrameWhileFragmentedClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    auto first = make_client_frame(0x2, std::vector<uint8_t>{0x41}, true, false);
+    auto second = make_client_frame(0x2, std::vector<uint8_t>{0x42}, true, true);
+    first.insert(first.end(), second.begin(), second.end());
+    underlying->push(std::move(first));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
     auto [status, received]
         = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
 
@@ -690,6 +866,23 @@ TEST(
 
     EXPECT_FALSE(called->load(std::memory_order_acquire));
     EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    PartialRequestTimesOutBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.receive_poll_timeout = std::chrono::milliseconds{1};
+    limits.header_timeout = std::chrono::milliseconds{1};
+    limits.request_timeout = std::chrono::milliseconds{1};
+
+    auto response = sent_http_text(
+        run_http_upgrade_request(std::string("GET /rpc HTTP/1.1\r\nHost: example.test\r\n"), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 408 Request Timeout\r\n"), size_t{0});
 }
 #    endif
 

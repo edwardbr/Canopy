@@ -37,10 +37,13 @@
 #  include <streaming/tcp_blocking/factory.h>
 #endif
 #ifdef CANOPY_SECURE_STREAM_BACKEND_OPENSSL
-#  include <tls_stream/tls_stream_config_schema.h>
+#  include <openssl_tls_stream/openssl_tls_stream_config_schema.h>
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
 #  include <websocket_stream/websocket_stream_config_schema.h>
+#endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
+#  include <compression_stream/compression_stream_config_schema.h>
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
 #  include <local_transport/local_transport_config_schema.h>
@@ -980,16 +983,17 @@ namespace
             "server": {"verify_peer": "required"}
         })json");
 
-        const auto materialised = rpc::connection_factory::materialise_settings<rpc::tls_stream::stream_settings>(valid);
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<rpc::openssl_tls_stream::stream_settings>(valid);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
         EXPECT_TRUE(materialised.settings.client.verify_peer);
-        EXPECT_EQ(materialised.settings.server.verify_peer, rpc::tls_stream::peer_verification::required);
+        EXPECT_EQ(materialised.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::required);
 
-        const auto sparse = rpc::connection_factory::materialise_settings<rpc::tls_stream::stream_settings>(
+        const auto sparse = rpc::connection_factory::materialise_settings<rpc::openssl_tls_stream::stream_settings>(
             json::v1::parse(R"json({})json"));
         ASSERT_EQ(sparse.error_code, rpc::error::OK());
         EXPECT_FALSE(sparse.settings.client.verify_peer);
-        EXPECT_EQ(sparse.settings.server.verify_peer, rpc::tls_stream::peer_verification::none);
+        EXPECT_EQ(sparse.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::none);
     }
 #endif
 
@@ -1006,6 +1010,7 @@ namespace
                 "timeout_ms": 5678
             },
             "max_message_bytes": 1000000,
+            "max_frame_payload_bytes": 2048,
             "max_decoded_messages": 4
         })json");
 
@@ -1018,6 +1023,7 @@ namespace
         EXPECT_EQ(materialised.settings.keep_alive.interval_ms, uint64_t{1234});
         EXPECT_EQ(materialised.settings.keep_alive.timeout_ms, uint64_t{5678});
         EXPECT_EQ(materialised.settings.max_message_bytes, uint64_t{1000000});
+        EXPECT_EQ(materialised.settings.max_frame_payload_bytes, uint64_t{2048});
         EXPECT_EQ(materialised.settings.max_decoded_messages, uint64_t{4});
 
         const auto sparse = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
@@ -1028,11 +1034,45 @@ namespace
         EXPECT_EQ(sparse.settings.keep_alive.interval_ms, uint64_t{30000});
         EXPECT_EQ(sparse.settings.keep_alive.timeout_ms, uint64_t{10000});
         EXPECT_EQ(sparse.settings.max_message_bytes, uint64_t{0});
+        EXPECT_EQ(sparse.settings.max_frame_payload_bytes, uint64_t{0});
         EXPECT_EQ(sparse.settings.max_decoded_messages, uint64_t{0});
 
         const auto stale_path = rpc::connection_factory::materialise_settings<rpc::websocket_stream::stream_settings>(
             json::v1::parse(R"json({"path": "/rpc"})json"));
         EXPECT_EQ(stale_path.error_code, rpc::error::INVALID_DATA());
+    }
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
+    TEST(
+        JsonConvert,
+        CompressionLayerSettingsUseGeneratedConfig)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "algorithm": "zstd",
+            "level": 5,
+            "send_buffer_bytes": 32768,
+            "receive_buffer_bytes": 32768,
+            "max_expansion_ratio": 32
+        })json");
+
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<rpc::compression_stream::stream_settings>(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        EXPECT_EQ(materialised.settings.algorithm, rpc::compression_stream::compression_algorithm::zstd);
+        EXPECT_EQ(materialised.settings.level, int32_t{5});
+        EXPECT_EQ(materialised.settings.send_buffer_bytes, uint64_t{32768});
+        EXPECT_EQ(materialised.settings.receive_buffer_bytes, uint64_t{32768});
+        EXPECT_EQ(materialised.settings.max_expansion_ratio, uint64_t{32});
+
+        const auto sparse = rpc::connection_factory::materialise_settings<rpc::compression_stream::stream_settings>(
+            json::v1::parse(R"json({})json"));
+        ASSERT_EQ(sparse.error_code, rpc::error::OK());
+        EXPECT_EQ(sparse.settings.algorithm, rpc::compression_stream::compression_algorithm::zstd);
+        EXPECT_EQ(sparse.settings.level, int32_t{3});
+        EXPECT_EQ(sparse.settings.send_buffer_bytes, uint64_t{16384});
+        EXPECT_EQ(sparse.settings.receive_buffer_bytes, uint64_t{16384});
+        EXPECT_EQ(sparse.settings.max_expansion_ratio, uint64_t{0});
     }
 #endif
 

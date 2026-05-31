@@ -19,11 +19,17 @@
 #  include <websocket_stream/websocket_stream_config_schema.h>
 #endif
 
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_COMPRESSION
+#  include <compression_stream/compression_stream_config.h>
+#  include <compression_stream/compression_stream_config_schema.h>
+#  include <streaming/compression/stream.h>
+#endif
+
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
 #  include <streaming/secure_stream.h>
 #  ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG
-#    include <tls_stream/tls_stream_config.h>
-#    include <tls_stream/tls_stream_config_schema.h>
+#    include <openssl_tls_stream/openssl_tls_stream_config.h>
+#    include <openssl_tls_stream/openssl_tls_stream_config_schema.h>
 #  elif defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_MBEDTLS_CONFIG)
 #    include <mbedtls_stream/mbedtls_stream_config.h>
 #    include <mbedtls_stream/mbedtls_stream_config_schema.h>
@@ -47,7 +53,7 @@ namespace streaming::layer_factory
     namespace
     {
 #if defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG)
-        namespace tls_config = ::rpc::tls_stream;
+        namespace tls_config = ::rpc::openssl_tls_stream;
 #elif defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_MBEDTLS_CONFIG)
         namespace tls_config = ::rpc::mbedtls_stream;
 #endif
@@ -136,6 +142,21 @@ namespace streaming::layer_factory
                     std::move(*settings),
                     direction == layer_direction::accept ? ::rpc::websocket_stream::endpoint_role::server
                                                          : ::rpc::websocket_stream::endpoint_role::client)};
+        }
+#endif
+
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_COMPRESSION
+        auto apply_compression_layer(
+            std::shared_ptr<::streaming::stream> stream,
+            const rpc::stream_layers::stream_layer_settings& layer) -> stream_layer_result
+        {
+            auto settings
+                = materialise_layer_settings<::rpc::compression_stream::stream_settings>(layer_settings_object(layer));
+            if (!settings)
+                return {rpc::error::INVALID_DATA(), {}};
+
+            return {rpc::error::OK(),
+                std::make_shared<::streaming::compression::stream>(std::move(stream), std::move(*settings))};
         }
 #endif
 
@@ -322,6 +343,11 @@ namespace streaming::layer_factory
             return apply_websocket_layer(std::move(stream), layer, direction);
 #endif
 
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_COMPRESSION
+        if (layer.type == "compression" || layer.type == "zstd")
+            return apply_compression_layer(std::move(stream), layer);
+#endif
+
         return {rpc::error::INVALID_DATA(), {}};
     }
 
@@ -357,6 +383,11 @@ namespace streaming::layer_factory
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_WEBSOCKET
         if (layer.type == "websocket")
             CO_RETURN apply_websocket_layer(std::move(stream), layer, direction);
+#endif
+
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_COMPRESSION
+        if (layer.type == "compression" || layer.type == "zstd")
+            CO_RETURN apply_compression_layer(std::move(stream), layer);
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS

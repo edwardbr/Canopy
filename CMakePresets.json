@@ -285,6 +285,7 @@
                 "CANOPY_BUILD_COROUTINE": "ON",
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "CANOPY_BUILD_WEBSOCKET": "ON",
+                "CANOPY_BUILD_COMPRESSION": "ON",
                 "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
                 "SGX_HW": "OFF"
             }
@@ -299,6 +300,7 @@
                 "CANOPY_BUILD_COROUTINE": "ON",
                 "CANOPY_BUILD_ENCLAVE": "ON",
                 "CANOPY_BUILD_WEBSOCKET": "ON",
+                "CANOPY_BUILD_COMPRESSION": "ON",
                 "CANOPY_BOOTSTRAP_SGX_SDK": "ON",
                 "SGX_HW": "ON",
                 "CANOPY_ATTESTATION_BACKEND": "SGX_EPID"

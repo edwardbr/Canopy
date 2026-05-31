@@ -7,7 +7,7 @@
 
 namespace rpc
 {
-    namespace tls_stream
+    namespace openssl_tls_stream
     {
         enum peer_verification : uint8_t
         {

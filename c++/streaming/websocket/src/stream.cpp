@@ -473,12 +473,12 @@ namespace streaming::websocket
             {
                 const uint8_t first = bytes[offset++];
                 const uint8_t rsv = first & websocket_rsv_bits;
-                const bool fin = (first & websocket_fin_bit) != 0;
+                validator_fin_ = (first & websocket_fin_bit) != 0;
                 validator_opcode_ = first & websocket_opcode_mask;
 
                 if (rsv != 0 || !is_valid_opcode(validator_opcode_))
                     return false;
-                if (is_control_opcode(validator_opcode_) && !fin)
+                if (is_control_opcode(validator_opcode_) && !validator_fin_)
                     return false;
 
                 validator_state_ = validator_state_second_header_byte;
@@ -500,6 +500,9 @@ namespace streaming::websocket
                 if (validator_length_code_ <= websocket_max_inline_payload_length)
                 {
                     validator_payload_remaining_ = validator_length_code_;
+                    validator_frame_payload_length_ = validator_payload_remaining_;
+                    if (!validate_current_frame_metadata_locked())
+                        return false;
                     validator_mask_remaining_ = masked ? websocket_mask_key_bytes : 0;
                     validator_state_ = validator_mask_remaining_ != 0 ? validator_state_mask_key : validator_state_payload;
                 }
@@ -531,6 +534,9 @@ namespace streaming::websocket
                     return false;
 
                 validator_payload_remaining_ = validator_extended_length_;
+                validator_frame_payload_length_ = validator_payload_remaining_;
+                if (!validate_current_frame_metadata_locked())
+                    return false;
                 validator_mask_remaining_
                     = role_ == ::rpc::websocket_stream::endpoint_role::server ? websocket_mask_key_bytes : 0;
                 validator_state_ = validator_mask_remaining_ != 0 ? validator_state_mask_key : validator_state_payload;
@@ -557,6 +563,76 @@ namespace streaming::websocket
             default:
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    bool stream::validate_current_frame_metadata_locked()
+    {
+        if (settings_.max_frame_payload_bytes != 0 && validator_frame_payload_length_ > settings_.max_frame_payload_bytes)
+        {
+            RPC_WARNING(
+                "WebSocket frame too large: {} bytes limit={}",
+                validator_frame_payload_length_,
+                settings_.max_frame_payload_bytes);
+            return false;
+        }
+
+        if (is_control_opcode(validator_opcode_))
+            return true;
+
+        if (validator_opcode_ == websocket_continuation_opcode)
+        {
+            if (!validator_fragmented_message_active_)
+            {
+                RPC_WARNING("WebSocket continuation frame received without an active fragmented message");
+                return false;
+            }
+
+            if (settings_.max_message_bytes != 0)
+            {
+                if (validator_fragmented_message_bytes_ > settings_.max_message_bytes
+                    || validator_frame_payload_length_ > settings_.max_message_bytes - validator_fragmented_message_bytes_)
+                {
+                    RPC_WARNING(
+                        "WebSocket fragmented message too large: current={} frame={} limit={}",
+                        validator_fragmented_message_bytes_,
+                        validator_frame_payload_length_,
+                        settings_.max_message_bytes);
+                    return false;
+                }
+                validator_fragmented_message_bytes_ += validator_frame_payload_length_;
+            }
+
+            if (validator_fin_)
+            {
+                validator_fragmented_message_active_ = false;
+                validator_fragmented_message_bytes_ = 0;
+            }
+            return true;
+        }
+
+        if (validator_fragmented_message_active_)
+        {
+            RPC_WARNING("WebSocket data frame received before completing fragmented message");
+            return false;
+        }
+
+        if (settings_.max_message_bytes != 0 && validator_frame_payload_length_ > settings_.max_message_bytes)
+        {
+            RPC_WARNING(
+                "WebSocket message too large: {} bytes limit={}",
+                validator_frame_payload_length_,
+                settings_.max_message_bytes);
+            return false;
+        }
+
+        if (!validator_fin_)
+        {
+            validator_fragmented_message_active_ = true;
+            validator_fragmented_message_bytes_
+                = settings_.max_message_bytes != 0 ? validator_frame_payload_length_ : uint64_t{0};
         }
 
         return true;
