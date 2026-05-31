@@ -668,6 +668,18 @@ namespace interface_declaration_generator
 
         auto interface_name = m_ob.get_name();
 
+        // Fully-qualified, "::"-separated interface name for runtime
+        // introspection (build_scoped_name leaves a trailing "::").
+        std::string interface_scoped_name;
+        build_scoped_name(&m_ob, interface_scoped_name);
+        if (interface_scoped_name.size() >= 2
+            && interface_scoped_name.substr(interface_scoped_name.size() - 2) == "::")
+            interface_scoped_name.resize(interface_scoped_name.size() - 2);
+        // Interface-level deprecation is expressed via [status=deprecated]
+        // (the same attribute the checksum step reads); method-level uses
+        // the [deprecated] function attribute.
+        const bool interface_is_deprecated = m_ob.get_value("status") == "deprecated";
+
         std::string base_class_declaration;
         auto bc = m_ob.get_base_classes();
         if (!bc.empty())
@@ -704,6 +716,9 @@ namespace interface_declaration_generator
         header("static std::string get_schema();");
         header("static std::string get_schema(rpc::encoding encoding);");
         header("static constexpr const char* get_inner_schema();");
+        // Runtime introspection identity (see rpc::interface_descriptor).
+        header("static std::string __rpc_qualified_name() {{ return \"{}\"; }}", interface_scoped_name);
+        header("static bool __rpc_is_deprecated() {{ return {}; }}", interface_is_deprecated ? "true" : "false");
         header(
             "static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
