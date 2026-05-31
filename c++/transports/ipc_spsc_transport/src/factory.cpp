@@ -67,15 +67,15 @@ namespace rpc::ipc_spsc_transport
 
         if (!settings.use_sidecar)
         {
-            if (settings.shared_memory_file.empty())
+            if (settings.peer_to_peer_shared_memory_file.empty())
                 return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
             auto transport = rpc::ipc_spsc_transport::make_peer_client(
                 transport_name,
                 resolved_service,
-                shared_memory_file_options{.path = settings.shared_memory_file,
-                    .create = settings.create_shared_memory_file,
-                    .unlink_on_destroy = settings.unlink_shared_memory_file_on_close});
+                shared_memory_file_options{.path = settings.peer_to_peer_shared_memory_file,
+                    .create = settings.create_peer_to_peer_shared_memory_file,
+                    .unlink_on_destroy = settings.unlink_peer_to_peer_shared_memory_file_on_close});
             if (!transport)
                 return {rpc::error::TRANSPORT_ERROR(), {}, {}, {}};
 

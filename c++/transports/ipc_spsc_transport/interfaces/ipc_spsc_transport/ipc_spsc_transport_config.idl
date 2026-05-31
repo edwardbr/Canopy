@@ -14,8 +14,8 @@ namespace rpc
         // stream transport.
         //
         // The transport can either launch a sidecar process or connect to a
-        // shared-memory file that was created independently by an acceptor
-        // process. The shared-memory file name is part of the pairing
+        // peer-to-peer shared-memory file that was created independently by an
+        // acceptor process. The peer-to-peer file name is part of the pairing
         // configuration so many independent IPC links can coexist.
         //
         // In sidecar dynamic-library mode it launches the generic
@@ -39,22 +39,22 @@ namespace rpc
             [description="Encoding used for generated RPC payloads after the SPSC transport link is live."]
             rpc::optional<rpc::encoding> encoding;
 
-            [description="Launch a child process whose lifetime is owned by this transport. When false, shared_memory_file identifies an independently created acceptor pairing."]
+            [description="Launch a child process whose lifetime is owned by this transport. When false, peer_to_peer_shared_memory_file identifies an independently created acceptor pairing."]
             bool use_sidecar = false;
 
             [description="Shared-memory file used when use_sidecar is false. The acceptor process normally creates and unlinks this file; the connector process opens it. Use a unique path per pairing."]
-            std::string shared_memory_file = "";
+            std::string peer_to_peer_shared_memory_file = "";
 
-            [description="Create shared_memory_file before connecting. This is intended for specialised bootstrap tools; ordinary connector processes should leave it false so the acceptor owns the rendezvous file."]
-            bool create_shared_memory_file = false;
+            [description="Create peer_to_peer_shared_memory_file before connecting. This is intended for specialised bootstrap tools; ordinary connector processes should leave it false so the acceptor owns the rendezvous file."]
+            bool create_peer_to_peer_shared_memory_file = false;
 
-            [description="Unlink shared_memory_file when this connector closes. This is normally false because the acceptor owns the file lifetime."]
-            bool unlink_shared_memory_file_on_close = false;
+            [description="Unlink peer_to_peer_shared_memory_file when this connector closes. This is normally false because the acceptor owns the file lifetime."]
+            bool unlink_peer_to_peer_shared_memory_file_on_close = false;
 
             [description="Executable path to launch for sidecar mode. In dynamic-library mode this may be omitted when the built-in canopy_ipc_spsc_sidecar_process target is available. In direct-executable mode this must name the application-owned child executable."]
             std::string sidecar_executable_path = "";
 
-            [description="Dynamic library path loaded by the generic child-host sidecar. Leave empty only when sidecar_executable_path names an application-owned direct executable that implements the RPC endpoint itself."]
+            [description="Dynamic library path loaded by the generic sidecar process. This is the normal shared-library payload equivalent of the SGX transport's enclave_path. Leave empty only when sidecar_executable_path names an application-owned direct executable that implements the RPC endpoint itself."]
             std::string dynamic_library_path = "";
 
             [description="Offset added to rpc::DEFAULT_PREFIX.get_subnet() to form the child zone subnet. Keep this non-zero so the child zone is distinct from the host service zone."]

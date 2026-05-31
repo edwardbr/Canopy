@@ -45,10 +45,16 @@ TEST(
     settings.use_sidecar = true;
     settings.sidecar_executable_path = "/tmp/not-started-by-api-test";
     settings.dynamic_library_path = "/tmp/not-loaded-by-api-test.so";
+    settings.peer_to_peer_shared_memory_file = "/tmp/not-opened-by-api-test";
+    settings.create_peer_to_peer_shared_memory_file = true;
+    settings.unlink_peer_to_peer_shared_memory_file_on_close = true;
 
     EXPECT_EQ(settings.name.value(), "api-test-ipc-spsc");
     EXPECT_TRUE(settings.use_sidecar);
     EXPECT_EQ(settings.dynamic_library_path, "/tmp/not-loaded-by-api-test.so");
+    EXPECT_EQ(settings.peer_to_peer_shared_memory_file, "/tmp/not-opened-by-api-test");
+    EXPECT_TRUE(settings.create_peer_to_peer_shared_memory_file);
+    EXPECT_TRUE(settings.unlink_peer_to_peer_shared_memory_file_on_close);
 #endif
 
     SUCCEED();
@@ -71,8 +77,12 @@ TEST(
     coroutine_settings.name = "api-test-sgx-coroutine";
     coroutine_settings.enclave_path = "/tmp/not-loaded-by-api-test.signed.so";
     coroutine_settings.use_sidecar = true;
+    coroutine_settings.sidecar_executable_path = "/tmp/not-started-by-api-test";
+    coroutine_settings.peer_to_peer_shared_memory_file = "/tmp/not-opened-by-api-test";
     EXPECT_EQ(coroutine_settings.name.value(), "api-test-sgx-coroutine");
     EXPECT_TRUE(coroutine_settings.use_sidecar);
+    EXPECT_EQ(coroutine_settings.sidecar_executable_path, "/tmp/not-started-by-api-test");
+    EXPECT_EQ(coroutine_settings.peer_to_peer_shared_memory_file, "/tmp/not-opened-by-api-test");
 #endif
 
     SUCCEED();
