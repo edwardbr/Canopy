@@ -32,6 +32,37 @@ namespace json_schema
     using DefinitionInfoVariant = std::variant<const class_entity*, SyntheticMethodInfo>;
     using OrderedDefinitionItem = std::pair<std::string, DefinitionInfoVariant>;
 
+    // The schema emitters below are a deep, mutually-recursive set of free
+    // functions. Rather than thread a `schema_profile` through every signature
+    // and recursive call, the active profile is published for the duration of a
+    // single (single-threaded) generation via an RAII scope set at the public
+    // entry points (write_json_schema_document / write_cpp_schema_accessors).
+    // Any path reached without a scope falls back to the config-strict profile,
+    // so output is unchanged unless a caller deliberately selects another.
+    namespace
+    {
+        const schema_profile* g_active_profile = nullptr;
+
+        const schema_profile& active_profile()
+        {
+            static const schema_profile fallback = config_strict_profile();
+            return g_active_profile ? *g_active_profile : fallback;
+        }
+
+        struct active_profile_scope
+        {
+            const schema_profile* previous;
+            explicit active_profile_scope(const schema_profile& profile)
+                : previous(g_active_profile)
+            {
+                g_active_profile = &profile;
+            }
+            ~active_profile_scope() { g_active_profile = previous; }
+            active_profile_scope(const active_profile_scope&) = delete;
+            active_profile_scope& operator=(const active_profile_scope&) = delete;
+        };
+    } // namespace
+
     void map_idl_type_to_json_schema(
         const class_entity& root,
         const class_entity* current_context,
@@ -438,7 +469,7 @@ namespace json_schema
         // the translated literal in as a synthetic attribute named "default"
         // before calling map_idl_type_to_json_schema, which then flows here.
         const auto translated_default = attribs.get_value("default");
-        if (!translated_default.empty())
+        if (active_profile().include_defaults && !translated_default.empty())
             writer.write_raw_property("default", translated_default);
     }
 
@@ -953,7 +984,8 @@ namespace json_schema
                 writer.open_object();
                 writer.close_object();
             }
-            if (!required_fields.empty())
+            if (active_profile().required == schema_profile::required_policy::idl_accurate
+                && !required_fields.empty())
             {
                 writer.write_key("required");
                 writer.open_array();
@@ -963,7 +995,8 @@ namespace json_schema
                 }
                 writer.close_array();
             }
-            writer.write_raw_property("additionalProperties", "false");
+            if (active_profile().additional_properties_false)
+                writer.write_raw_property("additionalProperties", "false");
             break;
         }
         case entity_type::ENUM:
@@ -1014,30 +1047,45 @@ namespace json_schema
                 }
             }
 
-            writer.write_key("oneOf");
-            writer.open_array();
+            if (active_profile().enums == schema_profile::enum_form::string_only)
+            {
+                // String-name form only: tool consumers pick by name and the
+                // integer alternative is noise. Emitted directly on the object
+                // (not wrapped in oneOf) so the enum stays a simple string enum.
+                writer.write_string_property("type", "string");
+                writer.write_key("enum");
+                writer.open_array();
+                for (const auto& member : members)
+                    writer.write_array_string_element(member.name);
+                writer.close_array();
+            }
+            else
+            {
+                writer.write_key("oneOf");
+                writer.open_array();
 
-            // String-name form (canonical — what to_json_object writes).
-            writer.open_object();
-            writer.write_string_property("type", "string");
-            writer.write_key("enum");
-            writer.open_array();
-            for (const auto& member : members)
-                writer.write_array_string_element(member.name);
-            writer.close_array();
-            writer.close_object();
+                // String-name form (canonical — what to_json_object writes).
+                writer.open_object();
+                writer.write_string_property("type", "string");
+                writer.write_key("enum");
+                writer.open_array();
+                for (const auto& member : members)
+                    writer.write_array_string_element(member.name);
+                writer.close_array();
+                writer.close_object();
 
-            // Integer form (kept for legacy/compact JSON producers).
-            writer.open_object();
-            writer.write_string_property("type", "integer");
-            writer.write_key("enum");
-            writer.open_array();
-            for (const auto& member : members)
-                writer.write_array_raw_element(std::to_string(member.value));
-            writer.close_array();
-            writer.close_object();
+                // Integer form (kept for legacy/compact JSON producers).
+                writer.open_object();
+                writer.write_string_property("type", "integer");
+                writer.write_key("enum");
+                writer.open_array();
+                for (const auto& member : members)
+                    writer.write_array_raw_element(std::to_string(member.value));
+                writer.close_array();
+                writer.close_object();
 
-            writer.close_array();
+                writer.close_array();
+            }
 
             if (!value_descriptions.empty())
             {
@@ -1496,7 +1544,7 @@ namespace json_schema
                     if (attribs.has_value("deprecated"))
                         writer.write_raw_property("deprecated", "true");
                     const auto translated_default = attribs.get_value("default");
-                    if (translated_default.empty())
+                    if (translated_default.empty() || !active_profile().include_defaults)
                     {
                         writer.write_string_property("$ref", "#/definitions/" + qualified_name);
                     }
@@ -1542,7 +1590,7 @@ namespace json_schema
             writer.write_raw_property("deprecated", "true");
         {
             const auto translated_default = attribs.get_value("default");
-            if (!translated_default.empty())
+            if (active_profile().include_defaults && !translated_default.empty())
                 writer.write_raw_property("default", translated_default);
         }
         if (is_int8(idl_type_name) || is_uint8(idl_type_name) || is_int16(idl_type_name) || is_uint16(idl_type_name)
@@ -1791,6 +1839,7 @@ namespace json_schema
         const std::string& root_definition_name,
         const schema_profile& profile)
     {
+        active_profile_scope profile_guard(profile);
         json_writer writer(os);
         std::vector<OrderedDefinitionItem> ordered_defs;
         std::map<std::string, DefinitionInfoVariant> definition_info_map;
@@ -2218,6 +2267,7 @@ namespace json_schema
         const std::string& schema_function_name,
         const schema_profile& profile)
     {
+        active_profile_scope profile_guard(profile);
         std::vector<OrderedDefinitionItem> ordered_defs;
         std::map<std::string, DefinitionInfoVariant> definition_info_map;
         collect_definition_info(root_entity, ordered_defs, definition_info_map);
