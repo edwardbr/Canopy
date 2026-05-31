@@ -45,6 +45,12 @@ namespace rpc
             [description="Run the enclave ECALL threads in the canopy_sgx_coroutine_sidecar process instead of the host process. The host transport still owns the RPC connection and detects sidecar process death, converting it into the normal transport_down cleanup path."]
             bool use_sidecar = false;
 
+            [description="When use_sidecar is true and this is empty, the host transport spawns a sidecar with a private generated shared-memory file. When this is set, the host instead connects to an independently launched peer runtime process through this externally agreed shared-memory file. The peer runtime process must create the file and wait for the connector bootstrap request."]
+            std::string peer_to_peer_shared_memory_file = "";
+
+            [description="Executable path to launch for sidecar mode. When omitted, the built-in canopy_sgx_coroutine_sidecar target path is used when available. This is ignored when peer_to_peer_shared_memory_file names an independently launched peer runtime process."]
+            std::string sidecar_executable_path = "";
+
             [description="Common enclave runtime startup policy shared with other SGX transports. Its io_uring field uses the enclave host controller profile, not the generic host TCP profile. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
             rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave;
 

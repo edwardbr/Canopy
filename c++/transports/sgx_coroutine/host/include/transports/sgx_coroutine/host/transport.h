@@ -94,6 +94,7 @@ namespace rpc::sgx_coroutine_transport::host
         stream_layer_applier host_stream_layer_applier_;
         bool use_sidecar_{false};
         std::string sidecar_executable_path_;
+        std::string peer_to_peer_shared_memory_file_;
         transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
@@ -142,6 +143,7 @@ namespace rpc::sgx_coroutine_transport::host
         void set_use_sidecar(bool use_sidecar);
         [[nodiscard]] bool get_use_sidecar() const { return use_sidecar_; }
         void set_sidecar_executable_path(std::string sidecar_executable_path);
+        void set_peer_to_peer_shared_memory_file(std::string shared_memory_file);
 #ifdef CANOPY_BUILD_TEST
         [[nodiscard]] int sidecar_pid_for_test() const;
 #endif

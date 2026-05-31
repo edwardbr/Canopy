@@ -7,6 +7,10 @@
 
 #include <transports/local/factory.h>
 
+#ifdef CANOPY_HAS_IPC_SPSC_TRANSPORT_FACTORY
+#  include <transports/ipc_spsc_transport/factory.h>
+#endif
+
 #ifdef CANOPY_HAS_SGX_BLOCKING_TRANSPORT_FACTORY
 #  include <transports/sgx_blocking/factory.h>
 #endif
@@ -29,6 +33,25 @@ TEST(
     ASSERT_NE(result.service, nullptr);
     ASSERT_NE(result.transport, nullptr);
     EXPECT_EQ(result.service_proxy_name, "api-test-local");
+}
+
+TEST(
+    ConnectionFactoryApi,
+    DirectIpcSpscTransportFactoryExposesImplementationOwnedTypedSettings)
+{
+#ifdef CANOPY_HAS_IPC_SPSC_TRANSPORT_FACTORY
+    rpc::ipc_spsc_transport::transport_settings settings;
+    settings.name = "api-test-ipc-spsc";
+    settings.use_sidecar = true;
+    settings.sidecar_executable_path = "/tmp/not-started-by-api-test";
+    settings.dynamic_library_path = "/tmp/not-loaded-by-api-test.so";
+
+    EXPECT_EQ(settings.name.value(), "api-test-ipc-spsc");
+    EXPECT_TRUE(settings.use_sidecar);
+    EXPECT_EQ(settings.dynamic_library_path, "/tmp/not-loaded-by-api-test.so");
+#endif
+
+    SUCCEED();
 }
 
 TEST(

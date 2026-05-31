@@ -26,6 +26,7 @@ namespace rpc::sgx_coroutine_transport::sidecar
         constexpr auto enclave_path_arg = "enclave-path";
         constexpr auto shared_memory_file_arg = "shared-memory-file";
         constexpr auto worker_thread_count_arg = "worker-thread-count";
+        constexpr auto create_shared_memory_file_arg = "create-shared-memory-file";
 
         [[nodiscard]] std::string make_temp_file_template()
         {
@@ -65,15 +66,31 @@ namespace rpc::sgx_coroutine_transport::sidecar
             }
             return nullptr;
         }
+
+        [[nodiscard]] bool option_present(
+            int argc,
+            char** argv,
+            const char* name)
+        {
+            const std::string expected = std::string("--") + name;
+            for (int index = 1; index < argc; ++index)
+            {
+                if (argv[index] && expected == argv[index])
+                    return true;
+            }
+            return false;
+        }
     } // namespace
 
     bootstrap::bootstrap(
         std::string enclave_path,
         std::string shared_memory_file,
-        uint32_t worker_thread_count)
+        uint32_t worker_thread_count,
+        bool create_shared_memory_file)
         : enclave_path_(std::move(enclave_path))
         , shared_memory_file_(std::move(shared_memory_file))
         , worker_thread_count_(worker_thread_count)
+        , create_shared_memory_file_(create_shared_memory_file)
     {
     }
 
@@ -92,6 +109,11 @@ namespace rpc::sgx_coroutine_transport::sidecar
         return worker_thread_count_arg;
     }
 
+    const char* bootstrap::create_shared_memory_file_arg_name()
+    {
+        return create_shared_memory_file_arg;
+    }
+
     std::shared_ptr<bootstrap> bootstrap::from_command_line(
         int argc,
         char** argv)
@@ -106,12 +128,16 @@ namespace rpc::sgx_coroutine_transport::sidecar
         if (!parse_u32(worker_thread_count_text, worker_thread_count))
             return {};
 
-        return std::make_shared<bootstrap>(enclave_path, shared_memory_file, worker_thread_count);
+        return std::make_shared<bootstrap>(
+            enclave_path,
+            shared_memory_file,
+            worker_thread_count,
+            option_present(argc, argv, create_shared_memory_file_arg_name()));
     }
 
     std::vector<std::string> bootstrap::make_command_line() const
     {
-        return {
+        std::vector<std::string> arguments{
             std::string("--") + enclave_path_arg_name(),
             enclave_path_,
             std::string("--") + shared_memory_file_arg_name(),
@@ -119,6 +145,9 @@ namespace rpc::sgx_coroutine_transport::sidecar
             std::string("--") + worker_thread_count_arg_name(),
             std::to_string(worker_thread_count_),
         };
+        if (create_shared_memory_file_)
+            arguments.push_back(std::string("--") + create_shared_memory_file_arg_name());
+        return arguments;
     }
 
     mapped_shared_memory create_shared_memory()
@@ -133,6 +162,38 @@ namespace rpc::sgx_coroutine_transport::sidecar
 
         mapped_shared_memory result;
         result.path = file_name.data();
+        result.owner = true;
+
+        if (::ftruncate(fd, sizeof(shared_memory)) != 0)
+        {
+            ::close(fd);
+            ::unlink(result.path.c_str());
+            return {};
+        }
+
+        auto* memory = static_cast<shared_memory*>(
+            ::mmap(nullptr, sizeof(shared_memory), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+        ::close(fd);
+
+        if (memory == MAP_FAILED)
+        {
+            ::unlink(result.path.c_str());
+            return {};
+        }
+
+        new (memory) shared_memory{};
+        result.memory = memory;
+        return result;
+    }
+
+    mapped_shared_memory create_shared_memory(const std::string& path)
+    {
+        int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600);
+        if (fd < 0)
+            return {};
+
+        mapped_shared_memory result;
+        result.path = path;
         result.owner = true;
 
         if (::ftruncate(fd, sizeof(shared_memory)) != 0)

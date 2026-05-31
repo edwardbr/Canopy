@@ -1,0 +1,186 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#pragma once
+
+#ifdef CANOPY_BUILD_COROUTINE
+
+#  include "test_globals.h"
+#  include "test_host.h"
+
+#  include <gtest/gtest.h>
+
+#  include <common/tests.h>
+#  include <common/transport_setup_base.h>
+#  include <transports/ipc_spsc_transport/transport.h>
+
+#  include <atomic>
+
+#  ifndef CANOPY_TEST_IPC_SPSC_DLL_PATH
+#    error "CANOPY_TEST_IPC_SPSC_DLL_PATH must be defined"
+#  endif
+
+#  ifndef CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH
+#    error "CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH must be defined"
+#  endif
+
+template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreateSubordinatedZone>
+class ipc_spsc_transport_setup_base
+    : public transport_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
+{
+protected:
+    struct isolated_child_process
+    {
+        rpc::zone dll_zone;
+        std::shared_ptr<rpc::ipc_spsc_transport::transport> transport;
+        rpc::shared_ptr<yyy::i_example> example;
+    };
+
+    rpc::zone host_zone_ = rpc::DEFAULT_PREFIX;
+    rpc::zone dll_zone_ = make_dll_zone(1);
+
+    std::shared_ptr<rpc::ipc_spsc_transport::transport> client_transport_;
+    std::atomic_int startup_count_ = 0;
+
+    static rpc::zone make_dll_zone(uint64_t offset)
+    {
+        auto address = rpc::DEFAULT_PREFIX;
+        [[maybe_unused]] auto ok = address.set_subnet(address.get_subnet() + offset);
+        RPC_ASSERT(ok);
+        return rpc::zone(address);
+    }
+
+    CORO_TASK(bool)
+    connect_child(
+        std::string child_name,
+        rpc::zone dll_zone,
+        std::shared_ptr<rpc::ipc_spsc_transport::transport>& transport,
+        rpc::shared_ptr<yyy::i_example>& example)
+    {
+        transport = rpc::ipc_spsc_transport::make_client(
+            child_name,
+            this->root_service_,
+            rpc::ipc_spsc_transport::options{
+                .process_executable = CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH,
+                .dll_path = CANOPY_TEST_IPC_SPSC_DLL_PATH,
+                .dll_zone = dll_zone,
+                .kill_child_on_parent_death = true,
+            });
+
+        auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
+            child_name.c_str(), transport, this->local_host_ptr_.lock());
+        example = std::move(connect_result.output_interface);
+        startup_count_.fetch_add(1);
+        CO_RETURN connect_result.error_code == rpc::error::OK();
+    }
+
+    void initialise_root_service()
+    {
+        this->root_service_ = rpc::root_service::create("host", host_zone_, this->io_scheduler_);
+        current_host_service = this->root_service_;
+
+        rpc::shared_ptr<yyy::i_host> hst(new host());
+        this->i_host_ptr_ = hst;
+        this->local_host_ptr_ = hst;
+    }
+
+    void destroy_isolated_child(isolated_child_process& child)
+    {
+        RPC_INFO("destroy_isolated_child: zone={} begin", child.dll_zone.get_subnet());
+        child.transport.reset();
+        child.example = nullptr;
+        RPC_INFO("destroy_isolated_child: zone={} complete", child.dll_zone.get_subnet());
+    }
+
+public:
+    void set_up_scheduler()
+    {
+        this->io_scheduler_ = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+    }
+
+    void pump_until_startup()
+    {
+        while (startup_count_.load() == 0)
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+    }
+
+    void pump_until_startup_count(int expected_startup_count)
+    {
+        while (startup_count_.load() < expected_startup_count)
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+    }
+
+    void pump_until_idle()
+    {
+        // Drive the scheduler until there are no pending events.  Only safe to call once
+        // the streaming transport has reached DISCONNECTED — before that, receive_consumer_loop
+        // re-schedules every 1ms and process_events never returns 0.
+        if (this->io_scheduler_)
+        {
+            for (int idle_iterations = 0; idle_iterations < 10;)
+            {
+                if (this->io_scheduler_->process_events(std::chrono::milliseconds(1)) == 0)
+                    ++idle_iterations;
+                else
+                    idle_iterations = 0;
+            }
+        }
+    }
+
+    void pump_for(std::chrono::milliseconds duration)
+    {
+        if (!this->io_scheduler_)
+            return;
+
+        auto deadline = std::chrono::steady_clock::now() + duration;
+        while (std::chrono::steady_clock::now() < deadline)
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+    }
+
+    void pump_until_disconnected(
+        const std::shared_ptr<rpc::ipc_spsc_transport::transport>& t,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+    {
+        // Drive the scheduler until the transport reaches DISCONNECTED (graceful disconnect
+        // handshake done) or the timeout expires.  pump_until_idle() is wrong here:
+        // receive_consumer_loop polls the SPSC stream every 1ms, so the scheduler always
+        // has ready tasks — it never idles while the streaming loops are alive.
+        if (!t || !this->io_scheduler_)
+            return;
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (t->get_status() != rpc::transport_status::DISCONNECTED && std::chrono::steady_clock::now() < deadline)
+        {
+            this->io_scheduler_->process_events(std::chrono::milliseconds(1));
+        }
+    }
+
+    void common_teardown()
+    {
+        this->i_host_ptr_ = nullptr;
+        this->i_example_ptr_ = nullptr;
+
+        // Pump until the streaming transport's graceful disconnect handshake completes.
+        // This allows send_producer_loop to send close_connection_send and the child to
+        // reply with close_connection_ack before we destroy the transport.  Using the
+        // DISCONNECTED status as the exit condition avoids the hang that pump_until_idle()
+        // causes — the receive loop's 1ms polling makes the scheduler permanently busy.
+        pump_until_disconnected(this->client_transport_);
+
+        this->client_transport_.reset();
+
+        // Brief post-reset pump: activity_tracker's destructor spawned cleanup() which
+        // resets keep_alive_ and closes the stream.  That coroutine is short and leaves
+        // the scheduler idle, so pump_until_idle() converges quickly here.
+        pump_until_idle();
+
+        this->root_service_ = nullptr;
+        current_host_service.reset();
+        this->reset_telemetry_for_test();
+    }
+};
+
+#endif // CANOPY_BUILD_COROUTINE

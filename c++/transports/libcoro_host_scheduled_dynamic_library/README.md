@@ -82,7 +82,5 @@ test exercises this contract with a test-only DLL static probe.
 
 - `../dynamic_library/`
   - blocking in-process DLL transport
-- `../libcoro_spsc_dynamic_dll/`
-  - coroutine DLL runtime used when the DLL is hosted behind an SPSC stream
-- `../ipc_transport/`
-  - process-owning transport used when the child must live in another process
+- `../ipc_spsc_transport/`
+  - SPSC-backed IPC transport used when the child must live in another process

@@ -24,7 +24,7 @@ foreach(
   CanopyCreateDynamicLibrary
   CanopyCreateLibcoroDllScheduledDynamicLibrary
   CanopyCreateLibcoroHostScheduledDynamicLibrary
-  CanopyCreateLibcoroSpscDynamicLibrary)
+  CanopyCreateIpcSpscDynamicLibrary)
   set(_canopy_module_file "${CMAKE_CURRENT_LIST_DIR}/${_canopy_module}.cmake")
   if(EXISTS "${_canopy_module_file}")
     include("${_canopy_module_file}")

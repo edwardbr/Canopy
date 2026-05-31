@@ -87,6 +87,13 @@ namespace rpc::sgx_coroutine_transport::host
             __atomic_store_n(reinterpret_cast<state_word*>(value), stored, __ATOMIC_RELEASE);
         }
 
+        inline auto startup_store_request_size(
+            uint64_t* value,
+            uint64_t new_value) noexcept -> void
+        {
+            __atomic_store_n(value, new_value, __ATOMIC_RELEASE);
+        }
+
         inline auto initialise_startup_status(
             startup_state& state,
             error_code& error) noexcept -> void
@@ -331,6 +338,15 @@ namespace rpc::sgx_coroutine_transport::host
             return std::make_shared<sidecar_owner>(std::move(executable_path), std::move(mapping));
         }
 
+        static std::shared_ptr<sidecar_owner> open_peer_to_peer(std::string shared_memory_file)
+        {
+            auto mapping = sidecar::map_shared_memory(shared_memory_file);
+            if (!mapping.memory)
+                return {};
+
+            return std::make_shared<sidecar_owner>(std::string{}, std::move(mapping));
+        }
+
         sidecar_owner(
             std::string executable_path,
             sidecar::mapped_shared_memory mapping)
@@ -365,10 +381,11 @@ namespace rpc::sgx_coroutine_transport::host
             if (request_blob.size() > sidecar::init_request_capacity)
                 return rpc::error::RESOURCE_EXHAUSTED();
 
+            startup_store_request_size(&shared->request_size, 0);
             shared->request_encoding = request_encoding;
             shared->request_type_id = request_type_id;
-            shared->request_size = request_blob.size();
             std::memcpy(shared->request.data(), request_blob.data(), request_blob.size());
+            startup_store_request_size(&shared->request_size, request_blob.size());
             return rpc::error::OK();
         }
 
@@ -720,6 +737,11 @@ namespace rpc::sgx_coroutine_transport::host
         sidecar_executable_path_ = std::move(sidecar_executable_path);
     }
 
+    void transport::set_peer_to_peer_shared_memory_file(std::string shared_memory_file)
+    {
+        peer_to_peer_shared_memory_file_ = std::move(shared_memory_file);
+    }
+
 #ifdef CANOPY_BUILD_TEST
     int transport::sidecar_pid_for_test() const
     {
@@ -943,9 +965,16 @@ namespace rpc::sgx_coroutine_transport::host
         std::shared_ptr<sidecar_owner> pending_sidecar_owner;
         if (use_sidecar_)
         {
-            auto executable_path
-                = sidecar_executable_path_.empty() ? default_sidecar_executable_path() : sidecar_executable_path_;
-            pending_sidecar_owner = sidecar_owner::create(std::move(executable_path));
+            if (!peer_to_peer_shared_memory_file_.empty())
+            {
+                pending_sidecar_owner = sidecar_owner::open_peer_to_peer(peer_to_peer_shared_memory_file_);
+            }
+            else
+            {
+                auto executable_path
+                    = sidecar_executable_path_.empty() ? default_sidecar_executable_path() : sidecar_executable_path_;
+                pending_sidecar_owner = sidecar_owner::create(std::move(executable_path));
+            }
             if (!pending_sidecar_owner || !pending_sidecar_owner->memory())
                 CO_RETURN rpc::connect_result{rpc::error::TRANSPORT_ERROR(), {}};
 
@@ -1030,8 +1059,11 @@ namespace rpc::sgx_coroutine_transport::host
                 CO_RETURN rpc::connect_result{startup_error, {}};
             }
 
-            auto self = std::static_pointer_cast<transport>(shared_from_this());
-            startup_error = pending_sidecar_owner->spawn(enclave_path_, worker_thread_count, self);
+            if (peer_to_peer_shared_memory_file_.empty())
+            {
+                auto self = std::static_pointer_cast<transport>(shared_from_this());
+                startup_error = pending_sidecar_owner->spawn(enclave_path_, worker_thread_count, self);
+            }
             sidecar_owner_ = std::move(pending_sidecar_owner);
             if (startup_error != rpc::error::OK())
             {

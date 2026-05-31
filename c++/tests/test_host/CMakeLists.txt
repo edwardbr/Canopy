@@ -14,6 +14,7 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   set(SGX_COROUTINE_TRANSPORT_TEST_LIB transport_sgx_coroutine_test)
   set(SGX_COROUTINE_ENCLAVE_SERVICE_HOST_TEST_LIB transport_sgx_coroutine_enclave_service_host_test)
   set(SGX_COROUTINE_TRANSPORT_SOURCES sgx_coroutine_transport_test.cpp)
+  set(SGX_COROUTINE_PEER_CONNECTOR_TARGET canopy_sgx_coroutine_peer_connector)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
@@ -32,12 +33,13 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB transport_libcoro_host_scheduled_dynamic_library)
   set(LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_host_scheduled_dynamic_library_test)
   set(LIBCORO_HOST_SCHEDULED_TEST_TARGET canopy_libcoro_host_scheduled_example_dll)
-  set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
-  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dll_host)
-  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dll_host_test)
-  set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_spsc_example_dll)
-  set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_ipc_child_host_process)
-  set(IPC_TRANSPORT_TEST_LIB transport_ipc_transport_test)
+  set(IPC_SPSC_TRANSPORT_SOURCES type_test_ipc_spsc_suite.cpp)
+  set(IPC_SPSC_DLL_HOST_TRANSPORT_LIB transport_ipc_spsc_dll_host)
+  set(IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB transport_ipc_spsc_dll_host_test)
+  set(IPC_SPSC_DLL_TEST_TARGET canopy_ipc_spsc_example_dll)
+  set(IPC_SPSC_DLL_LOADER_TARGET canopy_ipc_spsc_sidecar_process)
+  set(IPC_SPSC_PEER_PROCESS_TARGET canopy_ipc_spsc_peer_process)
+  set(IPC_TRANSPORT_TEST_LIB transport_ipc_spsc_test)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
@@ -69,14 +71,19 @@ if(LIBCORO_HOST_SCHEDULED_TEST_TARGET)
        CANOPY_TEST_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_HOST_SCHEDULED_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_IPC_DLL_TEST_TARGET)
+if(IPC_SPSC_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
+       CANOPY_TEST_IPC_SPSC_DLL_PATH="$<TARGET_FILE:${IPC_SPSC_DLL_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_IPC_DLL_LOADER_TARGET)
+if(IPC_SPSC_DLL_LOADER_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+       CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH="$<TARGET_FILE:${IPC_SPSC_DLL_LOADER_TARGET}>")
+endif()
+
+if(IPC_SPSC_PEER_PROCESS_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_IPC_SPSC_PEER_PROCESS_PATH="$<TARGET_FILE:${IPC_SPSC_PEER_PROCESS_TARGET}>")
 endif()
 
 if(TARGET canopy_sgx_coroutine_sidecar)
@@ -84,13 +91,16 @@ if(TARGET canopy_sgx_coroutine_sidecar)
        CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH="$<TARGET_FILE:canopy_sgx_coroutine_sidecar>")
 endif()
 
+if(SGX_COROUTINE_PEER_CONNECTOR_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_SGX_COROUTINE_PEER_CONNECTOR_PATH="$<TARGET_FILE:${SGX_COROUTINE_PEER_CONNECTOR_TARGET}>")
+endif()
+
 if(CANOPY_BUILD_ENCLAVE AND SGX_HW)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_SGX_HARDWARE_RUNTIME)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-#list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
-#"$<TARGET_FILE:canopy_ipc_child_process>")
   list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
@@ -110,7 +120,7 @@ add_executable(
   ${C_ABI_DLL_TRANSPORT_SOURCES}
   ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
   ${LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES}
-  ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
+  ${IPC_SPSC_TRANSPORT_SOURCES}
   ${SGX_COROUTINE_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
 
@@ -145,8 +155,8 @@ target_link_libraries(
          ${LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB}
          ${LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB}
          ${LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB}
-         ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
-         ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
+         ${IPC_SPSC_DLL_HOST_TRANSPORT_LIB}
+         ${IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB}
          ${IPC_TRANSPORT_TEST_LIB}
          ${SGX_TRANSPORT_TEST_LIB}
          ${SGX_COROUTINE_TRANSPORT_LIB}
@@ -169,7 +179,7 @@ target_link_libraries(
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     rpc_test
-    PUBLIC transport_ipc_transport
+    PUBLIC transport_ipc_spsc
            route_attestation_protocol_idl
            streaming
            streaming_attestation
@@ -193,6 +203,38 @@ if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(rpc_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
+if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
+  add_executable(canopy_sgx_coroutine_peer_connector sgx_coroutine_peer_connector_main.cpp)
+  target_compile_definitions(canopy_sgx_coroutine_peer_connector PRIVATE ${CANOPY_DEFINES})
+  target_include_directories(
+    canopy_sgx_coroutine_peer_connector
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
+           "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
+    PRIVATE ${CANOPY_INCLUDES})
+  target_link_libraries(
+    canopy_sgx_coroutine_peer_connector
+    PUBLIC common_tests
+           example_idl
+           -Wl,--whole-archive
+           test_fixtures
+           -Wl,--no-whole-archive
+           yas_common
+           rpc::rpc
+           transport_local
+           transport_sgx_coroutine
+           sgx_coroutine_transport_edl
+           ${CANOPY_LIBRARIES}
+           rpc_log)
+  target_compile_options(canopy_sgx_coroutine_peer_connector PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_directories(canopy_sgx_coroutine_peer_connector PUBLIC ${CANOPY_SGX_HOST_LIBRARY_DIRS})
+  target_link_options(
+    canopy_sgx_coroutine_peer_connector PRIVATE ${CANOPY_LINK_EXE_OPTIONS} ${CANOPY_SGX_HOST_LINK_OPTIONS})
+  set_property(TARGET canopy_sgx_coroutine_peer_connector PROPERTY COMPILE_PDB_NAME canopy_sgx_coroutine_peer_connector)
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(canopy_sgx_coroutine_peer_connector PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+endif()
+
 if(NOT CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${DLL_TEST_TARGET})
   add_dependencies(rpc_test ${C_ABI_DLL_TEST_TARGET})
@@ -204,9 +246,12 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   add_dependencies(rpc_test ${LIBCORO_DLL_SCHEDULED_TEST_TARGET})
   add_dependencies(rpc_test ${LIBCORO_HOST_SCHEDULED_TEST_TARGET})
-  add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
+  add_dependencies(rpc_test ${IPC_SPSC_DLL_TEST_TARGET} ${IPC_SPSC_DLL_LOADER_TARGET} ${IPC_SPSC_PEER_PROCESS_TARGET})
   if(CANOPY_BUILD_ENCLAVE)
     add_dependencies(rpc_test marshal_test_coroutine_enclave)
+    if(SGX_COROUTINE_PEER_CONNECTOR_TARGET)
+      add_dependencies(rpc_test ${SGX_COROUTINE_PEER_CONNECTOR_TARGET})
+    endif()
     if(TARGET canopy_sgx_coroutine_sidecar)
       add_dependencies(rpc_test canopy_sgx_coroutine_sidecar)
     endif()

@@ -15,7 +15,7 @@ project(
 include(CanopyCreateDynamicLibrary)
 include(CanopyCreateLibcoroDllScheduledDynamicLibrary)
 include(CanopyCreateLibcoroHostScheduledDynamicLibrary)
-include(CanopyCreateLibcoroSpscDynamicLibrary)
+include(CanopyCreateIpcSpscDynamicLibrary)
 
 if(CANOPY_BUILD_COROUTINE)
   canopycreatelibcorodllscheduleddynamiclibrary(
@@ -34,10 +34,10 @@ if(CANOPY_BUILD_COROUTINE)
     comprehensive_idl
     rpc_log)
 
-  canopycreatelibcorospscdynamiclibrary(
-    canopy_benchmark_libcoro_spsc_dll
+  canopycreateipcspscdynamiclibrary(
+    canopy_benchmark_ipc_spsc_dll
     SOURCES
-    src/canopy_libcoro_spsc_dll_init.cpp
+    src/canopy_ipc_spsc_dll_init.cpp
     LINK_LIBRARIES
     comprehensive_idl
     rpc_log)
@@ -49,7 +49,7 @@ if(CANOPY_BUILD_COROUTINE)
                                                ${CANOPY_INCLUDES} "${CANOPY_CPP_SOURCE_DIR}/transports/local/include")
   target_link_libraries(
     canopy_benchmark_ipc_child_process
-    PRIVATE transport_ipc_transport
+    PRIVATE transport_ipc_spsc
             streaming_spsc_queue
             transport_streaming
             transport_local
@@ -160,8 +160,8 @@ if(CANOPY_BUILD_COROUTINE)
     PRIVATE
       CANOPY_BENCHMARK_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_dll_scheduled_dll>"
       CANOPY_BENCHMARK_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_host_scheduled_dll>"
-      CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_child_host_process>"
-      CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_libcoro_spsc_dll>"
+      CANOPY_BENCHMARK_IPC_SPSC_SIDECAR_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_spsc_sidecar_process>"
+      CANOPY_BENCHMARK_IPC_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_ipc_spsc_dll>"
       CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
   if(CANOPY_BUILD_ENCLAVE)
     target_compile_definitions(
@@ -194,7 +194,7 @@ if(CANOPY_BUILD_COROUTINE)
     benchmark
     PUBLIC transport_libcoro_dll_scheduled_dynamic_library
            transport_libcoro_host_scheduled_dynamic_library
-           transport_ipc_transport
+           transport_ipc_spsc
            streaming_spsc_queue
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            rpc_log)
@@ -213,9 +213,9 @@ if(CANOPY_BUILD_COROUTINE)
     benchmark
     canopy_benchmark_libcoro_dll_scheduled_dll
     canopy_benchmark_libcoro_host_scheduled_dll
-    canopy_benchmark_libcoro_spsc_dll
+    canopy_benchmark_ipc_spsc_dll
     canopy_benchmark_ipc_child_process
-    canopy_ipc_child_host_process)
+    canopy_ipc_spsc_sidecar_process)
   if(CANOPY_BUILD_ENCLAVE)
     add_dependencies(benchmark canopy_benchmark_sgx_coroutine_enclave)
   endif()

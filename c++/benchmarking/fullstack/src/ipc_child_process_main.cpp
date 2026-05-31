@@ -7,7 +7,7 @@
 
 #  include "benchmark_data_processor.h"
 #  include <streaming/spsc_queue/stream.h>
-#  include <transports/ipc_transport/bootstrap.h>
+#  include <transports/ipc_spsc_transport/bootstrap.h>
 #  include <transports/streaming/transport.h>
 
 namespace
@@ -25,7 +25,7 @@ namespace
     run_child_process(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::zone child_zone,
-        rpc::libcoro_spsc_dynamic_dll::queue_pair* queues)
+        rpc::ipc_spsc_transport::queue_pair* queues)
     {
         auto service = rpc::root_service::create("benchmark_ipc_child_process", child_zone, scheduler);
 
@@ -54,7 +54,7 @@ int main(
     int argc,
     char** argv)
 {
-    auto bootstrap = rpc::ipc_transport::child_process_bootstrap::from_command_line(argc, argv);
+    auto bootstrap = rpc::ipc_spsc_transport::child_process_bootstrap::from_command_line(argc, argv);
     if (!bootstrap)
         return 1;
 
@@ -77,7 +77,7 @@ int main(
             }()));
 
     scheduler->shutdown();
-    rpc::ipc_transport::queue_pair_bootstrap::unmap_queue_pair(queues);
+    rpc::ipc_spsc_transport::queue_pair_bootstrap::unmap_queue_pair(queues);
     return exit_code;
 }
 

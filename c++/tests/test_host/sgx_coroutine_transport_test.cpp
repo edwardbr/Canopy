@@ -12,12 +12,16 @@
 
 #  include <atomic>
 #  include <chrono>
+#  include <filesystem>
 #  include <memory>
+#  include <thread>
 #  include <utility>
+#  include <vector>
 
 #  if defined(__linux__)
 #    include <cerrno>
 #    include <csignal>
+#    include <sys/wait.h>
 #    include <unistd.h>
 #  endif
 
@@ -40,6 +44,8 @@ TYPED_TEST(
 }
 
 #  if defined(__linux__) && defined(CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH)
+extern char** environ;
+
 namespace
 {
     template<class Predicate>
@@ -116,7 +122,126 @@ namespace
             return false;
         return ::kill(pid, 0) == 0 || errno == EPERM;
     }
+
+    std::string make_unique_sgx_peer_file()
+    {
+        auto path = std::filesystem::temp_directory_path()
+                    / ("canopy_sgx_coroutine_peer_" + std::to_string(static_cast<long long>(::getpid())) + "_"
+                        + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        return path.string();
+    }
+
+    pid_t spawn_process(std::vector<std::string> arguments)
+    {
+        auto child_pid = ::fork();
+        EXPECT_GE(child_pid, 0);
+        if (child_pid != 0)
+            return child_pid;
+
+        std::vector<char*> argv;
+        argv.reserve(arguments.size() + 1);
+        for (auto& argument : arguments)
+            argv.push_back(argument.data());
+        argv.push_back(nullptr);
+
+        ::execve(arguments.front().c_str(), argv.data(), environ);
+        _exit(127);
+    }
+
+    bool wait_for_file_to_exist(
+        const std::string& path,
+        std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (std::filesystem::exists(path))
+                return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds{10});
+        }
+        return false;
+    }
+
+    bool wait_for_process_exit(
+        pid_t child_pid,
+        int& status,
+        std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            auto wait_result = ::waitpid(child_pid, &status, WNOHANG);
+            if (wait_result == child_pid)
+                return true;
+            if (wait_result < 0)
+                return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds{10});
+        }
+        return false;
+    }
+
+    void terminate_process_if_running(pid_t child_pid)
+    {
+        if (child_pid <= 0)
+            return;
+        if (::kill(child_pid, 0) != 0)
+            return;
+        ::kill(child_pid, SIGTERM);
+        int status = 0;
+        if (!wait_for_process_exit(child_pid, status, std::chrono::milliseconds{1000}))
+        {
+            ::kill(child_pid, SIGKILL);
+            wait_for_process_exit(child_pid, status, std::chrono::milliseconds{1000});
+        }
+    }
 }
+
+#    if defined(CANOPY_TEST_SGX_COROUTINE_PEER_CONNECTOR_PATH)
+TEST(
+    sgx_coroutine_independent_process_pairing,
+    independent_acceptor_and_connector_processes_connect_over_named_shared_file)
+{
+    auto shared_memory_file = make_unique_sgx_peer_file();
+    pid_t acceptor_pid = -1;
+    pid_t connector_pid = -1;
+
+    acceptor_pid = spawn_process(
+        {
+            CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH,
+            "--enclave-path",
+            coroutine_enclave_path,
+            "--shared-memory-file",
+            shared_memory_file,
+            "--worker-thread-count",
+            "0",
+            "--create-shared-memory-file",
+        });
+    ASSERT_GT(acceptor_pid, 0);
+    ASSERT_TRUE(wait_for_file_to_exist(shared_memory_file, std::chrono::milliseconds{5000}));
+
+    connector_pid = spawn_process(
+        {
+            CANOPY_TEST_SGX_COROUTINE_PEER_CONNECTOR_PATH,
+            "--shared-memory-file",
+            shared_memory_file,
+        });
+    ASSERT_GT(connector_pid, 0);
+
+    int connector_status = 0;
+    EXPECT_TRUE(wait_for_process_exit(connector_pid, connector_status, std::chrono::milliseconds{40000}));
+    EXPECT_TRUE(WIFEXITED(connector_status));
+    EXPECT_EQ(WEXITSTATUS(connector_status), 0);
+
+    int acceptor_status = 0;
+    EXPECT_TRUE(wait_for_process_exit(acceptor_pid, acceptor_status, std::chrono::milliseconds{40000}));
+    EXPECT_TRUE(WIFEXITED(acceptor_status));
+    EXPECT_EQ(WEXITSTATUS(acceptor_status), 0);
+
+    terminate_process_if_running(connector_pid);
+    terminate_process_if_running(acceptor_pid);
+    std::filesystem::remove(shared_memory_file);
+}
+#    endif
 
 TEST(
     sgx_coroutine_sidecar_transport_test,

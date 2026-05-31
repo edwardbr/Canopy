@@ -45,6 +45,8 @@ namespace rpc::sgx_coroutine_transport::host
 
         transport->set_enclave_worker_thread_count(settings.worker_thread_count);
         transport->set_use_sidecar(settings.use_sidecar);
+        transport->set_peer_to_peer_shared_memory_file(settings.peer_to_peer_shared_memory_file);
+        transport->set_sidecar_executable_path(settings.sidecar_executable_path);
         auto startup_error = transport->set_enclave_startup_applications(settings.startup_applications);
         if (startup_error != rpc::error::OK())
             return {startup_error, {}, {}, {}};

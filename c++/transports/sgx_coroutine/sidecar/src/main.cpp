@@ -107,6 +107,26 @@ namespace
         return rpc::error::CALL_TIMEOUT();
     }
 
+    uint64_t load_request_size(const uint64_t* value) noexcept
+    {
+        return __atomic_load_n(value, __ATOMIC_ACQUIRE);
+    }
+
+    int wait_for_init_request(
+        const rpc::sgx_coroutine_transport::sidecar::shared_memory* shared,
+        std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            auto request_size = load_request_size(&shared->request_size);
+            if (request_size > 0 && request_size <= rpc::sgx_coroutine_transport::sidecar::init_request_capacity)
+                return rpc::error::OK();
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        return rpc::error::CALL_TIMEOUT();
+    }
+
     uint64_t read_host_tick_counter() noexcept
     {
 #  if defined(__x86_64__) || defined(__i386__)
@@ -158,7 +178,9 @@ int main(
     if (!bootstrap)
         return 1;
 
-    auto mapping = rpc::sgx_coroutine_transport::sidecar::map_shared_memory(bootstrap->shared_memory_file());
+    auto mapping = bootstrap->create_shared_memory_file()
+                       ? rpc::sgx_coroutine_transport::sidecar::create_shared_memory(bootstrap->shared_memory_file())
+                       : rpc::sgx_coroutine_transport::sidecar::map_shared_memory(bootstrap->shared_memory_file());
     if (!mapping.memory)
         return 2;
 
@@ -175,6 +197,9 @@ int main(
     auto* shared = mapping.memory;
     if (!rpc::sgx_coroutine_transport::sidecar::valid_shared_memory(*shared))
         return 3;
+
+    if (wait_for_init_request(shared, std::chrono::seconds{20}) != rpc::error::OK())
+        return 9;
 
     init_request request{};
     auto err = rpc::from_yas_binary(

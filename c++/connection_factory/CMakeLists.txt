@@ -54,6 +54,14 @@ if(TARGET transport_local)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_LOCAL)
 endif()
 
+if(TARGET transport_ipc_spsc)
+  target_sources(
+    connection_factory
+    PRIVATE src/adapters/transports/ipc_spsc.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_ipc_spsc ipc_spsc_transport_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC)
+endif()
+
 if(TARGET transport_sgx_coroutine)
   target_sources(
     connection_factory

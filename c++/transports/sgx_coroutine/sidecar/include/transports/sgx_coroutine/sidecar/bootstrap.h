@@ -49,17 +49,20 @@ namespace rpc::sgx_coroutine_transport::sidecar
         std::string enclave_path_;
         std::string shared_memory_file_;
         uint32_t worker_thread_count_{0};
+        bool create_shared_memory_file_{false};
 
     public:
         bootstrap() = default;
         bootstrap(
             std::string enclave_path,
             std::string shared_memory_file,
-            uint32_t worker_thread_count);
+            uint32_t worker_thread_count,
+            bool create_shared_memory_file = false);
 
         [[nodiscard]] static const char* enclave_path_arg_name();
         [[nodiscard]] static const char* shared_memory_file_arg_name();
         [[nodiscard]] static const char* worker_thread_count_arg_name();
+        [[nodiscard]] static const char* create_shared_memory_file_arg_name();
 
         [[nodiscard]] static std::shared_ptr<bootstrap> from_command_line(
             int argc,
@@ -68,11 +71,13 @@ namespace rpc::sgx_coroutine_transport::sidecar
         [[nodiscard]] const std::string& enclave_path() const { return enclave_path_; }
         [[nodiscard]] const std::string& shared_memory_file() const { return shared_memory_file_; }
         [[nodiscard]] uint32_t worker_thread_count() const { return worker_thread_count_; }
+        [[nodiscard]] bool create_shared_memory_file() const { return create_shared_memory_file_; }
 
         [[nodiscard]] std::vector<std::string> make_command_line() const;
     };
 
     [[nodiscard]] mapped_shared_memory create_shared_memory();
+    [[nodiscard]] mapped_shared_memory create_shared_memory(const std::string& path);
     [[nodiscard]] mapped_shared_memory map_shared_memory(const std::string& path);
     void unmap_shared_memory(mapped_shared_memory& mapping) noexcept;
 
