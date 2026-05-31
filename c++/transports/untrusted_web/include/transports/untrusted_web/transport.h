@@ -52,8 +52,8 @@ namespace rpc::untrusted_web
             class Remote,
             class Local>
         static CORO_TASK(std::shared_ptr<transport>) create(
-            const std::shared_ptr<rpc::service>& service,
-            const std::shared_ptr<streaming::stream>& stream,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<streaming::stream> stream,
             std::function<CORO_TASK(rpc::service_connect_result<Local>)(
                 const rpc::shared_ptr<Remote>&,
                 const std::shared_ptr<rpc::service>&)> factory,
@@ -67,8 +67,8 @@ namespace rpc::untrusted_web
         }
 
         static CORO_TASK(std::shared_ptr<transport>) create(
-            const std::shared_ptr<rpc::service>& service,
-            const std::shared_ptr<streaming::stream>& stream,
+            std::shared_ptr<rpc::service> service,
+            std::shared_ptr<streaming::stream> stream,
             connection_handler&& handler,
             rpc::untrusted_web::transport_settings settings = {});
 

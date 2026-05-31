@@ -92,6 +92,7 @@ namespace streaming::websocket
             bool single_attempt,
             std::chrono::steady_clock::time_point now) const -> std::chrono::milliseconds;
         void handle_keep_alive_locked(const wslay_event_on_msg_recv_arg* arg);
+        bool validate_incoming_wire_locked(rpc::byte_span data);
 
         static auto send_callback(
             wslay_event_context* ctx,
@@ -134,6 +135,13 @@ namespace streaming::websocket
         uint64_t next_ping_id_{1};
         std::chrono::steady_clock::time_point next_ping_time_;
         std::chrono::steady_clock::time_point ping_deadline_;
+        uint64_t validator_payload_remaining_{0};
+        uint64_t validator_extended_length_{0};
+        uint8_t validator_state_{0};
+        uint8_t validator_opcode_{0};
+        uint8_t validator_length_code_{0};
+        uint8_t validator_extended_remaining_{0};
+        uint8_t validator_mask_remaining_{0};
         bool ping_outstanding_{false};
         bool closed_{false};
     };

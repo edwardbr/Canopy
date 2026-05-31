@@ -22,6 +22,37 @@ namespace streaming::websocket
 {
     namespace
     {
+        constexpr uint8_t bits_per_byte = 8;
+        constexpr uint8_t byte_mask = 0xff;
+
+        constexpr uint8_t websocket_fin_bit = 0x80;
+        constexpr uint8_t websocket_rsv_bits = 0x70;
+        constexpr uint8_t websocket_opcode_mask = 0x0f;
+        constexpr uint8_t websocket_mask_bit = 0x80;
+        constexpr uint8_t websocket_payload_length_mask = 0x7f;
+
+        constexpr uint8_t websocket_continuation_opcode = 0x0;
+        constexpr uint8_t websocket_text_opcode = 0x1;
+        constexpr uint8_t websocket_binary_opcode = 0x2;
+        constexpr uint8_t websocket_first_control_opcode = 0x8;
+        constexpr uint8_t websocket_last_control_opcode = 0xa;
+
+        constexpr uint8_t websocket_max_inline_payload_length = 125;
+        constexpr uint8_t websocket_16_bit_payload_length_marker = 126;
+        constexpr uint8_t websocket_64_bit_payload_length_marker = 127;
+        constexpr uint64_t websocket_min_64_bit_payload_length = 65536;
+        constexpr uint64_t websocket_64_bit_payload_sign_bit = uint64_t{1} << 63;
+
+        constexpr uint8_t websocket_mask_key_bytes = 4;
+        constexpr uint8_t websocket_16_bit_extended_length_bytes = 2;
+        constexpr uint8_t websocket_64_bit_extended_length_bytes = 8;
+
+        constexpr uint8_t validator_state_first_header_byte = 0;
+        constexpr uint8_t validator_state_second_header_byte = 1;
+        constexpr uint8_t validator_state_extended_length = 2;
+        constexpr uint8_t validator_state_mask_key = 3;
+        constexpr uint8_t validator_state_payload = 4;
+
         auto remaining_timeout(std::chrono::steady_clock::time_point deadline) -> std::chrono::milliseconds
         {
             auto now = std::chrono::steady_clock::now();
@@ -54,7 +85,7 @@ namespace streaming::websocket
         {
             std::vector<uint8_t> payload(sizeof(value));
             for (size_t i = 0; i < payload.size(); ++i)
-                payload[i] = static_cast<uint8_t>((value >> (i * 8)) & 0xff);
+                payload[i] = static_cast<uint8_t>((value >> (i * bits_per_byte)) & byte_mask);
             return payload;
         }
 
@@ -64,6 +95,18 @@ namespace streaming::websocket
             size_t actual_size) -> bool
         {
             return expected.size() == actual_size && std::equal(expected.begin(), expected.end(), actual);
+        }
+
+        bool is_valid_opcode(uint8_t opcode)
+        {
+            return opcode == websocket_continuation_opcode || opcode == websocket_text_opcode
+                   || opcode == websocket_binary_opcode
+                   || (opcode >= websocket_first_control_opcode && opcode <= websocket_last_control_opcode);
+        }
+
+        bool is_control_opcode(uint8_t opcode)
+        {
+            return opcode >= websocket_first_control_opcode;
         }
     } // namespace
 
@@ -165,6 +208,12 @@ namespace streaming::websocket
                     std::lock_guard<std::mutex> lock(mtx_);
                     if (closed_ || !wslay_ctx_)
                         CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                    if (!validate_incoming_wire_locked(
+                            rpc::byte_span{reinterpret_cast<const char*>(span.data()), span.size()}))
+                    {
+                        closed_ = true;
+                        CO_RETURN{rpc::io_status{FLD(type) rpc::io_status::kind::closed}, {}};
+                    }
                     raw_recv_pos_ = 0;
                     raw_recv_size_ = span.size();
                     int receive_result = wslay_event_recv(wslay_ctx_);
@@ -369,6 +418,110 @@ namespace streaming::websocket
             pending_ping_payload_.clear();
         }
         next_ping_time_ = now + options_.keep_alive.interval;
+        return true;
+    }
+
+    bool stream::validate_incoming_wire_locked(rpc::byte_span data)
+    {
+        // wslay parses frames, but server-side masking and a few cheap RFC 6455
+        // invariants are enforced here so untrusted clients are rejected before
+        // their payload is handed to the WebSocket message queue.
+        const auto* bytes = reinterpret_cast<const uint8_t*>(data.data());
+        size_t offset = 0;
+
+        while (offset < data.size())
+        {
+            switch (validator_state_)
+            {
+            case validator_state_first_header_byte:
+            {
+                const uint8_t first = bytes[offset++];
+                const uint8_t rsv = first & websocket_rsv_bits;
+                const bool fin = (first & websocket_fin_bit) != 0;
+                validator_opcode_ = first & websocket_opcode_mask;
+
+                if (rsv != 0 || !is_valid_opcode(validator_opcode_))
+                    return false;
+                if (is_control_opcode(validator_opcode_) && !fin)
+                    return false;
+
+                validator_state_ = validator_state_second_header_byte;
+                break;
+            }
+            case validator_state_second_header_byte:
+            {
+                const uint8_t second = bytes[offset++];
+                const bool masked = (second & websocket_mask_bit) != 0;
+                validator_length_code_ = second & websocket_payload_length_mask;
+
+                if (options_.role == stream_role::server && !masked)
+                    return false;
+                if (options_.role == stream_role::client && masked)
+                    return false;
+                if (is_control_opcode(validator_opcode_) && validator_length_code_ > websocket_max_inline_payload_length)
+                    return false;
+
+                if (validator_length_code_ <= websocket_max_inline_payload_length)
+                {
+                    validator_payload_remaining_ = validator_length_code_;
+                    validator_mask_remaining_ = masked ? websocket_mask_key_bytes : 0;
+                    validator_state_ = validator_mask_remaining_ != 0 ? validator_state_mask_key : validator_state_payload;
+                }
+                else
+                {
+                    validator_extended_length_ = 0;
+                    validator_extended_remaining_ = validator_length_code_ == websocket_16_bit_payload_length_marker
+                                                        ? websocket_16_bit_extended_length_bytes
+                                                        : websocket_64_bit_extended_length_bytes;
+                    validator_state_ = validator_state_extended_length;
+                }
+                break;
+            }
+            case validator_state_extended_length:
+            {
+                validator_extended_length_ = (validator_extended_length_ << bits_per_byte) | bytes[offset++];
+                --validator_extended_remaining_;
+                if (validator_extended_remaining_ != 0)
+                    break;
+
+                if (validator_length_code_ == websocket_16_bit_payload_length_marker
+                    && validator_extended_length_ < websocket_16_bit_payload_length_marker)
+                    return false;
+                if (validator_length_code_ == websocket_64_bit_payload_length_marker
+                    && validator_extended_length_ < websocket_min_64_bit_payload_length)
+                    return false;
+                if (validator_length_code_ == websocket_64_bit_payload_length_marker
+                    && (validator_extended_length_ & websocket_64_bit_payload_sign_bit) != 0)
+                    return false;
+
+                validator_payload_remaining_ = validator_extended_length_;
+                validator_mask_remaining_ = options_.role == stream_role::server ? websocket_mask_key_bytes : 0;
+                validator_state_ = validator_mask_remaining_ != 0 ? validator_state_mask_key : validator_state_payload;
+                break;
+            }
+            case validator_state_mask_key:
+            {
+                const auto mask_bytes = std::min<size_t>(validator_mask_remaining_, data.size() - offset);
+                offset += mask_bytes;
+                validator_mask_remaining_ -= static_cast<uint8_t>(mask_bytes);
+                if (validator_mask_remaining_ == 0)
+                    validator_state_ = validator_state_payload;
+                break;
+            }
+            case validator_state_payload:
+            {
+                const auto payload_bytes = std::min<uint64_t>(validator_payload_remaining_, data.size() - offset);
+                offset += static_cast<size_t>(payload_bytes);
+                validator_payload_remaining_ -= payload_bytes;
+                if (validator_payload_remaining_ == 0)
+                    validator_state_ = validator_state_first_header_byte;
+                break;
+            }
+            default:
+                return false;
+            }
+        }
+
         return true;
     }
 

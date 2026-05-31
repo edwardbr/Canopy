@@ -87,8 +87,8 @@ namespace rpc::untrusted_web
 
     CORO_TASK(std::shared_ptr<transport>)
     transport::create(
-        const std::shared_ptr<rpc::service>& service,
-        const std::shared_ptr<streaming::stream>& stream,
+        std::shared_ptr<rpc::service> service,
+        std::shared_ptr<streaming::stream> stream,
         connection_handler&& handler,
         rpc::untrusted_web::transport_settings settings)
     {
