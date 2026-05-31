@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -45,6 +46,13 @@ namespace canopy::http_server
             std::chrono::milliseconds limit)
         {
             return limit > std::chrono::milliseconds{0} && std::chrono::steady_clock::now() - started >= limit;
+        }
+
+        auto timeout_from_ms(uint64_t value) -> std::chrono::milliseconds
+        {
+            const auto max_value = static_cast<uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
+            return std::chrono::milliseconds{
+                static_cast<std::chrono::milliseconds::rep>(std::min(value, max_value))};
         }
 
         char ascii_lower(char value)
@@ -516,12 +524,14 @@ namespace canopy::http_server
                     {
                         auto [read_status, read_span] = CO_AWAIT stream_->receive(
                             rpc::mutable_byte_span{receive_buffer.data(), receive_buffer.size()},
-                            limits_.receive_poll_timeout);
+                            timeout_from_ms(limits_.receive_poll_timeout_ms));
                         if (read_status.is_timeout())
                         {
                             const auto timed_out = !ctx.headers_complete
-                                                       ? timeout_expired(request_started, limits_.header_timeout)
-                                                       : timeout_expired(request_started, limits_.request_timeout);
+                                                       ? timeout_expired(
+                                                           request_started, timeout_from_ms(limits_.header_timeout_ms))
+                                                       : timeout_expired(
+                                                           request_started, timeout_from_ms(limits_.request_timeout_ms));
                             if (timed_out)
                             {
                                 RPC_WARNING("HTTP client timed out while sending a request");

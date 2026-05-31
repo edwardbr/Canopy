@@ -45,6 +45,9 @@
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
 #  include <compression_stream/compression_stream_config_schema.h>
 #endif
+#ifdef CANOPY_HAS_HTTP_SERVER_CONFIG
+#  include <http_server/http_server_config_schema.h>
+#endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
 #  include <local_transport/local_transport_config_schema.h>
 #endif
@@ -1073,6 +1076,54 @@ namespace
         EXPECT_EQ(sparse.settings.send_buffer_bytes, uint64_t{16384});
         EXPECT_EQ(sparse.settings.receive_buffer_bytes, uint64_t{16384});
         EXPECT_EQ(sparse.settings.max_expansion_ratio, uint64_t{0});
+    }
+#endif
+
+#ifdef CANOPY_HAS_HTTP_SERVER_CONFIG
+    TEST(
+        JsonConvert,
+        HttpClientConnectionLimitsUseGeneratedConfig)
+    {
+        const auto valid = json::v1::parse(R"json({
+            "max_method_bytes": 16,
+            "max_url_bytes": 128,
+            "max_header_name_bytes": 32,
+            "max_header_value_bytes": 256,
+            "max_header_count": 8,
+            "max_body_bytes": 4096,
+            "max_pending_input_bytes": 1024,
+            "receive_poll_timeout_ms": 5,
+            "header_timeout_ms": 100,
+            "request_timeout_ms": 200
+        })json");
+
+        const auto materialised
+            = rpc::connection_factory::materialise_settings<canopy::http_server::client_connection_limits>(valid);
+        ASSERT_EQ(materialised.error_code, rpc::error::OK());
+        EXPECT_EQ(materialised.settings.max_method_bytes, uint64_t{16});
+        EXPECT_EQ(materialised.settings.max_url_bytes, uint64_t{128});
+        EXPECT_EQ(materialised.settings.max_header_name_bytes, uint64_t{32});
+        EXPECT_EQ(materialised.settings.max_header_value_bytes, uint64_t{256});
+        EXPECT_EQ(materialised.settings.max_header_count, uint64_t{8});
+        EXPECT_EQ(materialised.settings.max_body_bytes, uint64_t{4096});
+        EXPECT_EQ(materialised.settings.max_pending_input_bytes, uint64_t{1024});
+        EXPECT_EQ(materialised.settings.receive_poll_timeout_ms, uint64_t{5});
+        EXPECT_EQ(materialised.settings.header_timeout_ms, uint64_t{100});
+        EXPECT_EQ(materialised.settings.request_timeout_ms, uint64_t{200});
+
+        const auto sparse = rpc::connection_factory::materialise_settings<canopy::http_server::client_connection_limits>(
+            json::v1::parse(R"json({})json"));
+        ASSERT_EQ(sparse.error_code, rpc::error::OK());
+        EXPECT_EQ(sparse.settings.max_method_bytes, uint64_t{256});
+        EXPECT_EQ(sparse.settings.max_url_bytes, uint64_t{4096});
+        EXPECT_EQ(sparse.settings.max_header_name_bytes, uint64_t{256});
+        EXPECT_EQ(sparse.settings.max_header_value_bytes, uint64_t{8192});
+        EXPECT_EQ(sparse.settings.max_header_count, uint64_t{128});
+        EXPECT_EQ(sparse.settings.max_body_bytes, uint64_t{1048576});
+        EXPECT_EQ(sparse.settings.max_pending_input_bytes, uint64_t{65536});
+        EXPECT_EQ(sparse.settings.receive_poll_timeout_ms, uint64_t{250});
+        EXPECT_EQ(sparse.settings.header_timeout_ms, uint64_t{10000});
+        EXPECT_EQ(sparse.settings.request_timeout_ms, uint64_t{30000});
     }
 #endif
 

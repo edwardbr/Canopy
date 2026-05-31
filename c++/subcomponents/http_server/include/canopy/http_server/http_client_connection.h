@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 
+#include <http_server/http_server_config.h>
 #include <llhttp.h>
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
@@ -43,20 +44,6 @@ namespace canopy::http_server
     using websocket_handler
         = std::function<CORO_TASK(std::shared_ptr<rpc::transport>)(const request&, std::shared_ptr<streaming::stream>)>;
     using rest_request_selector = std::function<bool(const request&)>;
-
-    struct client_connection_limits
-    {
-        uint64_t max_method_bytes{256};
-        uint64_t max_url_bytes{4096};
-        uint64_t max_header_name_bytes{256};
-        uint64_t max_header_value_bytes{8192};
-        uint64_t max_header_count{128};
-        uint64_t max_body_bytes{1024 * 1024};
-        uint64_t max_pending_input_bytes{64 * 1024};
-        std::chrono::milliseconds receive_poll_timeout{250};
-        std::chrono::milliseconds header_timeout{10000};
-        std::chrono::milliseconds request_timeout{30000};
-    };
 
     struct handler_set
     {

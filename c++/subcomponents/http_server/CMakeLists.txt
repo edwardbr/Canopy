@@ -9,6 +9,16 @@ set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET)
 set(CANOPY_HTTP_SERVER_CRYPTO_LIBS)
 set(CANOPY_HTTP_SERVER_TCP_TARGET)
 
+CanopyGenerate(
+  http_server_config
+  http_server/http_server_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 if(CANOPY_BUILD_COROUTINE)
   if(NOT TARGET streaming_tcp_coroutine)
     message(FATAL_ERROR "canopy_http_server requires streaming_tcp_coroutine in coroutine builds")
@@ -59,6 +69,7 @@ target_link_options(canopy_http_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_libraries(
   canopy_http_server
   PUBLIC streaming
+         http_server_config_idl
          ${CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET}
          transport_streaming
          llhttp_static
@@ -91,6 +102,7 @@ elseif(TARGET streaming_openssl_tls_enclave)
 endif()
 
 if(CANOPY_BUILD_ENCLAVE
+   AND TARGET http_server_config_idl_enclave
    AND TARGET llhttp_enclave
    AND TARGET streaming_websocket_enclave
    AND CANOPY_HTTP_SERVER_ENCLAVE_SECURE_STREAM_TARGET)
@@ -109,6 +121,7 @@ if(CANOPY_BUILD_ENCLAVE
     canopy_http_server_enclave
     PUBLIC streaming_enclave
            ${CANOPY_HTTP_SERVER_ENCLAVE_SECURE_STREAM_TARGET}
+           http_server_config_idl_enclave
            transport_streaming_enclave
            llhttp_enclave
            rpc::rpc_enclave

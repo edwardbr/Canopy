@@ -55,7 +55,7 @@ namespace streaming::compression
         std::vector<uint8_t> receive_buffer_;
         size_t receive_buffer_size_{0};
         size_t receive_buffer_offset_{0};
-        bool drain_decompression_context_{false};
+        bool decompression_may_have_pending_output_{false};
         uint64_t current_input_chunk_bytes_{0};
         uint64_t current_input_chunk_output_bytes_{0};
         std::atomic<bool> closed_{false};

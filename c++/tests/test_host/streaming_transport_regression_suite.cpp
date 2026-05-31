@@ -874,9 +874,9 @@ TEST(
 {
     auto called = std::make_shared<std::atomic_bool>(false);
     canopy::http_server::client_connection_limits limits;
-    limits.receive_poll_timeout = std::chrono::milliseconds{1};
-    limits.header_timeout = std::chrono::milliseconds{1};
-    limits.request_timeout = std::chrono::milliseconds{1};
+    limits.receive_poll_timeout_ms = 1;
+    limits.header_timeout_ms = 1;
+    limits.request_timeout_ms = 1;
 
     auto response = sent_http_text(
         run_http_upgrade_request(std::string("GET /rpc HTTP/1.1\r\nHost: example.test\r\n"), called, limits));

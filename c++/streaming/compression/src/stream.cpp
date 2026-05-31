@@ -123,7 +123,7 @@ namespace streaming::compression
 
         while (true)
         {
-            if (receive_buffer_offset_ == receive_buffer_size_ && !drain_decompression_context_)
+            if (receive_buffer_offset_ == receive_buffer_size_ && !decompression_may_have_pending_output_)
             {
                 auto status = CO_AWAIT receive_compressed_input(timeout);
                 if (!status.is_ok())
@@ -135,7 +135,7 @@ namespace streaming::compression
             ZSTD_outBuffer output{buffer.data(), buffer.size(), 0};
             const auto result = ZSTD_decompressStream(decompression_context_, &output, &input);
             receive_buffer_offset_ += input.pos;
-            drain_decompression_context_ = output.pos == output.size;
+            decompression_may_have_pending_output_ = output.pos == output.size;
 
             if (ZSTD_isError(result))
             {
@@ -152,7 +152,7 @@ namespace streaming::compression
                     closed_.store(true, std::memory_order_release);
                     CO_RETURN ::streaming::receive_result{make_closed_status(), {}};
                 }
-                if (receive_buffer_offset_ == receive_buffer_size_ && !drain_decompression_context_)
+                if (receive_buffer_offset_ == receive_buffer_size_ && !decompression_may_have_pending_output_)
                 {
                     receive_buffer_offset_ = 0;
                     receive_buffer_size_ = 0;
@@ -176,9 +176,9 @@ namespace streaming::compression
 
             if (input.pos == 0)
             {
-                if (drain_decompression_context_)
+                if (decompression_may_have_pending_output_)
                 {
-                    drain_decompression_context_ = false;
+                    decompression_may_have_pending_output_ = false;
                     continue;
                 }
                 RPC_WARNING("Zstd decompression made no progress");
@@ -228,7 +228,7 @@ namespace streaming::compression
 
         receive_buffer_offset_ = 0;
         receive_buffer_size_ = span.size();
-        drain_decompression_context_ = false;
+        decompression_may_have_pending_output_ = false;
         current_input_chunk_bytes_ = span.size();
         current_input_chunk_output_bytes_ = 0;
         CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::ok};
