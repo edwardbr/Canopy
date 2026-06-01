@@ -1,4 +1,4 @@
-// WebSocket client logic with Echo and Calculator mode support using generated proxy/stub
+// WebSocket client logic with HTTP Echo and Calculator mode support using generated proxy/stub
 let transport = null;
 let calc = null;       // i_calculator_proxy (created after connect)
 let eventStub = null;  // i_context_event_stub: LLM tokens AND stylized video frames
@@ -7,13 +7,15 @@ let sentCount = 0;
 let receivedCount = 0;
 let connectTime = null;
 let uptimeInterval = null;
-let currentMode = 'echo'; // 'echo', 'calculator', or 'chat'
+let isConnecting = false;
+let currentMode = 'echo'; // 'echo', 'calculator', 'chat', or 'video'
 let currentAssistantMessage = null;
 
 // DOM elements
 const statusEl = document.getElementById('status');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
+const echoResult = document.getElementById('echoResult');
 const connectBtn = document.getElementById('connectBtn');
 const disconnectBtn = document.getElementById('disconnectBtn');
 const clearBtn = document.getElementById('clearBtn');
@@ -101,11 +103,18 @@ async function onResolutionChange() {
 }
 
 // Calculator elements
-const firstValueInput = document.getElementById('firstValue');
-const secondValueInput = document.getElementById('secondValue');
-const operationSelect = document.getElementById('operation');
+const calculatorExpression = document.getElementById('calculatorExpression');
+const calculatorValue = document.getElementById('calculatorValue');
+const calculatorKeys = document.getElementById('calculatorKeys');
+const calculatorButtons = Array.from(calculatorKeys.querySelectorAll('button'));
 const calculateBtn = document.getElementById('calculateBtn');
-const resultDisplay = document.getElementById('resultDisplay');
+const calculatorState = {
+    display: '0',
+    expression: '',
+    left: null,
+    operator: null,
+    waitingForOperand: false,
+};
 
 // Chat elements
 const chatHistory = document.getElementById('chatHistory');
@@ -178,16 +187,14 @@ function describeError(err) {
 }
 
 function setUIConnected(connected) {
-    messageInput.disabled = !connected;
-    sendBtn.disabled = !connected;
     connectBtn.disabled = connected;
     disconnectBtn.disabled = !connected;
 
     // Calculator controls
-    firstValueInput.disabled = !connected;
-    secondValueInput.disabled = !connected;
-    operationSelect.disabled = !connected;
-    calculateBtn.disabled = !connected;
+    calculatorButtons.forEach(function(button) {
+        button.disabled = !connected;
+    });
+    updateCalculatorDisplay();
 
     // Chat controls
     chatInput.disabled = !connected;
@@ -232,11 +239,18 @@ videoModeRadio.addEventListener('change', () => switchMode('video'));
 
 // WebSocket functions
 function connect() {
+    if (isConnecting) {
+        addMessage('system', 'Connection attempt already in progress');
+        return;
+    }
     if (transport && transport.isConnected()) {
         addMessage('system', 'Already connected');
         return;
     }
 
+    isConnecting = true;
+    connectBtn.disabled = true;
+    disconnectBtn.disabled = false;
     updateStatus('Connecting...', 'connecting');
     addMessage('system', 'Connecting to WebSocket server...');
 
@@ -272,6 +286,7 @@ function connect() {
         inboundInterfaceId: WebsocketDemo.interfaceIds.i_context_event,
         outboundInterfaceId: WebsocketDemo.interfaceIds.i_calculator,
         onOpen: function(t) {
+            isConnecting = false;
             calc = new WebsocketDemo.i_calculator_proxy(t, appProto);
             updateStatus('Connected', 'connected');
             setUIConnected(true);
@@ -283,6 +298,7 @@ function connect() {
             sendVideoParams();
         },
         onClose: function(code, reason) {
+            isConnecting = false;
             calc = null;
             updateStatus('Disconnected', 'disconnected');
             addMessage('system', `Connection closed (code: ${code}, reason: ${reason || 'none'})`);
@@ -299,7 +315,7 @@ function connect() {
             console.error('WebSocket error:', err);
         },
         onText: function(text) {
-            addMessage('received', `← Echo: ${text}`);
+            addMessage('received', `Raw text frame: ${text}`);
             receivedCount++;
             updateStats();
         }
@@ -307,8 +323,10 @@ function connect() {
 
     transport.registerStub(eventStub);
     transport.connect().catch(function(err) {
+        isConnecting = false;
         addMessage('error', `Connection failed: ${describeError(err)}`);
         updateStatus('Disconnected', 'disconnected');
+        setUIConnected(false);
     });
 }
 
@@ -319,37 +337,134 @@ function disconnect() {
     }
 }
 
-function sendMessage() {
+async function sendMessage() {
     const message = messageInput.value;
 
     if (!message) {
         return;
     }
 
-    if (!transport || !transport.isConnected()) {
-        addMessage('error', 'Not connected');
-        return;
-    }
-
     try {
-        transport.sendText(message);
-        addMessage('sent', `→ Echo: ${message}`);
+        addMessage('sent', `HTTP POST /api/echo: ${message}`);
         sentCount++;
         updateStats();
-        messageInput.value = '';
+        echoResult.textContent = 'Waiting for HTTP response...';
+
+        const response = await fetch('/api/echo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: message,
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        const echoed = payload.data && typeof payload.data.echo === 'string' ? payload.data.echo : '';
+        echoResult.textContent = echoed;
+        addMessage('received', `HTTP echo: ${echoed}`);
+        receivedCount++;
+        updateStats();
     } catch (err) {
         addMessage('error', `Echo send failed: ${err.message}`);
+        echoResult.textContent = `Error: ${err.message}`;
         console.error('Echo error:', err);
     }
 }
 
-async function calculate() {
-    const first = parseFloat(firstValueInput.value);
-    const second = parseFloat(secondValueInput.value);
-    const methodId = parseInt(operationSelect.value);
+const calculatorOps = {
+    add: { symbol: '+', call: function(a, b) { return calc.add(a, b); } },
+    subtract: { symbol: '-', call: function(a, b) { return calc.subtract(a, b); } },
+    multiply: { symbol: 'x', call: function(a, b) { return calc.multiply(a, b); } },
+    divide: { symbol: '/', call: function(a, b) { return calc.divide(a, b); } },
+};
 
-    if (isNaN(first) || isNaN(second)) {
-        addMessage('error', 'Please enter valid numbers');
+function formatCalculatorNumber(value) {
+    if (!Number.isFinite(value)) {
+        return 'Error';
+    }
+    const text = Math.abs(value) >= 1e12 || (Math.abs(value) > 0 && Math.abs(value) < 1e-6)
+        ? value.toExponential(8)
+        : String(Number(value.toPrecision(12)));
+    return text.length > 16 ? value.toExponential(8) : text;
+}
+
+function updateCalculatorDisplay() {
+    calculatorValue.textContent = calculatorState.display;
+    if (calculatorState.expression) {
+        calculatorExpression.textContent = calculatorState.expression;
+    } else if (calculatorState.left !== null && calculatorState.operator) {
+        calculatorExpression.textContent = `${calculatorState.left} ${calculatorOps[calculatorState.operator].symbol}`;
+    } else {
+        calculatorExpression.textContent = '';
+    }
+    const connected = !!(calc && transport && transport.isConnected());
+    calculateBtn.disabled = !connected || !calculatorState.operator || calculatorState.waitingForOperand;
+}
+
+function clearCalculator() {
+    calculatorState.display = '0';
+    calculatorState.expression = '';
+    calculatorState.left = null;
+    calculatorState.operator = null;
+    calculatorState.waitingForOperand = false;
+    updateCalculatorDisplay();
+}
+
+function inputCalculatorDigit(digit) {
+    if (calculatorState.waitingForOperand) {
+        calculatorState.display = digit;
+        calculatorState.expression = '';
+        calculatorState.waitingForOperand = false;
+    } else if (calculatorState.display === '0') {
+        calculatorState.display = digit;
+    } else if (calculatorState.display.length < 16) {
+        calculatorState.display += digit;
+    }
+    updateCalculatorDisplay();
+}
+
+function inputCalculatorDecimal() {
+    if (calculatorState.waitingForOperand) {
+        calculatorState.display = '0.';
+        calculatorState.expression = '';
+        calculatorState.waitingForOperand = false;
+    } else if (!calculatorState.display.includes('.')) {
+        calculatorState.display += '.';
+    }
+    updateCalculatorDisplay();
+}
+
+function toggleCalculatorSign() {
+    if (calculatorState.display !== '0') {
+        calculatorState.display = calculatorState.display.startsWith('-')
+            ? calculatorState.display.slice(1)
+            : `-${calculatorState.display}`;
+    }
+    updateCalculatorDisplay();
+}
+
+function backspaceCalculator() {
+    if (calculatorState.waitingForOperand) {
+        return;
+    }
+    calculatorState.display = calculatorState.display.length > 1 ? calculatorState.display.slice(0, -1) : '0';
+    if (calculatorState.display === '-') {
+        calculatorState.display = '0';
+    }
+    updateCalculatorDisplay();
+}
+
+function chooseCalculatorOperator(operator) {
+    calculatorState.left = parseFloat(calculatorState.display);
+    calculatorState.expression = '';
+    calculatorState.operator = operator;
+    calculatorState.waitingForOperand = true;
+    updateCalculatorDisplay();
+}
+
+async function calculate() {
+    if (!calculatorState.operator || calculatorState.waitingForOperand) {
         return;
     }
 
@@ -358,32 +473,34 @@ async function calculate() {
         return;
     }
 
-    const opNames = { 1: 'add', 2: 'subtract', 3: 'multiply', 4: 'divide' };
-    addMessage('sent', `→ Calculator: ${first} ${opNames[methodId]} ${second}`);
-    resultDisplay.textContent = 'Calculating...';
+    const first = calculatorState.left;
+    const second = parseFloat(calculatorState.display);
+    const op = calculatorOps[calculatorState.operator];
+    addMessage('sent', `Calculator: ${first} ${op.symbol} ${second}`);
     sentCount++;
     updateStats();
 
     try {
-        let r;
-        switch (methodId) {
-            case 1: r = await calc.add(first, second);      break;
-            case 2: r = await calc.subtract(first, second); break;
-            case 3: r = await calc.multiply(first, second); break;
-            case 4: r = await calc.divide(first, second);   break;
-        }
+        calculateBtn.disabled = true;
+        const r = await op.call(first, second);
         if (r.result !== 0) {
-            resultDisplay.textContent = `Error: ${r.result}`;
-            addMessage('received', `← Calculator error: ${r.result}`);
+            calculatorState.display = `Error ${r.result}`;
+            addMessage('received', `Calculator error: ${r.result}`);
         } else {
-            resultDisplay.textContent = `Result: ${r.response}`;
-            addMessage('received', `← Calculator result: ${r.response}`);
+            calculatorState.expression = `${first} ${op.symbol} ${second} =`;
+            calculatorState.display = formatCalculatorNumber(r.response);
+            addMessage('received', `Calculator result: ${calculatorState.display}`);
         }
+        calculatorState.left = null;
+        calculatorState.operator = null;
+        calculatorState.waitingForOperand = true;
         receivedCount++;
         updateStats();
+        updateCalculatorDisplay();
     } catch (err) {
         addMessage('error', `Calculator RPC failed: ${err.message}`);
-        resultDisplay.textContent = `Error: ${err.message}`;
+        calculatorState.display = 'Error';
+        updateCalculatorDisplay();
         console.error('Calculator error:', err);
     }
 }
@@ -751,7 +868,27 @@ function Long_fromNumber_safe(n) {
 connectBtn.addEventListener('click', connect);
 disconnectBtn.addEventListener('click', disconnect);
 sendBtn.addEventListener('click', sendMessage);
-calculateBtn.addEventListener('click', calculate);
+calculatorKeys.addEventListener('click', async function(e) {
+    const button = e.target.closest('button');
+    if (!button || button.disabled) {
+        return;
+    }
+    if (button.dataset.calcDigit !== undefined) {
+        inputCalculatorDigit(button.dataset.calcDigit);
+    } else if (button.dataset.calcOp) {
+        chooseCalculatorOperator(button.dataset.calcOp);
+    } else if (button.dataset.calc === 'decimal') {
+        inputCalculatorDecimal();
+    } else if (button.dataset.calc === 'clear') {
+        clearCalculator();
+    } else if (button.dataset.calc === 'sign') {
+        toggleCalculatorSign();
+    } else if (button.dataset.calc === 'backspace') {
+        backspaceCalculator();
+    } else if (button.dataset.calc === 'equals') {
+        await calculate();
+    }
+});
 sendChatBtn.addEventListener('click', sendChatMessage);
 clearBtn.addEventListener('click', clearMessages);
 videoStartBtn.addEventListener('click', startVideo);
@@ -776,12 +913,11 @@ chatInput.addEventListener('keypress', function (e) {
 });
 
 // Initial message
-addMessage('system', 'WebSocket client ready. Click "Connect" to start.');
+setUIConnected(false);
+addMessage('system', 'HTTP echo is ready. Click "Connect" to enable RPC modes.');
 if ((window.CanopyWebsocketDemoConfig || {}).calculatorOnly) {
-    echoModeRadio.disabled = true;
     chatModeRadio.disabled = true;
-    calculatorModeRadio.checked = true;
-    switchMode('calculator');
+    addMessage('system', 'Chat mode disabled in this build.');
 } else {
     addMessage('system', 'Mode: Echo - Switch to Calculator or Chat mode to use other features');
 }

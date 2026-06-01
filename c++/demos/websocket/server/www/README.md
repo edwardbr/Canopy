@@ -5,7 +5,7 @@ All rights reserved.
 
 # WebSocket Browser Client
 
-Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
+Browser-based test client with HTTP Echo and WebSocket RPC Calculator modes.
 
 ## Usage
 
@@ -22,15 +22,15 @@ Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
 3. **Connect and Test:**
    - Click the "Connect" button
    - Choose between Echo or Calculator mode
-   - **Echo Mode**: Type messages and see them echoed back
+   - **Echo Mode**: POST a payload to `/api/echo` and see the HTTP response
    - **Calculator Mode**: Perform RPC calculations using the calculator service
 
 ## Modes
 
-### Echo Mode (Text WebSocket)
-- Simple text-based message echoing
-- Type any message and receive it back
-- Uses `WSLAY_TEXT_FRAME` for transport
+### Echo Mode (HTTP)
+- Plain HTTP health/round-trip check
+- Type any message and receive it back from `POST /api/echo`
+- Does not use the WebSocket/RPC transport
 
 ### Calculator Mode (Binary WebSocket + Protobuf)
 - Remote procedure calls to calculator service
@@ -45,7 +45,7 @@ Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
 - **Modern UI**: Beautiful gradient design with color-coded messages
 - **Real-time Stats**: Track sent/received messages and connection uptime
 - **Message History**: Scrollable message log with timestamps
-- **Calculator UI**: Dedicated interface with operation selector and result display
+- **Calculator UI**: Dedicated keypad-style calculator with RPC-backed operations
 - **Color Coding**:
   - 🔵 Blue: Sent messages
   - 🟢 Green: Received messages
@@ -62,7 +62,8 @@ Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
 
 - `GET /` or `GET /index.html` - Main web interface
 - `GET /client.js` - JavaScript client code
-- `WebSocket ws://localhost:8888` - WebSocket endpoint (supports both text and binary)
+- `POST /api/echo` - HTTP echo endpoint
+- `WebSocket ws://localhost:8888` - WebSocket endpoint for binary RPC
 
 ## Technical Details
 
@@ -77,9 +78,9 @@ Browser-based WebSocket test client with dual-mode support: Echo and Calculator.
 ## Protocol
 
 ### Echo Mode
-- **Transport**: Text WebSocket frames (`WSLAY_TEXT_FRAME`)
-- **Format**: Plain UTF-8 strings
-- **Flow**: Client sends text → Server echoes back same text
+- **Transport**: HTTP POST
+- **Format**: Plain request body, JSON response
+- **Flow**: Client posts text to `/api/echo` → Server responds with the same text in `data.echo`
 
 ### Calculator Mode
 - **Transport**: Binary WebSocket frames (`WSLAY_BINARY_FRAME`)

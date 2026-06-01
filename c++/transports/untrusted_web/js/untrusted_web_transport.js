@@ -187,8 +187,8 @@
                     var reason = event.reason ? ' Reason: ' + event.reason + '.' : '';
                     reject(new Error(
                         'WebSocket closed before handshake complete (code ' + event.code + '). '
-                        + 'Possible invalid interface ID: the generated JavaScript interface bundle may not match the server binary. '
-                        + 'This is a demo so only one client at a time; LLMs are greedy things!'
+                        + 'The server rejected the Canopy handshake. '
+                        + 'Common causes are a generated JavaScript interface bundle that does not match the server binary, or a server-side resource limit.'
                         + reason));
                 }
                 self._onClose(event.code, event.reason);

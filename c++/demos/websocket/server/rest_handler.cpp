@@ -5,6 +5,61 @@
 
 #include <fmt/format.h>
 
+#include <string_view>
+
+namespace
+{
+    auto json_string(std::string_view value) -> std::string
+    {
+        std::string output;
+        output.reserve(value.size() + 2);
+        output.push_back('"');
+        for (char ch : value)
+        {
+            const auto c = static_cast<unsigned char>(ch);
+            switch (ch)
+            {
+            case '"':
+                output += "\\\"";
+                break;
+            case '\\':
+                output += "\\\\";
+                break;
+            case '\b':
+                output += "\\b";
+                break;
+            case '\f':
+                output += "\\f";
+                break;
+            case '\n':
+                output += "\\n";
+                break;
+            case '\r':
+                output += "\\r";
+                break;
+            case '\t':
+                output += "\\t";
+                break;
+            default:
+                if (c < 0x20)
+                {
+                    constexpr char hex[] = "0123456789abcdef";
+                    output += "\\u00";
+                    output.push_back(hex[(c >> 4U) & 0x0fU]);
+                    output.push_back(hex[c & 0x0fU]);
+                }
+                else
+                {
+                    output.push_back(ch);
+                }
+                break;
+            }
+        }
+        output.push_back('"');
+        return output;
+    }
+}
+
 namespace websocket_demo
 {
     namespace v1
@@ -68,6 +123,12 @@ namespace websocket_demo
             const std::string& path,
             const std::string& body) -> canopy::http_server::response
         {
+            if (path == "/api/echo")
+            {
+                const auto response_data
+                    = fmt::format(R"({{"echo":{},"body_length":{}}})", json_string(body), body.length());
+                return create_success_response(response_data);
+            }
             if (path == "/api/resource")
             {
                 std::string response_data = "{\"id\":456,\"created\":true,\"message\":\"Resource created\"}";
