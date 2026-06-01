@@ -2478,6 +2478,17 @@ namespace json_schema
             write_schema_document_finish(os);
             os << "}\n";
 
+            // Flavor-aware overload (Phase 1): delegates to the encoding-only
+            // version. MCP profile transforms (no defaults, string-only enums)
+            // need separate definition bodies and are deferred; config and mcp
+            // share the document for now. The seam keeps the public API stable.
+            os << "\ninline std::string " << member_scope_name
+               << "::get_schema(::rpc::encoding encoding, ::rpc::schema_flavor flavor)\n";
+            os << "{\n";
+            os << "    (void)flavor;\n";
+            os << "    return get_schema(encoding);\n";
+            os << "}\n";
+
             for (auto it = namespaces.rbegin(); it != namespaces.rend(); ++it)
             {
                 os << "} // namespace " << *it << "\n";

@@ -2320,6 +2320,45 @@ namespace synchronous_generator
             proxy("}}");
         }
 
+        // generate __rpc_methods: a static per-method table (element type
+        // rpc::interface_method_info) for runtime schema introspection. Same
+        // per-method data as get_function_info; returned by pointer + count so
+        // the Phase 2 casting_interface fold can assemble an interface_descriptor
+        // without allocating.
+        {
+            proxy("const rpc::interface_method_info* {0}::__rpc_methods(size_t& count)", interface_name);
+            proxy("{{");
+            proxy("static const std::vector<rpc::interface_method_info> methods = {{");
+            const auto& methods_library = get_root(m_ob);
+            int method_count = 1;
+            for (auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+                const bool method_deprecated
+                    = function->has_value(rpc_attribute_types::deprecated_function)
+                    || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function);
+                const auto method_in_schema
+                    = json_schema::generate_function_input_parameter_schema_with_recursion(methods_library, m_ob, *function);
+                const auto method_out_schema
+                    = json_schema::generate_function_output_parameter_schema_with_recursion(methods_library, m_ob, *function);
+                proxy(
+                    "rpc::interface_method_info{{FLD(name)\"{0}\", FLD(id){{{1}}}, "
+                    "FLD(in_json_schema)R\"__({2})__\", FLD(out_json_schema)R\"__({3})__\", "
+                    "FLD(deprecated){4}}},",
+                    function->get_name(),
+                    method_count,
+                    method_in_schema,
+                    method_out_schema,
+                    method_deprecated ? "true" : "false");
+                method_count++;
+            }
+            proxy("}};");
+            proxy("count = methods.size();");
+            proxy("return methods.data();");
+            proxy("}}");
+        }
+
         {
             proxy("class __{0}_local_proxy : public rpc::local_proxy<{0}>", interface_name);
             proxy("{{");
