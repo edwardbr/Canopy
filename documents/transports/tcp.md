@@ -40,27 +40,29 @@ In the current C++ implementation, TCP support is provided by:
 - `streaming::tcp::stream`
 - `streaming::listener`
 - `rpc::stream_transport::transport`
-- `rpc::tcp` factory helpers from `connection_factory`
+- `rpc::connection_factory` configured stream/RPC helpers
 
-The high-level factory helpers accept a generated typed options object:
-`rpc::connection_factory_config::stream_factory_options`. This is the preferred API for
-application code because it avoids hand-written JSON probing while still using
-the same generated schema shape as config files.
+The high-level configured helpers accept
+`rpc::connection_factory::connection_settings`. Application code should fill the
+implementation settings from generated IDL types such as
+`rpc::tcp_coroutine_stream::endpoint` or `rpc::tcp_blocking_stream::endpoint`.
 
 The JSON overloads remain useful at process boundaries. They validate
 `json::v1::object` input against the generated
-`rpc::connection_factory_config::stream_factory_options` schema, then apply schema
-defaults, TCP component defaults, and caller overrides. TCP endpoint settings
-use exact nested keys: `endpoint.host`, `endpoint.port`, `endpoint.ipv6`, and
-`endpoint.connect_timeout`. Flattened aliases are not accepted.
+`rpc::connection_factory::connection_settings` schema. TCP endpoint settings
+remain inside the `settings` object of the `tcp_coroutine` or `tcp_blocking`
+stream layer.
 
 ## Factory Setup
 
-Include the TCP factory header and the generated connection factory config type:
+Include the configured factory header and the generated TCP/stream transport
+settings types:
 
 ```cpp
-#include <connection_factory/tcp.h>
-#include <connection_factory_config/connection_factory_config.h>
+#include <connection_factory/connection_factory.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 ```
 
 The examples below use coroutine syntax. Blocking builds can use the same
@@ -70,15 +72,30 @@ blocking paths construct a `streaming::tcp::endpoint` acceptor directly.
 Server-side RPC accept:
 
 ```cpp
-rpc::connection_factory_config::stream_factory_options options;
-auto& endpoint = options.endpoint.emplace();
+using json::v1::convert::to_json_object;
+
+rpc::connection_factory::connection_settings options;
+
+rpc::stream_transport::transport_settings transport_settings;
+transport_settings.name = std::string("responder_transport");
+transport_settings.encoding = rpc::encoding::nanopb;
+options.transport = rpc::connection_factory::typed_settings{
+    "stream_rpc", to_json_object(transport_settings)};
+
+rpc::stream_transport::listener_settings listener_settings;
+listener_settings.name = std::string("responder_listener");
+options.listener = rpc::connection_factory::typed_settings{
+    "stream_rpc", to_json_object(listener_settings)};
+
+rpc::tcp_coroutine_stream::endpoint endpoint;
 endpoint.host = std::string("127.0.0.1");
 endpoint.port = uint16_t{8080};
-options.listener.emplace().name = std::string("responder_listener");
-options.transport.emplace().name = std::string("responder_transport");
-options.rpc.emplace().encoding = std::string("nanopb");
+rpc::stream_layers::stream_layer_settings tcp_layer;
+tcp_layer.type = "tcp_coroutine";
+tcp_layer.settings = to_json_object(endpoint);
+options.stream_layers.push_back(std::move(tcp_layer));
 
-auto listener = CO_AWAIT rpc::tcp::accept_rpc<yyy::i_client, yyy::i_server>(
+auto listener = CO_AWAIT rpc::connection_factory::accept_rpc<yyy::i_client, yyy::i_server>(
     server_interface,
     options,
     service);
@@ -92,16 +109,27 @@ if (listener.error_code != rpc::error::OK())
 Client-side RPC connect:
 
 ```cpp
-rpc::connection_factory_config::stream_factory_options options;
-auto& endpoint = options.endpoint.emplace();
+using json::v1::convert::to_json_object;
+
+rpc::connection_factory::connection_settings options;
+
+rpc::stream_transport::transport_settings transport_settings;
+transport_settings.name = std::string("client_transport");
+transport_settings.service_proxy_name = std::string("server");
+transport_settings.encoding = rpc::encoding::nanopb;
+options.transport = rpc::connection_factory::typed_settings{
+    "stream_rpc", to_json_object(transport_settings)};
+
+rpc::tcp_coroutine_stream::endpoint endpoint;
 endpoint.host = std::string("127.0.0.1");
 endpoint.port = uint16_t{8080};
 endpoint.connect_timeout = uint64_t{5000};
-options.connection.emplace().name = std::string("server");
-options.transport.emplace().name = std::string("client_transport");
-options.rpc.emplace().encoding = std::string("nanopb");
+rpc::stream_layers::stream_layer_settings tcp_layer;
+tcp_layer.type = "tcp_coroutine";
+tcp_layer.settings = to_json_object(endpoint);
+options.stream_layers.push_back(std::move(tcp_layer));
 
-auto result = CO_AWAIT rpc::tcp::connect_rpc<yyy::i_client, yyy::i_server>(
+auto result = CO_AWAIT rpc::connection_factory::connect_rpc<yyy::i_client, yyy::i_server>(
     client_interface,
     options,
     service);
@@ -121,8 +149,7 @@ streaming::tcp::endpoint endpoint;
 endpoint.host = "127.0.0.1";
 endpoint.port = 8080;
 
-auto stream = CO_AWAIT rpc::tcp::connect_stream(
-    endpoint, std::chrono::milliseconds{5000}, service);
+auto stream = CO_AWAIT rpc::tcp_coroutine::connect_stream(endpoint, service);
 ```
 
 ## Manual Listener Setup

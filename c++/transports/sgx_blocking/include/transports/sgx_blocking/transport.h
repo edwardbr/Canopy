@@ -8,10 +8,9 @@
 
 #  include <memory>
 #  include <string>
-#  include <atomic>
-
 #  include <json/json_dom.h>
 #  include <rpc/rpc.h>
+#  include <sgx_blocking_transport/sgx_blocking_transport_config.h>
 
 namespace rpc::sgx_blocking_transport
 {
@@ -34,16 +33,19 @@ namespace rpc::sgx_blocking_transport
         std::shared_ptr<enclave_owner> enclave_owner_;
         uint64_t eid_ = 0;
         const std::string enclave_path_;
-        std::shared_ptr<const json::v1::object> enclave_runtime_settings_{
-            std::make_shared<const json::v1::object>(json::v1::map{})};
-        std::atomic<bool> configuration_locked_{false};
-        [[nodiscard]] bool reject_configuration_change_after_start(const char* setting_name) const;
+        rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave_runtime_settings_;
 
     public:
+        [[nodiscard]] static int validate_startup_settings(const transport_settings& settings);
+
         enclave_transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::string enclave_path);
+        enclave_transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service,
+            transport_settings settings);
 
         ~enclave_transport() override CANOPY_DEFAULT_DESTRUCTOR;
 
@@ -63,15 +65,9 @@ namespace rpc::sgx_blocking_transport
         CORO_TASK(void) outbound_transport_down(rpc::transport_down_params params) override;
 
         const std::string& get_enclave_path() const { return enclave_path_; }
-        void set_enclave_runtime_settings(json::v1::object settings);
-        [[nodiscard]] const json::v1::object& get_enclave_runtime_settings() const
+        [[nodiscard]] rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> get_enclave_runtime_startup_settings() const
         {
-            if (!enclave_runtime_settings_)
-            {
-                static const json::v1::object empty_settings{json::v1::map{}};
-                return empty_settings;
-            }
-            return *enclave_runtime_settings_;
+            return enclave_runtime_settings_;
         }
     };
 }

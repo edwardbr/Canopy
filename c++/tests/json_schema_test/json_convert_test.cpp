@@ -24,7 +24,7 @@
 #include <json/json_utils.h>
 #include <json/schema_validator.h>
 #include <connection_factory/connection_factory.h>
-#include <connection_factory/detail/context.h>
+#include <connection_factory/context.h>
 #include <connection_factory_config/connection_factory_config_schema.h>
 #include <example_shared/example_shared_schema.h>
 #include <tcp_blocking_stream/tcp_blocking_stream_config_schema.h>
@@ -1248,7 +1248,7 @@ namespace
         ConnectionFactoryValidatesStreamRpcLayerTopology)
     {
         rpc::connection_factory::connection_settings settings;
-        const rpc::connection_factory::layered_connection_context context;
+        const rpc::connection_factory::context context;
         const auto layer = [](std::string type, const char* options_json)
         {
             rpc::stream_layers::stream_layer_settings result;
@@ -1299,7 +1299,7 @@ namespace
         JsonConvert,
         ConnectionContextStoresTypedNamedDependencies)
     {
-        rpc::connection_factory::layered_connection_context context;
+        rpc::connection_factory::context context;
 
         auto unnamed_string = std::make_shared<std::string>("default");
         auto named_string = std::make_shared<std::string>("named");
@@ -1331,24 +1331,20 @@ namespace
         JsonConvert,
         RegisteredConnectionFactoryComponentOwnsTypedMaterialisation)
     {
-        rpc::connection_factory::layered_connection_context context;
+        rpc::connection_factory::context context;
         bool factory_called = false;
         std::string materialised_host;
         uint16_t materialised_port = 0;
 
-        context.register_connect_base_stream(
+        context.register_connect_base_stream<streaming::tcp::endpoint>(
             "test_lora",
-            [&](const json::v1::object& settings,
+            [&](streaming::tcp::endpoint settings,
                 std::shared_ptr<rpc::service>,
-                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
             {
                 factory_called = true;
-                auto materialised = rpc::connection_factory::materialise_settings<streaming::tcp::endpoint>(settings);
-                if (materialised.error_code != rpc::error::OK())
-                    CO_RETURN rpc::connection_factory::stream_result{materialised.error_code, {}};
-
-                materialised_host = materialised.settings.host;
-                materialised_port = materialised.settings.port;
+                materialised_host = std::move(settings.host);
+                materialised_port = settings.port;
                 CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}};
             });
 
@@ -1371,40 +1367,38 @@ namespace
         JsonConvert,
         RegisteredStreamLayersAreAppliedFromConnectionSettings)
     {
-        rpc::connection_factory::layered_connection_context context;
+        rpc::connection_factory::context context;
         std::vector<std::string> calls;
 
-        context.register_connect_base_stream(
+        context.register_connect_base_stream<rpc::connection_factory::service_settings>(
             "test_base",
-            [](const json::v1::object&,
+            [](rpc::connection_factory::service_settings,
                 std::shared_ptr<rpc::service>,
-                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
             { CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}}; });
-        context.register_accept_single_stream(
+        context.register_accept_single_stream<rpc::connection_factory::service_settings>(
             "test_base",
-            [](const json::v1::object&,
+            [](rpc::connection_factory::service_settings,
                 std::shared_ptr<rpc::service>,
-                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
             { CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}}; });
 
         auto register_layer = [&](const std::string& type)
         {
-            context.register_stream_layer(
+            context.register_stream_layer<rpc::connection_factory::service_settings>(
                 type,
                 [&, type](
                     std::shared_ptr<::streaming::stream> stream,
-                    const json::v1::object& settings,
+                    rpc::connection_factory::service_settings settings,
                     rpc::connection_factory::layer_direction direction,
-                    const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                    const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
                 {
-                    const auto& settings_map = settings.as_map();
-                    const auto marker = settings_map.find("marker");
-                    if (marker == settings_map.end())
+                    if (!settings.name)
                         CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
 
                     calls.push_back(
                         std::string(direction == rpc::connection_factory::layer_direction::connect ? "connect:" : "accept:")
-                        + type + ":" + marker->second.get<std::string>());
+                        + type + ":" + settings.name.value());
                     CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), std::move(stream)};
                 });
         };
@@ -1416,8 +1410,8 @@ namespace
             "transport": {"type": "stream_rpc", "settings": {"encoding": "nanopb"}},
             "stream_layers": [
                 {"type": "test_base", "settings": {}},
-                {"type": "test_layer_alpha", "settings": {"marker": "alpha"}},
-                {"type": "test_layer_beta", "settings": {"marker": "beta"}}
+                {"type": "test_layer_alpha", "settings": {"name": "alpha"}},
+                {"type": "test_layer_beta", "settings": {"name": "beta"}}
             ]
         })json");
         const auto materialised = rpc::connection_factory::materialise_connection_settings(parse(valid_json));
@@ -1438,6 +1432,37 @@ namespace
         ASSERT_EQ(calls.size(), 2u);
         EXPECT_EQ(calls[0], "accept:test_layer_alpha:alpha");
         EXPECT_EQ(calls[1], "accept:test_layer_beta:beta");
+    }
+
+    TEST(
+        JsonConvert,
+        RegisteredTypedConnectionFactoryComponentRejectsInvalidSettingsBeforeBuilder)
+    {
+        rpc::connection_factory::context context;
+        bool builder_called = false;
+
+        context.register_connect_base_stream<streaming::tcp::endpoint>(
+            "test_invalid_endpoint",
+            [&](streaming::tcp::endpoint,
+                std::shared_ptr<rpc::service>,
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+            {
+                builder_called = true;
+                CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}};
+            });
+
+        rpc::stream_layers::stream_layer_settings layer;
+        layer.type = "test_invalid_endpoint";
+        layer.settings = parse(R"json({
+            "port": "not-a-port"
+        })json");
+
+        rpc::connection_factory::connection_settings settings;
+        settings.stream_layers.push_back(std::move(layer));
+
+        auto result = SYNC_WAIT(rpc::connection_factory::connect_stream(settings, {}, context));
+        EXPECT_EQ(result.error_code, rpc::error::INVALID_DATA());
+        EXPECT_FALSE(builder_called);
     }
 
     TEST(
@@ -1638,12 +1663,12 @@ namespace
         ASSERT_NE(enclave_transport, nullptr);
         EXPECT_EQ(enclave_transport->get_enclave_path(), "/tmp/blocking_enclave.signed.so");
 
-        const auto runtime_settings = from_json_object<rpc::sgx_enclave_runtime::runtime_settings>(
-            enclave_transport->get_enclave_runtime_settings());
-        EXPECT_EQ(runtime_settings.io_uring.queue_depth, 64u);
-        EXPECT_TRUE(runtime_settings.io_uring.use_sqpoll);
-        EXPECT_EQ(runtime_settings.io_uring.fixed_file_count, 128u);
-        EXPECT_TRUE(runtime_settings.io_uring.register_fixed_files);
+        const auto runtime_settings = enclave_transport->get_enclave_runtime_startup_settings();
+        ASSERT_TRUE(runtime_settings.has_value());
+        EXPECT_EQ(runtime_settings.value().io_uring.queue_depth, 64u);
+        EXPECT_TRUE(runtime_settings.value().io_uring.use_sqpoll);
+        EXPECT_EQ(runtime_settings.value().io_uring.fixed_file_count, 128u);
+        EXPECT_TRUE(runtime_settings.value().io_uring.register_fixed_files);
     }
 #endif
 

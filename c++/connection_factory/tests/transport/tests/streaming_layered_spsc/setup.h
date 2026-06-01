@@ -9,7 +9,7 @@
 #include <string>
 
 #include <connection_factory/connection_factory.h>
-#include <connection_factory/detail/context.h>
+#include <connection_factory/context.h>
 #include <streaming/spsc_queue/factory.h>
 #include <transport/tests/streaming_setup_base.h>
 
@@ -46,19 +46,19 @@ class streaming_layered_spsc_setup
 
         rpc::stream_layers::stream_layer_settings alpha_layer;
         alpha_layer.type = "test_passthrough_alpha";
-        alpha_layer.settings = json::v1::parse(R"json({"marker": "alpha"})json");
+        alpha_layer.settings = json::v1::parse(R"json({"name": "alpha"})json");
         options.stream_layers.push_back(std::move(alpha_layer));
 
         rpc::stream_layers::stream_layer_settings beta_layer;
         beta_layer.type = "test_passthrough_beta";
-        beta_layer.settings = json::v1::parse(R"json({"marker": "beta"})json");
+        beta_layer.settings = json::v1::parse(R"json({"name": "beta"})json");
         options.stream_layers.push_back(std::move(beta_layer));
         return options;
     }
 
-    rpc::connection_factory::layered_connection_context make_layer_context()
+    rpc::connection_factory::context make_layer_context()
     {
-        rpc::connection_factory::layered_connection_context context;
+        rpc::connection_factory::context context;
         context.set_spsc_queues(queues_);
         register_passthrough_layer(context, "test_passthrough_alpha");
         register_passthrough_layer(context, "test_passthrough_beta");
@@ -66,24 +66,22 @@ class streaming_layered_spsc_setup
     }
 
     void register_passthrough_layer(
-        rpc::connection_factory::layered_connection_context& context,
+        rpc::connection_factory::context& factory_context,
         const std::string& type)
     {
-        context.register_stream_layer(
+        factory_context.register_stream_layer<rpc::connection_factory::service_settings>(
             type,
             [this, type](
                 std::shared_ptr<::streaming::stream> stream,
-                const json::v1::object& settings,
+                rpc::connection_factory::service_settings settings,
                 rpc::connection_factory::layer_direction direction,
-                const rpc::connection_factory::layered_connection_context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
             {
-                const auto& settings_map = settings.as_map();
-                const auto marker = settings_map.find("marker");
-                if (marker == settings_map.end() || marker->second.get_type() != json::v1::object::type::string_type)
+                if (!settings.name)
                     CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
 
                 const auto expected_marker = type == "test_passthrough_alpha" ? "alpha" : "beta";
-                if (marker->second.get<std::string>() != expected_marker)
+                if (settings.name.value() != expected_marker)
                     CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
 
                 if (direction == rpc::connection_factory::layer_direction::connect)

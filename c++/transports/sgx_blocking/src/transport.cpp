@@ -13,7 +13,9 @@
 #    include <sgx_capable.h>
 #    include <sgx_urts.h>
 #    include <edl/sgx_blocking_marshal.h>
+#    include <json/convert.h>
 #    include <rpc/rpc.h>
+#    include <sgx_enclave_runtime/sgx_enclave_runtime_config_schema.h>
 #    include <untrusted/sgx_blocking_transport_u.h>
 
 #    ifdef CANOPY_USE_TELEMETRY
@@ -35,6 +37,15 @@ namespace rpc::sgx_blocking_transport
         template<typename T> std::vector<char> to_sgx_blob(const T& value)
         {
             return rpc::to_yas_binary<std::vector<char>>(value);
+        }
+
+        json::v1::object runtime_settings_to_json(const rpc::optional<rpc::sgx_enclave_runtime::runtime_settings>& settings)
+        {
+            if (!settings)
+                return json::v1::object{json::v1::map{}};
+
+            using json::v1::convert::to_json_object;
+            return to_json_object(settings.value());
         }
 
         template<typename T>
@@ -333,31 +344,38 @@ namespace rpc::sgx_blocking_transport
         sgx_destroy_enclave(eid_);
     }
 
+    int enclave_transport::validate_startup_settings(const transport_settings& settings)
+    {
+        (void)settings;
+        return rpc::error::OK();
+    }
+
     enclave_transport::enclave_transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::string enclave_path)
+        : enclave_transport(
+              std::move(name),
+              std::move(service),
+              [enclave_path = std::move(enclave_path)]() mutable
+              {
+                  transport_settings settings;
+                  settings.enclave_path = std::move(enclave_path);
+                  return settings;
+              }())
+    {
+    }
+
+    enclave_transport::enclave_transport(
+        std::string name,
+        std::shared_ptr<rpc::service> service,
+        transport_settings settings)
         : rpc::transport(
               std::move(name),
               std::move(service))
-        , enclave_path_(std::move(enclave_path))
+        , enclave_path_(std::move(settings.enclave_path))
     {
-    }
-
-    bool enclave_transport::reject_configuration_change_after_start(const char* setting_name) const
-    {
-        if (!configuration_locked_.load(std::memory_order_acquire))
-            return false;
-
-        RPC_WARNING("SGX blocking transport configuration cannot change after inner_connect starts: {}", setting_name);
-        return true;
-    }
-
-    void enclave_transport::set_enclave_runtime_settings(json::v1::object settings)
-    {
-        if (reject_configuration_change_after_start("runtime_settings"))
-            return;
-        enclave_runtime_settings_ = std::make_shared<const json::v1::object>(std::move(settings));
+        enclave_runtime_settings_ = std::move(settings.enclave);
     }
 
     CORO_TASK(rpc::connect_result)
@@ -365,8 +383,6 @@ namespace rpc::sgx_blocking_transport
         std::shared_ptr<rpc::object_stub> stub,
         rpc::connection_settings input_descr)
     {
-        configuration_locked_.store(true, std::memory_order_release);
-
         sgx_launch_token_t token = {0};
         int updated = 0;
 #    ifdef _WIN32
@@ -420,12 +436,11 @@ namespace rpc::sgx_blocking_transport
 
         register_host_transport(eid_, std::static_pointer_cast<enclave_transport>(shared_from_this()));
 
-        auto runtime_settings = enclave_runtime_settings_;
         auto init_request = to_sgx_blob(to_sgx_request(
             input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address(),
             input_descr.encoding_type,
             adjacent_zone_id,
-            runtime_settings ? *runtime_settings : get_enclave_runtime_settings()));
+            runtime_settings_to_json(enclave_runtime_settings_)));
         std::vector<char> init_response_blob(1024);
         int err_code = rpc::error::OK();
         size_t init_response_size = 0;

@@ -5,6 +5,9 @@
 
 #include <transports/sgx_coroutine/host/transport.h>
 #include <untrusted/sgx_coroutine_transport_u.h>
+#include <io_uring/host_io_uring.h>
+#include <json/convert.h>
+#include <sgx_enclave_runtime/sgx_enclave_runtime_config_schema.h>
 #include <transports/streaming/transport.h>
 #include <transports/sgx_coroutine/sidecar/bootstrap.h>
 #include <streaming/stream_transport.h>
@@ -54,6 +57,15 @@ namespace rpc::sgx_coroutine_transport::host
         constexpr rpc::encoding sgx_bootstrap_init_request_encoding = rpc::encoding::yas_binary;
         constexpr uint64_t sgx_bootstrap_init_request_encoding_value
             = static_cast<uint64_t>(sgx_bootstrap_init_request_encoding);
+
+        json::v1::object runtime_settings_to_json(const rpc::optional<rpc::sgx_enclave_runtime::runtime_settings>& settings)
+        {
+            if (!settings)
+                return json::v1::object{json::v1::map{}};
+
+            using json::v1::convert::to_json_object;
+            return to_json_object(settings.value());
+        }
 
         inline auto startup_load_error(const error_code* value) noexcept -> error_code
         {
@@ -678,6 +690,25 @@ namespace rpc::sgx_coroutine_transport::host
         }
     }
 
+    int transport::validate_startup_settings(const rpc::sgx_coroutine_transport::transport_settings& settings)
+    {
+        auto validation_error = rpc::v4::secure_coroutine_module::validate_startup_applications_resource_budget(
+            settings.startup_applications);
+        if (validation_error != rpc::error::OK())
+            return validation_error;
+
+        if (settings.enclave)
+        {
+            using json::v1::convert::to_json_object;
+            validation_error = rpc::v4::secure_coroutine_module::validate_startup_runtime_settings_resource_budget(
+                to_json_object(settings.enclave.value()));
+            if (validation_error != rpc::error::OK())
+                return validation_error;
+        }
+
+        return rpc::error::OK();
+    }
+
     transport::transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
@@ -685,7 +716,23 @@ namespace rpc::sgx_coroutine_transport::host
         : transport(
               std::move(name),
               std::move(service),
-              std::move(enclave_path),
+              [enclave_path = std::move(enclave_path)]() mutable
+              {
+                  rpc::sgx_coroutine_transport::transport_settings settings;
+                  settings.enclave_path = std::move(enclave_path);
+                  return settings;
+              }())
+    {
+    }
+
+    transport::transport(
+        std::string name,
+        std::shared_ptr<rpc::service> service,
+        rpc::sgx_coroutine_transport::transport_settings settings)
+        : transport(
+              std::move(name),
+              std::move(service),
+              std::move(settings),
               std::make_shared<deferred_stream>())
     {
     }
@@ -693,7 +740,7 @@ namespace rpc::sgx_coroutine_transport::host
     transport::transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::string enclave_path,
+        rpc::sgx_coroutine_transport::transport_settings settings,
         std::shared_ptr<deferred_stream> deferred_stream)
         : rpc::stream_transport::transport(
               std::move(name),
@@ -702,9 +749,25 @@ namespace rpc::sgx_coroutine_transport::host
               nullptr,
               rpc::stream_transport::stream_transport_options{.call_timeout = std::chrono::milliseconds{0},
                   .call_timeout_sweep = std::chrono::milliseconds{0}})
-        , enclave_path_(std::move(enclave_path))
+        , enclave_path_(std::move(settings.enclave_path))
         , deferred_stream_(std::move(deferred_stream))
     {
+        apply_startup_settings(std::move(settings));
+    }
+
+    void transport::apply_startup_settings(rpc::sgx_coroutine_transport::transport_settings settings)
+    {
+        enclave_worker_thread_count_ = settings.worker_thread_count;
+        enclave_startup_applications_ = std::move(settings.startup_applications);
+        enclave_runtime_settings_ = std::move(settings.enclave);
+        if (enclave_runtime_settings_)
+        {
+            enclave_io_uring_options_ = rpc::io_uring::host_controller_options_from_enclave_host_options(
+                enclave_runtime_settings_.value().io_uring);
+        }
+        use_sidecar_ = settings.use_sidecar;
+        sidecar_executable_path_ = std::move(settings.sidecar_executable_path);
+        peer_to_peer_shared_memory_file_ = std::move(settings.peer_to_peer_shared_memory_file);
     }
 
     transport::~transport()
@@ -722,43 +785,6 @@ namespace rpc::sgx_coroutine_transport::host
             begin_clean_disconnect();
     }
 
-    bool transport::reject_configuration_change_after_start(const char* setting_name) const
-    {
-        if (!configuration_locked_.load(std::memory_order_acquire))
-            return false;
-
-        RPC_WARNING("SGX coroutine transport configuration cannot change after inner_connect starts: {}", setting_name);
-        return true;
-    }
-
-    void transport::set_enclave_worker_thread_count(uint32_t worker_thread_count)
-    {
-        if (reject_configuration_change_after_start("worker_thread_count"))
-            return;
-        enclave_worker_thread_count_ = worker_thread_count;
-    }
-
-    void transport::set_use_sidecar(bool use_sidecar)
-    {
-        if (reject_configuration_change_after_start("use_sidecar"))
-            return;
-        use_sidecar_ = use_sidecar;
-    }
-
-    void transport::set_sidecar_executable_path(std::string sidecar_executable_path)
-    {
-        if (reject_configuration_change_after_start("sidecar_executable_path"))
-            return;
-        sidecar_executable_path_ = std::move(sidecar_executable_path);
-    }
-
-    void transport::set_peer_to_peer_shared_memory_file(std::string shared_memory_file)
-    {
-        if (reject_configuration_change_after_start("peer_to_peer_shared_memory_file"))
-            return;
-        peer_to_peer_shared_memory_file_ = std::move(shared_memory_file);
-    }
-
 #ifdef CANOPY_BUILD_TEST
     int transport::sidecar_pid_for_test() const
     {
@@ -767,73 +793,6 @@ namespace rpc::sgx_coroutine_transport::host
         return sidecar_owner_->child_pid_for_test();
     }
 #endif
-
-    int transport::set_enclave_startup_applications(rpc::v4::secure_coroutine_module::startup_applications applications)
-    {
-        if (reject_configuration_change_after_start("startup_applications"))
-            return rpc::error::INVALID_DATA();
-
-        auto validation_error
-            = rpc::v4::secure_coroutine_module::validate_startup_applications_resource_budget(applications);
-        if (validation_error != rpc::error::OK())
-            return validation_error;
-
-        enclave_startup_applications_ = std::move(applications);
-        return rpc::error::OK();
-    }
-
-    int transport::set_enclave_startup_options(json::v1::object options)
-    {
-        if (reject_configuration_change_after_start("startup_options"))
-            return rpc::error::INVALID_DATA();
-
-        auto materialised = rpc::v4::secure_coroutine_module::materialise_startup_applications(options);
-        if (materialised.error_code != rpc::error::OK())
-            return materialised.error_code;
-
-        return set_enclave_startup_applications(std::move(materialised.applications));
-    }
-
-    int transport::set_enclave_runtime_settings(json::v1::object settings)
-    {
-        if (reject_configuration_change_after_start("runtime_settings"))
-            return rpc::error::INVALID_DATA();
-
-        auto validation_error
-            = rpc::v4::secure_coroutine_module::validate_startup_runtime_settings_resource_budget(settings);
-        if (validation_error != rpc::error::OK())
-            return validation_error;
-
-        enclave_runtime_settings_ = std::make_shared<const json::v1::object>(std::move(settings));
-        return rpc::error::OK();
-    }
-
-    void transport::set_enclave_io_uring_options(rpc::io_uring::host_controller::options options)
-    {
-        if (reject_configuration_change_after_start("io_uring_options"))
-            return;
-        enclave_io_uring_options_ = std::move(options);
-    }
-
-    void transport::set_host_stream_layer_applier(stream_layer_applier applier)
-    {
-        if (reject_configuration_change_after_start("host_stream_layer_applier"))
-            return;
-        host_stream_layer_applier_ = std::move(applier);
-    }
-
-    int transport::set_enclave_stream_layers(std::vector<rpc::stream_layers::stream_layer_settings> layers)
-    {
-        if (reject_configuration_change_after_start("stream_layers"))
-            return rpc::error::INVALID_DATA();
-
-        auto validation_error = rpc::v4::secure_coroutine_module::validate_startup_stream_layers_resource_budget(layers);
-        if (validation_error != rpc::error::OK())
-            return validation_error;
-
-        enclave_stream_layers_ = std::move(layers);
-        return rpc::error::OK();
-    }
 
     void transport::destroy_enclave_owner_async(
         std::shared_ptr<enclave_owner> owner,
@@ -970,8 +929,6 @@ namespace rpc::sgx_coroutine_transport::host
         std::shared_ptr<rpc::object_stub> stub,
         rpc::connection_settings input_descr)
     {
-        configuration_locked_.store(true, std::memory_order_release);
-
         auto svc = get_service();
         if (!svc)
         {
@@ -1050,9 +1007,8 @@ namespace rpc::sgx_coroutine_transport::host
         // spawn the main thread for this enclave
         const auto worker_thread_count = enclave_worker_thread_count_;
         std::map<std::string, json::v1::object> startup_applications;
-        std::shared_ptr<const json::v1::object> runtime_settings;
         startup_applications = enclave_startup_applications_;
-        runtime_settings = enclave_runtime_settings_;
+        auto runtime_settings = runtime_settings_to_json(enclave_runtime_settings_);
 
         if (pending_sidecar_owner)
         {
@@ -1070,7 +1026,7 @@ namespace rpc::sgx_coroutine_transport::host
             request.ticks_per_millisecond = host_ticks_per_millisecond();
             request.initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
             request.applications = std::move(startup_applications);
-            request.runtime_settings = runtime_settings ? *runtime_settings : get_enclave_runtime_settings();
+            request.runtime_settings = std::move(runtime_settings);
             request.stream_layers = std::move(enclave_stream_layers);
 
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
@@ -1171,7 +1127,7 @@ namespace rpc::sgx_coroutine_transport::host
             request.ticks_per_millisecond = host_ticks_per_millisecond();
             request.initial_unix_epoch_milliseconds = host_unix_epoch_milliseconds();
             request.applications = std::move(startup_applications);
-            request.runtime_settings = runtime_settings ? *runtime_settings : get_enclave_runtime_settings();
+            request.runtime_settings = std::move(runtime_settings);
             request.stream_layers = std::move(enclave_stream_layers);
             const auto request_type_id = rpc::id<init_request>::get(rpc::get_version());
             auto request_blob = std::make_shared<std::vector<char>>(rpc::to_yas_binary<std::vector<char>>(request));

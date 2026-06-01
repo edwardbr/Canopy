@@ -255,10 +255,12 @@ TEST(
     auto root_service = rpc::root_service::create("sidecar failed startup host", rpc::DEFAULT_PREFIX, scheduler);
     current_host_service = root_service;
 
+    rpc::sgx_coroutine_transport::transport_settings startup_settings;
+    startup_settings.enclave_path = coroutine_enclave_path;
+    startup_settings.use_sidecar = true;
+    startup_settings.sidecar_executable_path = "/bin/false";
     auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
-        "sidecar failed startup child", root_service, coroutine_enclave_path);
-    transport->set_use_sidecar(true);
-    transport->set_sidecar_executable_path("/bin/false");
+        "sidecar failed startup child", root_service, std::move(startup_settings));
 
     auto connect_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
         scheduler,
@@ -296,10 +298,12 @@ TEST(
     auto root_service = rpc::root_service::create("sidecar clean shutdown host", rpc::DEFAULT_PREFIX, scheduler);
     current_host_service = root_service;
 
+    rpc::sgx_coroutine_transport::transport_settings startup_settings;
+    startup_settings.enclave_path = coroutine_enclave_path;
+    startup_settings.use_sidecar = true;
+    startup_settings.sidecar_executable_path = CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH;
     auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
-        "sidecar clean shutdown child", root_service, coroutine_enclave_path);
-    transport->set_use_sidecar(true);
-    transport->set_sidecar_executable_path(CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH);
+        "sidecar clean shutdown child", root_service, std::move(startup_settings));
 
     auto connect_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
         scheduler,
@@ -348,10 +352,12 @@ TEST(
     auto root_service = rpc::root_service::create("sidecar host", rpc::DEFAULT_PREFIX, scheduler);
     current_host_service = root_service;
 
+    rpc::sgx_coroutine_transport::transport_settings startup_settings;
+    startup_settings.enclave_path = coroutine_enclave_path;
+    startup_settings.use_sidecar = true;
+    startup_settings.sidecar_executable_path = CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH;
     auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
-        "sidecar child", root_service, coroutine_enclave_path);
-    transport->set_use_sidecar(true);
-    transport->set_sidecar_executable_path(CANOPY_TEST_SGX_COROUTINE_SIDECAR_PATH);
+        "sidecar child", root_service, std::move(startup_settings));
 
     auto connect_result = sgx_coroutine_setup_detail::run_on_manual_scheduler<rpc::service_connect_result<yyy::i_example>>(
         scheduler,

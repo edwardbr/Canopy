@@ -10,7 +10,7 @@
 #include <typeindex>
 #include <utility>
 
-#include <connection_factory/detail/context.h>
+#include <connection_factory/context.h>
 #include <connection_factory/detail/service.h>
 #include <connection_factory_components.h>
 #include <streaming/layer_factory/factory.h>
@@ -360,6 +360,41 @@ namespace rpc::connection_factory
 
     context::~context() = default;
 
+    int configure_service(
+        const std::shared_ptr<rpc::service>& service,
+        const rpc::stream_transport::transport_settings& settings)
+    {
+        return rpc::stream_transport::configure_service(service, settings);
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const service_settings& settings,
+        const rpc::stream_transport::transport_settings& transport_settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        rpc::stream_transport::service_settings stream_service_settings;
+        stream_service_settings.name = settings.name;
+        return rpc::stream_transport::ensure_service(
+            stream_service_settings, transport_settings, std::move(service), std::move(default_name));
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const stream_rpc_connection_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        return rpc::stream_transport::ensure_service(settings, std::move(service), std::move(default_name));
+    }
+
+    std::shared_ptr<rpc::service> ensure_service(
+        const rpc::stream_transport::transport_settings& settings,
+        std::shared_ptr<rpc::service> service,
+        std::string default_name)
+    {
+        return rpc::stream_transport::ensure_service(settings, std::move(service), std::move(default_name));
+    }
+
     void context::set_dependency_impl(
         std::type_index type,
         std::string name,
@@ -428,36 +463,36 @@ namespace rpc::connection_factory
     }
 #endif
 
-    void context::register_connect_base_stream(
+    void context::register_connect_base_stream_impl(
         std::string type,
-        base_stream_connect_builder builder)
+        detail::base_stream_connect_builder builder)
     {
         if (!impl_)
             impl_ = std::make_shared<impl>();
         custom_stream_component(*impl_, type).connect_base_builder = std::move(builder);
     }
 
-    void context::register_accept_base_stream(
+    void context::register_accept_base_stream_impl(
         std::string type,
-        base_stream_acceptor_builder builder)
+        detail::base_stream_acceptor_builder builder)
     {
         if (!impl_)
             impl_ = std::make_shared<impl>();
         custom_stream_component(*impl_, type).accept_base_builder = std::move(builder);
     }
 
-    void context::register_accept_single_stream(
+    void context::register_accept_single_stream_impl(
         std::string type,
-        base_stream_accept_builder builder)
+        detail::base_stream_accept_builder builder)
     {
         if (!impl_)
             impl_ = std::make_shared<impl>();
         custom_stream_component(*impl_, type).accept_single_base_builder = std::move(builder);
     }
 
-    void context::register_stream_layer(
+    void context::register_stream_layer_impl(
         std::string type,
-        stream_layer_builder builder)
+        detail::stream_layer_builder builder)
     {
         if (!impl_)
             impl_ = std::make_shared<impl>();
@@ -467,7 +502,7 @@ namespace rpc::connection_factory
     int detail::validate_stream_rpc_connection_settings(
         const connection_settings& settings,
         layer_direction direction,
-        const layered_connection_context& context)
+        const context& factory_context)
     {
         if (settings.stream_layers.empty())
             return rpc::error::INVALID_DATA();
@@ -477,7 +512,7 @@ namespace rpc::connection_factory
             if (type.empty())
                 return false;
 
-            const auto& context_state = detail::connection_factory_access::state(context);
+            const auto& context_state = detail::connection_factory_access::state(factory_context);
             if (context_state)
             {
                 const auto custom = context_state->custom_stream_components.find(type);
@@ -511,7 +546,7 @@ namespace rpc::connection_factory
                 return rpc::error::INVALID_DATA();
 
             bool layer_supported = false;
-            const auto& context_state = detail::connection_factory_access::state(context);
+            const auto& context_state = detail::connection_factory_access::state(factory_context);
             if (context_state)
             {
                 const auto custom = context_state->custom_stream_components.find(layer.type);
@@ -570,7 +605,7 @@ namespace rpc::connection_factory
         const transport_selection_result& transport,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context,
+        const context& factory_context,
         rpc::shared_ptr<rpc::i_noop> input_interface) -> rpc::sgx_coroutine_transport::host::rpc_bootstrap_context
     {
         if (!settings.stream_layers.empty())
@@ -588,7 +623,7 @@ namespace rpc::connection_factory
             return {rpc::error::INVALID_DATA(), {}, {}, {}, {}};
 
         auto controller_options = rpc::io_uring::default_enclave_host_controller_options();
-        if (auto configured_options = context.get_dependency<rpc::io_uring::host_controller::options>())
+        if (auto configured_options = factory_context.get_dependency<rpc::io_uring::host_controller::options>())
             controller_options = *configured_options;
         if (auto enclave_options = enclave_transport->get_enclave_io_uring_options())
             controller_options = *enclave_options;
@@ -623,20 +658,21 @@ namespace rpc::connection_factory
     auto detail::connect_base_stream(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) -> CORO_TASK(stream_result)
+        const context& factory_context) -> CORO_TASK(stream_result)
     {
-        auto& state = *detail::connection_factory_access::state(context);
+        auto& state = *detail::connection_factory_access::state(factory_context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_connect_base())
         {
-            CO_RETURN CO_AWAIT custom->second->connect_base(detail::settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT custom->second->connect_base(
+                detail::settings_object(layer), std::move(service), factory_context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_connect_base())
         {
-            CO_RETURN CO_AWAIT built_in->connect_base(detail::settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->connect_base(detail::settings_object(layer), std::move(service), factory_context);
         }
 
         CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
@@ -645,20 +681,21 @@ namespace rpc::connection_factory
     auto detail::accept_base_streams(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) -> CORO_TASK(stream_acceptor_result)
+        const context& factory_context) -> CORO_TASK(stream_acceptor_result)
     {
-        auto& state = *detail::connection_factory_access::state(context);
+        auto& state = *detail::connection_factory_access::state(factory_context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_accept_base())
         {
-            CO_RETURN CO_AWAIT custom->second->accept_base(detail::settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT custom->second->accept_base(
+                detail::settings_object(layer), std::move(service), factory_context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_accept_base())
         {
-            CO_RETURN CO_AWAIT built_in->accept_base(detail::settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->accept_base(detail::settings_object(layer), std::move(service), factory_context);
         }
 
         CO_RETURN stream_acceptor_result{rpc::error::INVALID_DATA(), {}, {}, 0};
@@ -667,21 +704,22 @@ namespace rpc::connection_factory
     auto detail::accept_single_base_stream(
         const rpc::stream_layers::stream_layer_settings& layer,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) -> CORO_TASK(stream_result)
+        const context& factory_context) -> CORO_TASK(stream_result)
     {
-        auto& state = *detail::connection_factory_access::state(context);
+        auto& state = *detail::connection_factory_access::state(factory_context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_accept_single_base())
         {
             CO_RETURN CO_AWAIT custom->second->accept_single_base(
-                detail::settings_object(layer), std::move(service), context);
+                detail::settings_object(layer), std::move(service), factory_context);
         }
 
         const auto* built_in = built_in_stream_component(layer.type);
         if (built_in && built_in->supports_accept_single_base())
         {
-            CO_RETURN CO_AWAIT built_in->accept_single_base(detail::settings_object(layer), std::move(service), context);
+            CO_RETURN CO_AWAIT built_in->accept_single_base(
+                detail::settings_object(layer), std::move(service), factory_context);
         }
 
         CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
@@ -691,15 +729,15 @@ namespace rpc::connection_factory
         std::shared_ptr<::streaming::stream> stream,
         const rpc::stream_layers::stream_layer_settings& layer,
         layer_direction direction,
-        const layered_connection_context& context) -> CORO_TASK(stream_result)
+        const context& factory_context) -> CORO_TASK(stream_result)
     {
-        auto& state = *detail::connection_factory_access::state(context);
+        auto& state = *detail::connection_factory_access::state(factory_context);
 
         const auto custom = state.custom_stream_components.find(layer.type);
         if (custom != state.custom_stream_components.end() && custom->second->supports_stream_layer())
         {
             CO_RETURN CO_AWAIT custom->second->wrap_stream(
-                std::move(stream), detail::settings_object(layer), direction, context);
+                std::move(stream), detail::settings_object(layer), direction, factory_context);
         }
 
         auto layer_context = make_streaming_layer_context(state, layer.type);
@@ -713,7 +751,7 @@ namespace rpc::connection_factory
         const connection_settings& settings,
         size_t first_layer,
         layer_direction direction,
-        const layered_connection_context& context) -> CORO_TASK(stream_result)
+        const context& factory_context) -> CORO_TASK(stream_result)
     {
         if (first_layer > settings.stream_layers.size())
             CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
@@ -721,7 +759,7 @@ namespace rpc::connection_factory
         for (auto layer_index = first_layer; layer_index < settings.stream_layers.size(); ++layer_index)
         {
             auto result = CO_AWAIT detail::apply_stream_layer(
-                std::move(stream), settings.stream_layers[layer_index], direction, context);
+                std::move(stream), settings.stream_layers[layer_index], direction, factory_context);
             if (result.error_code != rpc::error::OK())
                 CO_RETURN result;
             stream = std::move(result.stream);

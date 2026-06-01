@@ -19,6 +19,7 @@
 #include <json/json_dom.h>
 #include <rpc/rpc.h>
 #include <secure_coroutine_module/secure_coroutine_module.h>
+#include <sgx_coroutine_transport/sgx_coroutine_transport_config.h>
 #include <streaming/stream_layers.h>
 #include <streaming/spsc_queue/stream.h>
 #include <transports/secure_coroutine_module/startup_options.h>
@@ -44,6 +45,9 @@ namespace rpc::sgx_coroutine_transport::host
         };
 
         using stream_layer_applier = std::function<CORO_TASK(stream_layer_result)(std::shared_ptr<::streaming::stream>)>;
+
+        [[nodiscard]] static int validate_startup_settings(
+            const rpc::sgx_coroutine_transport::transport_settings& settings);
 
     private:
         struct enclave_owner
@@ -89,8 +93,7 @@ namespace rpc::sgx_coroutine_transport::host
         std::shared_ptr<::streaming::spsc_queue::stream> queue_stream_;
         std::shared_ptr<enclave_owner> enclave_owner_;
         std::shared_ptr<sidecar_owner> sidecar_owner_;
-        std::shared_ptr<const json::v1::object> enclave_runtime_settings_{
-            std::make_shared<const json::v1::object>(json::v1::map{})};
+        rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave_runtime_settings_;
         std::optional<rpc::io_uring::host_controller::options> enclave_io_uring_options_;
         stream_layer_applier host_stream_layer_applier_;
         bool use_sidecar_{false};
@@ -99,8 +102,9 @@ namespace rpc::sgx_coroutine_transport::host
         transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::string enclave_path,
+            rpc::sgx_coroutine_transport::transport_settings settings,
             std::shared_ptr<deferred_stream> deferred_stream);
+        void apply_startup_settings(rpc::sgx_coroutine_transport::transport_settings settings);
         void start_worker_thread(
             enclave_owner& owner,
             std::shared_ptr<std::vector<char>> enter_blob);
@@ -108,7 +112,6 @@ namespace rpc::sgx_coroutine_transport::host
         static void destroy_enclave_owner_async(
             std::shared_ptr<enclave_owner> owner,
             rpc::coro::scheduler_ptr scheduler) noexcept;
-        [[nodiscard]] bool reject_configuration_change_after_start(const char* setting_name) const;
 
     protected:
         void on_destination_count_zero() override;
@@ -118,6 +121,10 @@ namespace rpc::sgx_coroutine_transport::host
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::string enclave_path);
+        transport(
+            std::string name,
+            std::shared_ptr<rpc::service> service,
+            rpc::sgx_coroutine_transport::transport_settings settings);
 
         ~transport() override;
 
@@ -131,40 +138,31 @@ namespace rpc::sgx_coroutine_transport::host
         void set_status(rpc::transport_status status) override;
 
         const std::string& get_enclave_path() const { return enclave_path_; }
-        // Construction-time configuration only. Call these setters before
-        // inner_connect(); they are not synchronized with a live transport.
-        void set_enclave_worker_thread_count(uint32_t worker_thread_count);
-        [[nodiscard]] int set_enclave_startup_applications(
-            rpc::v4::secure_coroutine_module::startup_applications applications);
-        [[nodiscard]] int set_enclave_startup_options(json::v1::object options);
-        [[nodiscard]] int set_enclave_runtime_settings(json::v1::object settings);
-        [[nodiscard]] const json::v1::object& get_enclave_runtime_settings() const
+        [[nodiscard]] rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> get_enclave_runtime_startup_settings() const
         {
-            if (!enclave_runtime_settings_)
-            {
-                static const json::v1::object empty_settings{json::v1::map{}};
-                return empty_settings;
-            }
-            return *enclave_runtime_settings_;
+            return enclave_runtime_settings_;
         }
-        void set_enclave_io_uring_options(rpc::io_uring::host_controller::options options);
         [[nodiscard]] std::optional<rpc::io_uring::host_controller::options> get_enclave_io_uring_options() const
         {
             return enclave_io_uring_options_;
         }
-        void set_use_sidecar(bool use_sidecar);
         [[nodiscard]] bool get_use_sidecar() const { return use_sidecar_; }
-        void set_sidecar_executable_path(std::string sidecar_executable_path);
-        void set_peer_to_peer_shared_memory_file(std::string shared_memory_file);
 #ifdef CANOPY_BUILD_TEST
         [[nodiscard]] int sidecar_pid_for_test() const;
+        [[nodiscard]] uint32_t enclave_worker_thread_count_for_test() const { return enclave_worker_thread_count_; }
+        [[nodiscard]] const std::string& sidecar_executable_path_for_test() const { return sidecar_executable_path_; }
+        [[nodiscard]] const std::string& peer_to_peer_shared_memory_file_for_test() const
+        {
+            return peer_to_peer_shared_memory_file_;
+        }
+        [[nodiscard]] const rpc::v4::secure_coroutine_module::startup_applications& enclave_startup_applications_for_test() const
+        {
+            return enclave_startup_applications_;
+        }
 #endif
-        void set_host_stream_layer_applier(stream_layer_applier applier);
-        [[nodiscard]] int set_enclave_stream_layers(std::vector<rpc::stream_layers::stream_layer_settings> layers);
 
     private:
         std::atomic<bool> enclave_shutdown_started_{false};
-        std::atomic<bool> configuration_locked_{false};
         uint32_t enclave_worker_thread_count_{0};
         std::mutex status_transition_mutex_;
         rpc::v4::secure_coroutine_module::startup_applications enclave_startup_applications_{};

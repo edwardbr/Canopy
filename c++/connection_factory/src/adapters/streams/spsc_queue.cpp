@@ -25,12 +25,12 @@ namespace rpc::connection_factory::detail
             auto connect_base(
                 const json::v1::object& settings,
                 std::shared_ptr<rpc::service> service,
-                const layered_connection_context& context) const -> CORO_TASK(stream_result) override
+                const context& factory_context) const -> CORO_TASK(stream_result) override
             {
                 auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())
                     CO_RETURN stream_result{spsc_settings.error_code, {}};
-                auto queues = context.get_dependency<rpc::spsc_queue::queue_pair>(
+                auto queues = factory_context.get_dependency<rpc::spsc_queue::queue_pair>(
                     spsc_settings.settings.queue_pair ? spsc_settings.settings.queue_pair.value() : std::string{});
                 if (!queues)
                     CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
@@ -40,12 +40,12 @@ namespace rpc::connection_factory::detail
             auto accept_single_base(
                 const json::v1::object& settings,
                 std::shared_ptr<rpc::service> service,
-                const layered_connection_context& context) const -> CORO_TASK(stream_result) override
+                const context& factory_context) const -> CORO_TASK(stream_result) override
             {
                 auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())
                     CO_RETURN stream_result{spsc_settings.error_code, {}};
-                auto queues = context.get_dependency<rpc::spsc_queue::queue_pair>(
+                auto queues = factory_context.get_dependency<rpc::spsc_queue::queue_pair>(
                     spsc_settings.settings.queue_pair ? spsc_settings.settings.queue_pair.value() : std::string{});
                 if (!queues)
                     CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};

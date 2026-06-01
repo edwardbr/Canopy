@@ -24,7 +24,7 @@ namespace rpc::connection_factory::detail
             auto connect_base(
                 const json::v1::object& settings,
                 std::shared_ptr<rpc::service> service,
-                const layered_connection_context&) const -> CORO_TASK(stream_result) override
+                const context&) const -> CORO_TASK(stream_result) override
             {
                 auto io_options = materialise_settings<rpc::tcp_coroutine_stream::endpoint>(settings);
                 if (io_options.error_code != rpc::error::OK())
@@ -36,7 +36,7 @@ namespace rpc::connection_factory::detail
             auto accept_base(
                 const json::v1::object& settings,
                 std::shared_ptr<rpc::service> service,
-                const layered_connection_context&) const -> CORO_TASK(stream_acceptor_result) override
+                const context&) const -> CORO_TASK(stream_acceptor_result) override
             {
                 auto io_options = materialise_settings<rpc::tcp_coroutine_stream::endpoint>(settings);
                 if (io_options.error_code != rpc::error::OK())

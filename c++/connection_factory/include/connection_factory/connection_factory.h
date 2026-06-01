@@ -7,20 +7,13 @@
 
 #include <memory>
 
+#include <connection_factory/context.h>
 #include <connection_factory/handles.h>
 #include <connection_factory/options.h>
 #include <connection_factory_config/connection_factory_config.h>
 
 namespace rpc::connection_factory
 {
-    enum class layer_direction
-    {
-        connect,
-        accept,
-    };
-
-    class context;
-
     // Shared empty advanced context used by the simple overload defaults.
     // Most applications should not need to create a context.
     [[nodiscard]] const context& default_context();
@@ -131,11 +124,6 @@ namespace rpc::connection_factory
         std::shared_ptr<rpc::service> service = {},
         const context& factory_context = default_context(),
         rpc_transport_observer observe_transport = {});
-
-    namespace detail
-    {
-        class connection_factory_access;
-    } // namespace detail
 } // namespace rpc::connection_factory
 
 #include <connection_factory/detail/connection_factory_impl.h>

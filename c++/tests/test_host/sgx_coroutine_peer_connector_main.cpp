@@ -59,10 +59,12 @@ namespace
         int& exit_code,
         std::atomic_bool& done)
     {
+        rpc::sgx_coroutine_transport::transport_settings startup_settings;
+        startup_settings.enclave_path = coroutine_enclave_path;
+        startup_settings.use_sidecar = true;
+        startup_settings.peer_to_peer_shared_memory_file = std::move(shared_memory_file);
         auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
-            "sgx_coroutine_peer_connector", service, coroutine_enclave_path);
-        transport->set_use_sidecar(true);
-        transport->set_peer_to_peer_shared_memory_file(std::move(shared_memory_file));
+            "sgx_coroutine_peer_connector", service, std::move(startup_settings));
 
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result

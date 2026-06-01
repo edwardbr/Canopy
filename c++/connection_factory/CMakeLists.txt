@@ -5,6 +5,8 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+include(GNUInstallDirs)
+
 CanopyGenerate(
   connection_factory_config
   connection_factory_config/connection_factory_config.idl
@@ -45,6 +47,12 @@ if(TARGET streaming_tcp_blocking)
   target_link_libraries(connection_factory PUBLIC streaming_tcp_blocking tcp_blocking_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING)
 endif()
+
+install(
+  DIRECTORY include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING
+  PATTERN "*.h*")
 
 if(TARGET transport_local)
   target_sources(

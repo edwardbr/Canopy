@@ -101,23 +101,23 @@ public:
     virtual CORO_TASK(stream_result) connect_base(
         const json::v1::object& settings,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) const;
+        const context& factory_context) const;
 
     virtual CORO_TASK(stream_acceptor_result) accept_base(
         const json::v1::object& settings,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) const;
+        const context& factory_context) const;
 
     virtual CORO_TASK(stream_result) accept_single_base(
         const json::v1::object& settings,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context& context) const;
+        const context& factory_context) const;
 
     virtual CORO_TASK(stream_result) wrap(
         std::shared_ptr<streaming::stream> stream,
         const json::v1::object& settings,
         layer_direction direction,
-        const layered_connection_context& context) const;
+        const context& factory_context) const;
 };
 ```
 
@@ -129,7 +129,7 @@ class tcp_stream_factory final : public stream_component_factory
     CORO_TASK(stream_result) connect_base(
         const json::v1::object& json,
         std::shared_ptr<rpc::service> service,
-        const layered_connection_context&) const override
+        const context&) const override
     {
         auto settings = materialise_settings<streaming::blocking::tcp::endpoint>(json);
         if (settings.error_code != rpc::error::OK())

@@ -1207,6 +1207,41 @@ namespace rpc
         std::shared_ptr<rpc::object_stub> input_stub;
         bool stub_created = false;
 
+        auto release_input_stub_after_failed_connect = [&]() -> CORO_TASK(void)
+        {
+            if (!input_stub)
+                CO_RETURN;
+
+            CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id());
+
+            std::lock_guard g(stub_control_);
+            // this is a hard race condition but we need to check if the stub was created and if it is not
+            // referenced, there is a microscopic risk that somehow the reference to the stub was shared around in
+            // other threads and they have not got around to add_refing it.  The stub will remain valid until their
+            // callstacks hold onto the shared_ptr of the object that the stub is holding, but then the object may
+            // be deleted soon afterwards.
+            if (stub_created && input_stub->get_shared_count() == 0 && input_stub->get_optimistic_count() == 0)
+            {
+                // take the cyonide pill die when people leave the room
+                input_stub->dont_keep_alive();
+            }
+            CO_RETURN;
+        };
+
+        auto rollback_failed_connection = [&](rpc::service_proxy* service_proxy_to_remove) -> CORO_TASK(void)
+        {
+            CO_AWAIT release_input_stub_after_failed_connect();
+            CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
+            if (service_proxy_to_remove)
+            {
+                remove_zone_proxy_if_matches(service_proxy_to_remove->get_destination_zone_id(), service_proxy_to_remove);
+            }
+            auto adjacent_zone_id = child_transport->get_adjacent_zone_id();
+            if (adjacent_zone_id.get_subnet() != 0)
+                remove_transport_if_matches(adjacent_zone_id, child_transport.get());
+            CO_RETURN;
+        };
+
         if (input_interface)
         {
             // this is to check that an interface is belonging to another zone and not the operating zone
@@ -1274,26 +1309,7 @@ namespace rpc
         output_descr = std::move(connect_result.output_descriptor);
         if (err_code != rpc::error::OK())
         {
-            if (input_stub)
-            {
-                CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id());
-
-                std::lock_guard g(stub_control_);
-                // this is a hard race condition but we need to check if the stub was created and if it is not
-                // referenced, there is a microscopic risk that somehow the reference to the stub was shared around in
-                // other threads and they have not got around to add_refing it.  The stub will remain valid until their
-                // callstacks hold onto the shared_ptr of the object that the stub is holding, but then the object may
-                // be deleted soon afterwards.
-                if (stub_created && input_stub->get_shared_count() == 0 && input_stub->get_optimistic_count() == 0)
-                {
-                    // take the cyonide pill die when people leave the room
-                    input_stub->dont_keep_alive();
-                }
-            }
-            CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
-            auto adjacent_zone_id = child_transport->get_adjacent_zone_id();
-            if (adjacent_zone_id.get_subnet() != 0)
-                remove_transport_if_matches(adjacent_zone_id, child_transport.get());
+            CO_AWAIT rollback_failed_connection(nullptr);
             result.error_code = err_code;
             CO_RETURN result;
         }
@@ -1319,22 +1335,7 @@ namespace rpc
 
         if (err_code != rpc::error::OK())
         {
-            if (input_stub)
-            {
-                CO_AWAIT release_local_stub(input_stub, false, child_transport->get_adjacent_zone_id());
-
-                std::lock_guard g(stub_control_);
-                if (stub_created && input_stub->get_shared_count() == 0 && input_stub->get_optimistic_count() == 0)
-                    input_stub->dont_keep_alive();
-            }
-
-            CO_AWAIT child_transport->notify_all_destinations_of_disconnect();
-            if (new_service_proxy)
-                remove_zone_proxy_if_matches(new_service_proxy->get_destination_zone_id(), new_service_proxy.get());
-            auto adjacent_zone_id = child_transport->get_adjacent_zone_id();
-            if (adjacent_zone_id.get_subnet() != 0)
-                remove_transport_if_matches(adjacent_zone_id, child_transport.get());
-
+            CO_AWAIT rollback_failed_connection(new_service_proxy.get());
             result.error_code = err_code;
             CO_RETURN result;
         }

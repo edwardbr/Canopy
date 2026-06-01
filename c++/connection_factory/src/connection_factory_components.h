@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <connection_factory/detail/context.h>
+#include <connection_factory/context.h>
 #include <connection_factory/detail/service.h>
 
 namespace rpc::connection_factory::detail
@@ -37,7 +37,7 @@ namespace rpc::connection_factory::detail
         virtual auto connect_base(
             const json::v1::object&,
             std::shared_ptr<rpc::service>,
-            const layered_connection_context&) const -> CORO_TASK(stream_result)
+            const context&) const -> CORO_TASK(stream_result)
         {
             CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -45,7 +45,7 @@ namespace rpc::connection_factory::detail
         virtual auto accept_base(
             const json::v1::object&,
             std::shared_ptr<rpc::service>,
-            const layered_connection_context&) const -> CORO_TASK(stream_acceptor_result)
+            const context&) const -> CORO_TASK(stream_acceptor_result)
         {
             CO_RETURN stream_acceptor_result{rpc::error::INVALID_DATA(), {}, {}, 0};
         }
@@ -53,7 +53,7 @@ namespace rpc::connection_factory::detail
         virtual auto accept_single_base(
             const json::v1::object&,
             std::shared_ptr<rpc::service>,
-            const layered_connection_context&) const -> CORO_TASK(stream_result)
+            const context&) const -> CORO_TASK(stream_result)
         {
             CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -62,7 +62,7 @@ namespace rpc::connection_factory::detail
             std::shared_ptr<::streaming::stream>,
             const json::v1::object&,
             layer_direction,
-            const layered_connection_context&) const -> CORO_TASK(stream_result)
+            const context&) const -> CORO_TASK(stream_result)
         {
             CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
         }
@@ -84,34 +84,34 @@ namespace rpc::connection_factory::detail
         auto connect_base(
             const json::v1::object& settings,
             std::shared_ptr<rpc::service> service,
-            const layered_connection_context& context) const -> CORO_TASK(stream_result) override
+            const context& factory_context) const -> CORO_TASK(stream_result) override
         {
-            CO_RETURN CO_AWAIT connect_base_builder(settings, std::move(service), context);
+            CO_RETURN CO_AWAIT connect_base_builder(settings, std::move(service), factory_context);
         }
 
         auto accept_base(
             const json::v1::object& settings,
             std::shared_ptr<rpc::service> service,
-            const layered_connection_context& context) const -> CORO_TASK(stream_acceptor_result) override
+            const context& factory_context) const -> CORO_TASK(stream_acceptor_result) override
         {
-            CO_RETURN CO_AWAIT accept_base_builder(settings, std::move(service), context);
+            CO_RETURN CO_AWAIT accept_base_builder(settings, std::move(service), factory_context);
         }
 
         auto accept_single_base(
             const json::v1::object& settings,
             std::shared_ptr<rpc::service> service,
-            const layered_connection_context& context) const -> CORO_TASK(stream_result) override
+            const context& factory_context) const -> CORO_TASK(stream_result) override
         {
-            CO_RETURN CO_AWAIT accept_single_base_builder(settings, std::move(service), context);
+            CO_RETURN CO_AWAIT accept_single_base_builder(settings, std::move(service), factory_context);
         }
 
         auto wrap_stream(
             std::shared_ptr<::streaming::stream> stream,
             const json::v1::object& settings,
             layer_direction direction,
-            const layered_connection_context& context) const -> CORO_TASK(stream_result) override
+            const context& factory_context) const -> CORO_TASK(stream_result) override
         {
-            CO_RETURN CO_AWAIT stream_layer_builder_fn(std::move(stream), settings, direction, context);
+            CO_RETURN CO_AWAIT stream_layer_builder_fn(std::move(stream), settings, direction, factory_context);
         }
     };
 

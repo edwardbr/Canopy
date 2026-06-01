@@ -244,10 +244,12 @@ Do **not** include `_stub.h` or `_proxy.h` directly; `name.h` is the public head
 
 ```cpp
 #include <rpc/rpc.h>
-#include <connection_factory/tcp.h>
+#include <connection_factory/connection_factory.h>
 #include <canopy/network_config/cli_args.h>
 #include <canopy/network_config/zone.h>
-#include <connection_factory_config/connection_factory_config.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 #include <my_service/my_service.h>   // generated header
 
 // Required when telemetry is disabled — Canopy macros call this
@@ -275,6 +277,17 @@ public:
     }
 };
 
+template<class Settings>
+rpc::connection_factory::typed_settings make_typed_settings(std::string type, Settings settings)
+{
+    using json::v1::convert::to_json_object;
+
+    rpc::connection_factory::typed_settings result;
+    result.type = std::move(type);
+    result.settings = to_json_object(settings);
+    return result;
+}
+
 // Coroutine entry point for the server
 CORO_TASK(int) run_server(
     std::shared_ptr<coro::scheduler> scheduler,
@@ -297,16 +310,30 @@ CORO_TASK(int) run_server(
         "my_server", server_zone, scheduler);
     service->set_shutdown_event(on_shutdown);
 
-    rpc::connection_factory_config::stream_factory_options options;
-    auto& endpoint = options.endpoint.emplace();
+    rpc::connection_factory::connection_settings options;
+
+    rpc::connection_factory::service_settings service_settings;
+    service_settings.name = std::string("my_server");
+    options.service = make_typed_settings("service", service_settings);
+
+    rpc::stream_transport::transport_settings transport_settings;
+    transport_settings.name = std::string("server_transport");
+    transport_settings.encoding = rpc::encoding::nanopb;
+    options.transport = make_typed_settings("stream_rpc", transport_settings);
+
+    rpc::stream_transport::listener_settings listener_settings;
+    listener_settings.name = std::string("server_listener");
+    options.listener = make_typed_settings("stream_rpc", listener_settings);
+
+    rpc::tcp_coroutine_stream::endpoint endpoint;
     endpoint.host = listen->to_string();
     endpoint.port = listen->port;
-    options.service.emplace().name = std::string("my_server");
-    options.transport.emplace().name = std::string("server_transport");
-    options.listener.emplace().name = std::string("server_listener");
-    options.rpc.emplace().encoding = std::string("nanopb");
+    rpc::stream_layers::stream_layer_settings tcp_layer;
+    tcp_layer.type = "tcp_coroutine";
+    tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+    options.stream_layers.push_back(std::move(tcp_layer));
 
-    auto listener = CO_AWAIT rpc::tcp::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+    auto listener = CO_AWAIT rpc::connection_factory::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
         rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
         options,
         service);
@@ -348,13 +375,26 @@ int main(int argc, char* argv[])
 
 ```cpp
 #include <rpc/rpc.h>
-#include <connection_factory/tcp.h>
+#include <connection_factory/connection_factory.h>
 #include <canopy/network_config/cli_args.h>
 #include <canopy/network_config/zone.h>
-#include <connection_factory_config/connection_factory_config.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 #include <my_service/my_service.h>
 
 // rpc_log() required here too (see server example above)
+
+template<class Settings>
+rpc::connection_factory::typed_settings make_typed_settings(std::string type, Settings settings)
+{
+    using json::v1::convert::to_json_object;
+
+    rpc::connection_factory::typed_settings result;
+    result.type = std::move(type);
+    result.settings = to_json_object(settings);
+    return result;
+}
 
 CORO_TASK(int) run_client(
     std::shared_ptr<coro::scheduler> scheduler,
@@ -374,16 +414,27 @@ CORO_TASK(int) run_client(
     auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
 
-    rpc::connection_factory_config::stream_factory_options options;
-    auto& endpoint = options.endpoint.emplace();
+    rpc::connection_factory::connection_settings options;
+
+    rpc::connection_factory::service_settings service_settings;
+    service_settings.name = std::string("my_client");
+    options.service = make_typed_settings("service", service_settings);
+
+    rpc::stream_transport::transport_settings transport_settings;
+    transport_settings.name = std::string("client_transport");
+    transport_settings.service_proxy_name = std::string("my_server");
+    transport_settings.encoding = rpc::encoding::nanopb;
+    options.transport = make_typed_settings("stream_rpc", transport_settings);
+
+    rpc::tcp_coroutine_stream::endpoint endpoint;
     endpoint.host = remote_cfg->to_string();
     endpoint.port = remote_cfg->port;
-    options.service.emplace().name = std::string("my_client");
-    options.transport.emplace().name = std::string("client_transport");
-    options.connection.emplace().name = std::string("my_server");
-    options.rpc.emplace().encoding = std::string("nanopb");
+    rpc::stream_layers::stream_layer_settings tcp_layer;
+    tcp_layer.type = "tcp_coroutine";
+    tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+    options.stream_layers.push_back(std::move(tcp_layer));
 
-    auto result = CO_AWAIT rpc::tcp::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+    auto result = CO_AWAIT rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
         rpc::shared_ptr<my_app::i_my_service>(),
         options,
         client_service);
@@ -419,19 +470,18 @@ target_link_libraries(my_exe PRIVATE
 For local/in-process-only builds, link `transport_local` instead of
 `connection_factory`.
 
-The stream factory overloads accept either the typed
-`rpc::connection_factory_config::stream_factory_options` object or a raw
-`json::v1::object`. Prefer the typed object inside application code. It is
-generated from `connection_factory_config.idl`, so option names and value types
-are kept in one place and the compiler catches misspelled fields.
+The configured factory API uses `rpc::connection_factory::connection_settings`.
+Each `typed_settings` envelope names the implementation (`stream_rpc`,
+`tcp_coroutine`, `tcp_blocking`, `spsc_queue`, etc.) and carries that
+implementation's generated settings shape. Build those settings from generated
+IDL types in C++ code and reserve raw JSON for config file or CLI boundaries.
 
-Use raw JSON at configuration boundaries: config files, config blobs, tests, and
-command-line overlays. That JSON is validated against the generated schema and
-uses exact nested keys: `endpoint.host`, `endpoint.port`, `endpoint.ipv6`,
-`endpoint.connect_timeout`, `service.name`, `transport.name`, `listener.name`,
-`connection.name`, `rpc.encoding`, `rpc.call_timeout`,
-`rpc.call_timeout_sweep`, and `rpc.shutdown_timeout`. Legacy flat aliases such
-as `service_name`, `transport_name`, or top-level `port` are rejected.
+Use `materialise_connection_settings()` at configuration boundaries: config
+files, config blobs, tests, and command-line overlays. That JSON is validated
+against the generated `rpc::connection_factory::connection_settings` schema.
+Implementation-specific settings remain opaque to the connection factory until
+the named stream, layer, or transport materialises them through its own
+generated IDL settings type.
 
 `json/config_loader.h` provides the usual file/config boundary. Its merge order
 is:
@@ -442,23 +492,74 @@ JSON schema defaults < component defaults < config-file values < CLI overrides
 
 ```cpp
 #include <json/config_loader.h>
-#include <connection_factory_config/connection_factory_config.h>
+#include <connection_factory/connection_factory.h>
 #include <connection_factory_config/connection_factory_config_schema.h>
 
 auto schema = json::v1::parse(
-    rpc::connection_factory_config::stream_factory_options::get_schema(rpc::encoding::yas_json));
+    rpc::connection_factory::connection_settings::get_schema(rpc::encoding::yas_json));
 
 json::v1::object component_defaults{json::v1::map{
-    {"rpc", json::v1::map{{"encoding", "nanopb"}}},
+    {"transport", json::v1::map{
+        {"type", "stream_rpc"},
+        {"settings", json::v1::map{{"encoding", "nanopb"}}}}},
 }};
 
 json::v1::object cli_overrides{json::v1::map{
-    {"endpoint", json::v1::map{{"port", uint16_t{8080}}}},
+    {"stream_layers", json::v1::array{
+        json::v1::map{
+            {"type", "tcp_coroutine"},
+            {"settings", json::v1::map{{"port", uint16_t{8080}}}}}}},
 }};
 
-auto options =
-    json::v1::load_typed_config_file<rpc::connection_factory_config::stream_factory_options>(
+auto json_options =
+    json::v1::load_typed_config_file<rpc::connection_factory::connection_settings>(
         schema, "server.json", component_defaults, cli_overrides);
+```
+
+## Connection Factory Context
+
+Most applications should use the default context. Create
+`rpc::connection_factory::context` only when the configured factory needs
+runtime dependencies or application-defined stream components.
+
+Dependencies are type-keyed and can be named:
+
+```cpp
+rpc::connection_factory::context factory_context;
+factory_context.set_dependency(my_tls_context, "public_api");
+factory_context.set_dependency(my_other_tls_context, "internal_api");
+```
+
+Custom stream registrations are typed. The builder receives the generated IDL
+settings type, not a JSON object; invalid settings are rejected before the
+builder is invoked. This example assumes `my_app::passthrough_settings` is a
+generated IDL struct with a `runtime_name` string field.
+
+```cpp
+factory_context.register_stream_layer<my_app::passthrough_settings>(
+    "my_passthrough",
+    [](std::shared_ptr<streaming::stream> stream,
+       my_app::passthrough_settings settings,
+       rpc::connection_factory::layer_direction direction,
+       const rpc::connection_factory::context& context)
+        -> CORO_TASK(rpc::connection_factory::stream_result)
+    {
+        auto dependency = context.get_dependency<my_app::runtime_state>(settings.runtime_name);
+        if (!dependency)
+            CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
+
+        CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), std::move(stream)};
+    });
+```
+
+Pass the context to the configured operation that needs it:
+
+```cpp
+auto result = CO_AWAIT rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(),
+    options,
+    client_service,
+    factory_context);
 ```
 
 ## Blocking TCP Variant
@@ -466,18 +567,22 @@ auto options =
 For a blocking external project, keep `CANOPY_BUILD_COROUTINE=OFF` and use C++17.
 Plain in-process RPC does not need a thread pool, but stream-backed TCP, TLS, and
 WebSocket transports do. Construct the owning service with an
-`rpc::blocking_executor` and use the same `rpc::tcp` helper API:
+`rpc::blocking_executor` and use the same configured connection factory API:
 
 ```cpp
 auto exec = std::make_shared<rpc::blocking_executor>();
 auto service = rpc::root_service::create("my_server", server_zone, exec);
 
-rpc::connection_factory_config::stream_factory_options options;
-auto& endpoint = options.endpoint.emplace();
+rpc::connection_factory::connection_settings options;
+rpc::tcp_blocking_stream::endpoint endpoint;
 endpoint.host = std::string("127.0.0.1");
 endpoint.port = uint16_t{8080};
+rpc::stream_layers::stream_layer_settings tcp_layer;
+tcp_layer.type = "tcp_blocking";
+tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+options.stream_layers.push_back(std::move(tcp_layer));
 
-auto listener = rpc::tcp::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+auto listener = rpc::connection_factory::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
     rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
     options,
     service);
@@ -492,7 +597,7 @@ exec->shutdown();
 Blocking client code uses the same factory:
 
 ```cpp
-auto result = rpc::tcp::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+auto result = rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
     rpc::shared_ptr<my_app::i_my_service>(),
     options,
     client_service);

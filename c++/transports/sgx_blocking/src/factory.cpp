@@ -9,7 +9,6 @@
 
 #  include <utility>
 
-#  include <json/convert.h>
 #  include <transports/sgx_blocking/transport.h>
 
 namespace rpc::sgx_blocking_transport
@@ -30,14 +29,12 @@ namespace rpc::sgx_blocking_transport
         auto proxy_name = rpc::transport_creation::configured_name(
             settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "sgx_blocking_child"));
 
-        auto transport = std::make_shared<rpc::sgx_blocking_transport::enclave_transport>(
-            transport_name, resolved_service, settings.enclave_path);
+        auto startup_error = rpc::sgx_blocking_transport::enclave_transport::validate_startup_settings(settings);
+        if (startup_error != rpc::error::OK())
+            return {startup_error, {}, {}, {}};
 
-        if (settings.enclave)
-        {
-            using json::v1::convert::to_json_object;
-            transport->set_enclave_runtime_settings(to_json_object(settings.enclave.value()));
-        }
+        auto transport = std::make_shared<rpc::sgx_blocking_transport::enclave_transport>(
+            transport_name, resolved_service, settings);
 
         return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
     }
