@@ -59,5 +59,18 @@ namespace rpc
                     || ...);
             CO_RETURN result;
         }
+
+        // Tier 2 (callee): describe every interface this object implements by
+        // folding over the compile-time Interfaces pack — the same pack used by
+        // __rpc_query_interface / __rpc_call above. Honours the deprecation
+        // filter inside append_interface_descriptor.
+        void __rpc_enumerate_schemas(
+            rpc::encoding enc,
+            rpc::schema_flavor flavor,
+            bool include_deprecated,
+            std::vector<rpc::interface_descriptor>& out) const override
+        {
+            (rpc::append_interface_descriptor<Interfaces>(enc, flavor, include_deprecated, out), ...);
+        }
     };
 }
