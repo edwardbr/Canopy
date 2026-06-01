@@ -2381,6 +2381,20 @@ namespace json_schema
             }
             write_schema_document_finish(os);
             os << "}\n";
+            // Flavor-aware overload (Phase 1): delegates to encoding-only version.
+            // MCP profile transforms (no defaults, string-only enums) require separate
+            // definition bodies and are deferred; for now config and mcp share the
+            // same schema document. The profile seam exists so transforms can be added
+            // without changing the public API surface.
+            os << "\ninline std::string " << member_scope_name
+               << "::get_schema(::rpc::encoding encoding, ::rpc::schema_flavor flavor)\n";
+            os << "{\n";
+            os << "    if (flavor == ::rpc::schema_flavor::config)\n";
+            os << "        return get_schema(encoding);\n";
+            os << "    // MCP flavor: reuses config schema for now; full MCP profile\n";
+            os << "    // (no defaults, string-only enums) requires separate definition bodies.\n";
+            os << "    return get_schema(encoding);\n";
+            os << "}\n";
 
             for (auto it = namespaces.rbegin(); it != namespaces.rend(); ++it)
             {

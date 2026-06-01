@@ -715,10 +715,13 @@ namespace interface_declaration_generator
         header("static std::vector<rpc::function_info> get_function_info();");
         header("static std::string get_schema();");
         header("static std::string get_schema(rpc::encoding encoding);");
+        header("static std::string get_schema(rpc::encoding encoding, rpc::schema_flavor flavor);");
         header("static constexpr const char* get_inner_schema();");
         // Runtime introspection identity (see rpc::interface_descriptor).
         header("static std::string __rpc_qualified_name() {{ return \"{}\"; }}", interface_scoped_name);
         header("static bool __rpc_is_deprecated() {{ return {}; }}", interface_is_deprecated ? "true" : "false");
+        // Method table for runtime discovery (populated from get_function_info data).
+        header("static const rpc::interface_method_info* __rpc_methods(size_t& count);");
         header(
             "static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);

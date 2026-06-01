@@ -2796,6 +2796,7 @@ namespace synchronous_generator
             header("");
             header("static std::string get_schema();");
             header("static std::string get_schema(rpc::encoding encoding);");
+            header("static std::string get_schema(rpc::encoding encoding, rpc::schema_flavor flavor);");
             header("static constexpr const char* get_inner_schema();");
         }
 

@@ -110,7 +110,8 @@ std::string make_json_schema_header(
     const std::string& module_name,
     const class_entity& root_entity,
     const std::string& generated_header_include,
-    const std::list<std::string>& imports)
+    const std::list<std::string>& imports,
+    const json_schema::schema_profile& profile)
 {
     const auto symbol_name = sanitise_cpp_identifier(module_name) + "_json_schema";
 
@@ -133,7 +134,7 @@ std::string make_json_schema_header(
         header << "#include \"" << schema_include << "\"\n";
     }
     header << "#include \"" << generated_header_include << "\"\n\n";
-    json_schema::write_cpp_schema_accessors(root_entity, header, module_name, symbol_name);
+    json_schema::write_cpp_schema_accessors(root_entity, header, module_name, symbol_name, profile);
     json_schema::write_cpp_convert_accessors(root_entity, header);
     return header.str();
 }
@@ -829,9 +830,18 @@ int main(
 
             std::stringstream json_schema_stream;
 
+            // The standalone .json document carries a deterministic $id
+            // (= file_path) so the composed topology schema can cross-file $ref
+            // it. The embedded _schema.h schema is self-contained (runtime
+            // validation, intra-doc refs only) and emits no $id: it would
+            // otherwise stamp the same $id on every per-struct/per-interface
+            // document in the header, which is invalid (duplicate $ids).
+            auto json_document_profile = json_schema::config_strict_profile();
+            json_document_profile.id_path = file_path;
+
             // Generate the JSON Schema
             json_schema::write_json_schema(*objects, json_schema_stream,
-                module_name); // Use filename as title
+                module_name, json_document_profile);
 
             const auto json_schema_string = json_schema_stream.str();
             if (is_different(json_schema_stream, json_schema_data))
@@ -840,7 +850,8 @@ int main(
                 file << json_schema_string;
             }
 
-            const auto json_schema_header = make_json_schema_header(module_name, *objects, header_path, imports);
+            const auto json_schema_header
+                = make_json_schema_header(module_name, *objects, header_path, imports, json_schema::config_strict_profile());
             if (json_schema_header != json_schema_header_data)
             {
                 ofstream file(json_schema_header_fs_path);
