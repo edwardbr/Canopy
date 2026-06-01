@@ -116,6 +116,7 @@ add_executable(
   connection_factory_local_child_test.cpp
   streaming_transport_regression_suite.cpp
   transport_registry_tests.cpp
+  schema_introspection_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${C_ABI_DLL_TRANSPORT_SOURCES}
   ${UNSHARED_SCHEDULER_TRANSPORT_SOURCES}
