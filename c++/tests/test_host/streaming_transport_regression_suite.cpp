@@ -453,7 +453,9 @@ namespace
         CORO_ASSERT_EQ(send_status.is_ok(), true);
 
         bool saw_disconnect_state = false;
-        for (int i = 0; i < 2000 && transport->get_status() != rpc::transport_status::DISCONNECTED; ++i)
+        const auto disconnect_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{50};
+        while (transport->get_status() != rpc::transport_status::DISCONNECTED
+               && std::chrono::steady_clock::now() < disconnect_deadline)
         {
             if (transport->get_status() >= rpc::transport_status::DISCONNECTING)
                 saw_disconnect_state = true;

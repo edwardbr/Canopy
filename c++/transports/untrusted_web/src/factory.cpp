@@ -5,7 +5,9 @@
 
 #include <transports/untrusted_web/factory.h>
 
-#include <transports/factory.h>
+#ifndef FOR_SGX
+#  include <transports/factory.h>
+#endif
 
 namespace rpc::untrusted_web
 {
@@ -19,10 +21,16 @@ namespace rpc::untrusted_web
         if (!stream || !handler)
             CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
+#ifdef FOR_SGX
+        auto resolved_service = std::move(service);
+        if (!resolved_service)
+            CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
+#else
         auto resolved_service = rpc::transport_creation::ensure_service(
             std::move(service), rpc::optional<rpc::encoding>{}, "untrusted_web_accept");
         if (!resolved_service)
             CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
+#endif
 
         auto accepted = CO_AWAIT transport::create(resolved_service, stream, std::move(handler), settings);
         if (!accepted)

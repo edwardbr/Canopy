@@ -538,7 +538,7 @@ namespace
                 rpc::object{1},
                 rpc::interface_ordinal{1},
                 rpc::method{1},
-                rpc::byte_span(empty_payload));
+                std::move(empty_payload));
             error_code = result.error_code;
             done.store(true);
             CO_RETURN;
@@ -564,7 +564,7 @@ namespace
             rpc::object{1},
             rpc::interface_ordinal{1},
             rpc::method{1},
-            rpc::byte_span(empty_payload));
+            std::move(empty_payload));
         return result.error_code == rpc::error::OK();
     }
 #endif

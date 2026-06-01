@@ -74,6 +74,12 @@ namespace nanopb_generator
                || normalized == "std::vector<char>" || normalized == "std::vector<signed char>";
     }
 
+    bool is_unsigned_byte_vector_type(const std::string& type)
+    {
+        const auto normalized = normalize_type(type);
+        return normalized == "std::vector<uint8_t>" || normalized == "std::vector<unsigned char>";
+    }
+
     bool is_json_dom_type(const std::string& type)
     {
         return proto_generator::is_json_dom_type(normalize_type(type));
@@ -1061,7 +1067,10 @@ namespace nanopb_generator
         }
         else if (is_byte_vector_type(field_type))
         {
-            cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", dest_expr, state_prefix, state_prefix);
+            if (is_unsigned_byte_vector_type(field_type))
+                cpp("{} = std::move({}_decoded);", dest_expr, state_prefix);
+            else
+                cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", dest_expr, state_prefix, state_prefix);
         }
         else if (is_json_dom_type(field_type))
         {
@@ -1772,11 +1781,14 @@ namespace nanopb_generator
             }
             else if (is_byte_vector_type(member_type))
             {
-                cpp("{}.{}.assign({}_decoded.begin(), {}_decoded.end());",
-                    target_expr,
-                    member_name,
-                    current_prefix,
-                    current_prefix);
+                if (is_unsigned_byte_vector_type(member_type))
+                    cpp("{}.{} = std::move({}_decoded);", target_expr, member_name, current_prefix);
+                else
+                    cpp("{}.{}.assign({}_decoded.begin(), {}_decoded.end());",
+                        target_expr,
+                        member_name,
+                        current_prefix,
+                        current_prefix);
             }
             else if (is_json_dom_type(member_type))
             {
@@ -2195,7 +2207,10 @@ namespace nanopb_generator
             }
             else if (is_byte_vector_type(member_type))
             {
-                cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", member_name, field_name, field_name);
+                if (is_unsigned_byte_vector_type(member_type))
+                    cpp("{} = std::move({}_decoded);", member_name, field_name);
+                else
+                    cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", member_name, field_name, field_name);
             }
             else if (is_json_dom_type(member_type))
             {
@@ -2306,8 +2321,18 @@ namespace nanopb_generator
             }
             else if (is_byte_vector_type(param_type))
             {
-                cpp("std::vector<uint8_t> {}_decoded;", field_name);
-                cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
+                if (is_unsigned_byte_vector_type(param_type))
+                {
+                    cpp("{}.clear();", parameter->get_name());
+                    cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{} }};",
+                        field_name,
+                        parameter->get_name());
+                }
+                else
+                {
+                    cpp("std::vector<uint8_t> {}_decoded;", field_name);
+                    cpp("rpc::serialization::nanopb::bytes_decode_state {}_state {{ &{}_decoded }};", field_name, field_name);
+                }
                 cpp("__message.{}.funcs.decode = rpc::serialization::nanopb::decode_bytes;", field_name);
                 cpp("__message.{}.arg = &{}_state;", field_name, field_name);
             }
@@ -2616,7 +2641,8 @@ namespace nanopb_generator
         }
         else if (is_byte_vector_type(param_type))
         {
-            cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", destination_name, field_name, field_name);
+            if (!is_unsigned_byte_vector_type(param_type))
+                cpp("{}.assign({}_decoded.begin(), {}_decoded.end());", destination_name, field_name, field_name);
         }
         else if (is_json_dom_type(param_type))
         {

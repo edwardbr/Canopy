@@ -40,7 +40,7 @@ endif()
 
 if(CANOPY_BUILD_COROUTINE)
   if(CANOPY_BUILD_ENCLAVE)
-    add_library(transport_untrusted_web_enclave STATIC src/transport.cpp)
+    add_library(transport_untrusted_web_enclave STATIC src/transport.cpp src/factory.cpp)
 
     target_include_directories(
       transport_untrusted_web_enclave

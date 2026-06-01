@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_map>
 #include <filesystem>
+#include <utility>
 
 // RPC headers
 #include <rpc/rpc.h>
@@ -213,7 +214,7 @@ namespace
             rpc::object{1},
             rpc::interface_ordinal{1},
             rpc::method{1},
-            rpc::byte_span(empty_payload));
+            std::move(empty_payload));
 
         CORO_ASSERT_EQ(send_result.error_code, rpc::error::OK());
         CORO_ASSERT_EQ(stale_transport->outbound_send_count, 0U);

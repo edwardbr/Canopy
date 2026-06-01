@@ -1618,7 +1618,7 @@ namespace synchronous_generator
             {
                 proxy(
                     "__rpc_ret = CO_AWAIT __rpc_op->post(__rpc_version, __rpc_encoding, static_cast<uint64_t>({}), "
-                    "{}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}});",
+                    "{}::get_id(__rpc_version), {{{}}}, std::move(__rpc_in_buf));",
                     tag,
                     interface_name,
                     function_count);
@@ -1627,7 +1627,7 @@ namespace synchronous_generator
             {
                 proxy(
                     "auto __rpc_send_result = CO_AWAIT __rpc_op->send(__rpc_version, __rpc_encoding, "
-                    "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, {{__rpc_in_buf}}, "
+                    "static_cast<uint64_t>({}), {}::get_id(__rpc_version), {{{}}}, std::move(__rpc_in_buf), "
                     "__rpc_request_id);",
                     tag,
                     interface_name,
@@ -3401,8 +3401,9 @@ namespace synchronous_generator
         // this as a forward decl avoids dragging the full json/convert.h into
         // every consumer that just wants the IDL types.
         header("");
-        header("namespace json {{ inline namespace v1 {{ class object; namespace convert {{ template<typename T> "
-               "struct tag; }} }} }}");
+        header(
+            "namespace json {{ inline namespace v1 {{ class object; namespace convert {{ template<typename T> "
+            "struct tag; }} }} }}");
         header("");
 
         header("namespace rpc");

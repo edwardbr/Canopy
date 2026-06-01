@@ -96,7 +96,7 @@ namespace rpc
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data,
+            std::vector<char> in_data,
             uint64_t request_id = 0);
 
         [[nodiscard]] CORO_TASK(int) post_from_this_zone(
@@ -106,7 +106,7 @@ namespace rpc
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data);
+            std::vector<char> in_data);
 
         [[nodiscard]] CORO_TASK(int) sp_try_cast(
             destination_zone destination_zone_id,

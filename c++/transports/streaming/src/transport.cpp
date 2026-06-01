@@ -16,22 +16,27 @@ namespace rpc::stream_transport
 {
     namespace
     {
-        auto is_expected_disconnect_send_failure(
-            rpc::transport_status transport_status,
-            const rpc::io_status& send_status) -> bool
-        {
-            if (transport_status < rpc::transport_status::DISCONNECTING)
-                return false;
+        constexpr int epipe_native_code =
+#ifdef EPIPE
+            EPIPE;
+#else
+            32;
+#endif
 
-            if (send_status.is_closed())
+        constexpr int econnreset_native_code =
+#ifdef ECONNRESET
+            ECONNRESET;
+#else
+            104;
+#endif
+
+        auto is_peer_disconnect_send_failure(const rpc::io_status& send_status) -> bool
+        {
+            if (send_status.is_closed() || send_status.type == rpc::io_status::kind::connection_reset)
                 return true;
 
-#ifndef FOR_SGX
             return send_status.type == rpc::io_status::kind::native
-                   && (send_status.native_code == EPIPE || send_status.native_code == ECONNRESET);
-#else
-            return false;
-#endif
+                   && (send_status.native_code == epipe_native_code || send_status.native_code == econnreset_native_code);
         }
 
     } // namespace
@@ -95,11 +100,11 @@ namespace rpc::stream_transport
             disconnecting_since_ = std::chrono::steady_clock::now();
         if (old_status < rpc::transport_status::DISCONNECTING && new_status >= rpc::transport_status::DISCONNECTING)
             on_disconnecting();
+        rpc::transport::set_status(new_status);
         if (new_status != rpc::transport_status::CONNECTED)
         {
             send_queue_ready_.set();
         }
-        rpc::transport::set_status(new_status);
     }
 
     std::shared_ptr<transport> create(
@@ -910,10 +915,10 @@ namespace rpc::stream_transport
                 send_status = CO_AWAIT send_part(item.payload_data);
             if (!send_status.is_ok())
             {
-                if (is_expected_disconnect_send_failure(get_status(), send_status))
+                if (is_peer_disconnect_send_failure(send_status))
                 {
                     RPC_DEBUG(
-                        "flush_send_queue: expected disconnect-time send failure for zone {} status={} native={}",
+                        "flush_send_queue: peer disconnected while sending queued data for zone {} status={} native={}",
                         get_zone_id().get_subnet(),
                         static_cast<int>(send_status.type),
                         send_status.native_code);
@@ -1000,10 +1005,11 @@ namespace rpc::stream_transport
                 }
                 if (!send_status.is_ok())
                 {
-                    if (is_expected_disconnect_send_failure(get_status(), send_status))
+                    if (is_peer_disconnect_send_failure(send_status))
                     {
                         RPC_DEBUG(
-                            "send_producer_loop: expected disconnect-time send failure for zone {} status={} native={}",
+                            "send_producer_loop: peer disconnected while sending queued data for zone {} status={} "
+                            "native={}",
                             get_zone_id().get_subnet(),
                             static_cast<int>(send_status.type),
                             send_status.native_code);

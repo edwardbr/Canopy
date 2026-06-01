@@ -166,14 +166,14 @@ public:
         RPC_ASSERT(host_result.error_code == rpc::error::OK());
         i_host_ptr_ = std::move(host_result.output_interface);
 
-        auto host_ptr = i_host_ptr_;
         auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
+        rpc::shared_ptr<rpc::i_noop> no_host_interface;
         auto result = run_on_manual_scheduler<rpc::service_connect_result<io_uring_test::i_test_uring>>(
             io_scheduler_,
-            rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
-                root_service_, "main child", transport, host_ptr, host_controller_options_));
+            rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, io_uring_test::i_test_uring>(
+                root_service_, "main child", transport, no_host_interface, host_controller_options_));
 
         i_test_uring_ptr_ = std::move(result.output_interface);
         RPC_ASSERT(result.error_code == rpc::error::OK());
@@ -219,8 +219,10 @@ public:
             "main child", root_service_, sgx_coroutine_test_enclave_path);
         transports_.push_back(transport);
         transport->set_adjacent_zone_id(zone_result.zone_id);
-        auto result = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, io_uring_test::i_test_uring>(
-            root_service_, "main child", transport, i_host_ptr_, host_controller_options_);
+        rpc::shared_ptr<rpc::i_noop> no_host_interface;
+        auto result
+            = CO_AWAIT rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, io_uring_test::i_test_uring>(
+                root_service_, "main child", transport, no_host_interface, host_controller_options_);
 
         ptr = std::move(result.output_interface);
         if (result.error_code != rpc::error::OK())

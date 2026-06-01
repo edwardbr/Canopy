@@ -49,7 +49,7 @@ namespace
         std::string static_root_path;
         std::string enclave_path;
         uint32_t enclave_worker_threads{0};
-        json::v1::object enclave_options{json::v1::map{}};
+        rpc::v4::secure_coroutine_module::startup_applications enclave_options{};
     };
 
     void on_signal(int signal_number)
@@ -197,8 +197,7 @@ namespace
         }
 
         using json::v1::convert::to_json_object;
-        output.enclave_options
-            = json::v1::object(json::v1::map{{std::string(websocket_demo_app_name), to_json_object(enclave_options)}});
+        output.enclave_options = {{std::string(websocket_demo_app_name), to_json_object(enclave_options)}};
         return output;
     }
 
@@ -249,16 +248,21 @@ auto main(
     controller_options.fixed_file_count = 256;
     controller_options.sq_thread_idle_ms = 50;
 
-    auto enclave_transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
-        "websocket enclave transport", root_service, cli.enclave_path);
-    enclave_transport->set_enclave_worker_thread_count(cli.enclave_worker_threads);
-    auto startup_options_error = enclave_transport->set_enclave_startup_options(cli.enclave_options);
+    rpc::sgx_coroutine_transport::transport_settings enclave_transport_settings;
+    enclave_transport_settings.enclave_path = cli.enclave_path;
+    enclave_transport_settings.worker_thread_count = cli.enclave_worker_threads;
+    enclave_transport_settings.startup_applications = std::move(cli.enclave_options);
+
+    auto startup_options_error
+        = rpc::sgx_coroutine_transport::host::transport::validate_startup_settings(enclave_transport_settings);
     if (startup_options_error != rpc::error::OK())
     {
         RPC_ERROR("invalid enclave startup options: {}", rpc::error::to_string(startup_options_error));
         scheduler->shutdown();
         return 1;
     }
+    auto enclave_transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
+        "websocket enclave transport", root_service, std::move(enclave_transport_settings));
 
     auto connect_result = coro::sync_wait(
         (rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<rpc::i_noop, websocket_demo::v1::i_enclave_websocket_server>(

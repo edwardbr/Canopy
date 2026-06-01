@@ -602,8 +602,7 @@ namespace rpc::sgx_coroutine_transport::host
 
             if (auto locked_transport = transport.lock())
             {
-                if (locked_transport->get_status() < rpc::transport_status::DISCONNECTING)
-                    locked_transport->set_status(rpc::transport_status::DISCONNECTING);
+                locked_transport->set_status(rpc::transport_status::DISCONNECTING);
             }
         }
     };
@@ -1210,14 +1209,14 @@ namespace rpc::sgx_coroutine_transport::host
 
     void transport::set_status(rpc::transport_status status)
     {
-        std::lock_guard lock(status_transition_mutex_);
-        if (status == rpc::transport_status::DISCONNECTING && get_status() >= rpc::transport_status::DISCONNECTING)
+        bool apply_status = true;
         {
-            begin_enclave_shutdown_once();
-            return;
+            std::lock_guard lock(status_transition_mutex_);
+            apply_status
+                = status != rpc::transport_status::DISCONNECTING || get_status() < rpc::transport_status::DISCONNECTING;
+            if (apply_status)
+                rpc::stream_transport::transport::set_status(status);
         }
-
-        rpc::stream_transport::transport::set_status(status);
 
         if (status >= rpc::transport_status::DISCONNECTING)
             begin_enclave_shutdown_once();

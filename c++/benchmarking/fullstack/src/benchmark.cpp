@@ -20,10 +20,23 @@
 #include <system_error>
 #include <vector>
 
+#if defined(__GLIBC__)
+#  include <malloc.h>
+#endif
+
 #include <fmt/format.h>
 
 namespace
 {
+    void tune_allocator_for_large_payload_benchmarks()
+    {
+#if defined(__GLIBC__)
+        constexpr int large_payload_allocator_threshold = 16 * 1024 * 1024;
+        mallopt(M_MMAP_THRESHOLD, large_payload_allocator_threshold);
+        mallopt(M_TRIM_THRESHOLD, large_payload_allocator_threshold);
+#endif
+    }
+
     std::filesystem::path cxx_source_directory()
     {
         auto directory = std::filesystem::path(__FILE__).parent_path();
@@ -1569,6 +1582,8 @@ int main(
     char** argv)
 {
     using namespace comprehensive::v1;
+
+    tune_allocator_for_large_payload_benchmarks();
 
     benchmark_filters filters;
     const auto status = parse_filters(argc, argv, filters);

@@ -46,20 +46,14 @@ namespace
         {
             exercise_atomic_smart_ptr_polyfill();
 
-            rpc::sgx_coroutine_transport::enclave::register_connection_factory<yyy::i_host, io_uring_test::i_test_uring>(
+            rpc::sgx_coroutine_transport::enclave::register_connection_factory<rpc::i_noop, io_uring_test::i_test_uring>(
                 "sgx_coroutine_test_enclave",
-                [](rpc::shared_ptr<yyy::i_host> host, std::shared_ptr<rpc::service> child_service)
+                [](rpc::shared_ptr<rpc::i_noop>, std::shared_ptr<rpc::service> child_service)
                     -> CORO_TASK(rpc::service_connect_result<io_uring_test::i_test_uring>)
                 {
                     try
                     {
                         if (!child_service)
-                        {
-                            CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{
-                                rpc::error::INCOMPATIBLE_SERVICE(), {}};
-                        }
-
-                        if (!host)
                         {
                             CO_RETURN rpc::service_connect_result<io_uring_test::i_test_uring>{
                                 rpc::error::INCOMPATIBLE_SERVICE(), {}};

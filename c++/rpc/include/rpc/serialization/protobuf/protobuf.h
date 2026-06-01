@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <cstring>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -36,7 +37,9 @@ namespace rpc
                 const std::string& proto_bytes,
                 std::vector<uint8_t>& data)
             {
-                data.assign(proto_bytes.begin(), proto_bytes.end());
+                data.resize(proto_bytes.size());
+                if (!proto_bytes.empty())
+                    std::memcpy(data.data(), proto_bytes.data(), proto_bytes.size());
             }
 
             // Overloads for std::vector<char> (char and uint8_t are compatible)
@@ -51,7 +54,9 @@ namespace rpc
                 const std::string& proto_bytes,
                 std::vector<int8_t>& data)
             {
-                data.assign(proto_bytes.begin(), proto_bytes.end());
+                data.resize(proto_bytes.size());
+                if (!proto_bytes.empty())
+                    std::memcpy(data.data(), proto_bytes.data(), proto_bytes.size());
             }
 
             // Overloads for std::vector<char> (char and uint8_t are compatible)
@@ -66,7 +71,9 @@ namespace rpc
                 const std::string& proto_bytes,
                 std::vector<char>& data)
             {
-                data.assign(proto_bytes.begin(), proto_bytes.end());
+                data.resize(proto_bytes.size());
+                if (!proto_bytes.empty())
+                    std::memcpy(data.data(), proto_bytes.data(), proto_bytes.size());
             }
 
             // Helper to serialize std::vector<T> to protobuf repeated field for integer types

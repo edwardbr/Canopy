@@ -85,7 +85,7 @@ namespace stream_bench
                 return false;
 
             server = std::make_shared<streaming::websocket::stream>(tls_a);
-            client = std::make_shared<streaming::websocket::stream>(tls_b, streaming::websocket::stream_role::client);
+            client = std::make_shared<streaming::websocket::stream>(tls_b, rpc::websocket_stream::endpoint_role::client);
             return true;
         }
 

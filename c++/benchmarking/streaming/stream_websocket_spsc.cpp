@@ -43,7 +43,7 @@ namespace stream_bench
             auto pipe = std::make_unique<spsc_pipe>();
             auto server = std::make_shared<streaming::websocket::stream>(pipe->side_a(sched_a));
             auto client = std::make_shared<streaming::websocket::stream>(
-                pipe->side_b(sched_b), streaming::websocket::stream_role::client);
+                pipe->side_b(sched_b), rpc::websocket_stream::endpoint_role::client);
 
             run_paired_stream_bench(server, client, cfg, wd, blob_size, unidirectional, send_reply);
 
@@ -63,7 +63,7 @@ namespace stream_bench
             auto pipe = std::make_unique<spsc_pipe>();
             auto server = std::make_shared<streaming::websocket::stream>(pipe->side_a(sched_a));
             auto client = std::make_shared<streaming::websocket::stream>(
-                pipe->side_b(sched_b), streaming::websocket::stream_role::client);
+                pipe->side_b(sched_b), rpc::websocket_stream::endpoint_role::client);
 
             run_paired_stream_stress_bench(server, client, cfg, wd, blob_size, send, recv);
 

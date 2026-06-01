@@ -108,7 +108,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data,
+        std::vector<char> in_data,
         uint64_t request_id)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
@@ -160,7 +160,7 @@ namespace rpc
         params.remote_object_id = std::move(*dest_with_obj_send);
         params.interface_id = interface_id;
         params.method_id = method_id;
-        params.in_data.assign(in_data.begin(), in_data.end());
+        params.in_data = std::move(in_data);
         params.request_id = request_id;
         CO_RETURN CO_AWAIT service->outbound_send(std::move(params), transport);
     }
@@ -172,7 +172,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data)
+        std::vector<char> in_data)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
@@ -223,7 +223,7 @@ namespace rpc
         params.remote_object_id = std::move(*dest_with_obj_post);
         params.interface_id = interface_id;
         params.method_id = method_id;
-        params.in_data.assign(in_data.begin(), in_data.end());
+        params.in_data = std::move(in_data);
         CO_AWAIT service->outbound_post(std::move(params), transport);
 
         CO_RETURN rpc::error::OK();

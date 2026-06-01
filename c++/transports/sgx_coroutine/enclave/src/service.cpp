@@ -46,6 +46,11 @@ namespace rpc
         constexpr std::chrono::milliseconds route_attestation_wait_poll_interval{1};
         constexpr std::chrono::milliseconds route_attestation_wait_timeout{2000};
 
+        [[nodiscard]] constexpr auto route_attestation_payload_encoding() -> rpc::encoding
+        {
+            return rpc::encoding::yas_binary;
+        }
+
         // Returns the IDL fingerprint for the route-attestation request schema
         // used by this RPC protocol version.
         [[nodiscard]] auto route_attestation_request_type_id(uint64_t protocol_version) -> uint64_t
@@ -936,7 +941,7 @@ namespace rpc
         // payload: type fingerprint + encoding + serialized IDL struct. The
         // transport does not need to understand the struct; it only routes the
         // handshake to route_zone_id.
-        const auto payload_encoding = get_default_encoding();
+        const auto payload_encoding = route_attestation_payload_encoding();
         auto request_payload = serialise_route_attestation_payload(request, payload_encoding);
         if (!request_payload.has_value())
         {
@@ -1365,7 +1370,7 @@ namespace rpc
         //   2. verify the type fingerprint, transcript id, flags, and Evidence;
         //   3. optionally produce local Evidence;
         //   4. return a route_attestation_handshake_response IDL blob using the
-        //      caller's payload encoding.
+        //      route-attestation control encoding.
         if (params.destination_zone_id != get_zone_id())
         {
             // Not addressed to this zone. Keep passthrough semantics intact and
@@ -1385,7 +1390,7 @@ namespace rpc
         }
 
         if (params.payload_encoding == rpc::encoding::not_set)
-            params.payload_encoding = get_default_encoding();
+            params.payload_encoding = route_attestation_payload_encoding();
 
         auto service = get_attestation_service();
         auto responder_identity = local_identity_for_route(service, get_zone_id());

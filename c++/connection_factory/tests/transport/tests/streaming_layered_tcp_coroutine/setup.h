@@ -46,7 +46,8 @@ class streaming_layered_tcp_coroutine_setup
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
         rpc::stream_layers::stream_layer_settings websocket_layer;
         websocket_layer.type = "websocket";
-        websocket_layer.settings = json::v1::parse(R"json({"keep_alive": {"enabled": false}})json");
+        websocket_layer.settings
+            = json::v1::parse(R"json({"keep_alive": {"enabled": false}, "max_decoded_messages": 64})json");
         options.stream_layers.push_back(std::move(websocket_layer));
 #endif
 
