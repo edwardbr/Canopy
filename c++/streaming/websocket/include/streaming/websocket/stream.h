@@ -75,6 +75,9 @@ namespace streaming::websocket
             bool single_attempt,
             std::chrono::steady_clock::time_point now) const -> std::chrono::milliseconds;
         void handle_keep_alive_locked(const wslay_event_on_msg_recv_arg* arg);
+        bool permessage_deflate_enabled() const;
+        bool queue_binary_message_locked(rpc::byte_span buffer);
+        bool queue_received_message_locked(std::vector<uint8_t> message);
         bool validate_incoming_wire_locked(rpc::byte_span data);
         bool validate_current_frame_metadata_locked();
 
@@ -130,6 +133,7 @@ namespace streaming::websocket
         uint8_t validator_extended_remaining_{0};
         uint8_t validator_mask_remaining_{0};
         bool validator_fin_{true};
+        bool validator_rsv1_{false};
         bool validator_fragmented_message_active_{false};
         bool ping_outstanding_{false};
         bool closed_{false};

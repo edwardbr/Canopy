@@ -33,6 +33,7 @@
 
 #include <demo_impl.h>
 #include <rpc/rpc.h>
+#include <connection_factory/options.h>
 #include <streaming/tcp_coroutine/factory.h>
 #include <iostream>
 #include <string_view>

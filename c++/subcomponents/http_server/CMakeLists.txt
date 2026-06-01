@@ -80,6 +80,11 @@ target_link_libraries(
           ${CANOPY_FMT_LIB}
           ${CANOPY_LIBRARIES})
 
+if(CANOPY_BUILD_HTTP_COMPRESSION AND TARGET canopy_zlib)
+  target_compile_definitions(canopy_http_server PRIVATE CANOPY_HTTP_HAS_GZIP)
+  target_link_libraries(canopy_http_server PRIVATE canopy_zlib)
+endif()
+
 set_property(TARGET canopy_http_server PROPERTY COMPILE_PDB_NAME canopy_http_server)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -126,6 +131,11 @@ if(CANOPY_BUILD_ENCLAVE
            llhttp_enclave
            rpc::rpc_enclave
     PRIVATE streaming_websocket_enclave ${CANOPY_HTTP_SERVER_ENCLAVE_CRYPTO_LIBS} ${CANOPY_ENCLAVE_FMT_LIB})
+
+  if(CANOPY_BUILD_HTTP_COMPRESSION AND TARGET canopy_zlib_enclave)
+    target_compile_definitions(canopy_http_server_enclave PRIVATE CANOPY_HTTP_HAS_GZIP)
+    target_link_libraries(canopy_http_server_enclave PRIVATE canopy_zlib_enclave)
+  endif()
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(canopy_http_server_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

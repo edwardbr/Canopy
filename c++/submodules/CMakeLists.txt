@@ -265,6 +265,51 @@ if(CANOPY_BUILD_COROUTINE)
   endif()
 endif()
 
+if(CANOPY_BUILD_WEBSOCKET AND (CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE OR CANOPY_BUILD_HTTP_COMPRESSION))
+  set(CANOPY_ZLIB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zlib")
+
+  if(NOT EXISTS "${CANOPY_ZLIB_SOURCE_DIR}/zlib.h")
+    message(FATAL_ERROR "zlib-backed HTTP/WebSocket compression support is enabled, but the zlib submodule was not "
+                        "populated at ${CANOPY_ZLIB_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency "
+                        "bootstrap can initialise c++/submodules/zlib, or reconfigure with "
+                        "-DCANOPY_BUILD_HTTP_COMPRESSION=OFF -DCANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE=OFF.")
+  endif()
+
+  set(CANOPY_ZLIB_CORE_SOURCES
+      "${CANOPY_ZLIB_SOURCE_DIR}/adler32.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/crc32.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/deflate.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/inflate.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/inftrees.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/inffast.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/trees.c"
+      "${CANOPY_ZLIB_SOURCE_DIR}/zutil.c")
+
+  add_library(canopy_zlib STATIC ${CANOPY_ZLIB_CORE_SOURCES})
+  target_include_directories(canopy_zlib PUBLIC "${CANOPY_ZLIB_SOURCE_DIR}")
+  target_compile_definitions(canopy_zlib PRIVATE ZLIB_BUILD)
+  target_compile_options(canopy_zlib PRIVATE ${CANOPY_COMPILE_OPTIONS})
+  target_link_options(canopy_zlib PRIVATE ${CANOPY_LINK_OPTIONS})
+  set_target_properties(canopy_zlib PROPERTIES C_CLANG_TIDY "")
+
+  if(CANOPY_BUILD_ENCLAVE)
+    add_library(canopy_zlib_enclave STATIC ${CANOPY_ZLIB_CORE_SOURCES})
+    target_include_directories(canopy_zlib_enclave PUBLIC "${CANOPY_ZLIB_SOURCE_DIR}"
+                                                   PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+    target_compile_definitions(canopy_zlib_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES} ZLIB_BUILD Z_SOLO)
+    target_compile_options(
+      canopy_zlib_enclave
+      PRIVATE
+        ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+        $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-unused-command-line-argument>
+        $<$<COMPILE_LANG_AND_ID:C,Clang>:-Wno-implicit-fallthrough>)
+    target_link_options(canopy_zlib_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
+    set_target_properties(canopy_zlib_enclave PROPERTIES C_CLANG_TIDY "")
+  endif()
+
+  message(STATUS "zlib core configured from ${CANOPY_ZLIB_SOURCE_DIR}")
+endif()
+
 if(CANOPY_BUILD_MBEDTLS)
   if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/mbedtls/CMakeLists.txt")
     message(

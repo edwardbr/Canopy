@@ -3,6 +3,8 @@
  *   All rights reserved.
  */
 
+#include "yas_serialization_options.h"
+
 namespace synchronous_generator
 {
     // entry point
@@ -22,7 +24,7 @@ namespace synchronous_generator
         const std::vector<std::string>& rethrow_exceptions,
         const std::vector<std::string>& additional_stub_headers,
         bool include_rpc_headers,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto);

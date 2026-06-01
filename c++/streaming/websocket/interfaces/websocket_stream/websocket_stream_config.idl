@@ -34,6 +34,21 @@ namespace rpc
             uint64_t timeout_ms = 10000;
         };
 
+        // RFC 7692 permessage-deflate settings. The first implementation uses
+        // no-context-takeover in both directions so compression state never
+        // outlives a single WebSocket message.
+        struct permessage_deflate_settings
+        {
+            [description="When true, WebSocket data messages may be compressed with RFC 7692 permessage-deflate. HTTP upgrade code should enable this only after negotiating Sec-WebSocket-Extensions."]
+            bool enabled = false;
+
+            [description="When true, the server does not reuse its deflate window across messages and advertises server_no_context_takeover during HTTP upgrade negotiation."]
+            bool server_no_context_takeover = true;
+
+            [description="When true, the client does not reuse its deflate window across messages and the server advertises client_no_context_takeover during HTTP upgrade negotiation."]
+            bool client_no_context_takeover = true;
+        };
+
         // Settings for the WebSocket stream wrapper. WebSocket is a stream
         // layer, not a base stream: it wraps an already-created stream after
         // TCP/TLS/etc. are in place.
@@ -44,6 +59,9 @@ namespace rpc
 
             [description="Protocol-level WebSocket ping/pong keep-alive settings."]
             keep_alive_settings keep_alive = {};
+
+            [description="RFC 7692 permessage-deflate compression settings for WebSocket data messages."]
+            permessage_deflate_settings permessage_deflate = {};
 
             [description="Maximum reassembled WebSocket message payload bytes accepted from the peer. Zero disables this limit; public endpoints should keep a finite value."]
             uint64_t max_message_bytes = 1048576;

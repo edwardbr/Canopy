@@ -189,6 +189,9 @@ if(NOT DEPENDENCIES_LOADED)
         CACHE BOOL "Build bundled Mbed TLS support from c++/submodules/mbedtls" FORCE)
   endif()
   option(CANOPY_BUILD_COMPRESSION "Build compression stream support from c++/submodules/zstd" OFF)
+  option(CANOPY_BUILD_HTTP_COMPRESSION "Build HTTP gzip content-encoding support from c++/submodules/zlib" ON)
+  option(CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE
+         "Build RFC 7692 permessage-deflate support for WebSocket streams from c++/submodules/zlib" ON)
 
   # ####################################################################################################################
   # Debug Options
@@ -449,6 +452,9 @@ if(NOT DEPENDENCIES_LOADED)
       endif()
       if(CANOPY_BUILD_WEBSOCKET)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/wslay c++/submodules/llhttp)
+      endif()
+      if(CANOPY_BUILD_WEBSOCKET AND (CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE OR CANOPY_BUILD_HTTP_COMPRESSION))
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/zlib)
       endif()
       if(CANOPY_BUILD_MBEDTLS)
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/mbedtls)

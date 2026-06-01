@@ -1032,6 +1032,11 @@ namespace
                 "interval_ms": 1234,
                 "timeout_ms": 5678
             },
+            "permessage_deflate": {
+                "enabled": true,
+                "server_no_context_takeover": true,
+                "client_no_context_takeover": true
+            },
             "max_message_bytes": 1000000,
             "max_frame_payload_bytes": 2048,
             "max_decoded_messages": 4
@@ -1045,6 +1050,9 @@ namespace
         EXPECT_TRUE(materialised.settings.keep_alive.enabled);
         EXPECT_EQ(materialised.settings.keep_alive.interval_ms, uint64_t{1234});
         EXPECT_EQ(materialised.settings.keep_alive.timeout_ms, uint64_t{5678});
+        EXPECT_TRUE(materialised.settings.permessage_deflate.enabled);
+        EXPECT_TRUE(materialised.settings.permessage_deflate.server_no_context_takeover);
+        EXPECT_TRUE(materialised.settings.permessage_deflate.client_no_context_takeover);
         EXPECT_EQ(materialised.settings.max_message_bytes, uint64_t{1000000});
         EXPECT_EQ(materialised.settings.max_frame_payload_bytes, uint64_t{2048});
         EXPECT_EQ(materialised.settings.max_decoded_messages, uint64_t{4});
@@ -1056,6 +1064,9 @@ namespace
         EXPECT_FALSE(sparse.settings.keep_alive.enabled);
         EXPECT_EQ(sparse.settings.keep_alive.interval_ms, uint64_t{30000});
         EXPECT_EQ(sparse.settings.keep_alive.timeout_ms, uint64_t{10000});
+        EXPECT_FALSE(sparse.settings.permessage_deflate.enabled);
+        EXPECT_TRUE(sparse.settings.permessage_deflate.server_no_context_takeover);
+        EXPECT_TRUE(sparse.settings.permessage_deflate.client_no_context_takeover);
         EXPECT_EQ(sparse.settings.max_message_bytes, uint64_t{1048576});
         EXPECT_EQ(sparse.settings.max_frame_payload_bytes, uint64_t{1048576});
         EXPECT_EQ(sparse.settings.max_decoded_messages, uint64_t{16});

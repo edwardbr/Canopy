@@ -73,3 +73,8 @@
 	url = https://github.com/facebook/zstd.git
 	shallow = true
 	update = none
+[submodule "c++/submodules/zlib"]
+	path = c++/submodules/zlib
+	url = https://github.com/madler/zlib.git
+	update = none
+	shallow = true

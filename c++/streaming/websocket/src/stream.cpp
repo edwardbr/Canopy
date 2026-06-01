@@ -5,12 +5,18 @@
 #include <streaming/websocket/stream.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 
 #include <rpc/rpc.h>
 #include <wslay/wslay.h>
+
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#  include <zlib.h>
+#endif
 
 #if defined(FOR_SGX)
 #  include <sgx_error.h>
@@ -27,6 +33,7 @@ namespace streaming::websocket
         constexpr uint8_t byte_mask = 0xff;
 
         constexpr uint8_t websocket_fin_bit = 0x80;
+        constexpr uint8_t websocket_rsv1_wire_bit = 0x40;
         constexpr uint8_t websocket_rsv_bits = 0x70;
         constexpr uint8_t websocket_opcode_mask = 0x0f;
         constexpr uint8_t websocket_mask_bit = 0x80;
@@ -47,6 +54,8 @@ namespace streaming::websocket
         constexpr uint8_t websocket_mask_key_bytes = 4;
         constexpr uint8_t websocket_16_bit_extended_length_bytes = 2;
         constexpr uint8_t websocket_64_bit_extended_length_bytes = 8;
+
+        constexpr std::array<uint8_t, 4> permessage_deflate_tail{{0x00, 0x00, 0xff, 0xff}};
 
         constexpr uint8_t validator_state_first_header_byte = 0;
         constexpr uint8_t validator_state_second_header_byte = 1;
@@ -135,6 +144,177 @@ namespace streaming::websocket
         {
             return opcode >= websocket_first_control_opcode;
         }
+
+        bool settings_enable_permessage_deflate(const ::rpc::websocket_stream::stream_settings& settings)
+        {
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+            return settings.permessage_deflate.enabled;
+#else
+            (void)settings;
+            return false;
+#endif
+        }
+
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+        constexpr size_t zlib_io_chunk_size = 8192;
+
+        struct zlib_deflater_guard
+        {
+            z_stream* stream{nullptr};
+
+            ~zlib_deflater_guard()
+            {
+                if (stream != nullptr)
+                    deflateEnd(stream);
+            }
+        };
+
+        struct zlib_inflater_guard
+        {
+            z_stream* stream{nullptr};
+
+            ~zlib_inflater_guard()
+            {
+                if (stream != nullptr)
+                    inflateEnd(stream);
+            }
+        };
+
+        bool append_with_limit(
+            std::vector<uint8_t>& output,
+            const uint8_t* data,
+            size_t size,
+            uint64_t limit)
+        {
+            if (limit != 0 && (size > limit || output.size() > limit - size))
+                return false;
+
+            output.insert(output.end(), data, data + size);
+            return true;
+        }
+
+        auto permessage_deflate_compress(
+            const uint8_t* input,
+            size_t input_size) -> std::optional<std::vector<uint8_t>>
+        {
+            z_stream zstream{};
+            if (deflateInit2(&zstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+            {
+                return std::nullopt;
+            }
+            zlib_deflater_guard guard{&zstream};
+
+            std::vector<uint8_t> output;
+            size_t input_offset = 0;
+            bool finished = false;
+
+            while (!finished)
+            {
+                if (zstream.avail_in == 0 && input_offset < input_size)
+                {
+                    const auto chunk = std::min<size_t>(input_size - input_offset, std::numeric_limits<uInt>::max());
+                    zstream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(input + input_offset));
+                    zstream.avail_in = static_cast<uInt>(chunk);
+                    input_offset += chunk;
+                }
+
+                const int flush = input_offset >= input_size && zstream.avail_in == 0 ? Z_SYNC_FLUSH : Z_NO_FLUSH;
+                do
+                {
+                    std::array<uint8_t, zlib_io_chunk_size> chunk{};
+                    zstream.next_out = chunk.data();
+                    zstream.avail_out = static_cast<uInt>(chunk.size());
+
+                    const int result = deflate(&zstream, flush);
+                    if (result != Z_OK)
+                        return std::nullopt;
+
+                    const auto produced = chunk.size() - zstream.avail_out;
+                    output.insert(output.end(), chunk.data(), chunk.data() + produced);
+                } while (zstream.avail_out == 0);
+
+                finished = flush == Z_SYNC_FLUSH && zstream.avail_in == 0;
+            }
+
+            if (output.size() < permessage_deflate_tail.size()
+                || !std::equal(
+                    permessage_deflate_tail.begin(),
+                    permessage_deflate_tail.end(),
+                    output.end() - permessage_deflate_tail.size()))
+            {
+                return std::nullopt;
+            }
+
+            output.resize(output.size() - permessage_deflate_tail.size());
+            return output;
+        }
+
+        auto permessage_deflate_decompress(
+            const uint8_t* input,
+            size_t input_size,
+            uint64_t max_output_bytes) -> std::optional<std::vector<uint8_t>>
+        {
+            std::vector<uint8_t> compressed;
+            compressed.reserve(input_size + permessage_deflate_tail.size());
+            compressed.insert(compressed.end(), input, input + input_size);
+            compressed.insert(compressed.end(), permessage_deflate_tail.begin(), permessage_deflate_tail.end());
+
+            z_stream zstream{};
+            if (inflateInit2(&zstream, -MAX_WBITS) != Z_OK)
+                return std::nullopt;
+            zlib_inflater_guard guard{&zstream};
+
+            std::vector<uint8_t> output;
+            size_t input_offset = 0;
+            bool finished = false;
+
+            while (!finished)
+            {
+                if (zstream.avail_in == 0 && input_offset < compressed.size())
+                {
+                    const auto chunk
+                        = std::min<size_t>(compressed.size() - input_offset, std::numeric_limits<uInt>::max());
+                    zstream.next_in = compressed.data() + input_offset;
+                    zstream.avail_in = static_cast<uInt>(chunk);
+                    input_offset += chunk;
+                }
+
+                if (zstream.avail_in == 0)
+                    break;
+
+                do
+                {
+                    std::array<uint8_t, zlib_io_chunk_size> chunk{};
+                    const auto total_in_before = zstream.total_in;
+                    const auto total_out_before = zstream.total_out;
+                    zstream.next_out = chunk.data();
+                    zstream.avail_out = static_cast<uInt>(chunk.size());
+
+                    const int result = inflate(&zstream, Z_SYNC_FLUSH);
+                    if (result != Z_OK && result != Z_STREAM_END)
+                        return std::nullopt;
+
+                    const auto produced = chunk.size() - zstream.avail_out;
+                    if (!append_with_limit(output, chunk.data(), produced, max_output_bytes))
+                        return std::nullopt;
+
+                    if (result == Z_STREAM_END)
+                    {
+                        finished = true;
+                        break;
+                    }
+
+                    if (zstream.total_in == total_in_before && zstream.total_out == total_out_before)
+                        return std::nullopt;
+                } while (zstream.avail_out == 0);
+
+                if (input_offset >= compressed.size() && zstream.avail_in == 0)
+                    finished = true;
+            }
+
+            return output;
+        }
+#endif
     } // namespace
 
     stream::stream(std::shared_ptr<::streaming::stream> underlying)
@@ -185,6 +365,9 @@ namespace streaming::websocket
         {
             throw std::runtime_error("Failed to initialize wslay context");
         }
+
+        if (permessage_deflate_enabled())
+            wslay_event_config_set_allowed_rsv_bits(wslay_ctx_, WSLAY_RSV1_BIT);
     }
 
     stream::~stream()
@@ -295,12 +478,7 @@ namespace streaming::websocket
             if (closed_ || !wslay_ctx_)
                 CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
 
-            // wslay copies the payload internally so we can pass the span directly.
-            wslay_event_msg msg{};
-            msg.opcode = WSLAY_BINARY_FRAME;
-            msg.msg = reinterpret_cast<const uint8_t*>(buffer.data());
-            msg.msg_length = buffer.size();
-            if (wslay_event_queue_msg(wslay_ctx_, &msg) != 0)
+            if (!queue_binary_message_locked(buffer))
                 CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
         }
 
@@ -472,12 +650,20 @@ namespace streaming::websocket
             case validator_state_first_header_byte:
             {
                 const uint8_t first = bytes[offset++];
-                const uint8_t rsv = first & websocket_rsv_bits;
+                const bool rsv1 = (first & websocket_rsv1_wire_bit) != 0;
+                const uint8_t unsupported_rsv = first & (websocket_rsv_bits & ~websocket_rsv1_wire_bit);
                 validator_fin_ = (first & websocket_fin_bit) != 0;
                 validator_opcode_ = first & websocket_opcode_mask;
+                validator_rsv1_ = rsv1;
 
-                if (rsv != 0 || !is_valid_opcode(validator_opcode_))
+                if (unsupported_rsv != 0 || !is_valid_opcode(validator_opcode_))
                     return false;
+                if (validator_rsv1_
+                    && (!permessage_deflate_enabled()
+                        || (validator_opcode_ != websocket_text_opcode && validator_opcode_ != websocket_binary_opcode)))
+                {
+                    return false;
+                }
                 if (is_control_opcode(validator_opcode_) && !validator_fin_)
                     return false;
 
@@ -670,6 +856,60 @@ namespace streaming::websocket
         }
     }
 
+    bool stream::permessage_deflate_enabled() const
+    {
+        return settings_enable_permessage_deflate(settings_);
+    }
+
+    bool stream::queue_binary_message_locked(rpc::byte_span buffer)
+    {
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+        if (permessage_deflate_enabled() && !buffer.empty())
+        {
+            auto compressed = permessage_deflate_compress(reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
+            if (compressed)
+            {
+                wslay_event_msg compressed_msg{};
+                compressed_msg.opcode = WSLAY_BINARY_FRAME;
+                compressed_msg.msg = compressed->data();
+                compressed_msg.msg_length = compressed->size();
+                return wslay_event_queue_msg_ex(wslay_ctx_, &compressed_msg, WSLAY_RSV1_BIT) == 0;
+            }
+
+            RPC_WARNING("WebSocket permessage-deflate compression failed; sending uncompressed message");
+        }
+#endif
+
+        // wslay copies the payload internally so we can pass the span directly.
+        wslay_event_msg msg{};
+        msg.opcode = WSLAY_BINARY_FRAME;
+        msg.msg = reinterpret_cast<const uint8_t*>(buffer.data());
+        msg.msg_length = buffer.size();
+        return wslay_event_queue_msg(wslay_ctx_, &msg) == 0;
+    }
+
+    bool stream::queue_received_message_locked(std::vector<uint8_t> message)
+    {
+        if (settings_.max_message_bytes != 0 && message.size() > settings_.max_message_bytes)
+        {
+            RPC_WARNING("WebSocket message too large: {} bytes limit={}", message.size(), settings_.max_message_bytes);
+            return false;
+        }
+        if (settings_.max_decoded_messages != 0 && decoded_messages_.size() >= settings_.max_decoded_messages)
+        {
+            RPC_WARNING(
+                "WebSocket decoded message queue full: {} messages limit={}",
+                decoded_messages_.size(),
+                settings_.max_decoded_messages);
+            return false;
+        }
+
+        RPC_DEBUG("WebSocket message received ({} bytes)", message.size());
+        decoded_messages_.push(std::move(message));
+        current_msg_offset_ = 0;
+        return true;
+    }
+
     // -----------------------------------------------------------------------
     // wslay callbacks
     // -----------------------------------------------------------------------
@@ -771,28 +1011,46 @@ namespace streaming::websocket
 
         if (arg->opcode == WSLAY_BINARY_FRAME || arg->opcode == WSLAY_TEXT_FRAME)
         {
-            if (self->settings_.max_message_bytes != 0 && arg->msg_length > self->settings_.max_message_bytes)
+            if ((arg->rsv & ~WSLAY_RSV1_BIT) != 0
+                || ((arg->rsv & WSLAY_RSV1_BIT) != 0 && !self->permessage_deflate_enabled()))
             {
-                RPC_WARNING(
-                    "WebSocket message too large: {} bytes limit={}", arg->msg_length, self->settings_.max_message_bytes);
+                RPC_WARNING("WebSocket message received with unsupported RSV bits: {}", arg->rsv);
                 self->closed_ = true;
                 wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
                 return;
             }
-            if (self->settings_.max_decoded_messages != 0
-                && self->decoded_messages_.size() >= self->settings_.max_decoded_messages)
+
+            std::vector<uint8_t> message;
+            if ((arg->rsv & WSLAY_RSV1_BIT) != 0)
             {
-                RPC_WARNING(
-                    "WebSocket decoded message queue full: {} messages limit={}",
-                    self->decoded_messages_.size(),
-                    self->settings_.max_decoded_messages);
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+                auto decompressed
+                    = permessage_deflate_decompress(arg->msg, arg->msg_length, self->settings_.max_message_bytes);
+                if (!decompressed)
+                {
+                    RPC_WARNING("WebSocket permessage-deflate decompression failed");
+                    self->closed_ = true;
+                    wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                    return;
+                }
+                message = std::move(*decompressed);
+#else
+                self->closed_ = true;
+                wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
+                return;
+#endif
+            }
+            else
+            {
+                message.assign(arg->msg, arg->msg + arg->msg_length);
+            }
+
+            if (!self->queue_received_message_locked(std::move(message)))
+            {
                 self->closed_ = true;
                 wslay_event_set_error(ctx, WSLAY_ERR_CALLBACK_FAILURE);
                 return;
             }
-            RPC_DEBUG("WebSocket message received ({} bytes)", arg->msg_length);
-            self->decoded_messages_.emplace(arg->msg, arg->msg + arg->msg_length);
-            self->current_msg_offset_ = 0;
         }
     }
 

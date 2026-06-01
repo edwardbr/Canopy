@@ -29,6 +29,7 @@
 #  ifdef CANOPY_BUILD_WEBSOCKET
 #    ifdef CANOPY_BUILD_HTTP_SERVER
 #      include <canopy/http_server/http_client_connection.h>
+#      include <canopy/http_server/static_webpage_delivery.h>
 #    endif
 #    include <common/foo_impl.h>
 #    include <rpc/internal/serialiser.h>
@@ -155,10 +156,11 @@ namespace
         uint8_t opcode,
         const std::vector<uint8_t>& payload,
         bool masked = true,
-        bool fin = true) -> std::vector<uint8_t>
+        bool fin = true,
+        bool rsv1 = false) -> std::vector<uint8_t>
     {
         std::vector<uint8_t> frame;
-        frame.push_back(static_cast<uint8_t>((fin ? 0x80 : 0x00) | (opcode & 0x0f)));
+        frame.push_back(static_cast<uint8_t>((fin ? 0x80 : 0x00) | (rsv1 ? 0x40 : 0x00) | (opcode & 0x0f)));
         const auto mask_bit = masked ? 0x80 : 0x00;
         if (payload.size() <= 125)
         {
@@ -393,12 +395,50 @@ namespace
         return stream->sent_messages();
     }
 
+    auto http_request(
+        std::string path,
+        std::string extra_headers = {}) -> std::string
+    {
+        return "GET " + path + " HTTP/1.1\r\n" + "Host: example.test\r\n" + "Connection: close\r\n" + extra_headers + "\r\n";
+    }
+
+    auto run_http_request(
+        const std::string& wire_request,
+        canopy::http_server::handler_set handlers,
+        canopy::http_server::client_connection_limits limits = {}) -> std::vector<std::vector<uint8_t>>
+    {
+        auto stream = std::make_shared<scripted_stream>();
+        stream->push(std::vector<uint8_t>(wire_request.begin(), wire_request.end()));
+
+        canopy::http_server::client_connection connection(stream, std::move(handlers), limits);
+        (void)coro::sync_wait(connection.handle());
+        return stream->sent_messages();
+    }
+
+    auto run_http_rest_response(
+        const std::string& wire_request,
+        canopy::http_server::response response) -> std::vector<std::vector<uint8_t>>
+    {
+        canopy::http_server::handler_set handlers;
+        handlers.rest_handler = [response = std::move(response)](const canopy::http_server::request&)
+        { return std::optional<canopy::http_server::response>{response}; };
+        return run_http_request(wire_request, std::move(handlers));
+    }
+
     auto sent_http_text(const std::vector<std::vector<uint8_t>>& sent) -> std::string
     {
         std::string output;
         for (const auto& message : sent)
             output.append(reinterpret_cast<const char*>(message.data()), message.size());
         return output;
+    }
+
+    auto http_body(std::string_view response) -> std::string_view
+    {
+        const auto separator = response.find("\r\n\r\n");
+        if (separator == std::string_view::npos)
+            return {};
+        return response.substr(separator + 4);
     }
 #    endif
 #  endif
@@ -672,6 +712,49 @@ TEST(
 
 TEST(
     WebSocketPenetration,
+    Rsv1WithoutNegotiatedCompressionClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>{0x41}, true, true, true));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+#    ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+TEST(
+    WebSocketPenetration,
+    MaskedCompressedClientBinaryFrameDeliversPayload)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    const std::vector<uint8_t> compressed_hello{{0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00}};
+    underlying->push(make_client_frame(0x2, compressed_hello, true, true, true));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.permessage_deflate.enabled = true;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    ASSERT_TRUE(status.is_ok());
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(received.data()), received.size()), "Hello");
+    EXPECT_FALSE(websocket->is_closed());
+}
+#    endif
+
+TEST(
+    WebSocketPenetration,
     UnmaskedClientFrameClosesServerStream)
 {
     auto underlying = std::make_shared<scripted_stream>();
@@ -859,6 +942,72 @@ TEST(
 }
 
 #    ifdef CANOPY_BUILD_HTTP_SERVER
+#      ifdef CANOPY_HTTP_HAS_GZIP
+TEST(
+    HttpCompression,
+    RestResponseUsesGzipWhenAccepted)
+{
+    const std::string payload = R"({"success":true,"data":")" + std::string(256, 'x') + R"("})";
+    auto response = sent_http_text(run_http_rest_response(
+        http_request("/api/status", "Accept-Encoding: br, gzip\r\n"),
+        canopy::http_server::make_json_response(200, payload)));
+    auto body = http_body(response);
+
+    EXPECT_NE(response.find("HTTP/1.1 200 OK\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Vary: Accept-Encoding\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Length: " + std::to_string(body.size()) + "\r\n"), std::string::npos);
+    ASSERT_GE(body.size(), size_t{2});
+    EXPECT_EQ(static_cast<unsigned char>(body[0]), 0x1f);
+    EXPECT_EQ(static_cast<unsigned char>(body[1]), 0x8b);
+}
+
+TEST(
+    HttpCompression,
+    StaticResponseUsesGzipWhenAccepted)
+{
+    auto file_body
+        = std::make_shared<std::string>("<!doctype html><html><body>" + std::string(256, 's') + "</body></html>");
+    auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
+        "/static",
+        [file_body](std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
+        {
+            EXPECT_EQ(file_path, "/static/index.html");
+            data.assign(file_body->begin(), file_body->end());
+            CO_RETURN rpc::error::OK();
+        });
+
+    canopy::http_server::handler_set handlers;
+    handlers.webpage_handler
+        = [webpage_delivery](
+              const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
+    { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+
+    auto response = sent_http_text(run_http_request(http_request("/", "Accept-Encoding: gzip\r\n"), std::move(handlers)));
+    auto body = http_body(response);
+
+    EXPECT_NE(response.find("HTTP/1.1 200 OK\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Type: text/html\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    ASSERT_GE(body.size(), size_t{2});
+    EXPECT_EQ(static_cast<unsigned char>(body[0]), 0x1f);
+    EXPECT_EQ(static_cast<unsigned char>(body[1]), 0x8b);
+}
+
+TEST(
+    HttpCompression,
+    RespectsRejectedGzipEncoding)
+{
+    const std::string payload = R"({"success":true,"data":"plain"})";
+    auto response = sent_http_text(run_http_rest_response(
+        http_request("/api/status", "Accept-Encoding: gzip;q=0, identity;q=1\r\n"),
+        canopy::http_server::make_json_response(200, payload)));
+
+    EXPECT_EQ(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    EXPECT_NE(response.find(payload), std::string::npos);
+}
+#      endif
+
 TEST(
     HttpWebSocketUpgradePenetration,
     ValidUpgradeUsesHandler)
@@ -870,6 +1019,28 @@ TEST(
     EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
     EXPECT_NE(response.find("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), std::string::npos);
 }
+
+#      ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+TEST(
+    HttpWebSocketUpgradePenetration,
+    NegotiatesPermessageDeflateWhenOffered)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET",
+            "dGhlIHNhbXBsZSBub25jZQ==",
+            "13",
+            "keep-alive, Upgrade",
+            "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n"),
+        called));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_NE(
+        response.find("Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover"),
+        std::string::npos);
+}
+#      endif
 
 TEST(
     HttpWebSocketUpgradePenetration,

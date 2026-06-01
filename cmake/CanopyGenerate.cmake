@@ -480,7 +480,15 @@ function(
   # Build generator command with conditional serialization flags
   set(SERIALIZATION_FLAGS "")
   if(generate_yas)
-    set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas)
+    if(${params_yas_binary})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_binary)
+    endif()
+    if(${params_yas_compressed_binary})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_compressed_binary)
+    endif()
+    if(${params_yas_json})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_json)
+    endif()
   endif()
 
   if(generate_protobuf)

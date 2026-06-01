@@ -3,6 +3,8 @@
  *   All rights reserved.
  */
 
+#include "yas_serialization_options.h"
+
 namespace yas_generator
 {
     // entry point
@@ -12,6 +14,7 @@ namespace yas_generator
         std::ostream& header_stream,
         const std::vector<std::string>& namespaces,
         const std::string& header_filename,
+        yas_serialization_options yas_options,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
         const std::vector<std::string>& additional_stub_headers);

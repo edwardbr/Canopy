@@ -301,6 +301,13 @@ int main(
         args::ValueFlag<std::string> mock_path_arg(
             args_parser, "path", "the generated mock relative filename", {'m', "mock"});
         args::Flag yas_arg(args_parser, "yas", "enable YAS serialization generation", {'y', "yas"});
+        args::Flag yas_binary_arg(args_parser, "yas_binary", "enable YAS binary serialization generation", {"yas_binary"});
+        args::Flag yas_compressed_binary_arg(
+            args_parser,
+            "yas_compressed_binary",
+            "enable YAS compressed binary serialization generation",
+            {"yas_compressed_binary"});
+        args::Flag yas_json_arg(args_parser, "yas_json", "enable YAS JSON serialization generation", {"yas_json"});
         args::Flag protobuf_arg(
             args_parser, "protobuf", "enable Protocol Buffers serialization generation", {'b', "protobuf"});
         args::Flag nanopb_arg(args_parser, "nanopb", "enable Nanopb serialization generation", {"nanopb"});
@@ -351,6 +358,11 @@ int main(
         std::filesystem::path output_path = args::get(output_path_arg);
         std::filesystem::path mock_path = args::get(mock_path_arg);
         bool enable_yas = args::get(yas_arg);
+        yas_serialization_options yas_options;
+        yas_options.binary = enable_yas || args::get(yas_binary_arg);
+        yas_options.compressed_binary = enable_yas || args::get(yas_compressed_binary_arg);
+        yas_options.json = enable_yas || args::get(yas_json_arg);
+        enable_yas = yas_options.any();
         bool enable_protobuf = args::get(protobuf_arg);
         bool enable_nanopb = args::get(nanopb_arg);
         bool enable_canonical_crypto = args::get(canonical_crypto_arg);
@@ -552,7 +564,7 @@ int main(
                 rethrow_exceptions,
                 additional_stub_headers,
                 !no_include_rpc_headers_arg,
-                enable_yas,
+                yas_options,
                 enable_protobuf,
                 enable_nanopb,
                 enable_canonical_crypto);
@@ -634,6 +646,7 @@ int main(
                 header_stream,
                 namespaces,
                 header_path,
+                yas_options,
                 !suppress_catch_stub_exceptions,
                 rethrow_exceptions,
                 additional_stub_headers);

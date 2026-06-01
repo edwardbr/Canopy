@@ -34,6 +34,29 @@ extern "C"
 
 namespace synchronous_generator
 {
+    void append_yas_unsupported_encoding_checks(
+        std::vector<std::string>& unsupported_encoding_checks,
+        const yas_serialization_options& yas_options)
+    {
+        if (yas_options.binary)
+            unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_binary");
+        if (yas_options.compressed_binary)
+            unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_compressed_binary");
+        if (yas_options.json)
+            unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_json");
+    }
+
+    void emit_yas_case_labels(
+        writer& output,
+        const yas_serialization_options& yas_options)
+    {
+        if (yas_options.binary)
+            output("case rpc::encoding::yas_binary:");
+        if (yas_options.compressed_binary)
+            output("case rpc::encoding::yas_compressed_binary:");
+        if (yas_options.json)
+            output("case rpc::encoding::yas_json:");
+    }
 
     struct protocol_version_descriptor
     {
@@ -1098,7 +1121,7 @@ namespace synchronous_generator
         int& function_count,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto)
@@ -1143,12 +1166,7 @@ namespace synchronous_generator
             stub("{{");
             stub("auto __rpc_encoding = rpc::effective_encoding(params.encoding_type);");
             std::vector<std::string> unsupported_encoding_checks;
-            if (enable_yas)
-            {
-                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_binary");
-                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_compressed_binary");
-                unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::yas_json");
-            }
+            append_yas_unsupported_encoding_checks(unsupported_encoding_checks, yas_options);
             if (enable_protobuf)
             {
                 unsupported_encoding_checks.emplace_back("__rpc_encoding != rpc::encoding::protocol_buffers");
@@ -1297,11 +1315,9 @@ namespace synchronous_generator
             // Generate switch statement to select serializer based on encoding
             proxy("switch(__rpc_encoding)");
             proxy("{{");
-            if (enable_yas)
+            if (yas_options.any())
             {
-                proxy("case rpc::encoding::yas_binary:");
-                proxy("case rpc::encoding::yas_compressed_binary:");
-                proxy("case rpc::encoding::yas_json:");
+                emit_yas_case_labels(proxy, yas_options);
                 proxy("{{");
                 {
                     proxy.print_tabs();
@@ -1459,11 +1475,9 @@ namespace synchronous_generator
             stub("auto __rpc_in_data = rpc::byte_span(params.in_data.data(), params.in_data.size());");
             stub("switch(__rpc_encoding)");
             stub("{{");
-            if (enable_yas)
+            if (yas_options.any())
             {
-                stub("case rpc::encoding::yas_binary:");
-                stub("case rpc::encoding::yas_compressed_binary:");
-                stub("case rpc::encoding::yas_json:");
+                emit_yas_case_labels(stub, yas_options);
                 stub("{{");
                 {
                     stub.print_tabs();
@@ -1664,7 +1678,7 @@ namespace synchronous_generator
 
             proxy("if(__rpc_ret == rpc::error::INCOMPATIBLE_SERIALISATION())");
             proxy("{{");
-            if (enable_yas)
+            if (yas_options.json)
             {
                 proxy("// Try fallback to yas_json if current encoding is not supported");
                 proxy("if(__rpc_encoding != rpc::encoding::yas_json)");
@@ -1891,11 +1905,9 @@ namespace synchronous_generator
                 proxy("{{");
                 proxy("switch(__rpc_encoding)");
                 proxy("{{");
-                if (enable_yas)
+                if (yas_options.any())
                 {
-                    proxy("case rpc::encoding::yas_binary:");
-                    proxy("case rpc::encoding::yas_compressed_binary:");
-                    proxy("case rpc::encoding::yas_json:");
+                    emit_yas_case_labels(proxy, yas_options);
                     proxy("{{");
                     {
                         proxy.print_tabs();
@@ -2032,11 +2044,9 @@ namespace synchronous_generator
                 // Generate stub serializer
                 stub("switch(__rpc_encoding)");
                 stub("{{");
-                if (enable_yas)
+                if (yas_options.any())
                 {
-                    stub("case rpc::encoding::yas_binary:");
-                    stub("case rpc::encoding::yas_compressed_binary:");
-                    stub("case rpc::encoding::yas_json:");
+                    emit_yas_case_labels(stub, yas_options);
                     stub("{{");
                     {
                         count = 1;
@@ -2214,7 +2224,7 @@ namespace synchronous_generator
         writer& stub,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto)
@@ -2507,7 +2517,7 @@ namespace synchronous_generator
                         function_count,
                         catch_stub_exceptions,
                         rethrow_exceptions,
-                        enable_yas,
+                        yas_options,
                         enable_protobuf,
                         enable_nanopb,
                         enable_canonical_crypto);
@@ -2692,7 +2702,7 @@ namespace synchronous_generator
     void write_struct(
         const class_entity& m_ob,
         writer& header,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto)
@@ -2790,7 +2800,7 @@ namespace synchronous_generator
         }
 
         // Generate YAS serialization method if enabled
-        if (enable_yas)
+        if (yas_options.any())
         {
             header("");
             header("// one member-function for save/load");
@@ -3171,7 +3181,7 @@ namespace synchronous_generator
         writer& stub,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto)
@@ -3213,7 +3223,7 @@ namespace synchronous_generator
                     stub,
                     catch_stub_exceptions,
                     rethrow_exceptions,
-                    enable_yas,
+                    yas_options,
                     enable_protobuf,
                     enable_nanopb,
                     enable_canonical_crypto);
@@ -3224,7 +3234,7 @@ namespace synchronous_generator
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 auto& ent = static_cast<const class_entity&>(*elem);
-                write_struct(ent, header, enable_yas, enable_protobuf, enable_nanopb, enable_canonical_crypto);
+                write_struct(ent, header, yas_options, enable_protobuf, enable_nanopb, enable_canonical_crypto);
             }
 
             else if (elem->get_entity_type() == entity_type::INTERFACE)
@@ -3238,7 +3248,7 @@ namespace synchronous_generator
                     stub,
                     catch_stub_exceptions,
                     rethrow_exceptions,
-                    enable_yas,
+                    yas_options,
                     enable_protobuf,
                     enable_nanopb,
                     enable_canonical_crypto);
@@ -3337,7 +3347,7 @@ namespace synchronous_generator
         const std::vector<std::string>& rethrow_exceptions,
         const std::vector<std::string>& additional_stub_headers,
         bool include_rpc_headers,
-        bool enable_yas,
+        yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
         bool enable_canonical_crypto)
@@ -3476,7 +3486,7 @@ namespace synchronous_generator
             stub,
             catch_stub_exceptions,
             rethrow_exceptions,
-            enable_yas,
+            yas_options,
             enable_protobuf,
             enable_nanopb,
             enable_canonical_crypto);

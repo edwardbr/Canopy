@@ -30,7 +30,7 @@ if(CANOPY_WEBSOCKET_DEMO_ENCODING STREQUAL "AUTO")
   endif()
 endif()
 
-set(websocket_demo_serialisers yas_binary yas_compressed_binary yas_json)
+set(websocket_demo_serialisers yas_binary yas_json)
 
 if(CANOPY_WEBSOCKET_DEMO_ENCODING STREQUAL "NANOPB")
   if(NOT CANOPY_BUILD_NANOPB)

@@ -8,6 +8,7 @@
 #include <cctype>
 #include <chrono>
 #include <limits>
+#include <map>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -15,6 +16,10 @@
 #include <fmt/format.h>
 #include <llhttp.h>
 #include <streaming/websocket/stream.h>
+
+#if defined(CANOPY_HTTP_HAS_GZIP)
+#  include <zlib.h>
+#endif
 
 #if defined(CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)
 #  include <mbedtls/base64.h>
@@ -92,6 +97,56 @@ namespace canopy::http_server
             return std::nullopt;
         }
 
+        auto find_header(
+            const std::map<
+                std::string,
+                std::string>& headers,
+            std::string_view name) -> std::optional<std::string_view>
+        {
+            for (const auto& [field, value] : headers)
+            {
+                if (ascii_iequals(field, name))
+                    return value;
+            }
+            return std::nullopt;
+        }
+
+        auto find_header(
+            std::map<
+                std::string,
+                std::string>& headers,
+            std::string_view name)
+            -> std::map<
+                std::string,
+                std::string>::iterator
+        {
+            return std::find_if(
+                headers.begin(), headers.end(), [name](const auto& header) { return ascii_iequals(header.first, name); });
+        }
+
+        void set_header(
+            response& response,
+            std::string name,
+            std::string value)
+        {
+            auto it = find_header(response.headers, name);
+            if (it == response.headers.end())
+            {
+                response.headers.emplace(std::move(name), std::move(value));
+                return;
+            }
+            it->second = std::move(value);
+        }
+
+        void erase_header(
+            response& response,
+            std::string_view name)
+        {
+            auto it = find_header(response.headers, name);
+            if (it != response.headers.end())
+                response.headers.erase(it);
+        }
+
         bool header_contains_token(
             std::string_view value,
             std::string_view token)
@@ -107,6 +162,278 @@ namespace canopy::http_server
                 value.remove_prefix(comma + 1);
             }
             return false;
+        }
+
+        auto parse_qvalue(std::string_view input) -> int
+        {
+            input = trim_ascii(input);
+            if (input.empty())
+                return 0;
+
+            if (input.front() == '0')
+            {
+                input.remove_prefix(1);
+                if (input.empty())
+                    return 0;
+                if (input.front() != '.')
+                    return 0;
+                input.remove_prefix(1);
+
+                int scale = 100;
+                int value = 0;
+                while (!input.empty() && scale > 0)
+                {
+                    const auto digit = static_cast<unsigned char>(input.front());
+                    if (!std::isdigit(digit))
+                        return 0;
+                    value += static_cast<int>(digit - '0') * scale;
+                    scale /= 10;
+                    input.remove_prefix(1);
+                }
+
+                while (!input.empty())
+                {
+                    if (!std::isdigit(static_cast<unsigned char>(input.front())))
+                        return 0;
+                    input.remove_prefix(1);
+                }
+
+                return value;
+            }
+
+            if (input.front() != '1')
+                return 0;
+            input.remove_prefix(1);
+            if (input.empty())
+                return 1000;
+            if (input.front() != '.')
+                return 0;
+            input.remove_prefix(1);
+            while (!input.empty())
+            {
+                if (input.front() != '0')
+                    return 0;
+                input.remove_prefix(1);
+            }
+            return 1000;
+        }
+
+        auto parse_content_coding_q(std::string_view value) -> int
+        {
+            const auto semicolon = value.find(';');
+            auto parameters = semicolon == std::string_view::npos ? std::string_view{} : value.substr(semicolon + 1);
+            int qvalue = 1000;
+
+            while (!parameters.empty())
+            {
+                const auto separator = parameters.find(';');
+                auto parameter = trim_ascii(parameters.substr(0, separator));
+                const auto equals = parameter.find('=');
+                if (equals != std::string_view::npos)
+                {
+                    auto name = trim_ascii(parameter.substr(0, equals));
+                    auto setting = trim_ascii(parameter.substr(equals + 1));
+                    if (ascii_iequals(name, "q"))
+                        qvalue = parse_qvalue(setting);
+                }
+
+                if (separator == std::string_view::npos)
+                    break;
+                parameters.remove_prefix(separator + 1);
+            }
+
+            return qvalue;
+        }
+
+        auto accepted_gzip_qvalue(const request& request) -> int
+        {
+            auto header = find_header(request, "Accept-Encoding");
+            if (!header)
+                return 0;
+
+            int gzip_qvalue = -1;
+            int wildcard_qvalue = -1;
+            auto value = *header;
+            while (!value.empty())
+            {
+                const auto comma = value.find(',');
+                auto part = trim_ascii(value.substr(0, comma));
+                const auto semicolon = part.find(';');
+                auto coding = trim_ascii(part.substr(0, semicolon));
+                const auto qvalue = parse_content_coding_q(part);
+
+                if (ascii_iequals(coding, "gzip"))
+                    gzip_qvalue = qvalue;
+                else if (coding == "*")
+                    wildcard_qvalue = qvalue;
+
+                if (comma == std::string_view::npos)
+                    break;
+                value.remove_prefix(comma + 1);
+            }
+
+            return gzip_qvalue >= 0 ? gzip_qvalue : std::max(wildcard_qvalue, 0);
+        }
+
+        bool content_type_allows_http_compression(std::string_view content_type)
+        {
+            const auto semicolon = content_type.find(';');
+            content_type = trim_ascii(content_type.substr(0, semicolon));
+            if (content_type.empty())
+                return true;
+
+            auto starts_with = [content_type](std::string_view prefix)
+            {
+                return content_type.size() >= prefix.size()
+                       && ascii_iequals(content_type.substr(0, prefix.size()), prefix);
+            };
+
+            if (starts_with("text/"))
+                return true;
+            if (ascii_iequals(content_type, "application/javascript") || ascii_iequals(content_type, "application/json")
+                || ascii_iequals(content_type, "application/xml") || ascii_iequals(content_type, "application/wasm")
+                || ascii_iequals(content_type, "image/svg+xml"))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        bool response_is_compressible(const response& response)
+        {
+            if (response.body.empty())
+                return false;
+            if (response.status_code < 200 || response.status_code == 204 || response.status_code == 304)
+                return false;
+            if (find_header(response.headers, "Content-Encoding"))
+                return false;
+            if (find_header(response.headers, "Transfer-Encoding"))
+                return false;
+            if (find_header(response.headers, "Content-Range"))
+                return false;
+            auto cache_control = find_header(response.headers, "Cache-Control");
+            if (cache_control && header_contains_token(*cache_control, "no-transform"))
+                return false;
+
+            auto content_type = find_header(response.headers, "Content-Type");
+            return !content_type || content_type_allows_http_compression(*content_type);
+        }
+
+        void add_vary_accept_encoding(response& response)
+        {
+            auto vary = find_header(response.headers, "Vary");
+            if (vary == response.headers.end())
+            {
+                response.headers["Vary"] = "Accept-Encoding";
+                return;
+            }
+            if (ascii_iequals(trim_ascii(vary->second), "*") || header_contains_token(vary->second, "Accept-Encoding"))
+                return;
+            vary->second += ", Accept-Encoding";
+        }
+
+#if defined(CANOPY_HTTP_HAS_GZIP)
+        auto gzip_compress(std::string_view input) -> std::optional<std::string>
+        {
+            z_stream stream{};
+            const auto init_result
+                = deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY);
+            if (init_result != Z_OK)
+                return std::nullopt;
+
+            std::string output;
+            std::array<unsigned char, 16 * 1024> buffer{};
+            size_t input_offset = 0;
+            int deflate_result = Z_OK;
+
+            do
+            {
+                const auto remaining = input.size() - input_offset;
+                const auto input_size = std::min<size_t>(remaining, std::numeric_limits<uInt>::max());
+                stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.data() + input_offset));
+                stream.avail_in = static_cast<uInt>(input_size);
+                input_offset += input_size;
+                const auto flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
+
+                do
+                {
+                    stream.next_out = buffer.data();
+                    stream.avail_out = static_cast<uInt>(buffer.size());
+                    deflate_result = deflate(&stream, flush);
+                    if (deflate_result != Z_OK && deflate_result != Z_STREAM_END)
+                    {
+                        deflateEnd(&stream);
+                        return std::nullopt;
+                    }
+
+                    const auto produced = buffer.size() - stream.avail_out;
+                    output.append(reinterpret_cast<const char*>(buffer.data()), produced);
+                } while (stream.avail_out == 0 && deflate_result != Z_STREAM_END);
+            } while (deflate_result != Z_STREAM_END);
+
+            if (deflateEnd(&stream) != Z_OK)
+                return std::nullopt;
+
+            return output;
+        }
+#endif
+
+        auto apply_http_compression(
+            const request& request,
+            response output) -> response
+        {
+#if defined(CANOPY_HTTP_HAS_GZIP)
+            if (accepted_gzip_qvalue(request) <= 0 || !response_is_compressible(output))
+                return output;
+
+            auto compressed = gzip_compress(output.body);
+            if (!compressed)
+            {
+                RPC_WARNING("HTTP gzip compression failed; sending uncompressed response");
+                return output;
+            }
+
+            output.body = std::move(*compressed);
+            set_header(output, "Content-Encoding", "gzip");
+            add_vary_accept_encoding(output);
+            erase_header(output, "Content-Length");
+#else
+            (void)request;
+#endif
+            return output;
+        }
+
+        bool websocket_extension_requested(
+            std::string_view value,
+            std::string_view extension_name)
+        {
+            while (!value.empty())
+            {
+                const auto comma = value.find(',');
+                auto extension = trim_ascii(value.substr(0, comma));
+                const auto semicolon = extension.find(';');
+                auto name = trim_ascii(extension.substr(0, semicolon));
+                if (ascii_iequals(name, extension_name))
+                    return true;
+                if (comma == std::string_view::npos)
+                    break;
+                value.remove_prefix(comma + 1);
+            }
+            return false;
+        }
+
+        auto negotiate_websocket_extensions(const request& request) -> std::optional<std::string>
+        {
+            auto extensions = find_header(request, "Sec-WebSocket-Extensions");
+            if (!extensions || !websocket_extension_requested(*extensions, "permessage-deflate"))
+                return std::nullopt;
+
+#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+            return std::string("permessage-deflate; server_no_context_takeover; client_no_context_takeover");
+#else
+            return std::nullopt;
+#endif
         }
 
         bool matches_allowed_value(
@@ -424,6 +751,16 @@ namespace canopy::http_server
         bool keep_alive) -> std::string
     {
         response output = input;
+        return build_http_response(request{}, output, keep_alive);
+    }
+
+    auto client_connection::build_http_response(
+        const request& request,
+        const response& input,
+        bool keep_alive) -> std::string
+    {
+        response output = input;
+        output = apply_http_compression(request, std::move(output));
         if (output.status_text.empty())
         {
             output.status_text = status_text(output.status_code);
@@ -450,12 +787,16 @@ namespace canopy::http_server
         return wire_response;
     }
 
-    auto client_connection::build_websocket_handshake_response(const std::string& accept_key) -> std::string
+    auto client_connection::build_websocket_handshake_response(
+        const std::string& accept_key,
+        const std::optional<std::string>& negotiated_extensions) -> std::string
     {
         response handshake;
         handshake.status_code = 101;
         handshake.status_text = status_text(101);
         handshake.headers = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Accept", accept_key}};
+        if (negotiated_extensions)
+            handshake.headers["Sec-WebSocket-Extensions"] = *negotiated_extensions;
         return build_http_response(handshake, false);
     }
 
@@ -508,7 +849,8 @@ namespace canopy::http_server
             CO_AWAIT stream_->send(rpc::byte_span{error_response});
             CO_RETURN nullptr;
         }
-        auto handshake_response = build_websocket_handshake_response(accept_key);
+        auto negotiated_extensions = negotiate_websocket_extensions(request);
+        auto handshake_response = build_websocket_handshake_response(accept_key, negotiated_extensions);
 
         auto wsstatus = CO_AWAIT stream_->send(rpc::byte_span{handshake_response});
         if (!wsstatus.is_ok())
@@ -518,7 +860,16 @@ namespace canopy::http_server
         }
 
         RPC_INFO("WebSocket handshake completed");
-        auto ws_stream = std::make_shared<streaming::websocket::stream>(stream_);
+        rpc::websocket_stream::stream_settings websocket_settings;
+        websocket_settings.role = rpc::websocket_stream::endpoint_role::server;
+        if (negotiated_extensions)
+        {
+            websocket_settings.permessage_deflate.enabled = true;
+            websocket_settings.permessage_deflate.server_no_context_takeover = true;
+            websocket_settings.permessage_deflate.client_no_context_takeover = true;
+        }
+        auto ws_stream = std::make_shared<streaming::websocket::stream>(
+            stream_, std::move(websocket_settings), rpc::websocket_stream::endpoint_role::server);
         CO_RETURN CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
     }
 
@@ -641,6 +992,9 @@ namespace canopy::http_server
                 }
 
                 ctx.parsed_request.keep_alive = llhttp_should_keep_alive(&parser) != 0;
+                auto connection_header = find_header(ctx.parsed_request, "Connection");
+                if (connection_header && header_contains_token(*connection_header, "close"))
+                    ctx.parsed_request.keep_alive = false;
 
                 if (is_websocket_upgrade)
                 {
@@ -658,7 +1012,7 @@ namespace canopy::http_server
 
                 auto response
                     = (CO_AWAIT dispatch_request(ctx.parsed_request)).value_or(make_text_response(404, "Not Found"));
-                auto wire_response = build_http_response(response, ctx.parsed_request.keep_alive);
+                auto wire_response = build_http_response(ctx.parsed_request, response, ctx.parsed_request.keep_alive);
 
                 auto send_status = CO_AWAIT stream_->send(rpc::byte_span{wire_response});
                 if (!send_status.is_ok())

@@ -461,7 +461,8 @@ namespace yas_generator
         writer& proxy,
         const std::string& interface_name,
         const std::shared_ptr<function_entity>& function,
-        int& function_count)
+        int& function_count,
+        const yas_serialization_options& yas_options)
     {
         bool has_inparams = false;
         proxy("template<>");
@@ -502,26 +503,35 @@ namespace yas_generator
                 "reset to the buffer");
             proxy("switch(__rpc_enc)");
             proxy("{{");
-            proxy("case rpc::encoding::yas_compressed_binary:");
-            proxy(
-                "::yas::save<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::vector_"
-                "ostream(__buffer), "
-                "__yas_mapping);");
-            proxy("break;");
+            if (yas_options.compressed_binary)
+            {
+                proxy("case rpc::encoding::yas_compressed_binary:");
+                proxy(
+                    "::yas::save<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::vector_"
+                    "ostream(__buffer), "
+                    "__yas_mapping);");
+                proxy("break;");
+            }
             // proxy("case rpc::encoding::yas_text:");
             // proxy("::yas::save<::yas::mem|::yas::text|::yas::no_header>(::yas::vector_ostream(__buffer), "
             //       "__yas_mapping);");
             // proxy("break;");
-            proxy("case rpc::encoding::yas_json:");
-            proxy(
-                "::yas::save<::yas::mem|::yas::json|::yas::no_header>(::yas::vector_ostream(__buffer), "
-                "__yas_mapping);");
-            proxy("break;");
-            proxy("case rpc::encoding::yas_binary:");
-            proxy(
-                "::yas::save<::yas::mem|::yas::binary|::yas::no_header>(::yas::vector_ostream(__buffer), "
-                "__yas_mapping);");
-            proxy("break;");
+            if (yas_options.json)
+            {
+                proxy("case rpc::encoding::yas_json:");
+                proxy(
+                    "::yas::save<::yas::mem|::yas::json|::yas::no_header>(::yas::vector_ostream(__buffer), "
+                    "__yas_mapping);");
+                proxy("break;");
+            }
+            if (yas_options.binary)
+            {
+                proxy("case rpc::encoding::yas_binary:");
+                proxy(
+                    "::yas::save<::yas::mem|::yas::binary|::yas::no_header>(::yas::vector_ostream(__buffer), "
+                    "__yas_mapping);");
+                proxy("break;");
+            }
             proxy("case rpc::encoding::protocol_buffers:");
             proxy("case rpc::encoding::nanopb:");
             proxy("default:");
@@ -531,8 +541,11 @@ namespace yas_generator
         }
         else
         {
-            proxy("if(__rpc_enc == rpc::encoding::yas_json)");
-            proxy("  __buffer = {{'{{','}}'}};");
+            if (yas_options.json)
+            {
+                proxy("if(__rpc_enc == rpc::encoding::yas_json)");
+                proxy("  __buffer = {{'{{','}}'}};");
+            }
         }
         proxy("return rpc::error::OK();");
         proxy("}}");
@@ -547,7 +560,8 @@ namespace yas_generator
         writer& proxy,
         const std::string& interface_name,
         const std::shared_ptr<function_entity>& function,
-        int& function_count)
+        int& function_count,
+        const yas_serialization_options& yas_options)
     {
         bool has_inparams = false;
         proxy("template<>");
@@ -588,28 +602,39 @@ namespace yas_generator
             proxy("  );");
             proxy("switch(__rpc_enc)");
             proxy("{{");
-            proxy("case rpc::encoding::yas_compressed_binary:");
-            proxy(
-                "::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
-                "buffer(reinterpret_cast<const char*>(__rpc_data.data()),__rpc_data.size()), "
-                "__yas_mapping);");
-            proxy("break;");
+            if (yas_options.compressed_binary)
+            {
+                proxy("case rpc::encoding::yas_compressed_binary:");
+                proxy(
+                    "::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
+                    "buffer(reinterpret_cast<const char*>(__rpc_data.data()),__rpc_data.size()), "
+                    "__yas_mapping);");
+                proxy("break;");
+            }
             // proxy("case rpc::encoding::yas_text:");
             // proxy("::yas::load<::yas::mem|::yas::text|::yas::no_header>(::yas::intrusive_buffer((const char
             // *)__rpc_data.data(),__rpc_data.size()),
             // __yas_mapping);"); proxy("break;");
-            proxy("case rpc::encoding::yas_json:");
-            proxy(
-                "::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
-                "char*>(__rpc_data.data()),__"
-                "rpc_data.size()), __yas_mapping);");
-            proxy("break;");
-            proxy("case rpc::encoding::yas_binary:");
-            proxy(
-                "::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
-                "char*>(__rpc_data.data()),__"
-                "rpc_data.size()), __yas_mapping);");
-            proxy("break;");
+            if (yas_options.json)
+            {
+                proxy("case rpc::encoding::yas_json:");
+                proxy(
+                    "::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<"
+                    "const "
+                    "char*>(__rpc_data.data()),__"
+                    "rpc_data.size()), __yas_mapping);");
+                proxy("break;");
+            }
+            if (yas_options.binary)
+            {
+                proxy("case rpc::encoding::yas_binary:");
+                proxy(
+                    "::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<"
+                    "const "
+                    "char*>(__rpc_data.data()),__"
+                    "rpc_data.size()), __yas_mapping);");
+                proxy("break;");
+            }
             proxy("case rpc::encoding::protocol_buffers:");
             proxy("case rpc::encoding::nanopb:");
             proxy("default:");
@@ -650,7 +675,8 @@ namespace yas_generator
         writer& stub,
         const std::string& interface_name,
         const std::shared_ptr<function_entity>& function,
-        int& function_count)
+        int& function_count,
+        const yas_serialization_options& yas_options)
     {
         bool has_outparams = false;
         stub("template<>");
@@ -689,28 +715,39 @@ namespace yas_generator
 
             stub("switch(__rpc_enc)");
             stub("{{");
-            stub("case rpc::encoding::yas_compressed_binary:");
-            stub(
-                "::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
-                "buffer(reinterpret_cast<const char*>(__rpc_data.data()), __rpc_data.size()), "
-                "__yas_mapping);");
-            stub("break;");
+            if (yas_options.compressed_binary)
+            {
+                stub("case rpc::encoding::yas_compressed_binary:");
+                stub(
+                    "::yas::load<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::intrusive_"
+                    "buffer(reinterpret_cast<const char*>(__rpc_data.data()), __rpc_data.size()), "
+                    "__yas_mapping);");
+                stub("break;");
+            }
             // stub("case rpc::encoding::yas_text:");
             // stub("::yas::load<::yas::mem|::yas::text|::yas::no_header>(::yas::intrusive_buffer((const char *)__rpc_data.data(), "
             //       "__rpc_data.size()), __yas_mapping);");
             // stub("break;");
-            stub("case rpc::encoding::yas_json:");
-            stub(
-                "::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
-                "char*>(__rpc_data.data()), "
-                "__rpc_data.size()), __yas_mapping);");
-            stub("break;");
-            stub("case rpc::encoding::yas_binary:");
-            stub(
-                "::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<const "
-                "char*>(__rpc_data.data()), "
-                "__rpc_data.size()), __yas_mapping);");
-            stub("break;");
+            if (yas_options.json)
+            {
+                stub("case rpc::encoding::yas_json:");
+                stub(
+                    "::yas::load<::yas::mem|::yas::json|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<"
+                    "const "
+                    "char*>(__rpc_data.data()), "
+                    "__rpc_data.size()), __yas_mapping);");
+                stub("break;");
+            }
+            if (yas_options.binary)
+            {
+                stub("case rpc::encoding::yas_binary:");
+                stub(
+                    "::yas::load<::yas::mem|::yas::binary|::yas::no_header>(::yas::intrusive_buffer(reinterpret_cast<"
+                    "const "
+                    "char*>(__rpc_data.data()), "
+                    "__rpc_data.size()), __yas_mapping);");
+                stub("break;");
+            }
             stub("case rpc::encoding::protocol_buffers:");
             stub("case rpc::encoding::nanopb:");
             stub("default:");
@@ -750,7 +787,8 @@ namespace yas_generator
         writer& stub,
         const std::string& interface_name,
         const std::shared_ptr<function_entity>& function,
-        int& function_count)
+        int& function_count,
+        const yas_serialization_options& yas_options)
     {
         bool has_outparams = false;
         stub("template<>");
@@ -791,26 +829,35 @@ namespace yas_generator
                 "to the buffer");
             stub("switch(__rpc_enc)");
             stub("{{");
-            stub("case rpc::encoding::yas_compressed_binary:");
-            stub(
-                "::yas::save<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::vector_"
-                "ostream(__buffer), "
-                "__yas_mapping);");
-            stub("break;");
+            if (yas_options.compressed_binary)
+            {
+                stub("case rpc::encoding::yas_compressed_binary:");
+                stub(
+                    "::yas::save<::yas::mem|::yas::binary|::yas::compacted|::yas::no_header>(::yas::vector_"
+                    "ostream(__buffer), "
+                    "__yas_mapping);");
+                stub("break;");
+            }
             // stub("case rpc::encoding::yas_text:");
             // stub("::yas::save<::yas::mem|::yas::text|::yas::no_header>(::yas::vector_ostream(__buffer), "
             //       "__yas_mapping);");
             // stub("break;");
-            stub("case rpc::encoding::yas_json:");
-            stub(
-                "::yas::save<::yas::mem|::yas::json|::yas::no_header>(::yas::vector_ostream(__buffer), "
-                "__yas_mapping);");
-            stub("break;");
-            stub("case rpc::encoding::yas_binary:");
-            stub(
-                "::yas::save<::yas::mem|::yas::binary|::yas::no_header>(::yas::vector_ostream(__buffer), "
-                "__yas_mapping);");
-            stub("break;");
+            if (yas_options.json)
+            {
+                stub("case rpc::encoding::yas_json:");
+                stub(
+                    "::yas::save<::yas::mem|::yas::json|::yas::no_header>(::yas::vector_ostream(__buffer), "
+                    "__yas_mapping);");
+                stub("break;");
+            }
+            if (yas_options.binary)
+            {
+                stub("case rpc::encoding::yas_binary:");
+                stub(
+                    "::yas::save<::yas::mem|::yas::binary|::yas::no_header>(::yas::vector_ostream(__buffer), "
+                    "__yas_mapping);");
+                stub("break;");
+            }
             stub("case rpc::encoding::protocol_buffers:");
             stub("case rpc::encoding::nanopb:");
             stub("default:");
@@ -820,8 +867,11 @@ namespace yas_generator
         }
         else
         {
-            stub("if(__rpc_enc == rpc::encoding::yas_json)");
-            stub("  __buffer = {{'{{','}}'}};");
+            if (yas_options.json)
+            {
+                stub("if(__rpc_enc == rpc::encoding::yas_json)");
+                stub("  __buffer = {{'{{','}}'}};");
+            }
         }
         stub("return rpc::error::OK();");
         stub("}}");
@@ -833,7 +883,8 @@ namespace yas_generator
     void write_interface(
         bool from_host,
         const class_entity& m_ob,
-        writer& proxy)
+        writer& proxy,
+        const yas_serialization_options& yas_options)
     {
         if (m_ob.is_in_import())
             return;
@@ -881,7 +932,8 @@ namespace yas_generator
                                         m_ob, "", function, has_params, ", rpc::encoding __rpc_enc", false))
                                 .second)
                         {
-                            write_proxy_send_method(from_host, m_ob, proxy, interface_name, function, function_count);
+                            write_proxy_send_method(
+                                from_host, m_ob, proxy, interface_name, function, function_count, yas_options);
                         }
                     }
                 }
@@ -913,7 +965,8 @@ namespace yas_generator
                                         m_ob, "", function, has_params, ", rpc::encoding __rpc_enc", false))
                                 .second)
                         {
-                            write_proxy_receive_method(from_host, m_ob, proxy, interface_name, function, function_count);
+                            write_proxy_receive_method(
+                                from_host, m_ob, proxy, interface_name, function, function_count, yas_options);
                         }
                     }
                 }
@@ -945,7 +998,8 @@ namespace yas_generator
                                         m_ob, "", function, has_params, ", rpc::encoding __rpc_enc", false))
                                 .second)
                         {
-                            write_stub_receive_method(from_host, m_ob, proxy, interface_name, function, function_count);
+                            write_stub_receive_method(
+                                from_host, m_ob, proxy, interface_name, function, function_count, yas_options);
                         }
                     }
                 }
@@ -977,7 +1031,8 @@ namespace yas_generator
                                         m_ob, "", function, has_params, ", rpc::encoding __rpc_enc", false))
                                 .second)
                         {
-                            write_stub_reply_method(from_host, m_ob, proxy, interface_name, function, function_count);
+                            write_stub_reply_method(
+                                from_host, m_ob, proxy, interface_name, function, function_count, yas_options);
                         }
                     }
                 }
@@ -991,6 +1046,7 @@ namespace yas_generator
         const class_entity& lib,
         std::string prefix,
         writer& proxy,
+        const yas_serialization_options& yas_options,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions)
     {
@@ -1013,13 +1069,13 @@ namespace yas_generator
                 proxy("{{");
                 auto& ent = static_cast<const class_entity&>(*elem);
                 write_namespace(
-                    from_host, ent, prefix + elem->get_name() + "::", proxy, catch_stub_exceptions, rethrow_exceptions);
+                    from_host, ent, prefix + elem->get_name() + "::", proxy, yas_options, catch_stub_exceptions, rethrow_exceptions);
                 proxy("}}");
             }
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
                 auto& ent = static_cast<const class_entity&>(*elem);
-                write_interface(from_host, ent, proxy);
+                write_interface(from_host, ent, proxy, yas_options);
             }
         }
     }
@@ -1031,6 +1087,7 @@ namespace yas_generator
         std::ostream& header_stream,
         const std::vector<std::string>& namespaces,
         const std::string& header_filename,
+        yas_serialization_options yas_options,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions,
         const std::vector<std::string>& additional_stub_headers)
@@ -1063,7 +1120,7 @@ namespace yas_generator
             prefix += ns + "::";
         }
 
-        write_namespace(from_host, lib, prefix, header, catch_stub_exceptions, rethrow_exceptions);
+        write_namespace(from_host, lib, prefix, header, yas_options, catch_stub_exceptions, rethrow_exceptions);
 
         for (auto& ns : namespaces)
         {

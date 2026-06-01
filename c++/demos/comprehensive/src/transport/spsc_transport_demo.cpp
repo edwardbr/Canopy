@@ -19,6 +19,7 @@
 
 #include <demo_impl.h>
 #include <rpc/rpc.h>
+#include <connection_factory/options.h>
 #include <streaming/spsc_queue/factory.h>
 #include <comprehensive/comprehensive_stub.h>
 #include <iostream>
