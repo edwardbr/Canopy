@@ -82,6 +82,68 @@ unaffected. The two are different layers and must stay so:
 
 ---
 
+## Review adjustments & branch state (2026-06-01)
+
+Reconciles these notes with the branch and a design review. Where this section
+conflicts with text further down, this section wins.
+
+**Already landed on the branch** (commits `fbcd953`, `be2cc8a`, `23c28c3`,
+`6f88d73`): `schema_profile` + `config_strict_profile()` / `mcp_profile()` and the
+gated emitter; `rpc::schema_flavor` + `rpc::interface_descriptor` defined in
+`rpc_types.idl` (reusing `function_info` by value); the protobuf nested-struct
+codegen fix; per-interface `__rpc_qualified_name()` / `__rpc_is_deprecated()`.
+
+**Not yet done:** `$id` threading from `generator/src/main.cpp`; the
+`get_schema(encoding, rpc::schema_flavor)` accessor overload; the descriptor
+metadata + composer.
+
+1. **`config_overlay_profile()` is dropped, not pending.** It is superseded by the
+   accurate-`required` rule (non-optional ∧ no explicit/defaulted value). Do not
+   implement a `required`-stripped variant; remove it from the presets.
+
+2. **The composer consumes a static, build-time source of truth.** Runtime lambda
+   maps are *not* the composer input. Component descriptors must carry
+   **declarative static** metadata (`type`, `role`, `status`, `settings_schema_id`,
+   `settings_definition`) that a small **schema-composer executable, run during the
+   build**, reads to emit the discriminated schema deterministically. The runtime
+   builders and the static descriptors may sit together but the composer only
+   touches the static part.
+
+3. **`$id` is one canonical scheme; `settings_schema_id` is the exact emitted
+   `$id`.** Define `$id = id_base + "<component>/<name>.json"`; the generator emits
+   exactly that, and a descriptor's `settings_schema_id` stores that exact string
+   (or data that forms it unambiguously) — never a second "path-like vs absolute"
+   formulation. Hence **`$id` threading is a hard prerequisite for the composer.**
+
+4. **Invariant (tested): imported IDL types are referenced, not redeclared.** An
+   importing generated header must reference an imported type via its generated
+   header + `get_inner_schema()`, never redeclare it. `interface_descriptor`
+   already follows this (reuses `function_info` by value). Add a test that scans
+   generated headers for duplicate `id<>` / `variant_alternative_tag<>`
+   specializations.
+
+5. **Active global profile pointer is a deliberate short-term choice.** Fine for
+   today's single-threaded generator; the cleaner long-term form is a
+   `const schema_profile&` threaded through the walker. Noted, not a regression.
+
+6. **ABI presence-gating is required for production, deferred only for the demo.**
+   The `i_marshaller::get_schema` wire change must be protocol-version gated
+   before any production merge; the local/demo prototype is the sole exception.
+   (Aligns the API-design doc and this plan.)
+
+7. **"Schema known" ≠ "runnable in this build".** Two orthogonal axes. The strict
+   runnable config schema includes only components available in this build, and
+   validation rejects unavailable ones; a separate catalog/doc schema may include
+   `planned`/`disabled`. The composer emits the strict schema from the
+   "runnable-here" axis.
+
+**Narrowed next step:** (a) deterministic `$id` threading (#3); (b) declarative
+descriptor metadata on the existing `stream_component_factory` /
+`transport_component_factory` (#2); (c) the duplicate-reference test (#4). No
+runtime marshaller surface yet.
+
+---
+
 ## Phase 0 — Generator: `schema_profile` seam (no output change)
 
 **Goal:** one canonical emitter that can later produce mcp vs config shapes;

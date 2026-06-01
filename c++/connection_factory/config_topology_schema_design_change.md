@@ -9,6 +9,14 @@ Implementable companion to `config_topology_schema_proposal.md`. The proposal is
 the "why"; this is the "what and where". It is scoped so the first landing is
 **behaviour-preserving** for every schema emitted today.
 
+> **Reconciliation note (2026-06-01):** see "Review adjustments & branch state"
+> in `marshaller_schema_implementation_plan.md` for the authoritative current
+> state and seven tightening points (composer = build-time executable over
+> static descriptors; `$id` = single canonical scheme and the exact
+> `settings_schema_id`; `config_overlay` dropped as superseded by accurate
+> `required`; imported-types-referenced-not-redeclared invariant + test;
+> status ≠ availability). Where this doc conflicts, that section wins.
+
 ## Summary
 
 Three coordinated changes, in dependency order:
@@ -54,8 +62,9 @@ namespace json_schema
     };
 
     schema_profile config_strict_profile();   // == today's output (the default)
-    schema_profile config_overlay_profile();  // strict, required = none (fallback only)
     schema_profile mcp_profile();              // minimal, inline, string enums, no defaults/$id
+    // NOTE: no config_overlay_profile() — superseded by accurate `required`
+    // (non-optional AND no explicit/defaulted value), computed not stripped.
 }
 ```
 
