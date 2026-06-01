@@ -16,8 +16,11 @@ Single-Producer Single-Consumer queue-based communication for lock-free IPC.
 
 In the current C++ transport stack, the SPSC queue is the stream primitive used
 underneath coroutine `rpc::stream_transport::transport` implementations. The
-`rpc::spsc_queue` helpers also provide direct stream and RPC factory functions
-for tests and peer-to-peer in-process compositions.
+`rpc::spsc_queue` helpers provide direct typed stream and RPC factory functions
+for tests and peer-to-peer in-process compositions. The configured
+`rpc::connection_factory` API can also create SPSC-backed stream RPC
+connections when the queue pair is supplied through
+`rpc::connection_factory::context`.
 
 ## Where It Is Used
 
@@ -97,20 +100,20 @@ namespace spsc {
 
 ## Queue Pair Setup
 
-For most direct SPSC use, prefer the `rpc::spsc_queue` factory helpers. They
-take a shared queue pair plus the same typed
-`rpc::connection_factory_config::stream_factory_options` used by the TCP factories.
+For direct SPSC use, prefer the `rpc::spsc_queue` factory helpers. They take a
+shared queue pair plus `rpc::stream_transport::connection_settings`, which is
+the direct typed settings object for the stream RPC transport.
 
 ```cpp
-#include <connection_factory/spsc_queue.h>
-#include <connection_factory_config/connection_factory_config.h>
+#include <streaming/spsc_queue/factory.h>
+#include <transports/streaming/factory.h>
 
 auto queues = rpc::spsc_queue::queue_pair::create();
 
-rpc::connection_factory_config::stream_factory_options options;
-options.transport.emplace().name = std::string("spsc_transport");
-options.connection.emplace().name = std::string("peer");
-options.rpc.emplace().encoding = std::string("yas_binary");
+rpc::stream_transport::connection_settings options;
+options.transport.name = std::string("spsc_transport");
+options.transport.service_proxy_name = std::string("peer");
+options.transport.encoding = rpc::encoding::yas_binary;
 ```
 
 Run the two peers concurrently. `accept_rpc` accepts exactly one stream and waits
@@ -135,6 +138,54 @@ auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<yyy::i_client, yyy::
     queues,
     options,
     client_service);
+```
+
+When configuration owns the stream topology, use the high-level
+`rpc::connection_factory` API instead. The JSON or generated connection
+settings name `spsc_queue` as the base stream type, while the actual queue pair
+stays in `rpc::connection_factory::context` because it is a runtime dependency,
+not serialisable configuration.
+
+```cpp
+#include <connection_factory/connection_factory.h>
+#include <json/convert.h>
+#include <spsc_queue_stream/spsc_queue_stream_config.h>
+#include <streaming/spsc_queue/factory.h>
+#include <stream_transport/stream_transport_config.h>
+
+auto queues = rpc::spsc_queue::queue_pair::create();
+
+rpc::connection_factory::context context;
+context.set_spsc_queues(queues);
+
+rpc::stream_transport::transport_settings transport;
+transport.name = std::string("spsc_transport");
+transport.service_proxy_name = std::string("peer");
+transport.encoding = rpc::encoding::yas_binary;
+
+rpc::connection_factory::connection_settings options;
+rpc::connection_factory::typed_settings transport_settings;
+transport_settings.type = "stream_rpc";
+transport_settings.settings = json::v1::convert::to_json_object(transport);
+options.transport = std::move(transport_settings);
+
+rpc::stream_layers::stream_layer_settings spsc_layer;
+spsc_layer.type = "spsc_queue";
+options.stream_layers.push_back(std::move(spsc_layer));
+```
+
+A named queue pair uses the same context and the generated
+`rpc::spsc_queue_stream::stream_settings` envelope:
+
+```cpp
+context.set_dependency_value(queues, "control");
+
+rpc::spsc_queue_stream::stream_settings spsc_settings;
+spsc_settings.queue_pair = std::string("control");
+
+rpc::stream_layers::stream_layer_settings spsc_layer;
+spsc_layer.type = "spsc_queue";
+spsc_layer.settings = json::v1::convert::to_json_object(spsc_settings);
 ```
 
 The lower-level pattern is still available when a caller needs to construct

@@ -108,7 +108,7 @@ function(
   endif()
   if(NOT DEFINED CANOPY_NANOPB_GENERATOR)
     set(CANOPY_NANOPB_GENERATOR
-        "${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/generator/nanopb_generator.py"
+        "${_canopy_source_root}/c++/submodules/nanopb/generator/nanopb_generator.py"
         CACHE FILEPATH "Nanopb generator executable")
   endif()
   if(NOT DEFINED CANOPY_PROTOBUF_PYTHON_SOURCE_DIR)

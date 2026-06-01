@@ -213,21 +213,27 @@ options inside the application.
 
 Do:
 
-- Use `rpc::connection_factory_config::stream_factory_options` for TCP and SPSC factory
-  calls in normal C++ code.
+- Use `rpc::connection_factory::connection_settings` for configured TCP, SPSC,
+  and layered stream/RPC factory calls in normal C++ code.
+- Build each `typed_settings::settings` value from the selected
+  implementation's generated IDL settings type, such as
+  `rpc::tcp_coroutine_stream::endpoint`,
+  `rpc::tcp_blocking_stream::endpoint`,
+  `rpc::spsc_queue_stream::stream_settings`, or
+  `rpc::stream_transport::transport_settings`.
 - Use `json::v1::load_typed_config_file` or `json::v1::load_typed_config` when a
   config file/blob plus command-line overrides must become a generated IDL
   options type.
-- Use `<connection_factory/io_uring_options.h>` to convert io_uring JSON into typed controller,
-  listen, and stream options before calling core io_uring mechanics.
+- Use `rpc::connection_factory::materialise_connection_settings` at
+  connection-factory JSON boundaries.
 
 Don't:
 
 - Thread raw `json::v1::object` lookups through component internals when a typed
   options object can describe the same contract.
 - Depend on flat legacy aliases for stream factory options. Exact nested schema
-  names such as `endpoint.port`, `service.name`, and `rpc.encoding` are the
-  supported configuration surface.
+  names inside `typed_settings` envelopes are the supported configuration
+  surface.
 
 ## 6. Zone Hierarchy Design
 

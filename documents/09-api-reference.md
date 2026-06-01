@@ -252,21 +252,22 @@ rpc::libcoro_spsc_dynamic_dll        // loaded DLL runtime over SPSC queues
 
 // Peer and stream-based transports
 rpc::stream_transport
-rpc::tcp           // TCP stream/RPC factory helpers
-rpc::spsc_queue    // SPSC queue-pair stream/RPC factory helpers, coroutine only
-rpc::io_uring      // Linux loopback io_uring stream/RPC factory helpers, coroutine only
+rpc::connection_factory // Configured stream/RPC construction over TCP, SPSC, local, SGX, DLL, etc.
+rpc::tcp_blocking       // Blocking TCP stream helpers
+rpc::tcp_coroutine      // Coroutine TCP stream helpers
+rpc::spsc_queue         // SPSC queue-pair stream helpers
 ```
 
 For DLL and IPC details, see `documents/transports/dynamic_library.md`. The
 direct `canopy_ipc_child_process` executable is currently disabled; the current
 process-hosted DLL path uses `canopy_ipc_child_host_process`.
 
-The high-level stream factories prefer typed configuration objects generated
-from `connection_factory_config.idl`, primarily
-`rpc::connection_factory_config::stream_factory_options`. JSON overloads are still
-available for config files and command-line overlays; they validate exact nested
-option names against the generated schema before converting to typed options or
-transport-specific settings.
+The high-level configured factory uses
+`rpc::connection_factory::connection_settings` from
+`connection_factory_config.idl`. JSON remains a process-boundary format for
+config files and command-line overlays; convert it once with
+`materialise_connection_settings`, then let the selected stream, layer, or
+transport implementation materialise its own generated settings type.
 
 ### Status
 

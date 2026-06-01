@@ -45,14 +45,16 @@ The merge is configuration-style, **not** RFC 7396 JSON Merge Patch:
 | Layer                 | Source                                                     |
 |-----------------------|------------------------------------------------------------|
 | Schema defaults       | IDL `= value` initialisers, materialised by `json::v1::schema_default_values` |
-| Application/component defaults | C++ code (e.g. `tcp_default_options()` in `connection_factory/tcp.h`) |
+| Application/component defaults | C++ code, normally a small overlay or `to_json_object(GeneratedSettings{})` |
 | Config-file values    | `parse_file(path)` then `apply_schema_overlay`             |
 | CLI overrides         | Parsed by the caller into a `json::v1::object` and passed as the last argument |
 
 `json::v1::apply_schema_overlay` (in `json/json_utils.h`) is the all-in-one
-helper. The connection factories wrap it with their typed materialisers
-(`materialise_tcp_options` etc.) so a single boundary call gives you a
-typed struct ready to use.
+helper. The configured connection-factory boundary uses
+`rpc::connection_factory::materialise_connection_settings` so one boundary call
+gives you a generated `connection_settings` value. Concrete stream, layer, and
+transport implementations then materialise their own generated settings from
+the relevant `typed_settings::settings` object.
 
 ## Null semantics
 
@@ -138,18 +140,17 @@ the same shape.
 
 ## Per-connection validation cost
 
-Connection-factory entry points that take `json::v1::object` overlay defaults,
-validate the effective JSON, and convert exactly once per call (via
-`materialise_tcp_options` and its siblings), then dispatch to the typed-options
-overload of the same factory. Internal helpers (`ensure_service`,
-`connect_stream`, `connect_rpc_stream`, `configured_name`,
-`transport_options`, ...) operate only on the typed struct and never re-walk
-the schema.
+Connection-factory JSON should be accepted at process boundaries only. Validate
+and convert it once with `materialise_connection_settings`, then pass the typed
+`rpc::connection_factory::connection_settings` value through the factory. The
+factory keeps each `typed_settings::settings` blob opaque until the named
+implementation converts it with that implementation's generated IDL settings
+type. Internal helpers operate on typed structs and should not re-walk schemas.
 
-Public factories that already accept a typed
-`rpc::connection_factory_config::stream_factory_options` skip the
-validation step entirely; structural validity is guaranteed by the
-struct's type.
+Application code that already constructs generated settings values directly can
+skip JSON validation at the connection-factory boundary; structural validity is
+provided by the generated C++ types and by the implementation materialiser for
+each named stream, layer, or transport.
 
 ## Typed envelopes with app-owned JSON
 

@@ -54,6 +54,12 @@ install(
   FILES_MATCHING
   PATTERN "*.h*")
 
+install(
+  TARGETS connection_factory
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 if(TARGET transport_local)
   target_sources(
     connection_factory

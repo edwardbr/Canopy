@@ -193,7 +193,6 @@ namespace rpc::connection_factory
         friend class detail::connection_factory_access;
     };
 
-    using layered_connection_context [[deprecated("use rpc::connection_factory::context")]] = context;
 } // namespace rpc::connection_factory
 
 #include <connection_factory/detail/context_registration.h>

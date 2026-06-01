@@ -3,136 +3,132 @@ Copyright (c) 2026 Edward Boggis-Rolfe
 All rights reserved.
 -->
 
-# io_uring Stream Factories
+# io_uring Streams And Controllers
 
 Scope note:
 
-- this document describes the current C++ io_uring stream and RPC factory API
+- this document describes the current C++ io_uring controller and stream APIs
 - the implementation is Linux and coroutine-only
-- the public factory currently targets loopback stream connections
+- configured RPC use normally enters through the TCP coroutine stream adapter
 
 ## Requirements
 
 - Linux with io_uring support
 - `CANOPY_BUILD_COROUTINE=ON`
-- a service with an executor, or permission for the factory to create an
-  internal scheduler owner
+- a coroutine scheduler for host-side stream/controller operations
 
 ## Public Headers
 
 Use these headers by concern:
 
-- `<connection_factory/io_uring.h>` for high-level stream and RPC factories
-- `<connection_factory/io_uring_types.h>` for typed runtime, controller, and listen defaults
-- `<connection_factory/io_uring_options.h>` for JSON-to-typed option conversion
+- `<io_uring/host_controller.h>` for host-owned ring creation and lifetime
+- `<io_uring/controller.h>` and `<io_uring/tcp.h>` for direct descriptor and
+  TCP operations on an existing controller
+- `<io_uring/io_uring_scheduler.h>` when a scheduler-integrated controller owner
+  is needed
+- `<io_uring/io_uring_config.h>` for generated controller option types
+- `<tcp_coroutine_stream/tcp_coroutine_stream_config.h>` for configured
+  io_uring-backed TCP stream endpoint settings
 
-The split is intentional. Core stream and controller code consume typed option
-objects. JSON is a process-boundary format for config files, command-line
-overrides, and tests.
+The removed `connection_factory/io_uring*.h` facade is not part of the current
+public API. Core stream and controller code consumes typed option objects. JSON
+is a process-boundary format for config files, command-line overlays, and tests.
 
-## Typed Runtime Options
+## Typed Controller Options
 
 The typed API avoids JSON entirely:
 
 ```cpp
-#include <connection_factory/io_uring.h>
+#include <io_uring/host_controller.h>
 
-auto controller_options = rpc::io_uring::default_host_controller_options();
-auto stream_options = streaming::io_uring::default_stream_options();
+canopy::io_uring::host_controller_options controller_options;
+controller_options.queue_depth = 256;
 
-auto runtime = rpc::io_uring::make_runtime(controller_options, service);
-if (runtime.error_code != rpc::error::OK())
+std::unique_ptr<rpc::io_uring::host_controller> controller;
+auto error = rpc::io_uring::host_controller::create(
+    controller,
+    controller_options,
+    scheduler);
+if (error != rpc::error::OK())
 {
     // Handle setup failure.
 }
 ```
 
-Stream-only connect:
+Direct TCP operations are lower-level building blocks. Create or obtain a
+controller, then use the operations in `<io_uring/tcp.h>` to create sockets,
+listen, connect, accept, and wrap descriptors.
+
+## Configured TCP Coroutine Streams
+
+High-level configured RPC connections use `rpc::connection_factory` with a
+`tcp_coroutine` base stream. The endpoint settings include both the io_uring
+host-controller options and per-stream TCP coroutine options:
 
 ```cpp
-auto stream = CO_AWAIT rpc::io_uring::connect_stream(
-    uint16_t{26000},
-    controller_options,
-    stream_options,
-    service);
+#include <connection_factory/connection_factory.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
+
+rpc::tcp_coroutine_stream::endpoint endpoint;
+endpoint.host = "127.0.0.1";
+endpoint.port = 26000;
+endpoint.controller.queue_depth = 256;
+endpoint.stream.timeout_strategy =
+    rpc::tcp_coroutine_stream::receive_timeout_strategy::linked_timeout;
+
+rpc::connection_factory::connection_settings options;
+
+rpc::connection_factory::typed_settings transport_settings;
+transport_settings.type = "stream_rpc";
+transport_settings.settings =
+    json::v1::convert::to_json_object(rpc::stream_transport::transport_settings{});
+options.transport = std::move(transport_settings);
+
+rpc::stream_layers::stream_layer_settings tcp_layer;
+tcp_layer.type = "tcp_coroutine";
+tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+options.stream_layers.push_back(std::move(tcp_layer));
 ```
 
-Stream-only accept:
-
-```cpp
-rpc::io_uring::loopback_listen_options listen_options;
-listen_options.port = uint16_t{26000};
-
-auto accepted = CO_AWAIT rpc::io_uring::accept_stream(
-    callback,
-    listen_options,
-    controller_options,
-    stream_options,
-    service);
-```
-
-If `listen_options.port` is zero, the acceptor scans
-`listen_options.port_range` and uses the first available loopback port.
-
-## RPC Factories
-
-The RPC helpers attach the normal `rpc::stream_transport` handshake to the
-io_uring stream.
-
-```cpp
-auto listener = CO_AWAIT rpc::io_uring::accept_rpc<yyy::i_client, yyy::i_server>(
-    server_interface,
-    listen_options,
-    controller_options,
-    stream_options,
-    server_service);
-
-auto result = CO_AWAIT rpc::io_uring::connect_rpc<yyy::i_client, yyy::i_server>(
-    client_interface,
-    listener.handle->port(),
-    controller_options,
-    stream_options,
-    client_service);
-```
-
-The returned listener owns the acceptor, service lifetime, and any scheduler
-owner created by the factory.
+When `endpoint.port` is zero on a listener, the TCP coroutine adapter scans
+`endpoint.first_port..endpoint.last_port` and uses the first available port.
 
 ## JSON Boundary
 
-JSON is for external configuration. Materialise it once at the boundary, then
-pass the generated typed options into the factory.
+JSON is for external configuration. Materialise it once at the configured
+connection-factory boundary, then let the selected stream, layer, or transport
+implementation convert its own `typed_settings::settings` object to the
+generated IDL type it owns.
 
-```cpp
-#include <json/config.h>
-#include <connection_factory/io_uring_options.h>
-
-auto options = json::v1::parse_file("io_uring.json");
-auto materialised = rpc::io_uring::materialise_io_uring_options(options);
-if (materialised.error_code != rpc::error::OK())
-{
-    // Handle invalid configuration.
-}
-
-auto typed_options = std::move(materialised.options);
-auto listen_options =
-    rpc::io_uring::listen_options_from_options(typed_options.io_uring.value());
-```
-
-Accepted keys live under `io_uring`, for example:
+Example connection-factory JSON for an io_uring-backed TCP coroutine stream:
 
 ```json
 {
-  "io_uring": {
-    "queue_depth": 256,
-    "use_sqpoll": true,
-    "first_port": 26000,
-    "last_port": 26064,
-    "stream": {
-      "max_transfer_size": 4096,
-      "timeout_strategy": "linked_timeout"
+  "transport": {
+    "type": "stream_rpc",
+    "settings": {
+      "encoding": "yas_binary"
     }
-  }
+  },
+  "stream_layers": [
+    {
+      "type": "tcp_coroutine",
+      "settings": {
+        "host": "127.0.0.1",
+        "port": 26000,
+        "controller": {
+          "queue_depth": 256,
+          "use_sqpoll": false
+        },
+        "stream": {
+          "max_transfer_size": 4096,
+          "timeout_strategy": "linked_timeout"
+        }
+      }
+    }
+  ]
 }
 ```
 
@@ -141,8 +137,8 @@ Supported stream timeout strategies are `linked_timeout` and
 
 ## Relation To TCP And SPSC
 
-TCP and SPSC factories accept `rpc::connection_factory_config::stream_factory_options`
-directly as their typed application API. io_uring exposes narrower typed
-mechanics because its runtime options are controller and loopback specific.
-All three families keep JSON at the edge and use exact schema-backed option
-names.
+Blocking TCP and SPSC still expose direct typed helpers in their implementation
+namespaces. The configured factory surface is
+`rpc::connection_factory::connection_settings`: `tcp_blocking`,
+`tcp_coroutine`, and `spsc_queue` appear as stream-layer type names, while
+`stream_rpc` is the transport type that attaches the Canopy RPC handshake.
