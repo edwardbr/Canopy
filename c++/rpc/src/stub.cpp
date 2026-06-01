@@ -83,6 +83,16 @@ namespace rpc
         return rpc::error::OK();
     }
 
+    void object_stub::enumerate_schemas(
+        rpc::encoding encoding,
+        rpc::schema_flavor flavor,
+        bool include_deprecated,
+        std::vector<rpc::interface_descriptor>& out) const
+    {
+        if (target_)
+            target_->__rpc_enumerate_schemas(encoding, flavor, include_deprecated, out);
+    }
+
     CORO_TASK(int)
     object_stub::add_ref(
         bool is_optimistic,

@@ -191,4 +191,41 @@ namespace rpc
         }
     };
 
+    // Schema introspection request (peer of try_cast). Object-discovery mode:
+    // describe every interface the object at remote_object_id exposes. The
+    // optional interface_id selects type-query mode (describe just that
+    // interface) for a future slice; object-discovery ignores it.
+    struct get_schema_params
+    {
+        uint64_t protocol_version;
+        encoding encoding_type;
+        schema_flavor flavor;
+        remote_object remote_object_id;
+        rpc::optional<interface_ordinal> interface_id;
+        bool include_deprecated = false;
+        caller_zone caller_zone_id;
+        destination_zone destination_zone_id;
+        std::vector<rpc::back_channel_entry> in_back_channel;
+    };
+
+    struct get_schema_result : standard_result
+    {
+        encoding encoding_type = encoding::not_set;
+        std::vector<rpc::interface_descriptor> interfaces;
+
+        get_schema_result() = default;
+        get_schema_result(
+            int ec,
+            encoding enc,
+            std::vector<rpc::interface_descriptor> ifaces,
+            std::vector<rpc::back_channel_entry> bce)
+            : standard_result(
+                  ec,
+                  std::move(bce))
+            , encoding_type(enc)
+            , interfaces(std::move(ifaces))
+        {
+        }
+    };
+
 } // namespace rpc

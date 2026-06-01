@@ -155,6 +155,18 @@ namespace rpc
         int try_cast(interface_ordinal interface_id);
 
         /**
+         * @brief Append this object's interface descriptors for schema discovery
+         *
+         * Delegates to the root target's __rpc_enumerate_schemas, which folds
+         * over every interface the object implements.
+         */
+        void enumerate_schemas(
+            rpc::encoding encoding,
+            rpc::schema_flavor flavor,
+            bool include_deprecated,
+            std::vector<rpc::interface_descriptor>& out) const;
+
+        /**
          * @brief Add reference to this stub
          * @param is_optimistic true for optimistic reference, false for shared reference
          * @param outcall true if reference is being created as out parameter in RPC call

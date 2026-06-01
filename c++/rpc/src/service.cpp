@@ -931,6 +931,42 @@ namespace rpc
         CO_RETURN standard_result{stub->try_cast(interface_id), {}};
     }
 
+    CORO_TASK(get_schema_result)
+    service::get_schema(get_schema_params params)
+    {
+        auto protocol_version = params.protocol_version;
+        auto remote_object_id = params.remote_object_id;
+        auto object_id = remote_object_id.get_object_id();
+
+        std::ignore = params.caller_zone_id;
+        std::ignore = params.in_back_channel;
+        std::ignore = params.interface_id; // object-discovery mode; type-query is a later slice
+
+        if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        {
+            RPC_ERROR("Routing error: get_schema() reached wrong zone - should have been routed via passthrough");
+            RPC_ASSERT(false);
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+        current_service_tracker tracker(this);
+
+        if (protocol_version < rpc::LOWEST_SUPPORTED_VERSION || protocol_version > rpc::HIGHEST_SUPPORTED_VERSION)
+        {
+            RPC_ERROR("Unsupported service version {} in get_schema", protocol_version);
+            CO_RETURN get_schema_result{rpc::error::INVALID_VERSION(), rpc::encoding::not_set, {}, {}};
+        }
+        std::weak_ptr<object_stub> weak_stub = get_object(object_id);
+        auto stub = weak_stub.lock();
+        if (!stub)
+        {
+            RPC_ERROR("Invalid data - stub is null in get_schema");
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        std::vector<rpc::interface_descriptor> descriptors;
+        stub->enumerate_schemas(params.encoding_type, params.flavor, params.include_deprecated, descriptors);
+        CO_RETURN get_schema_result{rpc::error::OK(), params.encoding_type, std::move(descriptors), {}};
+    }
+
     CORO_TASK(standard_result)
     service::add_ref(add_ref_params params)
     {
