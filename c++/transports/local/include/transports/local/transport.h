@@ -49,6 +49,7 @@ namespace rpc::local
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
 
@@ -173,6 +174,7 @@ namespace rpc::local
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
 

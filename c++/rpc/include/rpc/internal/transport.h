@@ -421,6 +421,8 @@ namespace rpc
 
         CORO_TASK(standard_result) inbound_try_cast(try_cast_params params);
 
+        CORO_TASK(get_schema_result) inbound_get_schema(get_schema_params params);
+
         CORO_TASK(standard_result) inbound_add_ref(add_ref_params params);
 
         CORO_TASK(standard_result) inbound_release(release_params params);
@@ -455,6 +457,7 @@ namespace rpc
         CORO_TASK(send_result) send(send_params params) final;
         CORO_TASK(void) post(post_params params) final;
         CORO_TASK(standard_result) try_cast(try_cast_params params) final;
+        CORO_TASK(get_schema_result) get_schema(get_schema_params params) final;
         CORO_TASK(standard_result) add_ref(add_ref_params params) final;
         CORO_TASK(standard_result) release(release_params params) final;
         CORO_TASK(void) object_released(object_released_params params) final;
@@ -512,6 +515,9 @@ namespace rpc
         virtual CORO_TASK(send_result) outbound_send(send_params params) = 0;
         virtual CORO_TASK(void) outbound_post(post_params params) = 0;
         virtual CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) = 0;
+        // Non-pure (default not-implemented) so transports that do not yet route
+        // schema queries are unaffected; the local transport overrides it.
+        virtual CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params);
         virtual CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) = 0;
         virtual CORO_TASK(standard_result) outbound_release(release_params params) = 0;
         virtual CORO_TASK(void) outbound_object_released(object_released_params params) = 0;

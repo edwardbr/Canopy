@@ -1108,6 +1108,36 @@ namespace rpc
         CO_RETURN CO_AWAIT dest->try_cast(std::move(params));
     }
 
+    CORO_TASK(get_schema_result)
+    transport::inbound_get_schema(get_schema_params params)
+    {
+        // Reject new RPC calls when shutting down.
+        if (get_status() >= transport_status::DISCONNECTING)
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        std::shared_ptr<i_marshaller> dest;
+        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        {
+            dest = service_.lock();
+        }
+        else
+        {
+            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
+            if (!dest)
+            {
+                CO_RETURN get_schema_result{error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+            }
+        }
+        if (!dest)
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN CO_AWAIT dest->get_schema(std::move(params));
+    }
+
     CORO_TASK(standard_result)
     transport::inbound_add_ref(add_ref_params params)
     {
@@ -1512,6 +1542,19 @@ namespace rpc
         }
 #endif
         CO_RETURN result;
+    }
+
+    CORO_TASK(get_schema_result) transport::get_schema(get_schema_params params)
+    {
+        CO_RETURN CO_AWAIT outbound_get_schema(std::move(params));
+    }
+
+    CORO_TASK(get_schema_result) transport::outbound_get_schema(get_schema_params params)
+    {
+        // Default: transports that do not route schema queries report not
+        // implemented. The local transport overrides this to forward to the peer.
+        std::ignore = params;
+        CO_RETURN get_schema_result{error::NOT_IMPLEMENTED(), rpc::encoding::not_set, {}, {}};
     }
 
     CORO_TASK(standard_result) transport::add_ref(add_ref_params params)
