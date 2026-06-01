@@ -814,27 +814,49 @@ namespace rpc
         return status_.load(std::memory_order_acquire);
     }
 
-    void transport::set_status(transport_status new_status)
+    transport::status_transition_result transport::try_advance_status(transport_status new_status)
     {
-        [[maybe_unused]] auto old_status = status_.load(std::memory_order_acquire);
-        if (old_status == new_status)
+        status_transition_result result;
+        auto old_status = status_.load(std::memory_order_acquire);
+        while (true)
         {
-            return; // Already at target status, idempotent
-        }
-        if (old_status > new_status)
-        {
-            RPC_ASSERT(false); // Regressive transition is always a bug
-            return;
-        }
-        status_.store(new_status, std::memory_order_release);
+            result.old_status = old_status;
+            if (old_status == new_status)
+                return result;
+
+            if (old_status > new_status)
+            {
+                result.rejected_regression = true;
+                // Shutdown can legitimately race: one task may still request
+                // DISCONNECTING after another task has already completed the
+                // transition to DISCONNECTED. Treat that stale request as a
+                // no-op, but keep asserting on every other regressive state
+                // transition.
+                if (!(old_status == transport_status::DISCONNECTED && new_status == transport_status::DISCONNECTING))
+                    RPC_ASSERT(false);
+                return result;
+            }
+
+            if (status_.compare_exchange_weak(old_status, new_status, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                result.changed = true;
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_subnet() != 0 && old_status != new_status)
-        {
-            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_status_change({name_, zone_id_, adjacent_zone_id_, old_status, new_status});
-        }
+                if (adjacent_zone_id_.get_subnet() != 0)
+                {
+                    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                        telemetry_service->on_transport_status_change(
+                            {name_, zone_id_, adjacent_zone_id_, result.old_status, new_status});
+                }
 #endif
+                return result;
+            }
+        }
+    }
+
+    void transport::set_status(transport_status new_status)
+    {
+        try_advance_status(new_status);
     }
 
     std::shared_ptr<pass_through> transport::inner_get_passthrough(

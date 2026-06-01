@@ -4,6 +4,7 @@
 #include "http_client_connection.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -13,6 +14,34 @@ namespace websocket_demo
 {
     namespace v1
     {
+        namespace
+        {
+            auto has_suffix(
+                std::string_view value,
+                std::string_view suffix) -> bool
+            {
+                return value.size() >= suffix.size() && value.substr(value.size() - suffix.size()) == suffix;
+            }
+
+            auto should_disable_static_cache(const canopy::http_server::request& request) -> bool
+            {
+                const auto path = canopy::http_server::request_path(request.url);
+                if (path.empty() || path == "/" || path == "/index.html" || path == "/client.js")
+                {
+                    return true;
+                }
+
+                return path.rfind("/generated/", 0) == 0 && has_suffix(path, ".js");
+            }
+
+            auto disable_static_cache(canopy::http_server::response& response) -> void
+            {
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+                response.headers["Pragma"] = "no-cache";
+                response.headers["Expires"] = "0";
+            }
+        }
+
 #ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         http_client_connection::http_client_connection(
             std::shared_ptr<streaming::stream> stream,
@@ -63,7 +92,14 @@ namespace websocket_demo
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
                 = [webpage_delivery](
                       const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
-            { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+            {
+                auto response = CO_AWAIT webpage_delivery->handle(request);
+                if (response && should_disable_static_cache(request))
+                {
+                    disable_static_cache(*response);
+                }
+                CO_RETURN response;
+            };
             handlers.rest_handler
                 = [this](const canopy::http_server::request& request) { return handle_rest_request(request); };
             handlers.websocket_upgrade_handler

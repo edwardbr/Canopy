@@ -167,6 +167,13 @@ namespace rpc
             const char* operation);
 
     protected:
+        struct status_transition_result
+        {
+            transport_status old_status{transport_status::CONNECTING};
+            bool changed{false};
+            bool rejected_regression{false};
+        };
+
         // Constructor for derived transport classes
         transport(
             std::string name,
@@ -215,6 +222,8 @@ namespace rpc
          * Only called when status is CONNECTED to avoid redundant transitions.
          */
         virtual void on_destination_count_zero() { }
+
+        status_transition_result try_advance_status(transport_status new_status);
 
     public:
         ~transport() override;

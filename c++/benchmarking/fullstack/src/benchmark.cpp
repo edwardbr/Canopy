@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -46,9 +48,26 @@ namespace
         return directory;
     }
 
+    std::string report_timestamp()
+    {
+        const auto now = std::chrono::system_clock::now();
+        const auto now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_time{};
+#if defined(_WIN32)
+        localtime_s(&local_time, &now_time);
+#else
+        localtime_r(&now_time, &local_time);
+#endif
+        char timestamp[32]{};
+        std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local_time);
+        const auto milliseconds
+            = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+        return fmt::format("{}-{:03}", timestamp, milliseconds);
+    }
+
     std::filesystem::path default_html_report_path()
     {
-        return cxx_source_directory() / "telemetry" / "reports" / "benchmark.html";
+        return cxx_source_directory() / "telemetry" / "reports" / fmt::format("benchmark-{}.html", report_timestamp());
     }
 
     struct benchmark_filters

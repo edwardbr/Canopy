@@ -86,21 +86,32 @@ namespace rpc::stream_transport
 
     void transport::set_status(rpc::transport_status new_status)
     {
-        auto old_status = get_status();
-        if (old_status != new_status)
+        auto transition = try_advance_status(new_status);
+        if (transition.changed)
         {
             RPC_DEBUG(
                 "stream transport status zone={} adjacent={} old={} new={}",
                 get_zone_id().get_subnet(),
                 get_adjacent_zone_id().get_subnet(),
-                static_cast<int>(old_status),
+                static_cast<int>(transition.old_status),
+                static_cast<int>(new_status));
+
+            if (new_status == rpc::transport_status::DISCONNECTING && shutdown_timeout_.count() > 0)
+                disconnecting_since_ = std::chrono::steady_clock::now();
+            if (transition.old_status < rpc::transport_status::DISCONNECTING
+                && new_status >= rpc::transport_status::DISCONNECTING)
+                on_disconnecting();
+        }
+        else if (transition.rejected_regression)
+        {
+            RPC_DEBUG(
+                "stream transport ignored stale status zone={} adjacent={} old={} requested={}",
+                get_zone_id().get_subnet(),
+                get_adjacent_zone_id().get_subnet(),
+                static_cast<int>(transition.old_status),
                 static_cast<int>(new_status));
         }
-        if (old_status != new_status && new_status == rpc::transport_status::DISCONNECTING && shutdown_timeout_.count() > 0)
-            disconnecting_since_ = std::chrono::steady_clock::now();
-        if (old_status < rpc::transport_status::DISCONNECTING && new_status >= rpc::transport_status::DISCONNECTING)
-            on_disconnecting();
-        rpc::transport::set_status(new_status);
+
         if (new_status != rpc::transport_status::CONNECTED)
         {
             send_queue_ready_.set();
@@ -309,11 +320,20 @@ namespace rpc::stream_transport
     {
         RPC_DEBUG("stream_transport::transport::outbound_release zone={}", get_zone_id().get_subnet());
 
-        if (get_status() != rpc::transport_status::CONNECTED && get_status() != rpc::transport_status::DISCONNECTING)
+        const auto status = get_status();
+        if (status == rpc::transport_status::DISCONNECTED)
+        {
+            RPC_DEBUG(
+                "skipping stream_transport::transport::outbound_release - already disconnected, zone={}",
+                get_zone_id().get_subnet());
+            CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
+        }
+
+        if (status != rpc::transport_status::CONNECTED && status != rpc::transport_status::DISCONNECTING)
         {
             RPC_ERROR(
                 "failed stream_transport::transport::outbound_release - not connected, status = {}",
-                static_cast<int>(get_status()));
+                static_cast<int>(status));
             CO_RETURN standard_result{rpc::error::TRANSPORT_ERROR(), {}};
         }
 

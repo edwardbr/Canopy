@@ -628,6 +628,29 @@ TEST(
 }
 
 TEST(
+    transport_lifecycle_tests,
+    stale_disconnecting_after_disconnected_is_ignored)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-stale-disconnecting", scheduler);
+#else
+    auto service = make_test_service("transport-stale-disconnecting");
+#endif
+
+    auto transport = std::make_shared<registry_test_transport>("stale-disconnecting-transport", service);
+
+    transport->set_status(rpc::transport_status::DISCONNECTING);
+    EXPECT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTING);
+
+    transport->set_status(rpc::transport_status::DISCONNECTED);
+    EXPECT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTED);
+
+    transport->set_status(rpc::transport_status::DISCONNECTING);
+    EXPECT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTED);
+}
+
+TEST(
     transport_registry_tests,
     initialisation_failure_releases_child_refs_to_host_objects)
 {

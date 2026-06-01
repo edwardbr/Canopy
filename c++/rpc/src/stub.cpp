@@ -187,7 +187,7 @@ namespace rpc
                 else
                 {
                     // Already cleaned up by release_all_from_zone (concurrent transport teardown)
-                    RPC_WARNING("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
+                    RPC_DEBUG("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
             if (did_release)
@@ -222,7 +222,7 @@ namespace rpc
                 else
                 {
                     // Already cleaned up by release_all_from_zone (concurrent transport teardown)
-                    RPC_WARNING("release: shared zone entry already removed (concurrent teardown), skipping decrement");
+                    RPC_DEBUG("release: shared zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
             // Only decrement the global count if we actually consumed a per-zone reference.

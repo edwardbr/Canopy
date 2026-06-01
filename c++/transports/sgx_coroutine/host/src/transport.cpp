@@ -1209,13 +1209,9 @@ namespace rpc::sgx_coroutine_transport::host
 
     void transport::set_status(rpc::transport_status status)
     {
-        bool apply_status = true;
         {
             std::lock_guard lock(status_transition_mutex_);
-            apply_status
-                = status != rpc::transport_status::DISCONNECTING || get_status() < rpc::transport_status::DISCONNECTING;
-            if (apply_status)
-                rpc::stream_transport::transport::set_status(status);
+            rpc::stream_transport::transport::set_status(status);
         }
 
         if (status >= rpc::transport_status::DISCONNECTING)
