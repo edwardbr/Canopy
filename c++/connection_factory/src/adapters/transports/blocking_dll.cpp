@@ -54,6 +54,14 @@ namespace rpc::connection_factory::detail
 
     void register_blocking_dll_components(transport_component_map& components)
     {
-        components.emplace("blocking_dll", std::make_shared<blocking_dll_component_factory>());
+        component_descriptor descriptor{"blocking_dll",
+            component_role::transport,
+            component_status::available,
+            schema_id("blocking_dll/config.json"),
+            "#/definitions/rpc_blocking_dll_transport_settings"};
+        auto type = descriptor.type;
+        components.emplace(
+            std::move(type),
+            transport_component_entry{std::move(descriptor), std::make_shared<blocking_dll_component_factory>()});
     }
 } // namespace rpc::connection_factory::detail

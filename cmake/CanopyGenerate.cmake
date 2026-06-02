@@ -51,6 +51,11 @@ function(
         OFF
         CACHE BOOL "Build enclave targets")
   endif()
+  if(NOT DEFINED CANOPY_SCHEMA_ID_BASE)
+    set(CANOPY_SCHEMA_ID_BASE
+        "https://schemas.canopy.dev/"
+        CACHE STRING "Base URI prepended to generated JSON Schema $id paths")
+  endif()
   if(NOT DEFINED CANOPY_DEFINES)
     set(CANOPY_DEFINES
         ""
@@ -513,7 +518,7 @@ function(
     OUTPUT ${GENERATOR_OUTPUTS}
     COMMAND
 	    ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name}
-    ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+    --schema_id_base ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
     ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
@@ -522,8 +527,9 @@ function(
   add_custom_command(
     OUTPUT ${GENERATOR_OUTPUTS}
     COMMAND
-      ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} ${SERIALIZATION_FLAGS}
-      ${PATHS_PARAMS} ${ADDITIONAL_HEADERS} ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
+      ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} --schema_id_base
+      ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+      ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
       ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
@@ -534,7 +540,7 @@ function(
     message(
       "
 	    ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name}
-    ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+    --schema_id_base ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
 	    ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
   ")
   endif()

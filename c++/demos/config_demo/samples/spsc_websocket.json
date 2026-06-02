@@ -1,0 +1,75 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "iterations": 1,
+  "scheduler_threads": 2,
+  "client_connection": "client",
+  "server_connection": "server",
+  "rpc_runtime": {
+    "spsc_queues": [
+      { "name": "config_demo_in_process_pair" }
+    ]
+  },
+  "connections": [
+    {
+      "name": "server",
+      "role": "acceptor",
+      "service_name": "config_demo_spsc_server",
+      "zone_subnet": 2,
+      "connection": {
+        "listener": { "type": "stream_rpc", "settings": { "name": "config_demo_spsc_listener" } },
+        "transport": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_spsc_server_transport",
+            "service_proxy_name": "config_demo_spsc_client",
+            "encoding": "yas_binary",
+            "call_timeout": 30000,
+            "call_timeout_sweep": 1
+          }
+        },
+        "stream_layers": [
+          { "type": "spsc_queue", "settings": { "queue_pair": "config_demo_in_process_pair" } },
+          {
+            "type": "websocket",
+            "settings": {
+              "keep_alive": { "enabled": false },
+              "max_message_bytes": 1048576,
+              "max_frame_payload_bytes": 1048576,
+              "max_decoded_messages": 16
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "client",
+      "role": "connector",
+      "service_name": "config_demo_spsc_client",
+      "zone_subnet": 101,
+      "connection": {
+        "transport": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_spsc_client_transport",
+            "service_proxy_name": "config_demo_spsc_server",
+            "encoding": "yas_binary",
+            "call_timeout": 30000,
+            "call_timeout_sweep": 1
+          }
+        },
+        "stream_layers": [
+          { "type": "spsc_queue", "settings": { "queue_pair": "config_demo_in_process_pair" } },
+          {
+            "type": "websocket",
+            "settings": {
+              "keep_alive": { "enabled": false },
+              "max_message_bytes": 1048576,
+              "max_frame_payload_bytes": 1048576,
+              "max_decoded_messages": 16
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

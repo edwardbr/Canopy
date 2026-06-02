@@ -12,5 +12,6 @@ endif()
 # stream_composition still composes coroutine-only impls (SPSC, TLS).
 if(CANOPY_BUILD_COROUTINE)
   add_subdirectory(stream_composition)
+  add_subdirectory(config_demo)
 endif()
 add_subdirectory(comprehensive)

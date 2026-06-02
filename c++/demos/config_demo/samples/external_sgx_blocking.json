@@ -1,0 +1,27 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "iterations": 1,
+  "scheduler_threads": 2,
+  "client_connection": "client",
+  "server_connection": "",
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "service_name": "config_demo_sgx_blocking_host",
+      "zone_subnet": 301,
+      "connection": {
+        "transport": {
+          "type": "sgx_blocking",
+          "settings": {
+            "name": "config_demo_sgx_blocking_transport",
+            "service_proxy_name": "config_demo_sgx_calculator",
+            "encoding": "yas_binary",
+            "enclave_path": "/path/to/libconfig_demo_calculator_blocking_enclave.signed.so",
+            "enclave": {}
+          }
+        }
+      }
+    }
+  ]
+}

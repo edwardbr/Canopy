@@ -1,0 +1,26 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "iterations": 1,
+  "scheduler_threads": 2,
+  "client_connection": "client",
+  "server_connection": "",
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "service_name": "config_demo_blocking_dll_host",
+      "zone_subnet": 303,
+      "connection": {
+        "transport": {
+          "type": "blocking_dll",
+          "settings": {
+            "name": "config_demo_blocking_dll_transport",
+            "service_proxy_name": "config_demo_blocking_dll_calculator",
+            "encoding": "yas_binary",
+            "dynamic_library_path": "/path/to/libconfig_demo_calculator_blocking_payload.so"
+          }
+        }
+      }
+    }
+  ]
+}

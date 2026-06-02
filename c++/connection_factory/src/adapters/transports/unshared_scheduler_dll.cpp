@@ -60,6 +60,12 @@ namespace rpc::connection_factory::detail
     void register_unshared_scheduler_dll_components(transport_component_map& components)
     {
         auto factory = std::make_shared<unshared_scheduler_dll_component_factory>();
-        components.emplace("unshared_scheduler_dll", std::move(factory));
+        component_descriptor descriptor{"unshared_scheduler_dll",
+            component_role::transport,
+            component_status::available,
+            schema_id("unshared_scheduler_dll/config.json"),
+            "#/definitions/rpc_unshared_scheduler_dll_transport_settings"};
+        auto type = descriptor.type;
+        components.emplace(std::move(type), transport_component_entry{std::move(descriptor), std::move(factory)});
     }
 } // namespace rpc::connection_factory::detail

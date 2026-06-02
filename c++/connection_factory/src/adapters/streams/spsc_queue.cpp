@@ -57,7 +57,19 @@ namespace rpc::connection_factory::detail
     void register_spsc_queue_stream_components(stream_component_map& components)
     {
         auto spsc = std::make_shared<spsc_queue_stream_component_factory>();
-        components.emplace("spsc", spsc);
-        components.emplace("spsc_queue", std::move(spsc));
+        component_descriptor legacy_descriptor{"spsc",
+            component_role::base_stream,
+            component_status::available,
+            schema_id("spsc_queue_stream/spsc_queue_stream_config.json"),
+            "#/definitions/rpc_spsc_queue_stream_stream_settings"};
+        component_descriptor descriptor{"spsc_queue",
+            component_role::base_stream,
+            component_status::available,
+            schema_id("spsc_queue_stream/spsc_queue_stream_config.json"),
+            "#/definitions/rpc_spsc_queue_stream_stream_settings"};
+        auto legacy_type = legacy_descriptor.type;
+        auto type = descriptor.type;
+        components.emplace(std::move(legacy_type), stream_component_entry{std::move(legacy_descriptor), spsc});
+        components.emplace(std::move(type), stream_component_entry{std::move(descriptor), std::move(spsc)});
     }
 } // namespace rpc::connection_factory::detail

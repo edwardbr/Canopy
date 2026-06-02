@@ -21,6 +21,7 @@ CanopyGenerate(
 
 add_library(
   connection_factory STATIC
+  src/application_config.cpp
   src/connection_factory.cpp
   src/options.cpp)
 target_include_directories(
@@ -28,6 +29,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CANOPY_INCLUDES})
 target_compile_definitions(connection_factory PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(connection_factory PRIVATE CANOPY_SCHEMA_ID_BASE="${CANOPY_SCHEMA_ID_BASE}")
 target_compile_options(connection_factory PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(connection_factory PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
@@ -39,6 +41,19 @@ target_link_libraries(
          json_idl
          stream_layers_idl
          io_uring_config_idl)
+
+add_executable(config_schema_compose tools/config_schema_compose.cpp)
+target_include_directories(config_schema_compose PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CANOPY_INCLUDES})
+target_compile_definitions(config_schema_compose PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(config_schema_compose PRIVATE CANOPY_SCHEMA_ID_BASE="${CANOPY_SCHEMA_ID_BASE}")
+target_compile_options(config_schema_compose PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_link_options(config_schema_compose PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+target_link_libraries(config_schema_compose PRIVATE connection_factory json ${CANOPY_LIBRARIES} rpc_log)
+set_property(TARGET config_schema_compose PROPERTY COMPILE_PDB_NAME config_schema_compose)
+
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(config_schema_compose PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
 
 if(TARGET streaming_tcp_blocking)
   target_sources(
@@ -151,9 +166,11 @@ endif()
 if(TARGET streaming_openssl_tls)
   target_link_libraries(connection_factory PUBLIC streaming_openssl_tls openssl_tls_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TLS)
+  target_compile_definitions(connection_factory PRIVATE CANOPY_CONNECTION_FACTORY_HAS_OPENSSL_TLS_CONFIG)
 elseif(TARGET streaming_mbedtls)
   target_link_libraries(connection_factory PUBLIC streaming_mbedtls mbedtls_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TLS)
+  target_compile_definitions(connection_factory PRIVATE CANOPY_CONNECTION_FACTORY_HAS_MBEDTLS_CONFIG)
 endif()
 
 if(TARGET streaming_compression)

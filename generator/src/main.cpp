@@ -301,6 +301,12 @@ int main(
             args_parser, "path", "the base output path", {'p', "output_path"}, args::Options::Required);
         args::ValueFlag<std::string> mock_path_arg(
             args_parser, "path", "the generated mock relative filename", {'m', "mock"});
+        args::ValueFlag<std::string> schema_id_base_arg(
+            args_parser,
+            "uri",
+            "base URI prepended to generated JSON Schema $id paths",
+            {"schema_id_base"},
+            "https://schemas.canopy.dev/");
         args::Flag yas_arg(args_parser, "yas", "enable YAS serialization generation", {'y', "yas"});
         args::Flag yas_binary_arg(args_parser, "yas_binary", "enable YAS binary serialization generation", {"yas_binary"});
         args::Flag yas_compressed_binary_arg(
@@ -358,6 +364,7 @@ int main(
         std::filesystem::path root_idl = args::get(root_idl_arg);
         std::filesystem::path output_path = args::get(output_path_arg);
         std::filesystem::path mock_path = args::get(mock_path_arg);
+        std::string schema_id_base = args::get(schema_id_base_arg);
         bool enable_yas = args::get(yas_arg);
         yas_serialization_options yas_options;
         yas_options.binary = enable_yas || args::get(yas_binary_arg);
@@ -837,11 +844,11 @@ int main(
             // otherwise stamp the same $id on every per-struct/per-interface
             // document in the header, which is invalid (duplicate $ids).
             auto json_document_profile = json_schema::config_strict_profile();
+            json_document_profile.id_base = schema_id_base;
             json_document_profile.id_path = file_path;
 
             // Generate the JSON Schema
-            json_schema::write_json_schema(*objects, json_schema_stream,
-                module_name, json_document_profile);
+            json_schema::write_json_schema(*objects, json_schema_stream, module_name, json_document_profile);
 
             const auto json_schema_string = json_schema_stream.str();
             if (is_different(json_schema_stream, json_schema_data))
@@ -850,8 +857,8 @@ int main(
                 file << json_schema_string;
             }
 
-            const auto json_schema_header
-                = make_json_schema_header(module_name, *objects, header_path, imports, json_schema::config_strict_profile());
+            const auto json_schema_header = make_json_schema_header(
+                module_name, *objects, header_path, imports, json_schema::config_strict_profile());
             if (json_schema_header != json_schema_header_data)
             {
                 ofstream file(json_schema_header_fs_path);

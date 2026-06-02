@@ -73,6 +73,14 @@ namespace rpc::connection_factory::detail
 
     void register_tcp_coroutine_stream_components(stream_component_map& components)
     {
-        components.emplace("tcp_coroutine", std::make_shared<tcp_coroutine_stream_component_factory>());
+        component_descriptor descriptor{"tcp_coroutine",
+            component_role::base_stream,
+            component_status::available,
+            schema_id("tcp_coroutine_stream/tcp_coroutine_stream_config.json"),
+            "#/definitions/rpc_tcp_coroutine_stream_endpoint"};
+        auto type = descriptor.type;
+        components.emplace(
+            std::move(type),
+            stream_component_entry{std::move(descriptor), std::make_shared<tcp_coroutine_stream_component_factory>()});
     }
 } // namespace rpc::connection_factory::detail

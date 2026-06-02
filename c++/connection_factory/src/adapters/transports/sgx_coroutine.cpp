@@ -53,6 +53,14 @@ namespace rpc::connection_factory::detail
 
     void register_sgx_coroutine_transport_components(transport_component_map& components)
     {
-        components.emplace("sgx_coroutine", std::make_shared<sgx_coroutine_transport_component_factory>());
+        component_descriptor descriptor{"sgx_coroutine",
+            component_role::transport,
+            component_status::available,
+            schema_id("sgx_coroutine_transport/sgx_coroutine_transport_config.json"),
+            "#/definitions/rpc_sgx_coroutine_transport_transport_settings"};
+        auto type = descriptor.type;
+        components.emplace(
+            std::move(type),
+            transport_component_entry{std::move(descriptor), std::make_shared<sgx_coroutine_transport_component_factory>()});
     }
 } // namespace rpc::connection_factory::detail

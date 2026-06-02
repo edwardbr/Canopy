@@ -1,0 +1,28 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace config_demo
+{
+    namespace v1
+    {
+        [status=demo]
+        interface i_calculator
+        {
+            [description="Add two integers."]
+            int add(int a, int b, [out] int& result);
+
+            [description="Subtract the second integer from the first."]
+            int subtract(int a, int b, [out] int& result);
+
+            [description="Multiply two integers."]
+            int multiply(int a, int b, [out] int& result);
+
+            [description="Divide the first integer by the second."]
+            int divide(int a, int b, [out] int& result);
+        };
+    }
+}

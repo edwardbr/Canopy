@@ -54,6 +54,14 @@ namespace rpc::connection_factory::detail
 
     void register_local_transport_components(transport_component_map& components)
     {
-        components.emplace("local", std::make_shared<local_transport_component_factory>());
+        component_descriptor descriptor{"local",
+            component_role::transport,
+            component_status::available,
+            schema_id("local_transport/local_transport_config.json"),
+            "#/definitions/rpc_local_transport_transport_settings"};
+        auto type = descriptor.type;
+        components.emplace(
+            std::move(type),
+            transport_component_entry{std::move(descriptor), std::make_shared<local_transport_component_factory>()});
     }
 } // namespace rpc::connection_factory::detail

@@ -59,6 +59,12 @@ namespace rpc::connection_factory::detail
     void register_ipc_spsc_components(transport_component_map& components)
     {
         auto factory = std::make_shared<ipc_spsc_component_factory>();
-        components.emplace("ipc_spsc", std::move(factory));
+        component_descriptor descriptor{"ipc_spsc",
+            component_role::transport,
+            component_status::available,
+            schema_id("ipc_spsc/config.json"),
+            "#/definitions/rpc_ipc_spsc_transport_settings"};
+        auto type = descriptor.type;
+        components.emplace(std::move(type), transport_component_entry{std::move(descriptor), std::move(factory)});
     }
 } // namespace rpc::connection_factory::detail

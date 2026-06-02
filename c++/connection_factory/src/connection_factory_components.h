@@ -10,12 +10,46 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <connection_factory/context.h>
 #include <connection_factory/detail/service.h>
 
 namespace rpc::connection_factory::detail
 {
+#ifndef CANOPY_SCHEMA_ID_BASE
+#  define CANOPY_SCHEMA_ID_BASE "https://schemas.canopy.dev/"
+#endif
+
+    enum class component_role
+    {
+        base_stream,
+        stream_layer,
+        transport,
+        runtime_dependency,
+    };
+
+    enum class component_status
+    {
+        available,
+        experimental,
+        planned,
+    };
+
+    struct component_descriptor
+    {
+        std::string type;
+        component_role role{component_role::runtime_dependency};
+        component_status status{component_status::available};
+        std::string settings_schema_id;
+        std::string settings_definition;
+    };
+
+    inline auto schema_id(const char* path) -> std::string
+    {
+        return std::string(CANOPY_SCHEMA_ID_BASE) + path;
+    }
+
     struct transport_connect_context
     {
         int error_code{rpc::error::OK()};
@@ -115,7 +149,13 @@ namespace rpc::connection_factory::detail
         }
     };
 
-    using stream_component_map = std::unordered_map<std::string, std::shared_ptr<const stream_component_factory>>;
+    struct stream_component_entry
+    {
+        component_descriptor descriptor;
+        std::shared_ptr<const stream_component_factory> factory;
+    };
+
+    using stream_component_map = std::unordered_map<std::string, stream_component_entry>;
 
     class transport_component_factory
     {
@@ -131,7 +171,17 @@ namespace rpc::connection_factory::detail
         }
     };
 
-    using transport_component_map = std::unordered_map<std::string, std::shared_ptr<const transport_component_factory>>;
+    struct transport_component_entry
+    {
+        component_descriptor descriptor;
+        std::shared_ptr<const transport_component_factory> factory;
+    };
+
+    using transport_component_map = std::unordered_map<std::string, transport_component_entry>;
+
+    const std::vector<component_descriptor>& built_in_stream_component_descriptors();
+    const std::vector<component_descriptor>& built_in_stream_layer_descriptors();
+    const std::vector<component_descriptor>& built_in_transport_component_descriptors();
 
     transport_connect_context make_transport_connect_context(
         const typed_settings& transport_settings,

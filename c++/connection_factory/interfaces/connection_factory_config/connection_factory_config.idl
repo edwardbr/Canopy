@@ -73,5 +73,147 @@ namespace rpc
             [description="Ordered byte-stream layer stack. For stream_rpc the first item is the base stream and following items are wrappers. For stream-backed native transports this list contains wrappers over the transport-owned base stream. Omit this for non-stream transports."]
             std::vector<rpc::stream_layers::stream_layer_settings> stream_layers = {};
         };
+
+        enum connection_role : uint8_t
+        {
+            connector = 0,
+            acceptor = 1,
+        };
+
+        enum tls_peer_verification : uint8_t
+        {
+            none = 0,
+            optional = 1,
+            required = 2,
+        };
+
+        // Host-side TLS resources used by stream-layer factories. Callers can
+        // provide PEM file paths or inline PEM blobs. Relative file paths are
+        // resolved by the application runtime loader relative to the JSON file.
+        struct tls_runtime_settings
+        {
+            [description="PEM encoded server certificate or certificate chain file."]
+            std::string server_certificate_file = "";
+
+            [description="PEM encoded server private key file."]
+            std::string server_private_key_file = "";
+
+            [description="Inline PEM encoded server certificate or certificate chain."]
+            std::string server_certificate_pem = "";
+
+            [description="Inline PEM encoded server private key."]
+            std::string server_private_key_pem = "";
+
+            [description="PEM trust-anchor file used by the server context when peer verification is enabled."]
+            std::string server_trust_anchor_file = "";
+
+            [description="Inline PEM trust anchor used by the server context when peer verification is enabled."]
+            std::string server_trust_anchor_pem = "";
+
+            [description="Require peer verification for client-side TLS contexts."]
+            bool client_verify_peer = false;
+
+            [description="PEM trust-anchor file used by client-side TLS contexts."]
+            std::string client_trust_anchor_file = "";
+
+            [description="Inline PEM trust anchor used by client-side TLS contexts."]
+            std::string client_trust_anchor_pem = "";
+
+            [description="Peer verification policy for server-side TLS contexts."]
+            tls_peer_verification server_peer_verification = tls_peer_verification::none;
+        };
+
+        struct spsc_queue_runtime_settings
+        {
+            [description="Application-defined queue-pair name. Empty names configure the default unnamed pair."]
+            std::string name = "";
+        };
+
+        enum attestation_backend_kind : uint8_t
+        {
+            null_backend = 0,
+            fake_backend = 1,
+            sgx_sim_backend = 2,
+        };
+
+        enum attestation_security_level : uint8_t
+        {
+            none = 0,
+            development = 1,
+            simulation = 2,
+            hardware_legacy = 3,
+            hardware = 4,
+        };
+
+        struct attestation_identity_settings
+        {
+            [description="Local identity enclave id supplied to the generic attestation service."]
+            std::string enclave_id = "";
+
+            [description="Local identity zone id supplied to the generic attestation service."]
+            std::string zone_id = "";
+        };
+
+        struct attestation_policy_settings
+        {
+            rpc::optional<bool> send_local_evidence;
+            rpc::optional<bool> require_peer_evidence;
+            rpc::optional<bool> allow_unattested_peer;
+            rpc::optional<bool> allow_development_evidence;
+            rpc::optional<attestation_security_level> minimum_security_level;
+            rpc::optional<std::string> required_backend_id;
+        };
+
+        struct attestation_service_settings
+        {
+            [description="Context name for this attestation service. Empty names configure the default unnamed service."]
+            std::string name = "";
+
+            [description="Generic attestation backend. Hardware SGX EPID/DCAP backends require SGX-specific provider wiring and are not constructed from this generic block."]
+            attestation_backend_kind backend = attestation_backend_kind::fake_backend;
+
+            [description="Local identity proven or presented by this service."]
+            attestation_identity_settings identity = {};
+
+            [description="Policy overrides layered on top of the backend default policy."]
+            attestation_policy_settings policy = {};
+        };
+
+        // Host-side resources shared by JSON-created connections. This is not
+        // enclave configuration. SGX transport/enclave settings remain under
+        // the SGX transport's own transport.settings object.
+        struct rpc_runtime_settings
+        {
+            rpc::optional<tls_runtime_settings> tls;
+            std::vector<spsc_queue_runtime_settings> spsc_queues = {};
+            std::vector<attestation_service_settings> attestation_services = {};
+        };
+
+        struct named_connection_settings
+        {
+            [description="Application-visible connection name used for lookup."]
+            std::string name;
+
+            [description="Whether this item connects outward or accepts an inbound connection."]
+            connection_role role = connection_role::connector;
+
+            [description="Optional root service name used by applications when they create the owning service."]
+            rpc::optional<std::string> service_name;
+
+            [description="Subnet applied to the root service created for this connection by demos and applications."]
+            uint64_t zone_subnet = 1;
+
+            [description="Connection factory settings understood by built-in or registered transports and stream layers."]
+            connection_settings connection = {};
+        };
+
+        struct topology_settings
+        {
+            [description="Host-side RPC resources that connection factory contexts can materialise from JSON."]
+            rpc_runtime_settings rpc_runtime = {};
+
+            [description="Named connector and acceptor definitions that applications can look up by name."]
+            std::vector<named_connection_settings> connections = {};
+        };
     }
 }

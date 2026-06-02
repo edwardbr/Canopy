@@ -15,6 +15,11 @@ CMakeUserPresets.json
 node_modules
 c++/demos/websocket/client/generated/
 c++/demos/websocket/server/www/generated/
+
+# Generated config demo JSON schemas.
+c++/demos/config_demo/schemas/**
+!c++/demos/config_demo/schemas/
+!c++/demos/config_demo/schemas/.gitignore
 .cache
 
 # Local AI/tool state

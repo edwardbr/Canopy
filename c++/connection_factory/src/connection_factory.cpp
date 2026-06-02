@@ -5,6 +5,7 @@
 
 #include <connection_factory/connection_factory.h>
 
+#include <algorithm>
 #include <exception>
 #include <new>
 #include <typeindex>
@@ -208,7 +209,7 @@ namespace rpc::connection_factory
             const auto found = components.find(type);
             if (found == components.end())
                 return nullptr;
-            return found->second.get();
+            return found->second.factory.get();
         }
 
         auto built_in_transport_components() -> const detail::transport_component_map&
@@ -256,37 +257,51 @@ namespace rpc::connection_factory
             const auto found = components.find(type);
             if (found == components.end())
                 return nullptr;
-            return found->second.get();
+            return found->second.factory.get();
+        }
+
+        void sort_component_descriptors(std::vector<detail::component_descriptor>& descriptors)
+        {
+            std::sort(
+                descriptors.begin(),
+                descriptors.end(),
+                [](const auto& lhs, const auto& rhs)
+                {
+                    if (lhs.role != rhs.role)
+                        return static_cast<int>(lhs.role) < static_cast<int>(rhs.role);
+                    return lhs.type < rhs.type;
+                });
+        }
+
+        template<class ComponentMap>
+        auto sorted_descriptors_from_components(const ComponentMap& components)
+            -> std::vector<detail::component_descriptor>
+        {
+            std::vector<detail::component_descriptor> descriptors;
+            descriptors.reserve(components.size());
+            for (const auto& [type, entry] : components)
+            {
+                (void)type;
+                descriptors.push_back(entry.descriptor);
+            }
+            sort_component_descriptors(descriptors);
+            return descriptors;
+        }
+
+        auto find_descriptor(
+            const std::vector<detail::component_descriptor>& descriptors,
+            const std::string& type) -> const detail::component_descriptor*
+        {
+            const auto found = std::find_if(
+                descriptors.begin(), descriptors.end(), [&](const auto& descriptor) { return descriptor.type == type; });
+            if (found == descriptors.end())
+                return nullptr;
+            return &*found;
         }
 
         bool built_in_stream_layer_supported(const std::string& type)
         {
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
-            if (type == "websocket")
-                return true;
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
-            if (type == "compression" || type == "zstd")
-                return true;
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-            if (type == "tls")
-                return true;
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
-            if (type == "spsc_wrapping" || type == "spsc_wrapper")
-                return true;
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
-            if (type == "attestation" || type == "attestation_stream")
-                return true;
-#endif
-
-            return false;
+            return find_descriptor(detail::built_in_stream_layer_descriptors(), type) != nullptr;
         }
 
         template<class State>
@@ -346,6 +361,114 @@ namespace rpc::connection_factory
         }
 
     } // namespace
+
+    namespace detail
+    {
+        const std::vector<component_descriptor>& built_in_stream_component_descriptors()
+        {
+            static const auto descriptors = sorted_descriptors_from_components(built_in_stream_components());
+            return descriptors;
+        }
+
+        const std::vector<component_descriptor>& built_in_stream_layer_descriptors()
+        {
+            static const auto descriptors = []
+            {
+                std::vector<component_descriptor> result;
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_WEBSOCKET
+                result.push_back(
+                    {"websocket",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("websocket_stream/websocket_stream_config.json"),
+                        "#/definitions/rpc_websocket_stream_stream_settings"});
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION
+                result.push_back(
+                    {"compression",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("compression_stream/compression_stream_config.json"),
+                        "#/definitions/rpc_compression_stream_stream_settings"});
+                result.push_back(
+                    {"zstd",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("compression_stream/compression_stream_config.json"),
+                        "#/definitions/rpc_compression_stream_stream_settings"});
+#endif
+
+#if defined(CANOPY_CONNECTION_FACTORY_HAS_TLS) && defined(CANOPY_CONNECTION_FACTORY_HAS_OPENSSL_TLS_CONFIG)
+                result.push_back(
+                    {"tls",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("openssl_tls_stream/openssl_tls_stream_config.json"),
+                        "#/definitions/rpc_openssl_tls_stream_stream_settings"});
+#elif defined(CANOPY_CONNECTION_FACTORY_HAS_TLS) && defined(CANOPY_CONNECTION_FACTORY_HAS_MBEDTLS_CONFIG)
+                result.push_back(
+                    {"tls",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("mbedtls_stream/mbedtls_stream_config.json"),
+                        "#/definitions/rpc_mbedtls_stream_stream_settings"});
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
+                result.push_back(
+                    {"spsc_wrapping",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("spsc_wrapping_stream/spsc_wrapping_stream_config.json"),
+                        "#/definitions/rpc_spsc_wrapping_stream_stream_settings"});
+                result.push_back(
+                    {"spsc_wrapper",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("spsc_wrapping_stream/spsc_wrapping_stream_config.json"),
+                        "#/definitions/rpc_spsc_wrapping_stream_stream_settings"});
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
+                result.push_back(
+                    {"attestation",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("attestation_stream/attestation_stream_config.json"),
+                        "#/definitions/rpc_attestation_stream_stream_settings"});
+                result.push_back(
+                    {"attestation_stream",
+                        component_role::stream_layer,
+                        component_status::available,
+                        schema_id("attestation_stream/attestation_stream_config.json"),
+                        "#/definitions/rpc_attestation_stream_stream_settings"});
+#endif
+
+                sort_component_descriptors(result);
+                return result;
+            }();
+            return descriptors;
+        }
+
+        const std::vector<component_descriptor>& built_in_transport_component_descriptors()
+        {
+            static const auto descriptors = []
+            {
+                auto result = sorted_descriptors_from_components(built_in_transport_components());
+                result.push_back(
+                    {"stream_rpc",
+                        component_role::transport,
+                        component_status::available,
+                        schema_id("stream_transport/stream_transport_config.json"),
+                        "#/definitions/rpc_stream_transport_transport_settings"});
+                sort_component_descriptors(result);
+                return result;
+            }();
+            return descriptors;
+        }
+    } // namespace detail
 
     const context& default_context()
     {

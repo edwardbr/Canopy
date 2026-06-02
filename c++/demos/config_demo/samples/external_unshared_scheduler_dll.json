@@ -1,0 +1,26 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "iterations": 1,
+  "scheduler_threads": 2,
+  "client_connection": "client",
+  "server_connection": "",
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "service_name": "config_demo_unshared_scheduler_dll_host",
+      "zone_subnet": 305,
+      "connection": {
+        "transport": {
+          "type": "unshared_scheduler_dll",
+          "settings": {
+            "name": "config_demo_unshared_scheduler_dll_transport",
+            "service_proxy_name": "config_demo_unshared_scheduler_dll_calculator",
+            "encoding": "yas_binary",
+            "dynamic_library_path": "/path/to/libconfig_demo_calculator_unshared_scheduler_payload.so"
+          }
+        }
+      }
+    }
+  ]
+}

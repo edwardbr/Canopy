@@ -5,7 +5,10 @@
 
 // Standard C++ headers
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <stdexcept>
@@ -150,6 +153,61 @@ namespace
         }
     }
 
+    std::string specialization_signature_from_line(std::string line)
+    {
+        const auto id_pos = line.find("class id<");
+        const auto variant_pos = line.find("struct variant_alternative_tag<");
+        auto pos = std::string::npos;
+        if (id_pos != std::string::npos)
+            pos = id_pos;
+        if (variant_pos != std::string::npos)
+            pos = pos == std::string::npos ? variant_pos : std::min(pos, variant_pos);
+        if (pos == std::string::npos)
+            return {};
+
+        line = line.substr(pos);
+        while (!line.empty() && std::isspace(static_cast<unsigned char>(line.back())) != 0)
+            line.pop_back();
+        return line;
+    }
+
+}
+
+TEST(
+    JSONSchemaValidationTest,
+    ImportedTypesAreNotRedeclaredInGeneratedHeaders)
+{
+    const std::filesystem::path include_root = std::filesystem::path(CANOPY_TEST_BINARY_DIR) / "generated" / "include";
+    ASSERT_TRUE(std::filesystem::exists(include_root)) << include_root.string();
+
+    std::map<std::string, std::string> owner_by_specialization;
+    std::vector<std::string> duplicates;
+
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(include_root))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".h")
+            continue;
+
+        std::ifstream input(entry.path());
+        ASSERT_TRUE(input.good()) << entry.path().string();
+
+        std::string line;
+        while (std::getline(input, line))
+        {
+            auto signature = specialization_signature_from_line(std::move(line));
+            if (signature.empty())
+                continue;
+
+            const auto header = entry.path().lexically_relative(include_root).generic_string();
+            const auto [owner, inserted] = owner_by_specialization.emplace(signature, header);
+            if (!inserted && owner->second != header)
+            {
+                duplicates.push_back(signature + " in " + owner->second + " and " + header);
+            }
+        }
+    }
+
+    EXPECT_TRUE(duplicates.empty()) << (duplicates.empty() ? std::string{} : duplicates.front());
 }
 
 // Test using inproc_setup to call standard_tests for schema validation

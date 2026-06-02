@@ -1,0 +1,32 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "iterations": 1,
+  "scheduler_threads": 4,
+  "client_connection": "client",
+  "server_connection": "",
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "service_name": "config_demo_sgx_coroutine_host",
+      "zone_subnet": 300,
+      "connection": {
+        "transport": {
+          "type": "sgx_coroutine",
+          "settings": {
+            "name": "config_demo_sgx_coroutine_transport",
+            "service_proxy_name": "config_demo_sgx_calculator",
+            "encoding": "yas_binary",
+            "enclave_path": "/path/to/libconfig_demo_calculator_enclave.signed.so",
+            "worker_thread_count": 1,
+            "use_sidecar": false,
+            "peer_to_peer_shared_memory_file": "",
+            "sidecar_executable_path": "",
+            "enclave": {},
+            "startup_applications": {}
+          }
+        }
+      }
+    }
+  ]
+}
