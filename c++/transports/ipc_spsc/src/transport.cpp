@@ -140,6 +140,10 @@ namespace rpc::ipc_spsc
             if (options.create)
                 new (queues) rpc::ipc_spsc::queue_pair{};
 
+            // The mapped queue pair is the owner object for both SPSC queues.
+            // make_shared_memory_stream() creates aliasing shared_ptrs to the
+            // individual queues so the mmap cannot be released while either
+            // stream direction is still using it.
             return std::shared_ptr<rpc::ipc_spsc::queue_pair>(
                 queues,
                 [path = options.path, unlink_on_destroy = options.unlink_on_destroy](rpc::ipc_spsc::queue_pair* mapped_queues)
@@ -404,6 +408,15 @@ namespace rpc::ipc_spsc
         auto* mapped = queues.get();
         std::shared_ptr<::streaming::spsc_queue::queue_type> send_queue;
         std::shared_ptr<::streaming::spsc_queue::queue_type> receive_queue;
+        // Both processes map the same queue_pair layout, but their send and
+        // receive directions are mirrored:
+        //
+        //   connector send      -> host_to_dll -> acceptor receive
+        //   acceptor send       -> dll_to_host -> connector receive
+        //
+        // The names are historical from the DLL sidecar mode; peer-to-peer
+        // mode reuses the same layout and treats "host" as connector and
+        // "dll" as acceptor.
         if (role == peer_role::connector)
         {
             send_queue = std::shared_ptr<::streaming::spsc_queue::queue_type>(queues, &mapped->host_to_dll);

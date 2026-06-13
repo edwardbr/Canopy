@@ -61,7 +61,7 @@ namespace rpc::sgx_coroutine_transport::enclave
             const char* name,
             rpc::zone zone_id,
             rpc::destination_zone parent_zone_id,
-            const std::shared_ptr<rpc::coro::scheduler>& io_scheduler) override;
+            const rpc::executor_ptr& executor) override;
     };
 
     inline std::shared_ptr<rpc::local::parent_transport> local_child_transport::make_child_parent_transport(
@@ -79,8 +79,8 @@ namespace rpc::sgx_coroutine_transport::enclave
         const char* name,
         rpc::zone zone_id,
         rpc::destination_zone parent_zone_id,
-        const std::shared_ptr<rpc::coro::scheduler>& io_scheduler)
+        const rpc::executor_ptr& executor)
     {
-        return std::make_shared<rpc::enclave_service>(name, zone_id, parent_zone_id, io_scheduler);
+        return std::make_shared<rpc::enclave_service>(name, zone_id, parent_zone_id, executor);
     }
 }

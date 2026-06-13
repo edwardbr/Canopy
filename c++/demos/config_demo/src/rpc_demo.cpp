@@ -52,10 +52,9 @@ namespace config_demo::v1
 
         [[nodiscard]] auto make_factory_context(
             const rpc::connection_factory::application_runtime& runtime,
-            const rpc::connection_factory::named_connection_settings& connection,
-            std::shared_ptr<coro::scheduler> scheduler) -> rpc::connection_factory::context
+            const rpc::connection_factory::named_connection_settings& connection) -> rpc::connection_factory::context
         {
-            auto context = runtime.context_for(connection, std::move(scheduler));
+            auto context = runtime.context_for(connection);
             if (context.error_code != rpc::error::OK())
             {
                 throw std::runtime_error("failed to create context for " + connection.name + ": " + context.message);
@@ -115,7 +114,7 @@ namespace config_demo::v1
         {
             try
             {
-                auto context = make_factory_context(runtime, server, scheduler);
+                auto context = make_factory_context(runtime, server);
                 auto shutdown_event = std::make_shared<rpc::event>();
                 const auto root_service_name = service_name(server);
                 auto service = rpc::root_service::create(
@@ -180,7 +179,7 @@ namespace config_demo::v1
                     CO_RETURN;
                 }
 
-                auto context = make_factory_context(runtime, client, scheduler);
+                auto context = make_factory_context(runtime, client);
                 const auto root_service_name = service_name(client);
                 auto service = rpc::root_service::create(
                     root_service_name.c_str(), make_zone(client.zone_subnet), std::move(scheduler));
@@ -314,7 +313,7 @@ namespace config_demo::v1
                 CO_RETURN false;
             }
 
-            auto context = make_factory_context(runtime, client, scheduler);
+            auto context = make_factory_context(runtime, client);
             const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
                 root_service_name.c_str(), make_zone(client.zone_subnet), std::move(scheduler));

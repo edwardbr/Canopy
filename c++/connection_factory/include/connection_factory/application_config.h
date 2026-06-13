@@ -48,9 +48,7 @@ namespace rpc::connection_factory
         [[nodiscard]] auto settings() const -> const topology_settings&;
         [[nodiscard]] auto find_connection(std::string_view name) const -> const named_connection_settings*;
 
-        [[nodiscard]] auto context_for(
-            const named_connection_settings& connection,
-            std::shared_ptr<rpc::executor> executor = {}) const -> application_context_result;
+        [[nodiscard]] auto context_for(const named_connection_settings& connection) const -> application_context_result;
 
     private:
         struct impl;

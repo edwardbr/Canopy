@@ -220,7 +220,8 @@ int sgx_blocking_init_enclave(
         {
             rpc::shared_ptr<yyy::i_example> new_example(new marshalled_tests::example(child_service_ptr, host));
             CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), new_example};
-        });
+        },
+        rpc::executor_ptr{});
 
     if (ret.error_code != rpc::error::OK())
         return write_blob_response(to_sgx_response(ret.error_code, {}), resp_cap, resp, resp_sz);

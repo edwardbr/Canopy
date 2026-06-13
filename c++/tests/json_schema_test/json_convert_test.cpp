@@ -8,6 +8,7 @@
 // found by ADL through `json::v1::convert::tag<T>`.
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -24,6 +25,7 @@
 #include <json/json_utils.h>
 #include <json/schema_validator.h>
 #include <connection_factory/connection_factory.h>
+#include <connection_factory/application_config.h>
 #include <connection_factory/context.h>
 #include <connection_factory_config/connection_factory_config_schema.h>
 #include <example_shared/example_shared_schema.h>
@@ -52,6 +54,9 @@
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
 #  include <local_transport/local_transport_config_schema.h>
+#endif
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
+#  include <ipc_spsc/config_schema.h>
 #endif
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_COROUTINE
 #  include <sgx_coroutine_transport/sgx_coroutine_transport_config_schema.h>
@@ -1459,6 +1464,39 @@ namespace
         EXPECT_EQ(calls[1], "accept:test_layer_beta:beta");
     }
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
+    TEST(
+        JsonConvert,
+        SpscWrappingLayerRequiresServiceExecutor)
+    {
+        rpc::connection_factory::context context;
+        context.register_connect_base_stream<rpc::connection_factory::service_settings>(
+            "test_base",
+            [](rpc::connection_factory::service_settings,
+                std::shared_ptr<rpc::service>,
+                const rpc::connection_factory::context&) -> CORO_TASK(rpc::connection_factory::stream_result)
+            { CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), {}}; });
+
+        rpc::connection_factory::connection_settings settings;
+        rpc::stream_layers::stream_layer_settings base_layer;
+        base_layer.type = "test_base";
+        settings.stream_layers.push_back(std::move(base_layer));
+
+        rpc::stream_layers::stream_layer_settings wrapper_layer;
+        wrapper_layer.type = "spsc_wrapping";
+        settings.stream_layers.push_back(std::move(wrapper_layer));
+
+        auto service
+            = rpc::root_service::create("spsc_wrapping_without_executor", rpc::DEFAULT_PREFIX, rpc::executor_ptr{});
+        ASSERT_NE(service, nullptr);
+        EXPECT_EQ(service->get_executor(), nullptr);
+
+        auto result = SYNC_WAIT(rpc::connection_factory::connect_stream(settings, service, context));
+        EXPECT_EQ(result.error_code, rpc::error::INVALID_DATA());
+        EXPECT_EQ(result.stream, nullptr);
+    }
+#endif
+
     TEST(
         JsonConvert,
         RegisteredTypedConnectionFactoryComponentRejectsInvalidSettingsBeforeBuilder)
@@ -1622,6 +1660,48 @@ namespace
         EXPECT_EQ(sgx_blocking_settings.settings.enclave.value().services.at("attestation").type, "sgx_dcap");
 #endif
     }
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
+    TEST(
+        JsonConvert,
+        ApplicationRuntimeResolvesIpcSpscPathsAgainstConfigDirectory)
+    {
+        rpc::ipc_spsc::transport_settings ipc_settings;
+        ipc_settings.use_sidecar = false;
+        ipc_settings.peer_to_peer_shared_memory_file = "run/queues/ipc.map";
+        ipc_settings.create_peer_to_peer_shared_memory_file = true;
+        ipc_settings.sidecar_executable_path = "bin/ipc-sidecar";
+        ipc_settings.dynamic_library_path = "lib/libpayload.so";
+
+        rpc::connection_factory::typed_settings transport;
+        transport.type = "ipc_spsc";
+        transport.settings = to_json_object(ipc_settings);
+
+        rpc::connection_factory::named_connection_settings connection;
+        connection.name = "client";
+        connection.connection.transport = std::move(transport);
+
+        rpc::connection_factory::topology_settings topology;
+        topology.connections.push_back(std::move(connection));
+
+        const std::filesystem::path base_directory{"/tmp/canopy-config"};
+        auto runtime = rpc::connection_factory::make_application_runtime(std::move(topology), base_directory);
+        ASSERT_EQ(runtime.error_code, rpc::error::OK()) << runtime.message;
+        ASSERT_NE(runtime.runtime, nullptr);
+
+        const auto* resolved_connection = runtime.runtime->find_connection("client");
+        ASSERT_NE(resolved_connection, nullptr);
+        ASSERT_TRUE(resolved_connection->connection.transport.has_value());
+
+        const auto resolved = rpc::connection_factory::materialise_settings<rpc::ipc_spsc::transport_settings>(
+            resolved_connection->connection.transport.value());
+        ASSERT_EQ(resolved.error_code, rpc::error::OK());
+        EXPECT_EQ(resolved.settings.peer_to_peer_shared_memory_file, (base_directory / "run/queues/ipc.map").string());
+        EXPECT_EQ(resolved.settings.sidecar_executable_path, (base_directory / "bin/ipc-sidecar").string());
+        EXPECT_EQ(resolved.settings.dynamic_library_path, (base_directory / "lib/libpayload.so").string());
+        EXPECT_TRUE(resolved.settings.create_peer_to_peer_shared_memory_file);
+    }
+#endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SGX_BLOCKING
     TEST(

@@ -121,22 +121,10 @@ namespace rpc
     std::shared_ptr<child_service> transport::make_child_service(
         const char* name,
         zone zone_id,
-        destination_zone parent_zone_id
-#ifdef CANOPY_BUILD_COROUTINE
-        ,
-        const std::shared_ptr<coro::scheduler>& io_scheduler
-#endif
-    )
+        destination_zone parent_zone_id,
+        const rpc::executor_ptr& executor)
     {
-        return std::make_shared<child_service>(
-            name,
-            zone_id,
-            parent_zone_id
-#ifdef CANOPY_BUILD_COROUTINE
-            ,
-            io_scheduler
-#endif
-        );
+        return std::make_shared<child_service>(name, zone_id, parent_zone_id, executor);
     }
 
     void transport::set_adjacent_zone_id(zone new_adjacent_zone_id)

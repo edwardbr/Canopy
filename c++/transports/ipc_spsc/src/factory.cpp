@@ -70,6 +70,9 @@ namespace rpc::ipc_spsc
             if (settings.peer_to_peer_shared_memory_file.empty())
                 return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
+            // Peer-to-peer mode is the config-driven file-backed case: map an
+            // existing rendezvous file by default, or create and initialise it
+            // when explicitly requested by the caller.
             auto transport = rpc::ipc_spsc::make_peer_client(
                 transport_name,
                 resolved_service,

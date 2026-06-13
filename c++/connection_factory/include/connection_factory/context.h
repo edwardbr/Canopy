@@ -120,11 +120,17 @@ namespace rpc::connection_factory
         }
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
+        // Registers an already-created in-process SPSC queue pair for the
+        // spsc_queue stream adapter. This is intentionally an escape hatch:
+        // application code may need to provide queues that came from anonymous
+        // shared memory, test fixtures, or some other bootstrap mechanism that
+        // has no stable filesystem path to describe in JSON.
+        //
+        // File-backed IPC transports should normally be configured through the
+        // ipc_spsc transport settings instead. That config path can open an
+        // existing mapped file, optionally create one, and keeps the mapping
+        // lifecycle inside the transport rather than in this generic context.
         void set_spsc_queues(rpc::spsc_queue::queue_pair queues);
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
-        void set_stream_scheduler(std::shared_ptr<rpc::executor> executor);
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION

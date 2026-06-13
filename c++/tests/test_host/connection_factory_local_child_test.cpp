@@ -18,8 +18,11 @@
 namespace
 {
     CORO_TASK(bool)
-    run_local_child_connection_factory_test(std::shared_ptr<rpc::service> service)
+    run_local_child_connection_factory_test(
+        std::shared_ptr<rpc::service> service,
+        rpc::executor_ptr expected_child_executor = {})
     {
+        bool child_executor_matches = true;
         auto settings = rpc::connection_factory::materialise_connection_settings(json::v1::parse(R"json({
             "transport": {
                 "type": "local",
@@ -32,9 +35,12 @@ namespace
         rpc::shared_ptr<yyy::i_host> local_host(new host());
         auto connect_result = CO_AWAIT rpc::connection_factory::connect_local_child_rpc<yyy::i_host, yyy::i_example>(
             local_host,
-            [](rpc::shared_ptr<yyy::i_host> remote_host,
+            [expected_child_executor, &child_executor_matches](
+                rpc::shared_ptr<yyy::i_host> remote_host,
                 std::shared_ptr<rpc::service> child_service) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
             {
+                if (expected_child_executor)
+                    child_executor_matches = child_service && child_service->get_executor() == expected_child_executor;
                 auto example = rpc::shared_ptr<yyy::i_example>(
                     new marshalled_tests::example(std::move(child_service), std::move(remote_host)));
                 CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
@@ -46,7 +52,7 @@ namespace
 
         int result = 0;
         auto add_error = CO_AWAIT connect_result.output_interface->add(20, 22, result);
-        CO_RETURN add_error == rpc::error::OK() && result == 42;
+        CO_RETURN add_error == rpc::error::OK() && result == 42 && child_executor_matches;
     }
 
 #ifndef CANOPY_BUILD_COROUTINE
@@ -95,7 +101,7 @@ TEST(
     bool passed = false;
     auto runner = [&]() -> CORO_TASK(void)
     {
-        passed = CO_AWAIT run_local_child_connection_factory_test(std::move(service));
+        passed = CO_AWAIT run_local_child_connection_factory_test(std::move(service), scheduler);
         done.store(true, std::memory_order_release);
         CO_RETURN;
     };
@@ -117,6 +123,16 @@ TEST(
 }
 
 #ifndef CANOPY_BUILD_COROUTINE
+TEST(
+    ConnectionFactoryLocalChildRpc,
+    BlockingParentExecutorIsInheritedByChildZone)
+{
+    auto executor = std::make_shared<rpc::blocking_executor>();
+    auto service = rpc::root_service::create("local_config_parent_with_executor", rpc::DEFAULT_PREFIX, executor);
+    EXPECT_TRUE(run_local_child_connection_factory_test(std::move(service), executor));
+    executor->shutdown();
+}
+
 TEST(
     ConnectionFactoryBlockingDllRpc,
     SparseConfigCreatesBlockingDllZone)

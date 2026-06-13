@@ -19,6 +19,10 @@
 #include <json/config.h>
 #include <json/convert.h>
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
+#  include <ipc_spsc/config_schema.h>
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
 #  include <spsc_queue_stream/spsc_queue_stream_config_schema.h>
 #  include <streaming/spsc_queue/factory.h>
@@ -121,6 +125,63 @@ namespace rpc::connection_factory
                         connection.connection.stream_layers.end(),
                         is_spsc_queue_layer);
                 });
+        }
+#endif
+
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
+        [[nodiscard]] bool resolve_path_field(
+            const std::filesystem::path& base_directory,
+            std::string& configured_path)
+        {
+            if (configured_path.empty())
+                return false;
+
+            auto resolved_path = resolve_path(base_directory, configured_path);
+            auto resolved = resolved_path.string();
+            if (resolved == configured_path)
+                return false;
+
+            configured_path = std::move(resolved);
+            return true;
+        }
+
+        void resolve_ipc_spsc_transport_paths(
+            const std::filesystem::path& base_directory,
+            const std::string& connection_name,
+            typed_settings& transport)
+        {
+            if (transport.type != "ipc_spsc")
+                return;
+
+            auto materialised
+                = materialise_settings<rpc::ipc_spsc::transport_settings>(detail::settings_object(transport));
+            if (materialised.error_code != rpc::error::OK())
+                throw runtime_config_error("invalid ipc_spsc settings for connection " + connection_name);
+
+            auto& settings = materialised.settings;
+            bool changed = false;
+            changed |= resolve_path_field(base_directory, settings.peer_to_peer_shared_memory_file);
+            changed |= resolve_path_field(base_directory, settings.sidecar_executable_path);
+            changed |= resolve_path_field(base_directory, settings.dynamic_library_path);
+
+            if (changed)
+            {
+                using json::v1::convert::to_json_object;
+                transport.settings = to_json_object(settings);
+            }
+        }
+
+        void resolve_ipc_spsc_transport_paths(
+            topology_settings& settings,
+            const std::filesystem::path& base_directory)
+        {
+            for (auto& connection : settings.connections)
+            {
+                if (!connection.connection.transport)
+                    continue;
+
+                resolve_ipc_spsc_transport_paths(base_directory, connection.name, connection.connection.transport.value());
+            }
         }
 #endif
 
@@ -289,6 +350,10 @@ namespace rpc::connection_factory
         std::filesystem::path base_directory;
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
+        // These queues are process-local dependencies for the plain
+        // spsc_queue stream adapter. File-backed IPC SPSC transports have
+        // their own mmap lifecycle in rpc::ipc_spsc::transport_settings, so
+        // they do not appear in this map.
         std::unordered_map<std::string, rpc::spsc_queue::queue_pair> spsc_queues;
 #endif
 
@@ -323,6 +388,10 @@ namespace rpc::connection_factory
                 throw runtime_config_error("SPSC queue runtime settings were provided, but SPSC support is not built");
 #endif
 
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC
+            resolve_ipc_spsc_transport_paths(settings, base_directory);
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
             resolve_tls_layer_files(settings, base_directory);
 #endif
@@ -341,9 +410,7 @@ namespace rpc::connection_factory
             }
         }
 
-        [[nodiscard]] auto context_for(
-            const named_connection_settings& connection,
-            std::shared_ptr<rpc::executor> executor) const -> application_context_result
+        [[nodiscard]] auto context_for(const named_connection_settings& connection) const -> application_context_result
         {
             if (connection.name.empty())
                 return {rpc::error::INVALID_DATA(), {}, "connection name must not be empty"};
@@ -358,13 +425,6 @@ namespace rpc::connection_factory
                 else
                     context.set_dependency_value(queues, name);
             }
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
-            if (executor)
-                context.set_stream_scheduler(std::move(executor));
-#else
-            (void)executor;
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
@@ -407,11 +467,9 @@ namespace rpc::connection_factory
         return found == connections.end() ? nullptr : &*found;
     }
 
-    auto application_runtime::context_for(
-        const named_connection_settings& connection,
-        std::shared_ptr<rpc::executor> executor) const -> application_context_result
+    auto application_runtime::context_for(const named_connection_settings& connection) const -> application_context_result
     {
-        return impl_->context_for(connection, std::move(executor));
+        return impl_->context_for(connection);
     }
 
     auto make_application_runtime(

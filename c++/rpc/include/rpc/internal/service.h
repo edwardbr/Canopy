@@ -240,17 +240,7 @@ namespace rpc
 
         friend transport;
 
-#ifdef CANOPY_BUILD_COROUTINE
-        explicit service(
-            const char* name,
-            zone zone_id,
-            const std::shared_ptr<coro::scheduler>& scheduler);
-        explicit service(
-            const char* name,
-            zone zone_id,
-            const std::shared_ptr<coro::scheduler>& scheduler,
-            child_service_tag);
-#else
+#ifndef CANOPY_BUILD_COROUTINE
         // Blocking-mode constructors. The no-executor variants preserve the
         // pre-existing synchronous experience for users that do not need
         // streaming. The executor-taking variants are opt-in for streaming.
@@ -261,6 +251,8 @@ namespace rpc
             const char* name,
             zone zone_id,
             child_service_tag);
+#endif
+
         explicit service(
             const char* name,
             zone zone_id,
@@ -270,7 +262,6 @@ namespace rpc
             zone zone_id,
             const rpc::executor_ptr& executor,
             child_service_tag);
-#endif
 
     public:
         /**
@@ -808,20 +799,20 @@ namespace rpc
         static std::shared_ptr<root_service> create(
             const char* name,
             zone zone_id,
-            const std::shared_ptr<coro::scheduler>& scheduler);
+            const rpc::executor_ptr& executor);
         static std::shared_ptr<root_service> create(
             const char* name,
             const service_config& config,
-            const std::shared_ptr<coro::scheduler>& scheduler);
+            const rpc::executor_ptr& executor);
 
         explicit root_service(
             const char* name,
             zone zone_id,
-            const std::shared_ptr<coro::scheduler>& scheduler);
+            const rpc::executor_ptr& executor);
         explicit root_service(
             const char* name,
             const service_config& config,
-            const std::shared_ptr<coro::scheduler>& scheduler);
+            const rpc::executor_ptr& executor);
 #else
         static std::shared_ptr<root_service> create(
             const char* name,
@@ -983,25 +974,7 @@ namespace rpc
         destination_zone get_parent_zone_id() const { return parent_zone_id_; }
 
     public:
-#ifdef CANOPY_BUILD_COROUTINE
-        explicit child_service(
-            const char* name,
-            zone zone_id,
-            destination_zone parent_zone_id,
-            const std::shared_ptr<coro::scheduler>& io_scheduler)
-            : service(
-                  name,
-                  zone_id,
-                  io_scheduler,
-                  child_service_tag{})
-            , parent_zone_id_(parent_zone_id)
-        {
-#  if defined(CANOPY_USE_TELEMETRY)
-            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
-#  endif
-        }
-#else
+#ifndef CANOPY_BUILD_COROUTINE
         explicit child_service(
             const char* name,
             zone zone_id,
@@ -1019,6 +992,24 @@ namespace rpc
         }
 #endif
 
+        explicit child_service(
+            const char* name,
+            zone zone_id,
+            destination_zone parent_zone_id,
+            const rpc::executor_ptr& executor)
+            : service(
+                  name,
+                  zone_id,
+                  executor,
+                  child_service_tag{})
+            , parent_zone_id_(parent_zone_id)
+        {
+#if defined(CANOPY_USE_TELEMETRY)
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
+#endif
+        }
+
         ~child_service() override;
 
         // Forwards the request up to the parent zone via the parent transport.
@@ -1034,12 +1025,8 @@ namespace rpc
             rpc::connection_settings input_descr,
             std::function<CORO_TASK(service_connect_result<CHILD_INTERFACE>)(
                 rpc::shared_ptr<PARENT_INTERFACE>,
-                std::shared_ptr<rpc::child_service>)> fn
-#ifdef CANOPY_BUILD_COROUTINE
-            ,
-            std::shared_ptr<coro::scheduler> io_scheduler
-#endif
-        )
+                std::shared_ptr<rpc::child_service>)> fn,
+            rpc::executor_ptr executor)
         {
             remote_object_result result{rpc::error::OK(), {}};
             if (input_descr.inbound_interface_id != PARENT_INTERFACE::get_id(rpc::get_version()))
@@ -1069,15 +1056,21 @@ namespace rpc
             auto zone_id = parent_transport->get_zone_id();
             auto adjacent_zone_id = parent_transport->get_adjacent_zone_id();
 
-            auto child_svc = parent_transport->make_child_service(
-                name,
-                zone_id,
-                adjacent_zone_id
-#ifdef CANOPY_BUILD_COROUTINE
-                ,
-                io_scheduler
-#endif
-            );
+            // A child zone should make progress on the same executor as the
+            // parent zone that created it. Some parent transports are already
+            // attached to a service at this point, but local child transports
+            // deliberately create their parent_transport before the child
+            // service exists, so callers can pass the parent executor
+            // explicitly. Coroutine callers should pass a non-null executor;
+            // in blocking mode, if neither source exists the child remains a
+            // no-executor service.
+            if (!executor)
+            {
+                if (auto parent_service = parent_transport->get_service())
+                    executor = parent_service->get_executor();
+            }
+
+            auto child_svc = parent_transport->make_child_service(name, zone_id, adjacent_zone_id, executor);
             if (!child_svc)
             {
                 result.error_code = rpc::error::INVALID_DATA();

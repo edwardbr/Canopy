@@ -166,7 +166,7 @@ namespace rpc::blocking_dll
         // create_child_zone validates interface IDs, builds the child_service,
         // links it to the parent_transport, and calls the user factory.
         auto create_result = rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-            params->name, pt, *params->input_descr, std::move(factory));
+            params->name, pt, *params->input_descr, std::move(factory), rpc::executor_ptr{});
 
         if (create_result.error_code != rpc::error::OK())
             return create_result.error_code;

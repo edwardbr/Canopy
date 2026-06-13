@@ -48,7 +48,7 @@ namespace rpc::ipc_spsc
                     });
 
                 auto result = CO_AWAIT rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-                    name.c_str(), std::move(transport), std::move(input), std::move(child_factory), svc->get_scheduler());
+                    name.c_str(), std::move(transport), std::move(input), std::move(child_factory), svc->get_executor());
                 CO_RETURN rpc::connection_handler_result{result.error_code, std::move(result.descriptor)};
             });
 

@@ -30,12 +30,12 @@ namespace rpc
             const char* name,
             rpc::zone zone_id,
             rpc::destination_zone parent_zone_id,
-            const std::shared_ptr<rpc::coro::scheduler>& scheduler)
+            const rpc::executor_ptr& executor)
             : rpc::child_service(
                   name,
                   zone_id,
                   parent_zone_id,
-                  scheduler)
+                  executor)
             , zone_security_policy_(std::make_shared<canopy::security::attestation::zone_security_policy>())
         {
         }

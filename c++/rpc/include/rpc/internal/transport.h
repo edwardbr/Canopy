@@ -236,12 +236,8 @@ namespace rpc
         virtual std::shared_ptr<child_service> make_child_service(
             const char* name,
             zone zone_id,
-            destination_zone parent_zone_id
-#ifdef CANOPY_BUILD_COROUTINE
-            ,
-            const std::shared_ptr<coro::scheduler>& io_scheduler
-#endif
-        );
+            destination_zone parent_zone_id,
+            const rpc::executor_ptr& executor);
 
         // Destination management for zone pairs
         // For local service, use add_passthrough(local_zone, local_zone, service)

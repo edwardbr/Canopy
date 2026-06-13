@@ -42,7 +42,13 @@ namespace rpc
             [description="Launch a child process whose lifetime is owned by this transport. When false, peer_to_peer_shared_memory_file identifies an independently created acceptor pairing."]
             bool use_sidecar = false;
 
-            [description="Shared-memory file used when use_sidecar is false. The acceptor process normally creates and unlinks this file; the connector process opens it. Use a unique path per pairing."]
+            // File-backed rendezvous for the peer-to-peer mode. This is not
+            // used by sidecar mode: sidecar mode creates a private temporary
+            // mapped file and passes it to the child process on the command
+            // line. For anonymous shared memory or application-owned queue
+            // objects there may be no path to configure; inject those queues
+            // through connection_factory::context::set_spsc_queues instead.
+            [description="Shared-memory file used when use_sidecar is false. The acceptor process normally creates and unlinks this file; the connector process opens it. Relative paths in application topology config are resolved against the topology file directory. Use a unique path per pairing."]
             std::string peer_to_peer_shared_memory_file = "";
 
             [description="Create peer_to_peer_shared_memory_file before connecting. This is intended for specialised bootstrap tools; ordinary connector processes should leave it false so the acceptor owns the rendezvous file."]

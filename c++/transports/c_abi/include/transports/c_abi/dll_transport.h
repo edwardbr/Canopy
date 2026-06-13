@@ -138,7 +138,7 @@ namespace rpc::c_abi
             params->parent_get_new_zone_id);
 
         auto create_result = rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-            params->name ? params->name : "c_abi child", pt, *input_descr, std::move(factory));
+            params->name ? params->name : "c_abi child", pt, *input_descr, std::move(factory), rpc::executor_ptr{});
 
         if (create_result.error_code != rpc::error::OK())
             return create_result.error_code;

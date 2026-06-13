@@ -245,6 +245,7 @@ Verify behaviour in code before restating architectural claims.
 - When changing build, generator, IDL, transport, or lifetime behaviour, inspect the nearest `CMakeLists.txt` and implementation files first.
 - If code changes affect both coroutine and non-coroutine paths, verify both builds when practical.
 - If a test or target is conditionally compiled, mention that condition explicitly in your handoff.
+- After refactors or other cross-cutting changes, update MemPalace with the relevant design decisions, behavioural changes, verification run, and any remaining caveats.
 
 ## Session Completion
 
@@ -253,4 +254,5 @@ When ending a session:
 1. Run the relevant local verification for the files you changed.
 2. State clearly what you verified and what you did not verify.
 3. Do not perform git or remote issue-tracker actions unless the user explicitly requested them.
-4. Note any follow-up work that remains.
+4. For refactors and cross-cutting changes, confirm MemPalace has been updated.
+5. Note any follow-up work that remains.

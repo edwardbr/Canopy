@@ -1,11 +1,16 @@
 # Service Object Singleton Proposal
 
-Status: parked proposal.
+Status: parked proposal; superseded for new design discussion by
+`documents/architecture/service-capabilities-and-control-plane-proposal.md`.
 
 This note records a proposed Canopy service-object feature. It is not the
 current SGX io_uring implementation plan. The immediate SGX plan is to pass an
 explicit per-enclave host capability object through the normal RPC connection
 path.
+
+The newer service-capabilities proposal recommends keeping `object_id == 0` as
+the zone-only/no-specific-object value and reserving a small nonzero framework
+object-id range for service control-plane objects instead.
 
 ## Motivation
 

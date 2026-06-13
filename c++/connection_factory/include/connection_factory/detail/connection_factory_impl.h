@@ -28,6 +28,7 @@ namespace rpc::connection_factory
         auto make_accept_stream_transformer(
             const connection_settings& settings,
             size_t first_layer,
+            std::shared_ptr<rpc::service> service,
             const context& factory_context) -> ::streaming::listener::stream_transformer;
 
         struct native_transport_connect_context
@@ -260,6 +261,8 @@ namespace rpc::connection_factory
         auto acceptor = CO_AWAIT open_stream_acceptor(settings, resolved_service, factory_context);
         if (acceptor.error_code == rpc::error::OK())
         {
+            auto stream_transformer
+                = detail::make_accept_stream_transformer(settings, 1, resolved_service, factory_context);
             auto listener = CO_AWAIT accept_rpc_listener<Remote, Local>(
                 std::move(acceptor.acceptor),
                 std::move(factory),
@@ -268,7 +271,7 @@ namespace rpc::connection_factory
                 std::move(acceptor.owner),
                 acceptor.port,
                 std::move(observe_transport),
-                detail::make_accept_stream_transformer(settings, 1, factory_context));
+                std::move(stream_transformer));
             CO_RETURN accept_result{listener.error_code, std::move(listener.handle), {}};
         }
         if (acceptor.error_code != rpc::error::INVALID_DATA())

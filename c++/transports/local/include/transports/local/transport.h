@@ -198,17 +198,11 @@ namespace rpc::local
                       std::shared_ptr<child_transport> parent) mutable -> CORO_TASK(child_entry_point_result)
             {
                 child_entry_point_result result{rpc::error::OK(), {}, parent->make_child_parent_transport("child", parent)};
+                auto parent_service = parent->get_service();
+                auto parent_executor = parent_service ? parent_service->get_executor() : rpc::executor_ptr{};
 
                 auto create_result = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>(
-                    "child",
-                    result.child,
-                    input_descr,
-                    std::move(child_entry_point_fn)
-#ifdef CANOPY_BUILD_COROUTINE
-                        ,
-                    parent->get_service()->get_scheduler()
-#endif
-                );
+                    "child", result.child, input_descr, std::move(child_entry_point_fn), std::move(parent_executor));
                 result.error_code = create_result.error_code;
                 result.output_descriptor = create_result.descriptor;
                 if (result.error_code != rpc::error::OK())
