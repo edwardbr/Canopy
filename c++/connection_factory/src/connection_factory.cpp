@@ -327,13 +327,18 @@ namespace rpc::connection_factory
             (void)state;
             streaming_layer_context_result result;
 
-#if defined(CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING)
-            if (layer_type == "spsc_wrapping" || layer_type == "spsc_wrapper")
+#if defined(CANOPY_CONNECTION_FACTORY_HAS_SPSC_BUFFERED_STREAM)                                                        \
+    && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM)
+            if (layer_type == "spsc_buffered_stream")
             {
+                // spsc_buffered_stream owns private queues and proxy coroutines
+                // inside a single stream adapter. It therefore needs the
+                // service executor that will run those proxy coroutines. This
+                // is separate from the spsc_queue base stream, whose queue pair
+                // is supplied by connection_factory::context.
                 if (!service)
                 {
-                    RPC_ERROR(
-                        "spsc_wrapping stream layer requires a service with an executor, but no service was available");
+                    RPC_ERROR("spsc_buffered_stream stream layer requires a service with an executor, but no service was available");
                     result.error_code = rpc::error::INVALID_DATA();
                     return result;
                 }
@@ -342,7 +347,8 @@ namespace rpc::connection_factory
                 if (!scheduler)
                 {
                     RPC_ERROR(
-                        "spsc_wrapping stream layer requires service '{}' to have an executor; construct the service "
+                        "spsc_buffered_stream stream layer requires service '{}' to have an executor; construct the "
+                        "service "
                         "with rpc::stream_transport::make_default_executor() or let connection_factory create it",
                         service->get_name());
                     result.error_code = rpc::error::INVALID_DATA();
@@ -423,19 +429,13 @@ namespace rpc::connection_factory
                         "#/definitions/rpc_mbedtls_stream_stream_settings"});
 #endif
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_BUFFERED_STREAM
                 result.push_back(
-                    {"spsc_wrapping",
+                    {"spsc_buffered_stream",
                         component_role::stream_layer,
                         component_status::available,
-                        schema_id("spsc_wrapping_stream/spsc_wrapping_stream_config.json"),
-                        "#/definitions/rpc_spsc_wrapping_stream_stream_settings"});
-                result.push_back(
-                    {"spsc_wrapper",
-                        component_role::stream_layer,
-                        component_status::available,
-                        schema_id("spsc_wrapping_stream/spsc_wrapping_stream_config.json"),
-                        "#/definitions/rpc_spsc_wrapping_stream_stream_settings"});
+                        schema_id("spsc_buffered_stream/spsc_buffered_stream_config.json"),
+                        "#/definitions/rpc_spsc_buffered_stream_stream_settings"});
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
@@ -888,7 +888,7 @@ namespace rpc::connection_factory
     open_stream_acceptor(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context)
+        context factory_context)
     {
         auto topology_error
             = detail::validate_stream_rpc_connection_settings(settings, layer_direction::accept, factory_context);
@@ -923,7 +923,7 @@ namespace rpc::connection_factory
     connect_stream(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context)
+        context factory_context)
     {
         auto topology_error
             = detail::validate_stream_rpc_connection_settings(settings, layer_direction::connect, factory_context);
@@ -951,7 +951,7 @@ namespace rpc::connection_factory
     accept_stream(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context)
+        context factory_context)
     {
         auto topology_error
             = detail::validate_stream_rpc_connection_settings(settings, layer_direction::accept, factory_context);
@@ -980,7 +980,7 @@ namespace rpc::connection_factory
         stream_callback callback,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context)
+        context factory_context)
     {
         if (!callback)
             CO_RETURN stream_accept_result{rpc::error::INVALID_DATA(), {}};

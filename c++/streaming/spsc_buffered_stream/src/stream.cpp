@@ -1,15 +1,26 @@
 // Copyright (c) 2026 Edward Boggis-Rolfe
 // All rights reserved.
 
-// spsc wrapping stream implementation
-#include <streaming/spsc_wrapping/stream.h>
+// SPSC buffered stream implementation.
+//
+// The buffered stream wraps exactly one underlying stream. It is a local
+// buffering/scheduling boundary, not a rendezvous layer. The externally-visible
+// stream API talks to private SPSC queues; two proxy loops move bytes between
+// those queues and the underlying stream.
+//
+//     send()    -> send_q_ -> send_proxy_loop -> underlying->send()
+//     receive() <- recv_q_ <- recv_proxy_loop <- underlying->receive()
+//
+// This is intentionally separate from streaming::spsc_queue::stream, which is
+// the endpoint-pairing stream used when two services share a queue pair.
+#include <streaming/spsc_buffered_stream/stream.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <optional>
 
-namespace streaming::spsc_wrapping
+namespace streaming::spsc_buffered_stream
 {
     stream::stream(
         std::shared_ptr<::streaming::stream> underlying,
@@ -38,7 +49,7 @@ namespace streaming::spsc_wrapping
     stream::~stream()
     {
         // The proxy loops only own proxy_state, not this stream object. If a
-        // caller drops the wrapper without awaiting set_closed(), stop the
+        // caller drops the buffered stream without awaiting set_closed(), stop the
         // detached loops so scheduler shutdown is not held open forever.
         request_stop();
     }
@@ -299,4 +310,4 @@ namespace streaming::spsc_wrapping
         return state_->underlying->get_peer_info();
     }
 
-} // namespace streaming::spsc_wrapping
+} // namespace streaming::spsc_buffered_stream

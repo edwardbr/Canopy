@@ -37,7 +37,7 @@ namespace rpc
         //   { "type": "sgx_coroutine", "settings": { "enclave_path": "./enclave.signed.so" } }
         struct typed_settings
         {
-            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_wrapping, and attestation; transport values include stream_rpc, local, ipc_spsc, blocking_dll, sgx_blocking, and sgx_coroutine."]
+            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_buffered_stream, and attestation; transport values include stream_rpc, local, ipc_spsc, blocking_dll, sgx_blocking, and sgx_coroutine."]
             std::string type;
 
             [description="Implementation-owned JSON object. The connection factory keeps this opaque and asks the named implementation to materialise it into that implementation's generated IDL settings type."]

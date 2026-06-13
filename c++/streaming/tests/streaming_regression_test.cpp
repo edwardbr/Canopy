@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <streaming/listener.h>
-#include <streaming/spsc_wrapping/stream.h>
+#include <streaming/spsc_buffered_stream/stream.h>
 #include <coro/coro.hpp>
 #include <rpc/rpc.h>
 
@@ -161,42 +161,42 @@ namespace
 } // namespace
 
 TEST(
-    SpscWrappingStream,
+    SpscBufferedStream,
     PropagatesUnderlyingSendFailure)
 {
     auto scheduler = make_scheduler();
     auto underlying = std::make_shared<send_failure_stream>(scheduler);
-    auto wrapper = streaming::spsc_wrapping::stream::create(underlying, scheduler);
+    auto buffered_stream = streaming::spsc_buffered_stream::stream::create(underlying, scheduler);
 
-    auto first_status = coro::sync_wait(wrapper->send(rpc::byte_span{"abc", 3}));
+    auto first_status = coro::sync_wait(buffered_stream->send(rpc::byte_span{"abc", 3}));
     EXPECT_TRUE(first_status.is_ok());
 
     coro::sync_wait(scheduler->yield_for(20ms));
 
-    auto second_status = coro::sync_wait(wrapper->send(rpc::byte_span{"x", 1}));
+    auto second_status = coro::sync_wait(buffered_stream->send(rpc::byte_span{"x", 1}));
     EXPECT_EQ(second_status.type, coro::net::io_status::kind::native);
     EXPECT_EQ(second_status.native_code, EPIPE);
     EXPECT_GE(underlying->send_calls(), 1);
 
-    coro::sync_wait(wrapper->set_closed());
+    coro::sync_wait(buffered_stream->set_closed());
     scheduler->shutdown();
 }
 
 TEST(
-    SpscWrappingStream,
-    SetClosedAllowsWrapperExpiry)
+    SpscBufferedStream,
+    SetClosedAllowsBufferedStreamExpiry)
 {
     auto scheduler = make_scheduler();
     auto underlying = std::make_shared<send_failure_stream>(scheduler);
-    std::weak_ptr<streaming::spsc_wrapping::stream> wrapper_weak;
+    std::weak_ptr<streaming::spsc_buffered_stream::stream> buffered_stream_weak;
 
     {
-        auto wrapper = streaming::spsc_wrapping::stream::create(underlying, scheduler);
-        wrapper_weak = wrapper;
-        coro::sync_wait(wrapper->set_closed());
+        auto buffered_stream = streaming::spsc_buffered_stream::stream::create(underlying, scheduler);
+        buffered_stream_weak = buffered_stream;
+        coro::sync_wait(buffered_stream->set_closed());
     }
 
-    EXPECT_TRUE(wrapper_weak.expired());
+    EXPECT_TRUE(buffered_stream_weak.expired());
     scheduler->shutdown();
 }
 

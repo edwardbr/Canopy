@@ -35,9 +35,9 @@ if(TARGET streaming_compression)
   target_link_libraries(streaming_layer_factory PUBLIC streaming_compression compression_stream_config_idl)
 endif()
 
-if(TARGET streaming_spsc_wrapping)
-  target_compile_definitions(streaming_layer_factory PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING)
-  target_link_libraries(streaming_layer_factory PUBLIC streaming_spsc_wrapping spsc_wrapping_stream_config_idl)
+if(TARGET streaming_spsc_buffered_stream)
+  target_compile_definitions(streaming_layer_factory PUBLIC CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM)
+  target_link_libraries(streaming_layer_factory PUBLIC streaming_spsc_buffered_stream spsc_buffered_stream_config_idl)
 endif()
 
 if(TARGET streaming_attestation)

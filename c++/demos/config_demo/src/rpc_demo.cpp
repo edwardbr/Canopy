@@ -51,22 +51,6 @@ namespace config_demo::v1
             return settings.transport->type;
         }
 
-        [[nodiscard]] auto make_factory_context(
-            const rpc::connection_factory::application_runtime& runtime,
-            const rpc::connection_factory::named_connection_settings& connection)
-            -> rpc::connection_factory::application_context_result
-        {
-            auto context = runtime.context_for(connection);
-            if (context.error_code != rpc::error::OK())
-            {
-                RPC_ERROR(
-                    "failed to create context for {}: {}",
-                    connection.name,
-                    context.message.empty() ? "unknown error" : context.message);
-            }
-            return context;
-        }
-
         CORO_TASK(demo_error)
         run_calculator_calls(const rpc::shared_ptr<i_calculator>& remote)
         {
@@ -124,16 +108,6 @@ namespace config_demo::v1
             std::shared_ptr<coro::scheduler> scheduler,
             paired_state& state)
         {
-            auto context_result = make_factory_context(runtime, server);
-            if (context_result.error_code != rpc::error::OK())
-            {
-                record_error(state, demo_error::INVALID_CONFIGURATION);
-                state.server_ready.set();
-                state.client_finished.set();
-                CO_RETURN;
-            }
-
-            auto context = std::move(context_result.context);
             auto shutdown_event = std::make_shared<rpc::event>();
             auto service = rpc::root_service::create(
                 service_name(server), rpc::create_local_zone(server.zone_subnet), std::move(scheduler));
@@ -149,7 +123,7 @@ namespace config_demo::v1
                 },
                 server.connection,
                 service,
-                context);
+                runtime.create_context());
 
             if (accept_result.error_code != rpc::error::OK() || (!accept_result.listener && !accept_result.connection))
             {
@@ -187,21 +161,12 @@ namespace config_demo::v1
                 CO_RETURN;
             }
 
-            auto context_result = make_factory_context(runtime, client);
-            if (context_result.error_code != rpc::error::OK())
-            {
-                record_error(state, demo_error::INVALID_CONFIGURATION);
-                state.client_finished.set();
-                CO_RETURN;
-            }
-
-            auto context = std::move(context_result.context);
             auto service = rpc::root_service::create(
                 service_name(client), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
-                rpc::shared_ptr<i_calculator>(), client.connection, service, context);
+                rpc::shared_ptr<i_calculator>(), client.connection, service, runtime.create_context());
             if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
             {
                 RPC_ERROR("Client: connect_rpc failed, error={}", connect_result.error_code);
@@ -324,17 +289,12 @@ namespace config_demo::v1
                 CO_RETURN demo_error::INVALID_CONFIGURATION;
             }
 
-            auto context_result = make_factory_context(runtime, client);
-            if (context_result.error_code != rpc::error::OK())
-                CO_RETURN demo_error::INVALID_CONFIGURATION;
-
-            auto context = std::move(context_result.context);
             auto service = rpc::root_service::create(
                 service_name(client), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
-                rpc::shared_ptr<i_calculator>(), client.connection, service, context);
+                rpc::shared_ptr<i_calculator>(), client.connection, service, runtime.create_context());
             if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
             {
                 RPC_ERROR("external native: connect failed, error={}", connect_result.error_code);

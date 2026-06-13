@@ -40,7 +40,7 @@ namespace rpc::connection_factory
     connect_stream(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context());
+        context factory_context = default_context());
 
     // Accept one fully layered byte stream from connection_settings::stream_layers.
     // This is for single-shot base streams whose two endpoints are already
@@ -50,7 +50,7 @@ namespace rpc::connection_factory
     accept_stream(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context());
+        context factory_context = default_context());
 
     // Create a configured base stream acceptor without attaching RPC. This
     // returns the listening acceptor and any owner object needed to keep its
@@ -61,7 +61,7 @@ namespace rpc::connection_factory
     open_stream_acceptor(
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context());
+        context factory_context = default_context());
 
     // Start a configured stream listener and invoke callback for each fully
     // layered accepted stream. This is the raw-stream equivalent of accept_rpc:
@@ -72,7 +72,7 @@ namespace rpc::connection_factory
         stream_callback callback,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context());
+        context factory_context = default_context());
 
     // Primary RPC factory API. These are the functions most applications
     // should use when configuration owns the connection topology.
@@ -90,7 +90,7 @@ namespace rpc::connection_factory
         rpc::shared_ptr<In> input_interface,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context());
+        context factory_context = default_context());
 
     // Accept configured RPC connections using a factory callback. For listening
     // base streams, the returned listener handle keeps the listener alive. For
@@ -108,7 +108,7 @@ namespace rpc::connection_factory
             Local> factory,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context(),
+        context factory_context = default_context(),
         rpc_transport_observer observe_transport = {});
 
     // Convenience accept_rpc overload for the common case where every accepted
@@ -122,7 +122,7 @@ namespace rpc::connection_factory
         rpc::shared_ptr<Local> local_interface,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service = {},
-        const context& factory_context = default_context(),
+        context factory_context = default_context(),
         rpc_transport_observer observe_transport = {});
 } // namespace rpc::connection_factory
 

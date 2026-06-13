@@ -25,15 +25,8 @@ namespace rpc::connection_factory
         std::string message;
     };
 
-    struct application_context_result
-    {
-        int error_code{rpc::error::OK()};
-        context context;
-        std::string message;
-    };
-
     // Owns host-side resources described by configuration and creates
-    // connection factory contexts for named connections.
+    // connection factory contexts populated with those runtime resources.
     class application_runtime
     {
     public:
@@ -48,7 +41,7 @@ namespace rpc::connection_factory
         [[nodiscard]] auto settings() const -> const configuration&;
         [[nodiscard]] auto find_connection(std::string_view name) const -> const named_connection_settings*;
 
-        [[nodiscard]] auto context_for(const named_connection_settings& connection) const -> application_context_result;
+        [[nodiscard]] auto create_context() const -> context;
 
     private:
         struct impl;

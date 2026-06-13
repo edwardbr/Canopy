@@ -10,8 +10,21 @@
 #include <streaming/spsc_queue/stream.h>
 #include <streaming/stream.h>
 
-namespace streaming::spsc_wrapping
+namespace streaming::spsc_buffered_stream
 {
+    // A local buffering adapter for an existing stream.
+    //
+    // This class does not connect two endpoints and it does not consume a
+    // shared queue pair from configuration. It owns private SPSC queues inside
+    // one stream object:
+    //
+    //   caller send()    -> send_q_ -> send_proxy_loop -> underlying->send()
+    //   caller receive() <- recv_q_ <- recv_proxy_loop <- underlying->receive()
+    //
+    // The adapter is useful when a stream stack deliberately wants a queued
+    // boundary between the transport-facing stream API and the underlying I/O.
+    // For ordinary in-process SPSC transport between two endpoints, use
+    // streaming::spsc_queue::stream instead.
     class stream : public ::streaming::stream
     {
     public:
@@ -60,4 +73,4 @@ namespace streaming::spsc_wrapping
         std::vector<uint8_t> leftover_;
         size_t leftover_offset_{0};
     };
-} // namespace streaming::spsc_wrapping
+} // namespace streaming::spsc_buffered_stream

@@ -41,7 +41,7 @@
 
 #  include <streaming/listener.h>
 #  include <streaming/spsc_queue/stream.h>
-#  include <streaming/spsc_wrapping/stream.h>
+#  include <streaming/spsc_buffered_stream/stream.h>
 #  include <streaming/secure_stream.h>
 #  include <transports/streaming/transport.h>
 
@@ -448,7 +448,7 @@ public:
 #  endif // __linux__
 
 // ---------------------------------------------------------------------------
-// TLS setup — TCP → SPSC wrapping → TLS (port 8092)
+// TLS setup — TCP → SPSC buffered stream → TLS (port 8092)
 // ---------------------------------------------------------------------------
 
 #  ifdef __linux__
@@ -489,7 +489,7 @@ protected:
         auto tls_transformer = [tls_ctx, io_sched](std::shared_ptr<streaming::stream> tcp_stm)
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
-            auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, io_sched);
+            auto spsc_stm = streaming::spsc_buffered_stream::stream::create(tcp_stm, io_sched);
             auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
@@ -525,7 +525,7 @@ protected:
             CO_RETURN false;
         }
 
-        auto spsc_stm = streaming::spsc_wrapping::stream::create(std::move(tcp_result.connection), scheduler);
+        auto spsc_stm = streaming::spsc_buffered_stream::stream::create(std::move(tcp_result.connection), scheduler);
 
         auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())

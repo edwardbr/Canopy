@@ -71,7 +71,7 @@ its layer factory — but imperatively:
 | Stream layer | `tls` | TLS layer settings | `c++/streaming/layer_factory/src/factory.cpp` |
 | Stream layer | `websocket` | websocket settings | `layer_factory/src/factory.cpp` |
 | Stream layer | `compression`, `zstd` | compression settings | `layer_factory/src/factory.cpp` |
-| Stream layer | `spsc_wrapping`, `spsc_wrapper` | spsc-wrapping settings | `layer_factory/src/factory.cpp` |
+| Stream layer | `spsc_buffered_stream` | local SPSC buffering settings | `layer_factory/src/factory.cpp` |
 | Stream layer | `attestation`, `attestation_stream` | `rpc::attestation_stream::stream_settings` | `layer_factory/src/factory.cpp` |
 
 Two facts follow:

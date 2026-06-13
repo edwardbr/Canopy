@@ -145,9 +145,9 @@ if(TARGET streaming_spsc_queue)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC)
 endif()
 
-if(TARGET streaming_spsc_wrapping)
-  target_link_libraries(connection_factory PUBLIC streaming_spsc_wrapping spsc_wrapping_stream_config_idl)
-  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING)
+if(TARGET streaming_spsc_buffered_stream)
+  target_link_libraries(connection_factory PUBLIC streaming_spsc_buffered_stream spsc_buffered_stream_config_idl)
+  target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC_BUFFERED_STREAM)
 endif()
 
 if(TARGET streaming_tcp_coroutine)
@@ -200,8 +200,8 @@ if(CANOPY_BUILD_COROUTINE)
     target_link_libraries(connection_factory_test INTERFACE streaming_tcp_coroutine)
   endif()
 
-  if(TARGET streaming_spsc_wrapping)
-    target_link_libraries(connection_factory_test INTERFACE streaming_spsc_wrapping)
+  if(TARGET streaming_spsc_buffered_stream)
+    target_link_libraries(connection_factory_test INTERFACE streaming_spsc_buffered_stream)
   endif()
 
   if(TARGET transport_sgx_coroutine)

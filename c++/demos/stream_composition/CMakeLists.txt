@@ -50,7 +50,7 @@ if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
            streaming
            streaming_tcp_coroutine
            ${STREAM_COMPOSITION_SECURE_STREAM_TARGET}
-           streaming_spsc_wrapping
+           streaming_spsc_buffered_stream
            transport_streaming
            connection_factory
            rpc
@@ -67,7 +67,7 @@ if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
   endif()
 
   message(STATUS "stream_composition demo configured")
-  message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC → TLS composition, requires coroutines)")
+  message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC buffered stream → TLS composition, requires coroutines)")
   message(STATUS "  - Cert dir: ${DEMO_CERT_DIR}")
 else()
   message(STATUS "stream_composition demo skipped (requires CANOPY_BUILD_COROUTINE and streaming_tcp_coroutine)")

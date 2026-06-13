@@ -61,7 +61,6 @@
         },
         "stream_layers": [
           { "type": "tcp_coroutine", "settings": { "host": "127.0.0.1", "port": 26072, "ipv6": false, "connect_timeout": 5000 } },
-          { "type": "spsc_wrapping", "settings": { "name": "server_spsc_wrapper" } },
           { "type": "compression", "settings": { "algorithm": "zstd", "level": 3, "send_buffer_bytes": 16384, "receive_buffer_bytes": 16384, "max_expansion_ratio": 32 } },
           {
             "type": "tls",
@@ -100,7 +99,6 @@
         },
         "stream_layers": [
           { "type": "tcp_coroutine", "settings": { "host": "127.0.0.1", "port": 26072, "ipv6": false, "connect_timeout": 5000 } },
-          { "type": "spsc_wrapping", "settings": { "name": "client_spsc_wrapper" } },
           { "type": "compression", "settings": { "algorithm": "zstd", "level": 3, "send_buffer_bytes": 16384, "receive_buffer_bytes": 16384, "max_expansion_ratio": 32 } },
           {
             "type": "tls",

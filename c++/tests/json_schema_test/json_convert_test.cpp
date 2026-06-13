@@ -1486,10 +1486,10 @@ namespace
         EXPECT_EQ(calls[1], "accept:test_layer_beta:beta");
     }
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING
+#ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_BUFFERED_STREAM
     TEST(
         JsonConvert,
-        SpscWrappingLayerRequiresServiceExecutor)
+        SpscBufferedStreamLayerRequiresServiceExecutor)
     {
         rpc::connection_factory::context context;
         context.register_connect_base_stream<rpc::connection_factory::service_settings>(
@@ -1504,12 +1504,12 @@ namespace
         base_layer.type = "test_base";
         settings.stream_layers.push_back(std::move(base_layer));
 
-        rpc::stream_layers::stream_layer_settings wrapper_layer;
-        wrapper_layer.type = "spsc_wrapping";
-        settings.stream_layers.push_back(std::move(wrapper_layer));
+        rpc::stream_layers::stream_layer_settings buffered_layer;
+        buffered_layer.type = "spsc_buffered_stream";
+        settings.stream_layers.push_back(std::move(buffered_layer));
 
-        auto service
-            = rpc::root_service::create("spsc_wrapping_without_executor", rpc::DEFAULT_PREFIX, rpc::executor_ptr{});
+        auto service = rpc::root_service::create(
+            "spsc_buffered_stream_without_executor", rpc::DEFAULT_PREFIX, rpc::executor_ptr{});
         ASSERT_NE(service, nullptr);
         EXPECT_EQ(service->get_executor(), nullptr);
 

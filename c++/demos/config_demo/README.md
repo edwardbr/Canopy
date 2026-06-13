@@ -71,6 +71,11 @@ Reference samples:
 - `external_shared_scheduler_dll.json`
 - `external_unshared_scheduler_dll.json`
 
+`spsc_buffered_stream` is intentionally not used by the runnable config demo
+samples. It is a local buffering layer around an already-created stream; it does
+not pair two endpoints by sharing a queue. Use `spsc_queue` for configured
+in-process queue-pair transport.
+
 Each `transport.settings` and `stream_layers[].settings` object is passed to the
 owning generated IDL config type. That keeps the demo generic: adding or editing
 fields in the JSON exercises the same materialisation path as application code.

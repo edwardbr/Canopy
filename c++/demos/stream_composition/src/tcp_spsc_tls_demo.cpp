@@ -4,7 +4,7 @@
  */
 
 /*
- *   Stream Composition Demo — TCP → SPSC → TLS
+ *   Stream Composition Demo — TCP → SPSC buffered stream → TLS
  *
  *   Demonstrates that streaming::stream classes are fully composable.
  *   Each layer wraps the one below via the common stream interface:
@@ -12,17 +12,18 @@
  *       [TCP socket]
  *           ↕  tcp_stream
  *       [SPSC buffering layer]
- *           ↕  spsc_wrapping_stream  (internal SPSC queues; no external pump)
+ *           ↕  spsc_buffered_stream  (internal SPSC queues; no external pump)
  *       [TLS encryption]
  *           ↕  secure_stream          (OpenSSL or mbedTLS, selected by CMake)
  *       [streaming_transport / RPC layer]
  *           ↕
  *       [i_echo interface]
  *
- *   The transport drives all I/O.  When it calls receive() the call propagates
- *   down through TLS → SPSC → TCP naturally.  No relay pump coroutines are
- *   needed because the transport guarantees exactly one active task per
- *   direction (receive_consumer_loop / send_producer_loop).
+ *   The transport still sees a normal streaming::stream. When it calls send()
+ *   or receive(), TLS talks to spsc_buffered_stream, and that adapter moves
+ *   bytes through its private SPSC queues to or from TCP. The queues are not a
+ *   configured endpoint rendezvous; they are only a local buffering boundary in
+ *   this stream stack.
  *
  *   Build:
  *       cmake --preset Debug_Coroutine
@@ -42,7 +43,7 @@
 #include <connection_factory/detail/stream_rpc.h>
 
 #include <streaming/listener.h>
-#include <streaming/spsc_wrapping/stream.h>
+#include <streaming/spsc_buffered_stream/stream.h>
 #include <streaming/tcp_coroutine/acceptor.h>
 #include <streaming/tcp_coroutine/connector.h>
 #include <streaming/tcp_coroutine/stream.h>
@@ -198,7 +199,7 @@ namespace stream_composition
         auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
-            auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+            auto spsc_stm = streaming::spsc_buffered_stream::stream::create(tcp_stm, scheduler);
             auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
@@ -282,7 +283,7 @@ namespace stream_composition
         }
         RPC_INFO("Client: TCP connected");
 
-        auto spsc_stm = streaming::spsc_wrapping::stream::create(std::move(tcp_result.connection), scheduler);
+        auto spsc_stm = streaming::spsc_buffered_stream::stream::create(std::move(tcp_result.connection), scheduler);
 
         auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
@@ -322,11 +323,11 @@ namespace stream_composition
             client_finished.set();
             CO_RETURN;
         }
-        RPC_INFO("Client: RPC connection established over TCP → SPSC → TLS");
+        RPC_INFO("Client: RPC connection established over TCP → SPSC buffered stream → TLS");
 
         const std::vector<std::string> messages = {
             "Hello from stream_composition demo!",
-            "TCP -> SPSC -> TLS composition works!",
+            "TCP -> SPSC buffered stream -> TLS composition works!",
             "Streams are fully composable.",
         };
 
@@ -441,14 +442,14 @@ int main(
     int argc,
     char* argv[])
 {
-    RPC_INFO("Stream Composition Demo — TCP → SPSC → TLS");
+    RPC_INFO("Stream Composition Demo — TCP → SPSC buffered stream → TLS");
     RPC_INFO("============================================");
 
 #ifndef CANOPY_BUILD_COROUTINE
     RPC_ERROR("This demo requires coroutines. Build with: cmake --preset Debug_Coroutine");
     return 1;
 #else
-    args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC → TLS.");
+    args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC buffered stream → TLS.");
     args::HelpFlag help(parser, "help", "Display this help and exit", {'h', "help"});
     auto net = canopy::network_config::add_network_args(parser);
     auto cli = add_default_network_args(argc, argv);

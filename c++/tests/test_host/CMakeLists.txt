@@ -185,7 +185,7 @@ if(CANOPY_BUILD_COROUTINE)
            streaming
            streaming_attestation
            streaming_spsc_queue
-           streaming_spsc_wrapping
+           streaming_spsc_buffered_stream
            canopy::security_attestation
            ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
@@ -301,7 +301,7 @@ if(CANOPY_BUILD_COROUTINE)
            ${STREAMING_TRANSPORT_TEST_LIB}
            streaming
            streaming_spsc_queue
-           streaming_spsc_wrapping
+           streaming_spsc_buffered_stream
            ${STREAMING_SECURE_STREAM_LIB}
            $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>

@@ -207,7 +207,7 @@ namespace rpc::connection_factory
         rpc::shared_ptr<In> input_interface,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context)
+        context factory_context)
     {
         auto transport = detail::transport_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
@@ -227,7 +227,7 @@ namespace rpc::connection_factory
         if (!resolved_service)
             CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
-        auto stream = CO_AWAIT connect_stream(settings, resolved_service, factory_context);
+        auto stream = CO_AWAIT connect_stream(settings, resolved_service, std::move(factory_context));
         if (stream.error_code != rpc::error::OK())
             CO_RETURN rpc::service_connect_result<Out>{stream.error_code, {}};
 
@@ -245,7 +245,7 @@ namespace rpc::connection_factory
             Local> factory,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context,
+        context factory_context,
         rpc_transport_observer observe_transport)
     {
         auto transport = detail::transport_from_connection(settings);
@@ -281,7 +281,7 @@ namespace rpc::connection_factory
         if (acceptor.error_code != rpc::error::INVALID_DATA())
             CO_RETURN accept_result{acceptor.error_code, {}, {}};
 
-        auto accepted_stream = CO_AWAIT accept_stream(settings, resolved_service, factory_context);
+        auto accepted_stream = CO_AWAIT accept_stream(settings, resolved_service, std::move(factory_context));
         if (accepted_stream.error_code != rpc::error::OK())
             CO_RETURN accept_result{accepted_stream.error_code, {}, {}};
 
@@ -298,14 +298,14 @@ namespace rpc::connection_factory
         rpc::shared_ptr<Local> local_interface,
         const connection_settings& settings,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context,
+        context factory_context,
         rpc_transport_observer observe_transport)
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
             fixed_factory<Remote, Local>(std::move(local_interface)),
             settings,
             std::move(service),
-            factory_context,
+            std::move(factory_context),
             std::move(observe_transport));
     }
 } // namespace rpc::connection_factory

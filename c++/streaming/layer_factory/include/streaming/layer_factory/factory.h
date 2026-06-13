@@ -45,7 +45,10 @@ namespace streaming::layer_factory
 
     struct layer_context
     {
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
+        // Required only by spsc_buffered_stream. That layer inserts private
+        // queues around one existing stream and runs two proxy coroutines to
+        // move bytes between the queues and the underlying stream.
         rpc::executor_ptr stream_scheduler;
 #endif
 

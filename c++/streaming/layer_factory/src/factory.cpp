@@ -36,10 +36,10 @@
 #  endif
 #endif
 
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING
-#  include <spsc_wrapping_stream/spsc_wrapping_stream_config.h>
-#  include <spsc_wrapping_stream/spsc_wrapping_stream_config_schema.h>
-#  include <streaming/spsc_wrapping/stream.h>
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
+#  include <spsc_buffered_stream/spsc_buffered_stream_config.h>
+#  include <spsc_buffered_stream/spsc_buffered_stream_config_schema.h>
+#  include <streaming/spsc_buffered_stream/stream.h>
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION
@@ -240,19 +240,23 @@ namespace streaming::layer_factory
         }
 #endif
 
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING
-        auto apply_spsc_wrapping_layer(
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
+        auto apply_spsc_buffered_stream_layer(
             std::shared_ptr<::streaming::stream> stream,
             const rpc::stream_layers::stream_layer_settings& layer,
             const layer_context& context) -> stream_layer_result
         {
+            // Unlike TLS/WebSocket/compression, this layer needs an executor at
+            // construction time because its internal queues are drained by
+            // proxy coroutines. The connection factory supplies the owning
+            // service executor in layer_context.
             auto settings
-                = materialise_layer_settings<::rpc::spsc_wrapping_stream::stream_settings>(layer_settings_object(layer));
+                = materialise_layer_settings<::rpc::spsc_buffered_stream::stream_settings>(layer_settings_object(layer));
             if (!settings || !context.stream_scheduler)
                 return {rpc::error::INVALID_DATA(), {}};
 
             return {rpc::error::OK(),
-                ::streaming::spsc_wrapping::stream::create(std::move(stream), context.stream_scheduler)};
+                ::streaming::spsc_buffered_stream::stream::create(std::move(stream), context.stream_scheduler)};
         }
 #endif
 
@@ -390,9 +394,9 @@ namespace streaming::layer_factory
             CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction);
 #endif
 
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING
-        if (layer.type == "spsc_wrapping" || layer.type == "spsc_wrapper")
-            CO_RETURN apply_spsc_wrapping_layer(std::move(stream), layer, context);
+#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
+        if (layer.type == "spsc_buffered_stream")
+            CO_RETURN apply_spsc_buffered_stream_layer(std::move(stream), layer, context);
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION

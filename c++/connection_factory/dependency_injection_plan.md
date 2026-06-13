@@ -67,7 +67,7 @@ The registry should distinguish these roles:
 - Base stream factories: create the first byte stream in a sequence.
   Examples: TCP, SPSC queue, io_uring loopback, future LoRa.
 - Stream layer factories: wrap an existing stream.
-  Examples: TLS, WebSocket, compression, attestation, SPSC wrapping.
+  Examples: TLS, WebSocket, compression, attestation, SPSC buffered stream.
 - RPC transport factories: adapt an established stream or native child-zone
   mechanism into `rpc::transport`.
   Examples: stream RPC, local child-zone transport. Local child zones are a
@@ -231,7 +231,7 @@ layers.
 3. Move the built-in stream construction logic out of the central
    `if (layer.type == "...")` switch and into implementation-owned factories.
    TCP and SPSC queue currently remain as base-stream adapters inside the host
-   connection factory. WebSocket, TLS, SPSC wrapping, and attestation stream
+   connection factory. WebSocket, TLS, SPSC buffered stream, and attestation stream
    wrappers are now created by `streaming/layer_factory`, which is the
    SGX/TEE-compatible layer construction path reused by the host connection
    factory.
@@ -270,7 +270,7 @@ That slice now exists in source form:
 
 - `connection_factory` has a private registry for base streams and transports.
 - `streaming/layer_factory` owns reusable stream-wrapper materialisation for
-  WebSocket, TLS, SPSC wrapping, and attestation.
+  WebSocket, TLS, SPSC buffered stream, and attestation.
 - `connection_factory` still preserves public context setters and custom
   stream-layer registration, but built-in wrappers no longer need individual
   `streaming/*/src/connection_factory_adapter.cpp` files.

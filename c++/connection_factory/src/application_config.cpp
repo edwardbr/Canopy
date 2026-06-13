@@ -410,20 +410,17 @@ namespace rpc::connection_factory
             }
         }
 
-        [[nodiscard]] auto context_for(const named_connection_settings& connection) const -> application_context_result
+        [[nodiscard]] auto create_context() const -> context
         {
-            if (connection.name.empty())
-                return {rpc::error::INVALID_DATA(), {}, "connection name must not be empty"};
-
-            context context;
+            context factory_context;
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
             for (const auto& [name, queues] : spsc_queues)
             {
                 if (name.empty())
-                    context.set_spsc_queues(queues);
+                    factory_context.set_spsc_queues(queues);
                 else
-                    context.set_dependency_value(queues, name);
+                    factory_context.set_dependency_value(queues, name);
             }
 #endif
 
@@ -431,13 +428,13 @@ namespace rpc::connection_factory
             for (const auto& [name, service] : attestation_services)
             {
                 if (name.empty())
-                    context.set_attestation_service(service);
+                    factory_context.set_attestation_service(service);
                 else
-                    context.register_attestation_service(name, service);
+                    factory_context.register_attestation_service(name, service);
             }
 #endif
 
-            return {rpc::error::OK(), std::move(context), {}};
+            return factory_context;
         }
     };
 
@@ -467,9 +464,9 @@ namespace rpc::connection_factory
         return found == connections.end() ? nullptr : &*found;
     }
 
-    auto application_runtime::context_for(const named_connection_settings& connection) const -> application_context_result
+    auto application_runtime::create_context() const -> context
     {
-        return impl_->context_for(connection);
+        return impl_->create_context();
     }
 
     auto make_application_runtime(
