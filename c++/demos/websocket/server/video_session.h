@@ -148,7 +148,7 @@ namespace websocket_demo
             video_session(const video_session&) = delete;
             video_session& operator=(const video_session&) = delete;
 
-            int set_sink(const rpc::shared_ptr<i_context_event>& sink);
+            websocket_error set_sink(const rpc::shared_ptr<i_context_event>& sink);
             void set_scheduler(const std::shared_ptr<rpc::coro::scheduler>& scheduler);
             void set_effects(uint32_t effects);
             void set_params(
@@ -156,7 +156,7 @@ namespace websocket_demo
                 uint32_t bitrate_kbps,
                 uint32_t cpu_used);
 
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             forward_frame(
                 uint64_t seq,
                 uint64_t pts_us,

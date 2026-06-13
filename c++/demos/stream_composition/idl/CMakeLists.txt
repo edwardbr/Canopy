@@ -13,5 +13,6 @@ CanopyGenerate(
   ""
   yas_binary
   yas_json
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})

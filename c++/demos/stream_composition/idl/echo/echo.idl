@@ -8,11 +8,19 @@
  *   Defines the i_echo interface used to demonstrate composable stream stacks.
  */
 
+#import "rpc/rpc_types.idl"
+
 namespace stream_composition
 {
+    error stream_composition_error
+    {
+        [description = "The echo request is invalid for the stream composition demo."]
+        INVALID_ARGUMENT
+    };
+
     interface i_echo
     {
         [description="Echo a message back to the caller"]
-        int echo([in] const std::string& message, [out] std::string& response);
+        stream_composition_error echo([in] const std::string& message, [out] std::string& response);
     };
 }

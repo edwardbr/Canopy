@@ -191,7 +191,7 @@ namespace config_demo::v1
             const rpc::connection_factory::named_connection_settings& server,
             const rpc::connection_factory::named_connection_settings& client,
             const std::shared_ptr<coro::scheduler>& server_scheduler,
-            const std::shared_ptr<coro::scheduler>& client_scheduler) -> int
+            const std::shared_ptr<coro::scheduler>& client_scheduler) -> demo_error
         {
             for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
@@ -259,7 +259,7 @@ namespace config_demo::v1
         [[nodiscard]] auto run_local_child(
             const execution_settings& execution,
             const rpc::connection_factory::named_connection_settings& client,
-            const std::shared_ptr<coro::scheduler>& scheduler) -> int
+            const std::shared_ptr<coro::scheduler>& scheduler) -> demo_error
         {
             for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
@@ -312,7 +312,7 @@ namespace config_demo::v1
             const rpc::connection_factory::application_runtime& runtime,
             const execution_settings& execution,
             const rpc::connection_factory::named_connection_settings& client,
-            const std::shared_ptr<coro::scheduler>& scheduler) -> int
+            const std::shared_ptr<coro::scheduler>& scheduler) -> demo_error
         {
             for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
@@ -361,7 +361,7 @@ namespace config_demo::v1
         const rpc::connection_factory::application_runtime& runtime,
         const execution_settings& execution,
         const std::shared_ptr<coro::scheduler>& scheduler_1,
-        const std::shared_ptr<coro::scheduler>& scheduler_2) -> int
+        const std::shared_ptr<coro::scheduler>& scheduler_2) -> demo_error
     {
         const auto* client = find_named_connection(runtime, execution.client_connection);
         if (!client)

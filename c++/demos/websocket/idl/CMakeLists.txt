@@ -78,7 +78,10 @@ CanopyGenerate(
   ${websocket_demo_serialisers}
   dependencies rpc_types_idl websocket_protocol_idl network_config_idl
   install_dir ${GENERATED_INSTALL_DIR}
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces)
+  include_paths
+  ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
+  ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces)
 
 canopyjavascriptgenerate(
   websocket_demo_client
@@ -91,6 +94,7 @@ canopyjavascriptgenerate(
   network_config_idl
   include_paths
   ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
   ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces
   copy_files
   "${transport_js}"
@@ -109,6 +113,7 @@ canopyjavascriptgenerate(
   network_config_idl
   include_paths
   ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
   ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces
   copy_files
   "${transport_js}"

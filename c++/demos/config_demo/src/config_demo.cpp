@@ -5,7 +5,6 @@
 
 #include "config_demo_app.h"
 
-#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string_view>
@@ -37,30 +36,37 @@ int main(
         return argc == 2 ? 0 : 1;
     }
 
-    try
+    const std::filesystem::path config_path(argv[1]);
+    demo_settings settings;
+    std::string error_message;
+    auto error_code = load_demo_settings(config_path, settings, error_message);
+    if (error_code != rpc::error::OK())
     {
-        const std::filesystem::path config_path(argv[1]);
-        const auto settings = load_demo_settings(config_path);
-        const auto& execution = settings.execution;
-        auto runtime = make_connection_factory_runtime(settings, config_path.parent_path());
-        auto scheduler_1 = make_scheduler(execution.scheduler_threads);
-        auto scheduler_2 = make_scheduler(execution.scheduler_threads);
-
-        const auto error_code = run_configured_demo(*runtime, execution, scheduler_1, scheduler_2);
-        runtime.reset();
-
-        scheduler_1->shutdown();
-        scheduler_2->shutdown();
-
-        if (error_code != rpc::error::OK())
-            return 1;
-
-        RPC_INFO("config_demo completed successfully");
-        return 0;
-    }
-    catch (const std::exception& error)
-    {
-        RPC_ERROR("config_demo failed: {}", error.what());
+        RPC_ERROR("config_demo failed: {}{}", error_code.to_string(), error_message.empty() ? "" : ": " + error_message);
         return 1;
     }
+
+    std::shared_ptr<rpc::connection_factory::application_runtime> runtime;
+    error_code = make_connection_factory_runtime(settings, config_path.parent_path(), runtime, error_message);
+    if (error_code != rpc::error::OK())
+    {
+        RPC_ERROR("config_demo failed: {}{}", error_code.to_string(), error_message.empty() ? "" : ": " + error_message);
+        return 1;
+    }
+
+    const auto& execution = settings.execution;
+    auto scheduler_1 = make_scheduler(execution.scheduler_threads);
+    auto scheduler_2 = make_scheduler(execution.scheduler_threads);
+
+    error_code = run_configured_demo(*runtime, execution, scheduler_1, scheduler_2);
+    runtime.reset();
+
+    scheduler_1->shutdown();
+    scheduler_2->shutdown();
+
+    if (error_code != rpc::error::OK())
+        return 1;
+
+    RPC_INFO("config_demo completed successfully");
+    return 0;
 }

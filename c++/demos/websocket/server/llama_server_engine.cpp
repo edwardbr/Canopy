@@ -442,7 +442,7 @@ namespace secret_llama
                 return 0;
             }
 
-            int add_prompt(const std::string& prompt) override
+            error_types add_prompt(const std::string& prompt) override
             {
                 accumulated_response_.clear(); // Reset for new conversation turn
 
@@ -458,12 +458,12 @@ namespace secret_llama
                     if (!user_turn_)
                     {
                         RPC_DEBUG("[CTX {}] Not user's turn.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::LLM_STILL_PROCESSING);
+                        return error_types::LLM_STILL_PROCESSING;
                     }
                     if (prompt.empty())
                     {
                         RPC_DEBUG("[CTX {}] Empty prompt received.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::INVALID_PROMPT);
+                        return error_types::INVALID_PROMPT;
                     }
 
                     if (!first_pass_)
@@ -479,7 +479,7 @@ namespace secret_llama
                             RPC_ERROR(
                                 "[CTX {}] Unable to apply chat template for assistant message.",
                                 std::to_string(context_id_));
-                            return to_standard_return_type(error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE);
+                            return error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE;
                         }
                     }
 
@@ -493,7 +493,7 @@ namespace secret_llama
                     if (apply_chat_template_with_error_handling(chat_templates_.get(), true, new_len) < 0)
                     {
                         RPC_ERROR("[CTX {}] Unable to apply chat template for user message.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE);
+                        return error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE;
                     }
                     RPC_DEBUG(
                         "[CTX {}] Chat template applied. prev_len_={}, new_len={}",
@@ -529,7 +529,7 @@ namespace secret_llama
                     if (n_tokens < 0)
                     {
                         RPC_ERROR("[CTX {}] Failed to tokenize prompt.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE);
+                        return error_types::UNABLE_TO_APPLY_CHAT_TEMPLATE;
                     }
                     RPC_DEBUG("[CTX {}] Tokenized into {} tokens.", std::to_string(context_id_), n_tokens);
 
@@ -544,12 +544,12 @@ namespace secret_llama
                     first_pass_ = false;
                     user_turn_ = false;
                     RPC_DEBUG("[CTX {}] END", std::to_string(context_id_));
-                    return to_standard_return_type(error_types::OK);
+                    return error_types::OK;
                 }
                 catch (const std::exception& e)
                 {
                     RPC_ERROR("[CTX {}] llamacpp exception thrown: {}", std::to_string(context_id_), e.what());
-                    return to_standard_return_type(error_types::EXCEPTION_THROWN);
+                    return error_types::EXCEPTION_THROWN;
                 }
             }
 
@@ -570,7 +570,7 @@ namespace secret_llama
             }
 
             // Replace the stop string checking section in get_piece() with this:
-            int get_piece(
+            error_types get_piece(
                 std::string& piece,
                 bool& complete) override
             {
@@ -585,7 +585,7 @@ namespace secret_llama
                     {
                         complete = true;
                         RPC_DEBUG("[CTX {}] Is user's turn, completing.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::OK);
+                        return error_types::OK;
                     }
 
                     // Ensure the context has enough space for the tokens in the current batch.
@@ -593,7 +593,7 @@ namespace secret_llama
                     {
                         complete = true;
                         RPC_DEBUG("[CTX {}] Context size exceeded.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::CONTEXT_SIZE_EXCEEDED);
+                        return error_types::CONTEXT_SIZE_EXCEEDED;
                     }
 
                     RPC_DEBUG(
@@ -604,7 +604,7 @@ namespace secret_llama
                     if (llama_decode(ctx_.get(), batch_))
                     {
                         RPC_ERROR("[CTX {}] llama_decode failed.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::DECODE_FAILURE);
+                        return error_types::DECODE_FAILURE;
                     }
                     RPC_DEBUG(
                         "[CTX {}] Decode successful. KV cache now used={}",
@@ -624,14 +624,14 @@ namespace secret_llama
                         complete = true;
                         user_turn_ = true;
                         accumulated_response_.clear();
-                        return to_standard_return_type(error_types::OK);
+                        return error_types::OK;
                     }
 
                     // Convert token to string
                     if (convert_token_to_string(new_token_id_, piece))
                     {
                         RPC_ERROR("[CTX {}] Failed to convert token to string.", std::to_string(context_id_));
-                        return to_standard_return_type(error_types::UNABLE_TO_GET_PIECE);
+                        return error_types::UNABLE_TO_GET_PIECE;
                     }
 
                     std::string piece_str(piece.begin(), piece.end());
@@ -675,7 +675,7 @@ namespace secret_llama
                         complete = true;
                         user_turn_ = true;
                         accumulated_response_.clear(); // Reset for next turn
-                        return to_standard_return_type(error_types::OK);
+                        return error_types::OK;
                     }
 
                     // Trim accumulated response to prevent excessive memory usage
@@ -690,12 +690,12 @@ namespace secret_llama
                     batch_ = llama_batch_get_one(&new_token_id_, 1);
 
                     RPC_DEBUG("[CTX {}] GET_PIECE END", std::to_string(context_id_));
-                    return to_standard_return_type(error_types::OK);
+                    return error_types::OK;
                 }
                 catch (const std::exception& e)
                 {
                     RPC_ERROR("[CTX {}] llamacpp exception thrown: {}", std::to_string(context_id_), e.what());
-                    return to_standard_return_type(error_types::EXCEPTION_THROWN);
+                    return error_types::EXCEPTION_THROWN;
                 }
             }
         };

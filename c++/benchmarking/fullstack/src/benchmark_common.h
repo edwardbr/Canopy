@@ -62,7 +62,7 @@ namespace comprehensive::v1
         const char* encoding,
         size_t blob_size,
         const benchmark_stats& stats);
-    CORO_TASK(int)
+    CORO_TASK(comprehensive_error)
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,

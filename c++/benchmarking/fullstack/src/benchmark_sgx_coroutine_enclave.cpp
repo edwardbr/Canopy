@@ -88,7 +88,7 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(comprehensive_error)
         run_benchmark_calls_in_enclave(
             rpc::shared_ptr<i_data_processor> remote,
             const std::vector<uint8_t>& payload,
@@ -98,7 +98,7 @@ namespace comprehensive::v1
         {
             if (!remote || iterations == 0)
             {
-                CO_RETURN rpc::error::INVALID_DATA();
+                CO_RETURN comprehensive_error::INVALID_ARGUMENT;
             }
 
             durations_ns.clear();
@@ -126,7 +126,7 @@ namespace comprehensive::v1
                 }
                 if (response.size() != payload.size())
                 {
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN comprehensive_error::INVALID_BENCHMARK_RESULT;
                 }
 
                 durations_ns.push_back(ticks_to_nanoseconds(end - start));
@@ -556,7 +556,7 @@ namespace comprehensive::v1
                 }
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             run_io_uring_rpc(
                 uint64_t encoding,
                 uint64_t blob_size,
@@ -569,7 +569,7 @@ namespace comprehensive::v1
 
                 if (!controller_ || !service_ || !service_->get_scheduler() || iterations == 0)
                 {
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN comprehensive_error::INVALID_ARGUMENT;
                 }
 
                 controller_->set_wait_strategy(rpc::io_uring::wait_strategy::proactor);
@@ -633,7 +633,7 @@ namespace comprehensive::v1
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             start_io_uring_rpc_server(
                 uint64_t encoding,
                 bool use_proactor,
@@ -643,12 +643,12 @@ namespace comprehensive::v1
 
                 if (!controller_ || !service_ || !service_->get_scheduler())
                 {
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN comprehensive_error::SERVICE_UNAVAILABLE;
                 }
                 if (server_session_ && server_session_->state && server_session_->state->server_done
                     && !server_session_->state->server_done->is_set())
                 {
-                    CO_RETURN rpc::error::RESOURCE_EXHAUSTED();
+                    CO_RETURN comprehensive_error::SERVER_ALREADY_RUNNING;
                 }
 
                 auto scheduler = service_->get_scheduler();
@@ -696,7 +696,7 @@ namespace comprehensive::v1
                 {
                     session->client_finished->set();
                     CO_AWAIT session->state->server_done->wait();
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN comprehensive_error::INVALID_BENCHMARK_RESULT;
                 }
 
                 port = selected_port;
@@ -704,7 +704,7 @@ namespace comprehensive::v1
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             run_io_uring_rpc_client(
                 uint64_t encoding,
                 uint64_t blob_size,
@@ -718,7 +718,7 @@ namespace comprehensive::v1
 
                 if (!controller_ || !service_ || !service_->get_scheduler() || iterations == 0 || port == 0 || port > 65535)
                 {
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN comprehensive_error::INVALID_ARGUMENT;
                 }
 
                 const auto enc = static_cast<rpc::encoding>(encoding);
@@ -737,7 +737,7 @@ namespace comprehensive::v1
                     durations_ns);
             }
 
-            CORO_TASK(int) stop_io_uring_rpc_server() override
+            CORO_TASK(comprehensive_error) stop_io_uring_rpc_server() override
             {
                 if (!server_session_)
                 {

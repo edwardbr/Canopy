@@ -10,7 +10,6 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <stdexcept>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -127,9 +126,11 @@ namespace
         return result;
     }
 
-    auto parse_command_line(
+    bool parse_command_line(
         int argc,
-        char* argv[]) -> command_line
+        char* argv[],
+        command_line& output,
+        std::string& error_message)
     {
         args::ArgumentParser parser("WebSocket enclave demo server.");
         args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
@@ -159,10 +160,20 @@ namespace
         {
             std::ostringstream message;
             message << e.what() << "\n" << parser;
-            throw std::invalid_argument(message.str());
+            error_message = message.str();
+            return false;
         }
 
-        auto cfg = net.get_config();
+        canopy::network_config::network_config cfg;
+        try
+        {
+            cfg = net.get_config();
+        }
+        catch (const std::exception& e)
+        {
+            error_message = e.what();
+            return false;
+        }
         cfg.log_values();
 
         canopy::network_config::tcp_endpoint listen_ep;
@@ -171,7 +182,6 @@ namespace
         else
             listen_ep.port = 8080;
 
-        command_line output;
         output.port = listen_ep.port;
         output.listen_address = listen_ep.to_string();
         output.certificate_path = args::get(cert_file);
@@ -181,9 +191,15 @@ namespace
         output.enclave_worker_threads = args::get(enclave_worker_threads);
 
         if (output.static_root_path.empty())
-            throw std::invalid_argument("--static-root must not be empty");
+        {
+            error_message = "--static-root must not be empty";
+            return false;
+        }
         if (output.enclave_path.empty())
-            throw std::invalid_argument("--enclave must not be empty");
+        {
+            error_message = "--enclave must not be empty";
+            return false;
+        }
 
         websocket_demo::v1::server_options enclave_options;
         enclave_options.listen = listen_ep;
@@ -198,7 +214,8 @@ namespace
 
         using json::v1::convert::to_json_object;
         output.enclave_options = {{std::string(websocket_demo_app_name), to_json_object(enclave_options)}};
-        return output;
+        error_message.clear();
+        return true;
     }
 
     auto make_scheduler() -> std::shared_ptr<coro::scheduler>
@@ -219,13 +236,10 @@ auto main(
     char* argv[]) -> int
 {
     command_line cli;
-    try
+    std::string error_message;
+    if (!parse_command_line(argc, argv, cli, error_message))
     {
-        cli = parse_command_line(argc, argv);
-    }
-    catch (const std::exception& e)
-    {
-        RPC_ERROR("{}\n", e.what());
+        RPC_ERROR("{}\n", error_message);
         return 1;
     }
 
@@ -278,7 +292,8 @@ auto main(
     auto listen_error = coro::sync_wait(enclave_server->listen());
     if (listen_error != rpc::error::OK())
     {
-        RPC_ERROR("failed to start enclave websocket listener: {}", rpc::error::to_string(listen_error));
+        RPC_ERROR(
+            "failed to start enclave websocket listener: {}", websocket_demo::v1::websocket_error::to_string(listen_error));
         enclave_server = nullptr;
         scheduler->shutdown();
         return 1;
@@ -292,7 +307,8 @@ auto main(
     RPC_INFO("websocket enclave server stopping");
     const auto stop_error = coro::sync_wait(enclave_server->stop());
     if (stop_error != rpc::error::OK())
-        RPC_WARNING("websocket enclave server stop returned {}", rpc::error::to_string(stop_error));
+        RPC_WARNING(
+            "websocket enclave server stop returned {}", websocket_demo::v1::websocket_error::to_string(stop_error));
 
     // The SGX/io_uring listener teardown can still block in process shutdown
     // while the listener path is being stabilised. This demo has already asked

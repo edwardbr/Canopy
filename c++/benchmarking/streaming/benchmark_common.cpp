@@ -252,7 +252,7 @@ namespace stream_bench
                 });
         }
 
-        void select_scenario(
+        bool select_scenario(
             bench_config& cfg,
             std::string_view scenario,
             bool& scenario_set)
@@ -278,7 +278,9 @@ namespace stream_bench
                 cfg.run_stress = true;
             }
             else
-                throw std::invalid_argument("unknown streaming benchmark scenario");
+                return false;
+
+            return true;
         }
 
         double mean_value(const std::vector<double>& values)
@@ -589,23 +591,12 @@ namespace stream_bench
             if (read_option_value(argc, argv, i, "--scenario", value)
                 || read_option_value(argc, argv, i, "--scenarios", value))
             {
-                try
+                if (!for_each_csv_value(
+                        value,
+                        [&cfg, &scenario_set](std::string_view scenario)
+                        { return select_scenario(cfg, scenario, scenario_set); }))
                 {
-                    if (!for_each_csv_value(
-                            value,
-                            [&cfg, &scenario_set](std::string_view scenario)
-                            {
-                                select_scenario(cfg, scenario, scenario_set);
-                                return true;
-                            }))
-                    {
-                        fmt::print(stderr, "Invalid scenario filter: {}\n", value);
-                        return parse_status::error;
-                    }
-                }
-                catch (const std::invalid_argument&)
-                {
-                    fmt::print(stderr, "Unknown scenario '{}'\n", value);
+                    fmt::print(stderr, "Invalid scenario filter: {}\n", value);
                     return parse_status::error;
                 }
                 continue;

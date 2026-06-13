@@ -102,7 +102,7 @@ namespace comprehensive::v1
             "N/A");
     }
 
-    CORO_TASK(int)
+    CORO_TASK(comprehensive_error)
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
@@ -132,7 +132,7 @@ namespace comprehensive::v1
 
             if (response.size() != payload.size())
             {
-                CO_RETURN rpc::error::INVALID_DATA();
+                CO_RETURN comprehensive_error::INVALID_BENCHMARK_RESULT;
             }
 
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();

@@ -41,8 +41,8 @@ namespace secret_llama
         struct context
         {
             virtual ~context() = default;
-            virtual int add_prompt(const std::string& prompt) = 0;
-            virtual int get_piece(
+            virtual error_types add_prompt(const std::string& prompt) = 0;
+            virtual error_types get_piece(
                 std::string& piece,
                 bool& complete) = 0;
         };
@@ -104,7 +104,7 @@ namespace secret_llama
             }
         };
 
-        int create_context(
+        error_types create_context(
             const std::shared_ptr<loaded_model>& model,
             uint64_t seed,
             const std::string& overrides, // json::v1::map

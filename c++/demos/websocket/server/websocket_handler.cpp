@@ -43,7 +43,7 @@ namespace websocket_demo
                                 CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
                                     rpc::error::OK(), std::move(local)};
                             }
-                            RPC_ERROR("set_callback failed with error code {}", ret);
+                            RPC_ERROR("set_callback failed with error code {}", websocket_error::to_string(ret));
 
                             CO_RETURN rpc::service_connect_result<websocket_demo::v1::i_calculator>{
                                 rpc::error::INVALID_DATA(), {}};

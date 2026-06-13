@@ -294,7 +294,7 @@ namespace websocket_demo
             pump_->stopping_ = true;
         }
 
-        int video_session::set_sink(const rpc::shared_ptr<i_context_event>& sink)
+        websocket_error video_session::set_sink(const rpc::shared_ptr<i_context_event>& sink)
         {
             pump_->sink_ = sink;
             return rpc::error::OK();
@@ -332,7 +332,7 @@ namespace websocket_demo
             pump_->params_gen_.fetch_add(1, std::memory_order_relaxed);
         }
 
-        CORO_TASK(int)
+        CORO_TASK(websocket_error)
         video_session::forward_frame(
             uint64_t seq,
             uint64_t pts_us,

@@ -88,7 +88,7 @@ namespace websocket_demo
 
             ~demo() override { };
 
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             add(double first_val,
                 double second_val,
                 double& response) override
@@ -96,7 +96,7 @@ namespace websocket_demo
                 response = first_val + second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             subtract(
                 double first_val,
                 double second_val,
@@ -105,7 +105,7 @@ namespace websocket_demo
                 response = first_val - second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             multiply(
                 double first_val,
                 double second_val,
@@ -114,7 +114,7 @@ namespace websocket_demo
                 response = first_val * second_val;
                 CO_RETURN rpc::error::OK();
             }
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             divide(
                 double first_val,
                 double second_val,
@@ -135,10 +135,10 @@ namespace websocket_demo
                 do
                 {
                     std::string piece;
-                    int err = context->get_piece(piece, *complete);
+                    auto err = context->get_piece(piece, *complete);
                     if (err != rpc::error::OK())
                     {
-                        RPC_ERROR("get_piece failed {}", err);
+                        RPC_ERROR("get_piece failed {}", secret_llama::v1_0::error_types::to_string(err));
                         CO_RETURN;
                     }
                     co_await event->piece(piece);
@@ -147,12 +147,11 @@ namespace websocket_demo
                 evt_stopped->set();
             }
 
-            CORO_TASK(int) add_prompt(const std::string& prompt) override
+            CORO_TASK(websocket_error) add_prompt(const std::string& prompt) override
             {
                 if (!event_)
                 {
-                    CO_RETURN secret_llama::v1_0::to_standard_return_type(
-                        secret_llama::v1_0::error_types::CALLBACK_NOT_ASSIGNED);
+                    CO_RETURN websocket_error::CALLBACK_NOT_ASSIGNED;
                 }
 
                 if (*complete_ == false)
@@ -167,30 +166,29 @@ namespace websocket_demo
 
                 if (err != rpc::error::OK())
                 {
-                    CO_RETURN err;
+                    CO_RETURN websocket_error::LLM_ENGINE_FAILURE;
                 }
 
                 service_->spawn(get_next(context_, event_, evt_stopped_, complete_, signal_stop_));
 
-                CO_RETURN err;
+                CO_RETURN rpc::error::OK();
             }
 #else
-            CORO_TASK(int) add_prompt(const std::string& prompt) override
+            CORO_TASK(websocket_error) add_prompt(const std::string& prompt) override
             {
                 std::ignore = prompt;
                 if (event_)
                     CO_AWAIT event_->piece("LLM support is not enabled in the enclave websocket demo.");
-                CO_RETURN rpc::error::NOT_IMPLEMENTED();
+                CO_RETURN websocket_error::FEATURE_NOT_ENABLED;
             }
 #endif
 
-            CORO_TASK(int) set_callback(const rpc::shared_ptr<i_context_event>& event) override
+            CORO_TASK(websocket_error) set_callback(const rpc::shared_ptr<i_context_event>& event) override
             {
 #if CANOPY_WEBSOCKET_DEMO_HAS_LLM
                 if (event_)
                 {
-                    CO_RETURN secret_llama::v1_0::to_standard_return_type(
-                        secret_llama::v1_0::error_types::CALLBACK_ALREADY_ASSIGNED);
+                    CO_RETURN websocket_error::CALLBACK_ALREADY_ASSIGNED;
                 }
 #endif
 
@@ -202,7 +200,7 @@ namespace websocket_demo
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             push_video_frame(
                 uint64_t seq,
                 uint64_t pts_us,
@@ -216,11 +214,11 @@ namespace websocket_demo
                 (void)pts_us;
                 (void)flags;
                 (void)payload;
-                CO_RETURN rpc::error::NOT_IMPLEMENTED();
+                CO_RETURN websocket_error::FEATURE_NOT_ENABLED;
 #endif
             }
 
-            CORO_TASK(int) set_video_effects(uint32_t effects) override
+            CORO_TASK(websocket_error) set_video_effects(uint32_t effects) override
             {
 #if CANOPY_WEBSOCKET_DEMO_HAS_VIDEO
                 video_.set_effects(effects);
@@ -230,7 +228,7 @@ namespace websocket_demo
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(websocket_error)
             set_video_params(
                 int32_t brightness,
                 uint32_t bitrate_kbps,
@@ -261,7 +259,7 @@ namespace websocket_demo
             std::shared_ptr<secret_llama::v1_0::context> context;
 
             auto err = engine->create_context(loaded_model, seed, {}, context);
-            if (secret_llama::v1_0::to_standard_return_type(err) != rpc::error::OK())
+            if (err != secret_llama::v1_0::error_types::OK)
             {
                 return nullptr;
             }

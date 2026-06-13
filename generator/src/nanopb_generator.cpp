@@ -536,11 +536,58 @@ namespace nanopb_generator
         return search_for_enum(root_entity(lib));
     }
 
+    const class_entity* find_error_entity(
+        const class_entity& lib,
+        const std::string& type_str)
+    {
+        std::string norm_type = normalize_type(type_str);
+        if (norm_type.rfind("::", 0) == 0)
+            norm_type.erase(0, 2);
+
+        std::string unqualified = norm_type;
+        size_t ns_pos = norm_type.rfind("::");
+        if (ns_pos != std::string::npos)
+            unqualified = norm_type.substr(ns_pos + 2);
+
+        std::function<const class_entity*(const class_entity&)> search_for_error
+            = [&](const class_entity& entity) -> const class_entity*
+        {
+            for (auto& elem : entity.get_elements(entity_type::ERROR))
+            {
+                if (!elem)
+                    continue;
+
+                auto* error_entity = dynamic_cast<const class_entity*>(elem.get());
+                const auto qualified_name = error_entity ? qualified_entity_name(*error_entity) : elem->get_name();
+                if (qualified_name == norm_type || elem->get_name() == unqualified)
+                    return error_entity;
+            }
+
+            for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
+            {
+                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                if (const auto* found = search_for_error(ns_entity))
+                    return found;
+            }
+
+            return nullptr;
+        };
+
+        return search_for_error(root_entity(lib));
+    }
+
     bool is_enum_type(
         const class_entity& lib,
         const std::string& type_str)
     {
         return find_enum_entity(lib, type_str) != nullptr;
+    }
+
+    bool is_error_type(
+        const class_entity& lib,
+        const std::string& type_str)
+    {
+        return find_error_entity(lib, type_str) != nullptr;
     }
 
     std::string enum_type_ref(
@@ -635,7 +682,7 @@ namespace nanopb_generator
 
         if (is_scalar_type(normalized) || is_string_type(normalized) || is_byte_vector_type(normalized)
             || is_json_dom_type(normalized) || is_pointer_type(normalized) || is_interface_type(normalized)
-            || is_enum_type(lib, normalized))
+            || is_enum_type(lib, normalized) || is_error_type(lib, normalized))
             return false;
 
         if (is_repeated_varint_type(normalized) || is_sequence_structure_type(normalized)
@@ -722,6 +769,15 @@ namespace nanopb_generator
                 target_expr,
                 field_name,
                 enum_type_ref(lib, field_type),
+                source_value_expr);
+        }
+        else if (is_error_type(lib, field_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>(static_cast<int>({}));",
+                target_expr,
+                field_name,
+                target_expr,
+                field_name,
                 source_value_expr);
         }
         else if (is_scalar_type(field_type))
@@ -1057,6 +1113,10 @@ namespace nanopb_generator
                 source_expr,
                 field_name);
         }
+        else if (is_error_type(lib, field_type))
+        {
+            cpp("{} = static_cast<int>({}.{});", dest_expr, source_expr, field_name);
+        }
         else if (is_scalar_type(field_type))
         {
             cpp("{} = static_cast<{}>({}.{});", dest_expr, normalize_type(field_type), source_expr, field_name);
@@ -1320,6 +1380,16 @@ namespace nanopb_generator
                 target_expr,
                 member_name,
                 enum_type_ref(lib, member_type),
+                source_expr,
+                member_name);
+        }
+        else if (is_error_type(lib, member_type))
+        {
+            cpp("{}.{} = static_cast<decltype({}.{})>(static_cast<int>({}.{}));",
+                target_expr,
+                member_name,
+                target_expr,
+                member_name,
                 source_expr,
                 member_name);
         }
@@ -1766,6 +1836,10 @@ namespace nanopb_generator
                     source_expr,
                     member_name);
             }
+            else if (is_error_type(lib, member_type))
+            {
+                cpp("{}.{} = static_cast<int>({}.{});", target_expr, member_name, source_expr, member_name);
+            }
             else if (is_scalar_type(member_type))
             {
                 cpp("{}.{} = static_cast<{}>({}.{});",
@@ -1985,6 +2059,10 @@ namespace nanopb_generator
                     enum_type_ref(lib, member_type),
                     field_name);
             }
+            else if (is_error_type(lib, member_type))
+            {
+                cpp("{} = static_cast<int>(msg.{});", member_name, field_name);
+            }
             else if (is_scalar_type(member_type))
             {
                 cpp("{} = static_cast<{}>(msg.{});", member_name, normalize_type(member_type), field_name);
@@ -2197,6 +2275,10 @@ namespace nanopb_generator
                     enum_type_ref(lib, member_type),
                     field_name);
             }
+            else if (is_error_type(lib, member_type))
+            {
+                cpp("{} = static_cast<int>(msg.{});", member_name, field_name);
+            }
             else if (is_scalar_type(member_type))
             {
                 cpp("{} = static_cast<{}>(msg.{});", member_name, normalize_type(member_type), field_name);
@@ -2382,7 +2464,7 @@ namespace nanopb_generator
                 cpp("__message.{}.arg = &{}_state;", field_name, field_name);
             }
             else if (!is_pointer_type(param_type) && !is_interface_type(param_type) && !is_scalar_type(param_type)
-                     && !is_enum_type(lib, param_type))
+                     && !is_enum_type(lib, param_type) && !is_error_type(lib, param_type))
             {
                 std::string nested_concrete_template_param;
                 if (const auto* nested_struct
@@ -2439,6 +2521,10 @@ namespace nanopb_generator
                 field_name,
                 enum_type_ref(lib, param_type),
                 source_name);
+        }
+        else if (is_error_type(lib, param_type))
+        {
+            cpp("__message.{} = static_cast<decltype(__message.{})>(static_cast<int>({}));", field_name, field_name, source_name);
         }
         else if (is_pointer_type(param_type) || is_scalar_type(param_type))
         {
@@ -2616,6 +2702,10 @@ namespace nanopb_generator
                 enum_type_ref(lib, param_type),
                 enum_type_ref(lib, param_type),
                 field_name);
+        }
+        else if (is_error_type(lib, param_type))
+        {
+            cpp("{} = static_cast<int>(__message.{});", destination_name, field_name);
         }
         else if (is_scalar_type(param_type))
         {

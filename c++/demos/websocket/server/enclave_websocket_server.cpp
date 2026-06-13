@@ -371,13 +371,13 @@ namespace websocket_demo::v1
             //
             // Change this signature only rarely. Prefer adding a versioned IDL
             // request struct if the listener needs more parameters.
-            CORO_TASK(int) listen() override
+            CORO_TASK(websocket_error) listen() override
             {
                 if (!listen_request_is_valid(*state_))
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN websocket_error::INVALID_ARGUMENT;
 
                 if (state_->acceptor && state_->acceptor->is_listening())
-                    CO_RETURN rpc::error::INVALID_DATA();
+                    CO_RETURN websocket_error::INVALID_ARGUMENT;
 
                 // A websocket listener spends most of its life inside accept.
                 // Cooperative polling has a finite guard timeout, which is
@@ -403,7 +403,7 @@ namespace websocket_demo::v1
 
                     tls_context = std::move(tls_context_result.value);
                     if (!tls_context->is_valid())
-                        CO_RETURN rpc::error::INVALID_DATA();
+                        CO_RETURN websocket_error::INVALID_ARGUMENT;
                 }
 
                 auto acceptor_result = make_std_shared_result<rpc::io_uring::acceptor>(
@@ -441,7 +441,7 @@ namespace websocket_demo::v1
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) stop() override
+            CORO_TASK(websocket_error) stop() override
             {
                 // stop() is deliberately cooperative. It closes the acceptor so
                 // accept_loop() wakes, and then drops the listener's references.
