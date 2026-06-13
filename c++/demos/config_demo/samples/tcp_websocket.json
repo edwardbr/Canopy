@@ -1,9 +1,11 @@
 {
   "$schema": "../schemas/config_demo_config.schema.json",
-  "iterations": 1,
-  "scheduler_threads": 4,
-  "client_connection": "client",
-  "server_connection": "server",
+  "execution": {
+    "iterations": 1,
+    "scheduler_threads": 4,
+    "client_connection": "client",
+    "server_connection": "server"
+  },
   "connections": [
     {
       "name": "server",

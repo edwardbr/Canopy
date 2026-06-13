@@ -9,20 +9,41 @@ namespace config_demo
 {
     namespace v1
     {
+        // Application-level status values returned by the demo.  Success uses
+        // rpc::error::OK(); these generated values start at 1 and remain
+        // positive so they do not collide with negative rpc::error failures.
+        error demo_error
+        {
+            [description = "The demo configuration is invalid."]
+            INVALID_CONFIGURATION,
+
+            [description = "The RPC operation succeeded but did not produce the expected application object."]
+            INVALID_RESULT,
+
+            [description = "The calculator returned a result that did not match the expected value."]
+            CALCULATOR_MISMATCH,
+
+            [description = "The requested demo configuration is not supported by this build."]
+            UNSUPPORTED_CONFIGURATION,
+
+            [description = "A calculator argument is invalid."]
+            INVALID_ARGUMENT
+        };
+
         [status=demo]
         interface i_calculator
         {
             [description="Add two integers."]
-            int add(int a, int b, [out] int& result);
+            demo_error add(int a, int b, [out] int& result);
 
             [description="Subtract the second integer from the first."]
-            int subtract(int a, int b, [out] int& result);
+            demo_error subtract(int a, int b, [out] int& result);
 
             [description="Multiply two integers."]
-            int multiply(int a, int b, [out] int& result);
+            demo_error multiply(int a, int b, [out] int& result);
 
             [description="Divide the first integer by the second."]
-            int divide(int a, int b, [out] int& result);
+            demo_error divide(int a, int b, [out] int& result);
         };
     }
 }

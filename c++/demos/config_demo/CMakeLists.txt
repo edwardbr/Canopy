@@ -52,11 +52,13 @@ if(CANOPY_BUILD_COROUTINE)
     config_demo_config_idl
     "${CONFIG_DEMO_SCHEMA_DIR}"
     TARGET config_demo_schema
+    ROOT_DEFINITION config_demo_v1_demo_settings
     OUTPUT_SCHEMA config_demo_config.schema.json)
   CanopyGenerateConnectionConfigSchema(
     config_demo_config_idl
     "${CONFIG_DEMO_SOURCE_SCHEMA_DIR}"
     TARGET config_demo_source_schema
+    ROOT_DEFINITION config_demo_v1_demo_settings
     OUTPUT_SCHEMA config_demo_config.schema.json)
   add_dependencies(config_demo config_demo_schema config_demo_source_schema)
 

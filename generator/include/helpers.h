@@ -32,9 +32,15 @@ bool is_interface_param(
     bool& is_optimistic,
     std::shared_ptr<class_entity>& obj);
 
+std::string render_cpp_type(
+    const class_entity& scope,
+    const std::string& type);
+
 bool is_type_and_parameter_the_same(
     std::string type,
     std::string name);
+
+std::string cpp_string_literal(const std::string& value);
 
 void render_parameter(
     writer& header,

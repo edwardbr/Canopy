@@ -40,17 +40,19 @@ int main(
     try
     {
         const std::filesystem::path config_path(argv[1]);
-        auto configuration = load_demo_configuration(config_path);
-        auto scheduler_1 = make_scheduler(configuration.settings.scheduler_threads);
-        auto scheduler_2 = make_scheduler(configuration.settings.scheduler_threads);
+        const auto settings = load_demo_settings(config_path);
+        const auto& execution = settings.execution;
+        auto runtime = make_connection_factory_runtime(settings, config_path.parent_path());
+        auto scheduler_1 = make_scheduler(execution.scheduler_threads);
+        auto scheduler_2 = make_scheduler(execution.scheduler_threads);
 
-        const bool ok = run_configured_demo(*configuration.runtime, configuration.settings, scheduler_1, scheduler_2);
-        configuration.runtime.reset();
+        const auto error_code = run_configured_demo(*runtime, execution, scheduler_1, scheduler_2);
+        runtime.reset();
 
         scheduler_1->shutdown();
         scheduler_2->shutdown();
 
-        if (!ok)
+        if (error_code != rpc::error::OK())
             return 1;
 
         RPC_INFO("config_demo completed successfully");

@@ -4,7 +4,6 @@
  */
 
 // Standard C++ headers
-#include <algorithm>
 #include <filesystem>
 #include <sstream>
 #include <tuple>
@@ -1194,7 +1193,7 @@ namespace synchronous_generator
             }
 
             proxy.print_tabs();
-            proxy.raw("CORO_TASK({}) {}(", function->get_return_type(), function->get_name());
+            proxy.raw("CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
             bool has_parameter = false;
             for (auto& parameter : function->get_parameters())
             {
@@ -2286,12 +2285,7 @@ namespace synchronous_generator
                     marshalls_interfaces |= is_interface_param(m_ob, parameter.get_type(), optimistic, obj);
                 }
 
-                // Get description attribute
-                std::string description = function->get_value("description");
-                if (!description.empty() && description.front() == '"' && description.back() == '"')
-                {
-                    description = description.substr(1, description.length() - 2);
-                }
+                const std::string description = function->get_value("description");
 
                 // Generate JSON schemas for function parameters
                 std::string in_json_schema;
@@ -2337,11 +2331,11 @@ namespace synchronous_generator
                     continue;
                 const bool method_deprecated
                     = function->has_value(rpc_attribute_types::deprecated_function)
-                    || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function);
-                const auto method_in_schema
-                    = json_schema::generate_function_input_parameter_schema_with_recursion(methods_library, m_ob, *function);
-                const auto method_out_schema
-                    = json_schema::generate_function_output_parameter_schema_with_recursion(methods_library, m_ob, *function);
+                      || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function);
+                const auto method_in_schema = json_schema::generate_function_input_parameter_schema_with_recursion(
+                    methods_library, m_ob, *function);
+                const auto method_out_schema = json_schema::generate_function_output_parameter_schema_with_recursion(
+                    methods_library, m_ob, *function);
                 proxy(
                     "rpc::interface_method_info{{FLD(name)\"{0}\", FLD(id){{{1}}}, "
                     "FLD(in_json_schema)R\"__({2})__\", FLD(out_json_schema)R\"__({3})__\", "
@@ -2385,7 +2379,7 @@ namespace synchronous_generator
                 interface_declaration_generator::build_scoped_name(&m_ob, scoped_namespace);
 
                 proxy.print_tabs();
-                proxy.raw("CORO_TASK({}) {}(", function->get_return_type(), function->get_name());
+                proxy.raw("CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
                 bool has_parameter = false;
                 for (auto& parameter : function->get_parameters())
                 {
@@ -2606,6 +2600,112 @@ namespace synchronous_generator
                     header("{} = {},", enum_val->get_name(), enum_val->get_return_type());
             }
             header("}};");
+        }
+    }
+
+    std::string error_value_description(const function_entity& error_value)
+    {
+        auto description = error_value.get_value(attribute_types::description);
+        if (description.empty())
+            return error_value.get_name();
+        return description;
+    }
+
+    void write_error_declaration(
+        const entity& ent,
+        writer& header)
+    {
+        if (ent.is_in_import())
+            return;
+
+        auto& error_entity = static_cast<const class_entity&>(ent);
+        header("class {}", error_entity.get_name());
+        header("{{");
+        header("public:");
+        header("using value_type = int;");
+        header("");
+        header("constexpr {}() noexcept = default;", error_entity.get_name());
+        header("constexpr {}(int value) noexcept", error_entity.get_name());
+        header("    : value_(value)");
+        header("{{");
+        header("}}");
+        header("");
+        header("{}(const {}&) noexcept = default;", error_entity.get_name(), error_entity.get_name());
+        header("{}({}&&) noexcept = default;", error_entity.get_name(), error_entity.get_name());
+        header("auto operator=(const {}&) noexcept -> {}& = default;", error_entity.get_name(), error_entity.get_name());
+        header("auto operator=({}&&) noexcept -> {}& = default;", error_entity.get_name(), error_entity.get_name());
+        header("");
+        header("template<class Other>");
+        header("{}(const Other&) = delete;", error_entity.get_name());
+        header("");
+        header("template<class Other>");
+        header("auto operator=(const Other&) -> {}& = delete;", error_entity.get_name());
+        header("");
+        header("constexpr auto operator=(int value) noexcept -> {}&", error_entity.get_name());
+        header("{{");
+        header("value_ = value;");
+        header("return *this;");
+        header("}}");
+        header("");
+        header("[[nodiscard]] constexpr operator int() const noexcept");
+        header("{{");
+        header("return value_;");
+        header("}}");
+        header("");
+        header("[[nodiscard]] constexpr auto value() const noexcept -> int");
+        header("{{");
+        header("return value_;");
+        header("}}");
+        header("");
+        header("[[nodiscard]] constexpr auto ok() const noexcept -> bool");
+        header("{{");
+        header("return value_ == 0;");
+        header("}}");
+        header("");
+        header("[[nodiscard]] constexpr auto is_rpc_error() const noexcept -> bool");
+        header("{{");
+        header("return value_ < 0;");
+        header("}}");
+        header("");
+        header("[[nodiscard]] constexpr auto is_application_error() const noexcept -> bool");
+        header("{{");
+        header("return value_ > 0;");
+        header("}}");
+
+        auto error_values = error_entity.get_functions();
+        for (const auto& error_value : error_values)
+            header("static const {} {};", error_entity.get_name(), error_value->get_name());
+
+        header("");
+        header("[[nodiscard]] static auto to_string(int code) -> std::string_view");
+        header("{{");
+        for (const auto& error_value : error_values)
+        {
+            header("if (code == {})", error_value->get_name());
+            header("    return {};", cpp_string_literal(error_value_description(*error_value)));
+        }
+        header("if (code <= 0)");
+        header("    return rpc::error::to_string(code);");
+        header("return \"UNKNOWN_ERROR\";");
+        header("}}");
+        header("");
+        header("[[nodiscard]] auto to_string() const -> std::string_view");
+        header("{{");
+        header("return to_string(value_);");
+        header("}}");
+        header("");
+        header("private:");
+        header("int value_{{0}};");
+        header("}};");
+
+        for (const auto& error_value : error_values)
+        {
+            header(
+                "inline constexpr {} {}::{}{{{}}};",
+                error_entity.get_name(),
+                error_entity.get_name(),
+                error_value->get_name(),
+                error_value->get_return_type());
         }
     }
 
@@ -3232,6 +3332,8 @@ namespace synchronous_generator
                 continue;
             else if (elem->get_entity_type() == entity_type::ENUM)
                 write_enum_forward_declaration(*elem, header);
+            else if (elem->get_entity_type() == entity_type::ERROR)
+                write_error_declaration(*elem, header);
             else if (elem->get_entity_type() == entity_type::TYPEDEF)
                 write_typedef_forward_declaration(*elem, header);
             else if (elem->get_entity_type() == entity_type::NAMESPACE)
@@ -3418,6 +3520,7 @@ namespace synchronous_generator
         header("#include <set>");
         header("#include <unordered_set>");
         header("#include <string>");
+        header("#include <string_view>");
         header("#include <array>");
         header("#include <optional>");
         header("#include <rpc/internal/optional.h>");

@@ -9,12 +9,8 @@
 
 #include <atomic>
 #include <cstdint>
-#include <exception>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <string_view>
-#include <tuple>
 #include <utility>
 
 #include <connection_factory/connection_factory.h>
@@ -28,14 +24,19 @@ namespace config_demo::v1
         {
             rpc::event server_ready;
             rpc::event client_finished;
-            std::atomic<bool> ok{true};
+            std::atomic<demo_error> error_code{demo_error{rpc::error::OK()}};
         };
 
-        [[nodiscard]] auto make_zone(uint64_t subnet) -> rpc::zone
+        void record_error(
+            paired_state& state,
+            demo_error error_code)
         {
-            auto zone_id = rpc::DEFAULT_PREFIX;
-            std::ignore = zone_id.set_subnet(subnet);
-            return rpc::zone{zone_id};
+            if (error_code == rpc::error::OK())
+                error_code = demo_error::INVALID_RESULT;
+
+            auto expected = demo_error{rpc::error::OK()};
+            state.error_code.compare_exchange_strong(
+                expected, error_code, std::memory_order_acq_rel, std::memory_order_acquire);
         }
 
         [[nodiscard]] auto service_name(const rpc::connection_factory::named_connection_settings& connection) -> std::string
@@ -52,57 +53,68 @@ namespace config_demo::v1
 
         [[nodiscard]] auto make_factory_context(
             const rpc::connection_factory::application_runtime& runtime,
-            const rpc::connection_factory::named_connection_settings& connection) -> rpc::connection_factory::context
+            const rpc::connection_factory::named_connection_settings& connection)
+            -> rpc::connection_factory::application_context_result
         {
             auto context = runtime.context_for(connection);
             if (context.error_code != rpc::error::OK())
             {
-                throw std::runtime_error("failed to create context for " + connection.name + ": " + context.message);
+                RPC_ERROR(
+                    "failed to create context for {}: {}",
+                    connection.name,
+                    context.message.empty() ? "unknown error" : context.message);
             }
-            return std::move(context.context);
+            return context;
         }
 
-        [[nodiscard]] auto call_ok(
-            std::string_view name,
-            int a,
-            int b,
-            int expected,
-            int result,
-            int error) -> bool
-        {
-            RPC_INFO("Calculator: {}({}, {}) = {} (error={})", name, a, b, result, error);
-            if (error != rpc::error::OK() || result != expected)
-            {
-                RPC_ERROR("Calculator: {} expected {}, got {}, error={}", name, expected, result, error);
-                return false;
-            }
-            return true;
-        }
-
-        CORO_TASK(bool)
+        CORO_TASK(demo_error)
         run_calculator_calls(const rpc::shared_ptr<i_calculator>& remote)
         {
             if (!remote)
-                CO_RETURN false;
+                CO_RETURN demo_error::INVALID_RESULT;
 
             int result = 0;
             auto error = CO_AWAIT remote->add(100, 200, result);
-            if (!call_ok("add", 100, 200, 300, result, error))
-                CO_RETURN false;
+            RPC_INFO("Calculator: add(100, 200) = {} (error={})", result, error.value());
+            if (error != rpc::error::OK())
+                CO_RETURN error;
+            if (result != 300)
+            {
+                RPC_ERROR("Calculator: add expected 300, got {}", result);
+                CO_RETURN demo_error::CALCULATOR_MISMATCH;
+            }
 
             error = CO_AWAIT remote->multiply(7, 8, result);
-            if (!call_ok("multiply", 7, 8, 56, result, error))
-                CO_RETURN false;
+            RPC_INFO("Calculator: multiply(7, 8) = {} (error={})", result, error.value());
+            if (error != rpc::error::OK())
+                CO_RETURN error;
+            if (result != 56)
+            {
+                RPC_ERROR("Calculator: multiply expected 56, got {}", result);
+                CO_RETURN demo_error::CALCULATOR_MISMATCH;
+            }
 
             error = CO_AWAIT remote->subtract(500, 200, result);
-            if (!call_ok("subtract", 500, 200, 300, result, error))
-                CO_RETURN false;
+            RPC_INFO("Calculator: subtract(500, 200) = {} (error={})", result, error.value());
+            if (error != rpc::error::OK())
+                CO_RETURN error;
+            if (result != 300)
+            {
+                RPC_ERROR("Calculator: subtract expected 300, got {}", result);
+                CO_RETURN demo_error::CALCULATOR_MISMATCH;
+            }
 
             error = CO_AWAIT remote->divide(144, 12, result);
-            if (!call_ok("divide", 144, 12, 12, result, error))
-                CO_RETURN false;
+            RPC_INFO("Calculator: divide(144, 12) = {} (error={})", result, error.value());
+            if (error != rpc::error::OK())
+                CO_RETURN error;
+            if (result != 12)
+            {
+                RPC_ERROR("Calculator: divide expected 12, got {}", result);
+                CO_RETURN demo_error::CALCULATOR_MISMATCH;
+            }
 
-            CO_RETURN true;
+            CO_RETURN rpc::error::OK();
         }
 
         CORO_TASK(void)
@@ -112,55 +124,54 @@ namespace config_demo::v1
             std::shared_ptr<coro::scheduler> scheduler,
             paired_state& state)
         {
-            try
+            auto context_result = make_factory_context(runtime, server);
+            if (context_result.error_code != rpc::error::OK())
             {
-                auto context = make_factory_context(runtime, server);
-                auto shutdown_event = std::make_shared<rpc::event>();
-                const auto root_service_name = service_name(server);
-                auto service = rpc::root_service::create(
-                    root_service_name.c_str(), make_zone(server.zone_subnet), std::move(scheduler));
-                service->set_default_encoding(rpc::encoding::yas_binary);
-                service->set_shutdown_event(shutdown_event);
-
-                auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc<i_calculator, i_calculator>(
-                    [](const rpc::shared_ptr<i_calculator>&,
-                        const std::shared_ptr<rpc::service>& service) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
-                    {
-                        CO_RETURN rpc::service_connect_result<i_calculator>{
-                            rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(service))};
-                    },
-                    server.connection,
-                    service,
-                    context);
-
-                if (accept_result.error_code != rpc::error::OK() || (!accept_result.listener && !accept_result.connection))
-                {
-                    RPC_ERROR("Server: accept_rpc failed, error={}", accept_result.error_code);
-                    state.ok.store(false, std::memory_order_release);
-                    state.server_ready.set();
-                    state.client_finished.set();
-                    CO_RETURN;
-                }
-
-                RPC_INFO("Server: accept path ready");
-                service.reset();
-                state.server_ready.set();
-                co_await state.client_finished.wait();
-
-                if (accept_result.listener)
-                    CO_AWAIT accept_result.listener->stop();
-                accept_result.listener.reset();
-                accept_result.connection.reset();
-                co_await shutdown_event->wait();
-                RPC_INFO("Server: shutdown complete");
-            }
-            catch (const std::exception& error)
-            {
-                RPC_ERROR("Server: {}", error.what());
-                state.ok.store(false, std::memory_order_release);
+                record_error(state, demo_error::INVALID_CONFIGURATION);
                 state.server_ready.set();
                 state.client_finished.set();
+                CO_RETURN;
             }
+
+            auto context = std::move(context_result.context);
+            auto shutdown_event = std::make_shared<rpc::event>();
+            const auto root_service_name = service_name(server);
+            auto service = rpc::root_service::create(
+                root_service_name.c_str(), rpc::create_local_zone(server.zone_subnet), std::move(scheduler));
+            service->set_default_encoding(rpc::encoding::yas_binary);
+            service->set_shutdown_event(shutdown_event);
+
+            auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc<i_calculator, i_calculator>(
+                [](const rpc::shared_ptr<i_calculator>&,
+                    const std::shared_ptr<rpc::service>& service) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+                {
+                    CO_RETURN rpc::service_connect_result<i_calculator>{
+                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(service))};
+                },
+                server.connection,
+                service,
+                context);
+
+            if (accept_result.error_code != rpc::error::OK() || (!accept_result.listener && !accept_result.connection))
+            {
+                RPC_ERROR("Server: accept_rpc failed, error={}", accept_result.error_code);
+                record_error(state, accept_result.error_code);
+                state.server_ready.set();
+                state.client_finished.set();
+                CO_RETURN;
+            }
+
+            RPC_INFO("Server: accept path ready");
+            service.reset();
+            state.server_ready.set();
+            co_await state.client_finished.wait();
+
+            if (accept_result.listener)
+                CO_AWAIT accept_result.listener->stop();
+            accept_result.listener.reset();
+            accept_result.connection.reset();
+            co_await shutdown_event->wait();
+            RPC_INFO("Server: shutdown complete");
         }
 
         CORO_TASK(void)
@@ -170,56 +181,56 @@ namespace config_demo::v1
             std::shared_ptr<coro::scheduler> scheduler,
             paired_state& state)
         {
-            try
+            co_await state.server_ready.wait();
+            if (state.error_code.load(std::memory_order_acquire) != rpc::error::OK())
             {
-                co_await state.server_ready.wait();
-                if (!state.ok.load(std::memory_order_acquire))
-                {
-                    state.client_finished.set();
-                    CO_RETURN;
-                }
-
-                auto context = make_factory_context(runtime, client);
-                const auto root_service_name = service_name(client);
-                auto service = rpc::root_service::create(
-                    root_service_name.c_str(), make_zone(client.zone_subnet), std::move(scheduler));
-                service->set_default_encoding(rpc::encoding::yas_binary);
-
-                auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
-                    rpc::shared_ptr<i_calculator>(), client.connection, service, context);
-                if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
-                {
-                    RPC_ERROR("Client: connect_rpc failed, error={}", connect_result.error_code);
-                    state.ok.store(false, std::memory_order_release);
-                    state.client_finished.set();
-                    CO_RETURN;
-                }
-
-                if (!CO_AWAIT run_calculator_calls(connect_result.output_interface))
-                    state.ok.store(false, std::memory_order_release);
-
-                connect_result.output_interface.reset();
-                service.reset();
                 state.client_finished.set();
-                RPC_INFO("Client: shutdown complete");
+                CO_RETURN;
             }
-            catch (const std::exception& error)
+
+            auto context_result = make_factory_context(runtime, client);
+            if (context_result.error_code != rpc::error::OK())
             {
-                RPC_ERROR("Client: {}", error.what());
-                state.ok.store(false, std::memory_order_release);
+                record_error(state, demo_error::INVALID_CONFIGURATION);
                 state.client_finished.set();
+                CO_RETURN;
             }
+
+            auto context = std::move(context_result.context);
+            const auto root_service_name = service_name(client);
+            auto service = rpc::root_service::create(
+                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
+            service->set_default_encoding(rpc::encoding::yas_binary);
+
+            auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
+                rpc::shared_ptr<i_calculator>(), client.connection, service, context);
+            if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
+            {
+                RPC_ERROR("Client: connect_rpc failed, error={}", connect_result.error_code);
+                record_error(state, connect_result.error_code);
+                state.client_finished.set();
+                CO_RETURN;
+            }
+
+            const demo_error call_error = CO_AWAIT run_calculator_calls(connect_result.output_interface);
+            if (call_error != rpc::error::OK())
+                record_error(state, call_error);
+
+            connect_result.output_interface.reset();
+            service.reset();
+            state.client_finished.set();
+            RPC_INFO("Client: shutdown complete");
         }
 
         [[nodiscard]] auto run_paired_stream_rpc(
             const rpc::connection_factory::application_runtime& runtime,
-            const demo_settings& settings,
+            const execution_settings& execution,
             const rpc::connection_factory::named_connection_settings& server,
             const rpc::connection_factory::named_connection_settings& client,
             const std::shared_ptr<coro::scheduler>& server_scheduler,
-            const std::shared_ptr<coro::scheduler>& client_scheduler) -> bool
+            const std::shared_ptr<coro::scheduler>& client_scheduler) -> int
         {
-            for (uint64_t iteration = 0; iteration < settings.iterations; ++iteration)
+            for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
                 RPC_INFO("Config demo paired stream RPC iteration {}", iteration + 1);
                 paired_state state;
@@ -227,14 +238,15 @@ namespace config_demo::v1
                     coro::when_all(
                         run_paired_server(runtime, server, server_scheduler, state),
                         run_paired_client(runtime, client, client_scheduler, state)));
-                if (!state.ok.load(std::memory_order_acquire))
-                    return false;
+                const demo_error error_code = state.error_code.load(std::memory_order_acquire);
+                if (error_code != rpc::error::OK())
+                    return error_code;
             }
 
-            return true;
+            return rpc::error::OK();
         }
 
-        CORO_TASK(bool)
+        CORO_TASK(demo_error)
         run_local_child_once(
             const rpc::connection_factory::named_connection_settings& client,
             std::shared_ptr<coro::scheduler> scheduler)
@@ -244,12 +256,12 @@ namespace config_demo::v1
             if (configured_transport != "local")
             {
                 RPC_ERROR("local child mode requires client.transport.type local, got {}", configured_transport);
-                CO_RETURN false;
+                CO_RETURN demo_error::INVALID_CONFIGURATION;
             }
 
             const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), make_zone(client.zone_subnet), std::move(scheduler));
+                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_local_child_rpc<i_calculator, i_calculator>(
@@ -266,36 +278,38 @@ namespace config_demo::v1
             if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
             {
                 RPC_ERROR("local child: connect failed, error={}", connect_result.error_code);
-                CO_RETURN false;
+                CO_RETURN connect_result.error_code != rpc::error::OK() ? connect_result.error_code
+                                                                        : demo_error::INVALID_RESULT.value();
             }
 
-            const bool ok = CO_AWAIT run_calculator_calls(connect_result.output_interface);
+            const demo_error error_code = CO_AWAIT run_calculator_calls(connect_result.output_interface);
             connect_result.output_interface.reset();
             service.reset();
-            CO_RETURN ok;
+            CO_RETURN error_code;
 #else
             (void)client;
             (void)scheduler;
             RPC_ERROR("local child mode is unavailable because local transport support is not built");
-            CO_RETURN false;
+            CO_RETURN demo_error::UNSUPPORTED_CONFIGURATION;
 #endif
         }
 
         [[nodiscard]] auto run_local_child(
-            const demo_settings& settings,
+            const execution_settings& execution,
             const rpc::connection_factory::named_connection_settings& client,
-            const std::shared_ptr<coro::scheduler>& scheduler) -> bool
+            const std::shared_ptr<coro::scheduler>& scheduler) -> int
         {
-            for (uint64_t iteration = 0; iteration < settings.iterations; ++iteration)
+            for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
                 RPC_INFO("Config demo local child iteration {}", iteration + 1);
-                if (!coro::sync_wait(run_local_child_once(client, scheduler)))
-                    return false;
+                const demo_error error_code = coro::sync_wait(run_local_child_once(client, scheduler));
+                if (error_code != rpc::error::OK())
+                    return error_code;
             }
-            return true;
+            return rpc::error::OK();
         }
 
-        CORO_TASK(bool)
+        CORO_TASK(demo_error)
         run_external_native_once(
             const rpc::connection_factory::application_runtime& runtime,
             const rpc::connection_factory::named_connection_settings& client,
@@ -305,18 +319,22 @@ namespace config_demo::v1
             if (configured_transport == "stream_rpc")
             {
                 RPC_ERROR("external native mode is for native transports; add an acceptor for stream_rpc");
-                CO_RETURN false;
+                CO_RETURN demo_error::INVALID_CONFIGURATION;
             }
             if (configured_transport == "local")
             {
                 RPC_ERROR("external native mode cannot supply the local child factory; use local child");
-                CO_RETURN false;
+                CO_RETURN demo_error::INVALID_CONFIGURATION;
             }
 
-            auto context = make_factory_context(runtime, client);
+            auto context_result = make_factory_context(runtime, client);
+            if (context_result.error_code != rpc::error::OK())
+                CO_RETURN demo_error::INVALID_CONFIGURATION;
+
+            auto context = std::move(context_result.context);
             const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), make_zone(client.zone_subnet), std::move(scheduler));
+                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
@@ -324,77 +342,109 @@ namespace config_demo::v1
             if (connect_result.error_code != rpc::error::OK() || !connect_result.output_interface)
             {
                 RPC_ERROR("external native: connect failed, error={}", connect_result.error_code);
-                CO_RETURN false;
+                CO_RETURN connect_result.error_code != rpc::error::OK() ? connect_result.error_code
+                                                                        : demo_error::INVALID_RESULT.value();
             }
 
-            const bool ok = CO_AWAIT run_calculator_calls(connect_result.output_interface);
+            const demo_error error_code = CO_AWAIT run_calculator_calls(connect_result.output_interface);
             connect_result.output_interface.reset();
             service.reset();
-            CO_RETURN ok;
+            CO_RETURN error_code;
         }
 
         [[nodiscard]] auto run_external_native(
             const rpc::connection_factory::application_runtime& runtime,
-            const demo_settings& settings,
+            const execution_settings& execution,
             const rpc::connection_factory::named_connection_settings& client,
-            const std::shared_ptr<coro::scheduler>& scheduler) -> bool
+            const std::shared_ptr<coro::scheduler>& scheduler) -> int
         {
-            for (uint64_t iteration = 0; iteration < settings.iterations; ++iteration)
+            for (uint64_t iteration = 0; iteration < execution.iterations; ++iteration)
             {
                 RPC_INFO("Config demo external native iteration {}", iteration + 1);
-                if (!coro::sync_wait(run_external_native_once(runtime, client, scheduler)))
-                    return false;
+                const demo_error error_code = coro::sync_wait(run_external_native_once(runtime, client, scheduler));
+                if (error_code != rpc::error::OK())
+                    return error_code;
             }
-            return true;
+            return rpc::error::OK();
         }
 
-        [[nodiscard]] auto named_connection_or_throw(
+        [[nodiscard]] auto find_named_connection(
             const rpc::connection_factory::application_runtime& runtime,
-            const std::string& name) -> const rpc::connection_factory::named_connection_settings&
+            const std::string& name) -> const rpc::connection_factory::named_connection_settings*
         {
             const auto* connection = runtime.find_connection(name);
             if (!connection)
-                throw std::runtime_error("no connection named '" + name + "'");
-            return *connection;
+                RPC_ERROR("no connection named '{}'", name);
+            return connection;
         }
 
-        void validate_connector(const rpc::connection_factory::named_connection_settings& connection)
+        [[nodiscard]] auto validate_connector(const rpc::connection_factory::named_connection_settings& connection)
+            -> demo_error
         {
             if (connection.role != rpc::connection_factory::connection_role::connector)
-                throw std::runtime_error("connection '" + connection.name + "' must have role connector");
+            {
+                RPC_ERROR("connection '{}' must have role connector", connection.name);
+                return demo_error::INVALID_CONFIGURATION;
+            }
+            return rpc::error::OK();
         }
 
-        void validate_acceptor(const rpc::connection_factory::named_connection_settings& connection)
+        [[nodiscard]] auto validate_acceptor(const rpc::connection_factory::named_connection_settings& connection)
+            -> demo_error
         {
             if (connection.role != rpc::connection_factory::connection_role::acceptor)
-                throw std::runtime_error("connection '" + connection.name + "' must have role acceptor");
+            {
+                RPC_ERROR("connection '{}' must have role acceptor", connection.name);
+                return demo_error::INVALID_CONFIGURATION;
+            }
+            return rpc::error::OK();
         }
     } // namespace
 
     auto run_configured_demo(
         const rpc::connection_factory::application_runtime& runtime,
-        const demo_settings& settings,
+        const execution_settings& execution,
         const std::shared_ptr<coro::scheduler>& scheduler_1,
-        const std::shared_ptr<coro::scheduler>& scheduler_2) -> bool
+        const std::shared_ptr<coro::scheduler>& scheduler_2) -> int
     {
-        const auto& client = named_connection_or_throw(runtime, settings.client_connection);
-        validate_connector(client);
+        const auto* client = find_named_connection(runtime, execution.client_connection);
+        if (!client)
+            return demo_error::INVALID_CONFIGURATION;
+
+        demo_error error_code = validate_connector(*client);
+        if (error_code != rpc::error::OK())
+            return error_code;
 
         const auto* server
-            = settings.server_connection.empty() ? nullptr : runtime.find_connection(settings.server_connection);
-        const auto client_transport = transport_type(client.connection);
+            = execution.server_connection.empty() ? nullptr : runtime.find_connection(execution.server_connection);
+        if (!execution.server_connection.empty() && !server)
+        {
+            RPC_ERROR("no connection named '{}'", execution.server_connection);
+            return demo_error::INVALID_CONFIGURATION;
+        }
+
+        const auto client_transport = transport_type(client->connection);
         if (server)
         {
-            validate_acceptor(*server);
+            error_code = validate_acceptor(*server);
+            if (error_code != rpc::error::OK())
+                return error_code;
+
             if (transport_type(server->connection) != "stream_rpc" || client_transport != "stream_rpc")
-                throw std::runtime_error("paired acceptor/connector demo requires stream_rpc on both connections");
-            return run_paired_stream_rpc(runtime, settings, *server, client, scheduler_1, scheduler_2);
+            {
+                RPC_ERROR("paired acceptor/connector demo requires stream_rpc on both connections");
+                return demo_error::INVALID_CONFIGURATION;
+            }
+            return run_paired_stream_rpc(runtime, execution, *server, *client, scheduler_1, scheduler_2);
         }
 
         if (client_transport == "local")
-            return run_local_child(settings, client, scheduler_1);
+            return run_local_child(execution, *client, scheduler_1);
         if (client_transport == "stream_rpc")
-            throw std::runtime_error("stream_rpc connector requires a named acceptor connection");
-        return run_external_native(runtime, settings, client, scheduler_1);
+        {
+            RPC_ERROR("stream_rpc connector requires a named acceptor connection");
+            return demo_error::INVALID_CONFIGURATION;
+        }
+        return run_external_native(runtime, execution, *client, scheduler_1);
     }
 } // namespace config_demo::v1

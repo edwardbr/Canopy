@@ -222,8 +222,8 @@ std::vector<std::string> validate_idl_type_policy(const class_entity& objects)
 
 bool is_concrete_idl_symbol(entity_type type)
 {
-    return type == entity_type::STRUCT || type == entity_type::ENUM || type == entity_type::INTERFACE
-           || type == entity_type::TYPEDEF || type == entity_type::CLASS;
+    return type == entity_type::STRUCT || type == entity_type::ENUM || type == entity_type::ERROR
+           || type == entity_type::INTERFACE || type == entity_type::TYPEDEF || type == entity_type::CLASS;
 }
 
 std::string idl_symbol_source(const class_entity& object)

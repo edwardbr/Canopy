@@ -1,45 +1,45 @@
 {
   "$schema": "../schemas/config_demo_config.schema.json",
-  "iterations": 1,
-  "scheduler_threads": 4,
-  "client_connection": "client",
-  "server_connection": "server",
-  "rpc_runtime": {
-    "attestation_services": [
-      {
-        "name": "server_attestation",
-        "backend": "fake_backend",
-        "identity": {
-          "enclave_id": "config-demo-all-layers-server",
-          "zone_id": "all-layers-server-zone"
-        },
-        "policy": {
-          "send_local_evidence": true,
-          "require_peer_evidence": true,
-          "allow_unattested_peer": false,
-          "allow_development_evidence": true,
-          "minimum_security_level": "development",
-          "required_backend_id": "fake"
-        }
-      },
-      {
-        "name": "client_attestation",
-        "backend": "fake_backend",
-        "identity": {
-          "enclave_id": "config-demo-all-layers-client",
-          "zone_id": "all-layers-client-zone"
-        },
-        "policy": {
-          "send_local_evidence": true,
-          "require_peer_evidence": true,
-          "allow_unattested_peer": false,
-          "allow_development_evidence": true,
-          "minimum_security_level": "development",
-          "required_backend_id": "fake"
-        }
-      }
-    ]
+  "execution": {
+    "iterations": 1,
+    "scheduler_threads": 4,
+    "client_connection": "client",
+    "server_connection": "server"
   },
+  "attestation_services": [
+    {
+      "name": "server_attestation",
+      "backend": "fake_backend",
+      "identity": {
+        "enclave_id": "config-demo-all-layers-server",
+        "zone_id": "all-layers-server-zone"
+      },
+      "policy": {
+        "send_local_evidence": true,
+        "require_peer_evidence": true,
+        "allow_unattested_peer": false,
+        "allow_development_evidence": true,
+        "minimum_security_level": "development",
+        "required_backend_id": "fake"
+      }
+    },
+    {
+      "name": "client_attestation",
+      "backend": "fake_backend",
+      "identity": {
+        "enclave_id": "config-demo-all-layers-client",
+        "zone_id": "all-layers-client-zone"
+      },
+      "policy": {
+        "send_local_evidence": true,
+        "require_peer_evidence": true,
+        "allow_unattested_peer": false,
+        "allow_development_evidence": true,
+        "minimum_security_level": "development",
+        "required_backend_id": "fake"
+      }
+    }
+  ],
   "connections": [
     {
       "name": "server",

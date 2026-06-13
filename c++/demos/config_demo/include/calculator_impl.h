@@ -22,7 +22,7 @@ namespace config_demo::v1
         {
         }
 
-        CORO_TASK(int)
+        CORO_TASK(demo_error)
         add(int a,
             int b,
             int& result) override
@@ -31,7 +31,7 @@ namespace config_demo::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(demo_error)
         subtract(
             int a,
             int b,
@@ -41,7 +41,7 @@ namespace config_demo::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(demo_error)
         multiply(
             int a,
             int b,
@@ -51,14 +51,14 @@ namespace config_demo::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(demo_error)
         divide(
             int a,
             int b,
             int& result) override
         {
             if (b == 0)
-                CO_RETURN rpc::error::INVALID_DATA();
+                CO_RETURN demo_error::INVALID_ARGUMENT;
 
             result = a / b;
             CO_RETURN rpc::error::OK();

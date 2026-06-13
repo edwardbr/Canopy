@@ -623,7 +623,8 @@ namespace interface_declaration_generator
             if (function->has_value(rpc_attribute_types::deprecated_function)
                 || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function))
                 header.raw("[[deprecated]] ");
-            header.raw("virtual CORO_TASK({}) {}(", function->get_return_type(), function->get_name());
+            header.raw(
+                "virtual CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
             bool has_parameter = false;
             for (auto& parameter : function->get_parameters())
             {
@@ -672,8 +673,7 @@ namespace interface_declaration_generator
         // introspection (build_scoped_name leaves a trailing "::").
         std::string interface_scoped_name;
         build_scoped_name(&m_ob, interface_scoped_name);
-        if (interface_scoped_name.size() >= 2
-            && interface_scoped_name.substr(interface_scoped_name.size() - 2) == "::")
+        if (interface_scoped_name.size() >= 2 && interface_scoped_name.substr(interface_scoped_name.size() - 2) == "::")
             interface_scoped_name.resize(interface_scoped_name.size() - 2);
         // Interface-level deprecation is expressed via [status=deprecated]
         // (the same attribute the checksum step reads); method-level uses

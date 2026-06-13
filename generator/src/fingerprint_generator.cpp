@@ -407,6 +407,27 @@ namespace fingerprint
                 seed += "}";
             }
         }
+        else if (cls.get_entity_type() == entity_type::ERROR)
+        {
+            bool has_explicit_values = false;
+            std::stringstream error_seed;
+            error_seed << "error" << get_full_name(cls) << "{";
+            bool first_pass = true;
+            for (auto& error_value : cls.get_functions())
+            {
+                if (!error_value->has_explicit_value())
+                    continue;
+
+                has_explicit_values = true;
+                if (!first_pass)
+                    error_seed << ",";
+                first_pass = false;
+                error_seed << error_value->get_name() << "=" << error_value->get_return_type();
+            }
+            error_seed << "}";
+            if (has_explicit_values)
+                seed = error_seed.str();
+        }
 
         if (comment)
         {
@@ -417,6 +438,9 @@ namespace fingerprint
         }
 
         entity_stack.pop_back();
+
+        if (cls.get_entity_type() == entity_type::ERROR && seed.empty())
+            return 0;
 
         // convert to sha3 hash
         sha3_context c;

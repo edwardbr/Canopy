@@ -8,6 +8,7 @@
 #include "json_schema/generator.h"
 #include "json_schema/writer.h"
 #include "../../rpc/include/rpc/internal/build_modifiers.h"
+#include "helpers.h"
 #include "type_utils.h"
 #include <cstdint>
 #include <iostream>
@@ -2510,39 +2511,6 @@ namespace json_schema
             std::string optional_inner;  // inner T when is_optional, raw form.
             bool is_raw_json = false;    // true iff raw_type is json::v1::object (passthrough).
         };
-
-        inline std::string cpp_string_literal(const std::string& value)
-        {
-            std::string out;
-            out.reserve(value.size() + 2);
-            out += '"';
-            for (const char ch : value)
-            {
-                switch (ch)
-                {
-                case '\\':
-                    out += "\\\\";
-                    break;
-                case '"':
-                    out += "\\\"";
-                    break;
-                case '\n':
-                    out += "\\n";
-                    break;
-                case '\r':
-                    out += "\\r";
-                    break;
-                case '\t':
-                    out += "\\t";
-                    break;
-                default:
-                    out += ch;
-                    break;
-                }
-            }
-            out += '"';
-            return out;
-        }
 
         inline std::string strip_outer_braces(std::string value)
         {

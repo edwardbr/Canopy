@@ -15,18 +15,15 @@
 
 namespace config_demo::v1
 {
-    struct loaded_demo_configuration
-    {
-        demo_settings settings;
-        std::shared_ptr<rpc::connection_factory::application_runtime> runtime;
-    };
-
-    [[nodiscard]] auto load_demo_configuration(const std::filesystem::path& config_path) -> loaded_demo_configuration;
+    [[nodiscard]] auto load_demo_settings(const std::filesystem::path& config_path) -> demo_settings;
+    [[nodiscard]] auto make_connection_factory_runtime(
+        const demo_settings& settings,
+        std::filesystem::path base_directory) -> std::shared_ptr<rpc::connection_factory::application_runtime>;
     [[nodiscard]] auto make_scheduler(uint32_t thread_count) -> std::shared_ptr<coro::scheduler>;
 
     [[nodiscard]] auto run_configured_demo(
         const rpc::connection_factory::application_runtime& runtime,
-        const demo_settings& settings,
+        const execution_settings& execution,
         const std::shared_ptr<coro::scheduler>& scheduler_1,
-        const std::shared_ptr<coro::scheduler>& scheduler_2) -> bool;
+        const std::shared_ptr<coro::scheduler>& scheduler_2) -> int;
 } // namespace config_demo::v1

@@ -1225,6 +1225,28 @@ namespace
 
     TEST(
         JsonConvert,
+        ConnectionFactoryConfigurationResourcesAreTopLevel)
+    {
+        const auto settings = from_json_object<rpc::connection_factory::configuration>(parse(R"json({
+            "spsc_queues": ["", "config_demo_in_process_pair"],
+            "attestation_services": [
+                { "name": "demo_attestation", "backend": "fake_backend" }
+            ],
+            "connections": []
+        })json"));
+
+        ASSERT_EQ(settings.spsc_queues.size(), 2u);
+        EXPECT_EQ(settings.spsc_queues[0], "");
+        EXPECT_EQ(settings.spsc_queues[1], "config_demo_in_process_pair");
+
+        ASSERT_EQ(settings.attestation_services.size(), 1u);
+        EXPECT_EQ(settings.attestation_services[0].name, "demo_attestation");
+        EXPECT_EQ(
+            settings.attestation_services[0].backend, rpc::connection_factory::attestation_backend_kind::fake_backend);
+    }
+
+    TEST(
+        JsonConvert,
         BuiltInConnectionFactoryMaterialisesSparseTcpSettings)
     {
         rpc::stream_layers::stream_layer_settings sparse_tcp;
@@ -1681,11 +1703,11 @@ namespace
         connection.name = "client";
         connection.connection.transport = std::move(transport);
 
-        rpc::connection_factory::topology_settings topology;
-        topology.connections.push_back(std::move(connection));
+        rpc::connection_factory::configuration config;
+        config.connections.push_back(std::move(connection));
 
         const std::filesystem::path base_directory{"/tmp/canopy-config"};
-        auto runtime = rpc::connection_factory::make_application_runtime(std::move(topology), base_directory);
+        auto runtime = rpc::connection_factory::make_application_runtime(std::move(config), base_directory);
         ASSERT_EQ(runtime.error_code, rpc::error::OK()) << runtime.message;
         ASSERT_NE(runtime.runtime, nullptr);
 

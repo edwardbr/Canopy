@@ -32,20 +32,20 @@ namespace rpc::connection_factory
         std::string message;
     };
 
-    // Owns host-side resources described by topology_settings::rpc_runtime
-    // and creates connection factory contexts for named connections.
+    // Owns host-side resources described by configuration and creates
+    // connection factory contexts for named connections.
     class application_runtime
     {
     public:
         application_runtime(
-            topology_settings settings,
+            configuration settings,
             std::filesystem::path base_directory);
         ~application_runtime();
 
         application_runtime(const application_runtime&) = delete;
         auto operator=(const application_runtime&) -> application_runtime& = delete;
 
-        [[nodiscard]] auto settings() const -> const topology_settings&;
+        [[nodiscard]] auto settings() const -> const configuration&;
         [[nodiscard]] auto find_connection(std::string_view name) const -> const named_connection_settings*;
 
         [[nodiscard]] auto context_for(const named_connection_settings& connection) const -> application_context_result;
@@ -56,7 +56,7 @@ namespace rpc::connection_factory
     };
 
     [[nodiscard]] auto make_application_runtime(
-        topology_settings settings,
+        configuration settings,
         std::filesystem::path base_directory = {}) -> application_runtime_result;
 
     [[nodiscard]] auto load_application_runtime(const std::filesystem::path& path) -> application_runtime_result;

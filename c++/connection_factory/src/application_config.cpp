@@ -86,11 +86,11 @@ namespace rpc::connection_factory
         }
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
-        [[nodiscard]] auto collect_spsc_queue_names(const topology_settings& settings) -> std::set<std::string>
+        [[nodiscard]] auto collect_spsc_queue_names(const configuration& settings) -> std::set<std::string>
         {
             std::set<std::string> names;
-            for (const auto& queue : settings.rpc_runtime.spsc_queues)
-                names.insert(queue.name);
+            for (const auto& queue_name : settings.spsc_queues)
+                names.insert(queue_name);
 
             for (const auto& connection : settings.connections)
             {
@@ -113,7 +113,7 @@ namespace rpc::connection_factory
             return names;
         }
 #else
-        [[nodiscard]] auto configured_spsc_layers(const topology_settings& settings) -> bool
+        [[nodiscard]] auto configured_spsc_layers(const configuration& settings) -> bool
         {
             return std::any_of(
                 settings.connections.begin(),
@@ -172,7 +172,7 @@ namespace rpc::connection_factory
         }
 
         void resolve_ipc_spsc_transport_paths(
-            topology_settings& settings,
+            configuration& settings,
             const std::filesystem::path& base_directory)
         {
             for (auto& connection : settings.connections)
@@ -253,7 +253,7 @@ namespace rpc::connection_factory
         }
 
         void resolve_tls_layer_files(
-            topology_settings& settings,
+            configuration& settings,
             const std::filesystem::path& base_directory)
         {
             for (auto& connection : settings.connections)
@@ -346,7 +346,7 @@ namespace rpc::connection_factory
 
     struct application_runtime::impl
     {
-        topology_settings settings;
+        configuration settings;
         std::filesystem::path base_directory;
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
@@ -362,7 +362,7 @@ namespace rpc::connection_factory
 #endif
 
         impl(
-            topology_settings runtime_settings,
+            configuration runtime_settings,
             std::filesystem::path runtime_base_directory)
             : settings(std::move(runtime_settings))
             , base_directory(std::move(runtime_base_directory))
@@ -384,7 +384,7 @@ namespace rpc::connection_factory
             for (const auto& name : collect_spsc_queue_names(settings))
                 spsc_queues.emplace(name, rpc::spsc_queue::queue_pair::create());
 #else
-            if (!settings.rpc_runtime.spsc_queues.empty() || configured_spsc_layers(settings))
+            if (!settings.spsc_queues.empty() || configured_spsc_layers(settings))
                 throw runtime_config_error("SPSC queue runtime settings were provided, but SPSC support is not built");
 #endif
 
@@ -396,10 +396,10 @@ namespace rpc::connection_factory
             resolve_tls_layer_files(settings, base_directory);
 #endif
 
-            if (!settings.rpc_runtime.attestation_services.empty())
+            if (!settings.attestation_services.empty())
             {
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
-                for (const auto& service_settings : settings.rpc_runtime.attestation_services)
+                for (const auto& service_settings : settings.attestation_services)
                 {
                     attestation_services.emplace(service_settings.name, make_attestation_service(service_settings));
                 }
@@ -442,7 +442,7 @@ namespace rpc::connection_factory
     };
 
     application_runtime::application_runtime(
-        topology_settings settings,
+        configuration settings,
         std::filesystem::path base_directory)
         : impl_(
               std::make_shared<impl>(
@@ -454,7 +454,7 @@ namespace rpc::connection_factory
 
     application_runtime::~application_runtime() = default;
 
-    auto application_runtime::settings() const -> const topology_settings&
+    auto application_runtime::settings() const -> const configuration&
     {
         return impl_->settings;
     }
@@ -473,7 +473,7 @@ namespace rpc::connection_factory
     }
 
     auto make_application_runtime(
-        topology_settings settings,
+        configuration settings,
         std::filesystem::path base_directory) -> application_runtime_result
     {
         try
@@ -492,7 +492,7 @@ namespace rpc::connection_factory
         try
         {
             return make_application_runtime(
-                json::v1::convert::from_json_object<topology_settings>(json::v1::parse_file(path)), path.parent_path());
+                json::v1::convert::from_json_object<configuration>(json::v1::parse_file(path)), path.parent_path());
         }
         catch (const std::exception& error)
         {

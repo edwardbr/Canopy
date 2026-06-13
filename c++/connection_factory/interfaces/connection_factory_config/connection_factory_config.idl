@@ -44,7 +44,7 @@ namespace rpc
             rpc::optional<json::v1::object> settings;
         };
 
-        // Declarative connection factory topology.
+        // Declarative connection factory configuration.
         //
         // service, listener, and transport are optional because most callers
         // should be able to use the application defaults. When a value is
@@ -78,12 +78,6 @@ namespace rpc
         {
             connector = 0,
             acceptor = 1,
-        };
-
-        struct spsc_queue_runtime_settings
-        {
-            [description="Application-defined queue-pair name. Empty names configure the default unnamed pair."]
-            std::string name = "";
         };
 
         enum attestation_backend_kind : uint8_t
@@ -136,17 +130,6 @@ namespace rpc
             attestation_policy_settings policy = {};
         };
 
-        // Host-side resources shared by JSON-created connections. TLS material
-        // belongs to each tls stream layer's settings, not to this global
-        // runtime block. This is not enclave configuration. SGX
-        // transport/enclave settings remain under the SGX transport's own
-        // transport.settings object.
-        struct rpc_runtime_settings
-        {
-            std::vector<spsc_queue_runtime_settings> spsc_queues = {};
-            std::vector<attestation_service_settings> attestation_services = {};
-        };
-
         struct named_connection_settings
         {
             [description="Application-visible connection name used for lookup."]
@@ -165,10 +148,19 @@ namespace rpc
             connection_settings connection = {};
         };
 
-        struct topology_settings
+        struct configuration
         {
-            [description="Host-side RPC resources that connection factory contexts can materialise from JSON."]
-            rpc_runtime_settings rpc_runtime = {};
+            // Names of in-process SPSC queue pairs that application_runtime
+            // should pre-create and place into connection_factory::context.
+            // These queues are consumed by the plain spsc_queue stream adapter
+            // when a stream layer names the same queue_pair. This is not the
+            // file-backed IPC SPSC transport path; ipc_spsc owns its mapped
+            // file lifecycle through its own transport settings.
+            [description="Application-defined in-process SPSC queue-pair names. Empty strings configure the default unnamed pair."]
+            std::vector<std::string> spsc_queues = {};
+
+            [description="Application-defined attestation services that attestation stream layers can reference by name."]
+            std::vector<attestation_service_settings> attestation_services = {};
 
             [description="Named connector and acceptor definitions that applications can look up by name."]
             std::vector<named_connection_settings> connections = {};

@@ -9,30 +9,35 @@
 #include <stdexcept>
 #include <utility>
 
+#include <config_demo_config/config_demo_config.h>
 #include <config_demo_config/config_demo_config_schema.h>
 #include <json/config.h>
 #include <json/convert.h>
 
 namespace config_demo::v1
 {
-    auto load_demo_configuration(const std::filesystem::path& config_path) -> loaded_demo_configuration
+    auto load_demo_settings(const std::filesystem::path& config_path) -> demo_settings
     {
         auto settings = json::v1::convert::from_json_object<demo_settings>(json::v1::parse_file(config_path));
-        settings.iterations = std::max<uint64_t>(settings.iterations, 1);
+        settings.execution.iterations = std::max<uint64_t>(settings.execution.iterations, 1);
+        return settings;
+    }
 
-        rpc::connection_factory::topology_settings factory_settings;
-        factory_settings.rpc_runtime = std::move(settings.rpc_runtime);
-        factory_settings.connections = std::move(settings.connections);
+    auto make_connection_factory_runtime(
+        const demo_settings& settings,
+        std::filesystem::path base_directory) -> std::shared_ptr<rpc::connection_factory::application_runtime>
+    {
+        rpc::connection_factory::configuration factory_config;
+        factory_config.spsc_queues = settings.spsc_queues;
+        factory_config.attestation_services = settings.attestation_services;
+        factory_config.connections = settings.connections;
 
         auto loaded_runtime
-            = rpc::connection_factory::make_application_runtime(std::move(factory_settings), config_path.parent_path());
+            = rpc::connection_factory::make_application_runtime(std::move(factory_config), std::move(base_directory));
         if (loaded_runtime.error_code != rpc::error::OK() || !loaded_runtime.runtime)
             throw std::runtime_error(loaded_runtime.message);
 
-        loaded_demo_configuration result;
-        result.settings = std::move(settings);
-        result.runtime = std::move(loaded_runtime.runtime);
-        return result;
+        return std::move(loaded_runtime.runtime);
     }
 
     auto make_scheduler(uint32_t thread_count) -> std::shared_ptr<coro::scheduler>

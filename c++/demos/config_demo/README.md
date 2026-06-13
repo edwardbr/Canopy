@@ -5,21 +5,25 @@ It is intended as a readable starting point for future transport demos.
 
 The JSON file uses the generated `config_demo::v1::demo_settings` schema:
 
-- `iterations`, `scheduler_threads`, `client_connection`, and
-  `server_connection`: executable-owned demo settings.
-- `rpc_runtime`: host-side resources the connection factory can place into
-  connection contexts, including SPSC queue pairs and generic `null_backend`,
-  `fake_backend`, or `sgx_sim_backend` attestation services.
+- `execution`: executable-owned demo settings, including calculator
+  iterations, scheduler thread count, and the named client/server connections
+  this demo should run.
+- `spsc_queues`: named in-process SPSC queue pairs that the connection factory
+  can place into connection contexts.
+- `attestation_services`: generic `null_backend`, `fake_backend`, or
+  `sgx_sim_backend` attestation services that attestation stream layers can
+  reference by name.
 - `connections`: named connector or acceptor definitions. Each item owns the
   generated transport and stream-layer settings for that connection.
 
-`rpc_runtime` is host-side RPC runtime setup. SGX transport and enclave-specific
-settings remain inside the SGX transport's own `transport.settings` object.
-TLS identities, trust anchors, and certificate/key file references belong to
-the `tls` object in each connection's `stream_layers[].settings`, so different
-links can use different TLS material.
+Top-level `spsc_queues` and `attestation_services` are host-side resources that
+the connection factory runtime creates once for the loaded config. SGX transport
+and enclave-specific settings remain inside the SGX transport's own
+`transport.settings` object. TLS identities, trust anchors, and certificate/key
+file references belong to the `tls` object in each connection's
+`stream_layers[].settings`, so different links can use different TLS material.
 `config_demo` parses its own generated IDL type from JSON, then passes only
-`rpc_runtime` and `connections` into the connection factory runtime.
+these host-side resources and `connections` into the connection factory runtime.
 
 The sample files include a relative `$schema` reference to
 `../schemas/config_demo_config.schema.json`. The build emits that schema with

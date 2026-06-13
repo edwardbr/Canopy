@@ -824,6 +824,17 @@ namespace rpc
         return std::move(*r);
     }();
 
+    // Construct a zone using Canopy's default local routing layout and the
+    // supplied subnet. Use this instead of copying DEFAULT_PREFIX and mutating
+    // the subnet at each call site.
+    [[nodiscard]] inline zone create_local_zone(uint64_t subnet)
+    {
+        auto address = DEFAULT_PREFIX;
+        auto subnet_result = address.set_subnet(subnet);
+        (void)subnet_result;
+        return zone{address};
+    }
+
     // Single-line human-readable form of zone_address_args.
     // Format: local sn=X [obj=Y]
     //         ipv4:A.B.C.D[:port] sn=X [obj=Y]

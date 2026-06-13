@@ -10,7 +10,7 @@ namespace config_demo
 {
     namespace v1
     {
-        struct demo_settings
+        struct execution_settings
         {
             [description="Number of calculator RPC rounds to run."]
             uint64_t iterations = 1;
@@ -23,9 +23,22 @@ namespace config_demo
 
             [description="Named acceptor connection used by paired stream RPC demos. Leave empty for native connector-only transports."]
             std::string server_connection = "server";
+        };
 
-            [description="Host-side RPC resources that the connection factory can place into connection contexts. TLS material belongs to each tls stream layer."]
-            rpc::connection_factory::rpc_runtime_settings rpc_runtime = {};
+        struct demo_settings
+        {
+            [description="Executable-owned settings that select how the demo runs the loaded connection factory configuration."]
+            execution_settings execution = {};
+
+            // Names of in-process SPSC queue pairs that the connection factory
+            // should pre-create and place into each connection context. These
+            // are used by the plain spsc_queue stream adapter, not by the
+            // file-backed ipc_spsc transport.
+            [description="Application-defined in-process SPSC queue-pair names. Empty strings configure the default unnamed pair."]
+            std::vector<std::string> spsc_queues = {};
+
+            [description="Application-defined attestation services that attestation stream layers can reference by name."]
+            std::vector<rpc::connection_factory::attestation_service_settings> attestation_services = {};
 
             [description="Named connector and acceptor definitions that the application looks up and passes to the connection factory."]
             std::vector<rpc::connection_factory::named_connection_settings> connections = {};
