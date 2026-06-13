@@ -53,7 +53,7 @@ namespace config_demo::v1
         [[nodiscard]] auto make_factory_context(
             const rpc::connection_factory::application_runtime& runtime,
             const rpc::connection_factory::named_connection_settings& connection,
-            std::shared_ptr<coro::scheduler> scheduler) -> rpc::connection_factory::layered_connection_context
+            std::shared_ptr<coro::scheduler> scheduler) -> rpc::connection_factory::context
         {
             auto context = runtime.context_for(connection, std::move(scheduler));
             if (context.error_code != rpc::error::OK())

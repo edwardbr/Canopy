@@ -21,7 +21,7 @@ namespace rpc::connection_factory
     // Result for configured RPC accept operations. A stream listener returns
     // listener when it can accept many future connections. Single-shot stream
     // transports such as SPSC return connection after accepting one connection.
-    struct layered_accept_result
+    struct accept_result
     {
         int error_code{rpc::error::OK()};
         std::shared_ptr<listener_handle> listener;
@@ -101,7 +101,7 @@ namespace rpc::connection_factory
     template<
         class Remote,
         class Local>
-    CORO_TASK(layered_accept_result)
+    CORO_TASK(accept_result)
     accept_rpc(
         rpc_factory<
             Remote,
@@ -117,7 +117,7 @@ namespace rpc::connection_factory
     template<
         class Remote,
         class Local>
-    CORO_TASK(layered_accept_result)
+    CORO_TASK(accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
         const connection_settings& settings,

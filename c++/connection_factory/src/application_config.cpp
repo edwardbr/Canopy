@@ -359,7 +359,7 @@ namespace rpc::connection_factory
             if (connection.name.empty())
                 return {rpc::error::INVALID_DATA(), {}, "connection name must not be empty"};
 
-            layered_connection_context context;
+            context context;
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
             for (const auto& [name, queues] : spsc_queues)

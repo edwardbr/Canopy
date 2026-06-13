@@ -31,6 +31,16 @@ namespace rpc::io_uring
 #endif
     } // namespace
 
+    // File I/O uses the same direct-ring staging rule as TCP:
+    //
+    //     open path:    C string      -> staging slot -> SQE.addr
+    //     read_at:      SQE.addr      -> staging slot -> caller bytes
+    //     write_at:     caller bytes  -> staging slot -> SQE.addr
+    //
+    // Host-only builds may submit caller buffers directly when configured to do
+    // so. SGX builds always stage because the kernel must only see
+    // host-visible addresses.
+
     // Opens a path directly into the io_uring fixed-file table. The returned
     // descriptor is a direct descriptor index, not a process file descriptor.
     CORO_TASK(descriptor_result)
@@ -69,6 +79,8 @@ namespace rpc::io_uring
             CO_RETURN descriptor_result{rpc::error::RESOURCE_EXHAUSTED(), 0, 0, 0};
         }
 
+        // The kernel expects a NUL-terminated path at SQE.addr. Copy it into a
+        // staging slot so openat never dereferences enclave/private memory.
         std::memcpy(path_buffer_result.buffer->data(), path.data(), path.size());
         path_buffer_result.buffer->data()[path.size()] = 0;
 
@@ -129,6 +141,8 @@ namespace rpc::io_uring
 #ifndef FOR_SGX
         if (options_.use_caller_buffers_for_transfers)
         {
+            // Host-only fast path: the kernel writes directly into the caller's
+            // span. Real SGX builds use the staging copy-back path below.
             const auto transfer_size = clamped_transfer_size(buffer.size());
             auto transfer_buffer = buffer.subspan(0, transfer_size);
 
@@ -172,6 +186,11 @@ namespace rpc::io_uring
             uint64_t offset;
         } operation_context{descriptor, std::move(buffer_result.buffer), offset};
 
+        // Staged file read:
+        //
+        //     kernel ----SQE.addr----> staging slot ----memcpy----> caller span
+        //
+        // Copy-back happens after a successful CQE with a positive byte count.
         auto result = CO_AWAIT submit_operation(
             [](detail::sqe_64& sqe, void* data)
             {
@@ -223,6 +242,8 @@ namespace rpc::io_uring
 #ifndef FOR_SGX
         if (options_.use_caller_buffers_for_transfers)
         {
+            // Host-only fast path: the kernel reads directly from the caller's
+            // span. Real SGX builds copy into a staging slot first.
             const auto transfer_size = clamped_transfer_size(buffer.size());
             auto transfer_buffer = buffer.subspan(0, transfer_size);
 
@@ -266,6 +287,12 @@ namespace rpc::io_uring
             uint64_t offset;
         } operation_context{descriptor, std::move(buffer_result.buffer), offset};
 
+        // Staged file write:
+        //
+        //     caller span ----memcpy----> staging slot ----SQE.addr----> kernel
+        //
+        // The staging slot is retained by operation_context until the CQE is
+        // consumed, so the kernel never observes a dangling buffer pointer.
         std::memcpy(operation_context.buffer->data(), buffer.data(), operation_context.buffer->size());
         auto result = CO_AWAIT submit_operation(
             [](detail::sqe_64& sqe, void* data)

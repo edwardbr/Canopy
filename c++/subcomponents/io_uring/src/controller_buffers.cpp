@@ -54,6 +54,38 @@ namespace rpc::io_uring
         }
     } // namespace
 
+    // Staging buffer pool overview
+    // ----------------------------
+    //
+    // The io_uring descriptor exposes one host-visible byte region:
+    //
+    //     buffer_region_ptr
+    //          |
+    //          v
+    //     +---------+---------+---------+---------+
+    //     | slot 0  | slot 1  | slot 2  | slot 3  | ...
+    //     +---------+---------+---------+---------+
+    //         ^         ^
+    //         |         |
+    //     staging_buffer shared_ptr guards mark these slots in use
+    //
+    // Every direct SGX operation that needs the kernel to read or write data
+    // borrows one of these slots. The slot is released when the last
+    // shared_ptr<staging_buffer> for that operation is destroyed. Operations
+    // that need two kernel-visible pointers reserve both slots as one unit.
+    //
+    // Under pressure, allocation is FIFO:
+    //
+    //     allocate_staging_buffers()
+    //          |
+    //          +-- immediate reserve if no one is waiting
+    //          |
+    //          +-- otherwise enqueue waiter and suspend
+    //                                      |
+    //     release_staging_buffer() -------+
+    //          |
+    //          +-- grant front waiter, then resume it outside the spin lock
+
     // Records one borrowed slot from the ring-visible staging buffer region.
     // The object is deliberately small because destruction returns the slot.
     controller::staging_buffer::staging_buffer(
@@ -172,6 +204,38 @@ namespace rpc::io_uring
         return {};
     }
 
+    struct controller::staging_buffer_wait_awaiter
+    {
+        controller& controller;
+        std::shared_ptr<staging_buffer_waiter> waiter;
+
+        // If release_staging_buffer() granted the waiter before the coroutine
+        // reached co_await, do not suspend. This is the first half of the
+        // lost-wakeup protection.
+        bool await_ready() const noexcept
+        {
+            return !waiter || waiter->granted || waiter->error_code != rpc::error::OK();
+        }
+
+        // Store the coroutine handle only while holding the same mutex used by
+        // release_staging_buffer(). If the waiter is granted or failed between
+        // await_ready() and await_suspend(), returning false resumes the
+        // coroutine immediately instead of leaving it asleep forever.
+        bool await_suspend(std::coroutine_handle<> awaiting_coroutine) noexcept
+        {
+            std::lock_guard<rpc::spin_mutex> lock(controller.staging_buffer_mutex_);
+            if (!waiter || waiter->granted || waiter->error_code != rpc::error::OK() || !waiter->queued)
+            {
+                return false;
+            }
+
+            waiter->waiter = awaiting_coroutine;
+            return true;
+        }
+
+        void await_resume() const noexcept { }
+    };
+
     // Reserves one or two slots while staging_buffer_mutex_ is held. No
     // staging_buffer objects are constructed here, so memory allocation never
     // happens inside the spin-lock critical section.
@@ -202,6 +266,10 @@ namespace rpc::io_uring
             return rpc::error::RESOURCE_EXHAUSTED();
         }
 
+        // First find all required slots, then mark them in use. This all-or-none
+        // reservation is important for two-buffer operations because a partial
+        // reservation would let a coroutine hold a scarce slot while waiting for
+        // another one.
         uint32_t slots[2]{std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
         uint32_t found_count = 0;
         for (uint32_t slot = 0; slot < staging_buffer_count_ && found_count < required_buffer_count; ++slot)
@@ -286,6 +354,10 @@ namespace rpc::io_uring
                 waiter->second_reservation);
             if (waiter->error_code == rpc::error::RESOURCE_EXHAUSTED())
             {
+                // Exhaustion is ordinary backpressure, not a failed waiter.
+                // Leave the waiter at the front so it keeps its FIFO position
+                // and retry when another staging_buffer guard is released.
+                waiter->error_code = rpc::error::OK();
                 return {};
             }
 
@@ -318,12 +390,16 @@ namespace rpc::io_uring
 
             if (waiter->granted)
             {
+                // The waiter may have been granted while the coroutine was
+                // being cancelled. Release those reserved slots so the next
+                // queued waiter can make progress.
                 reserved_count = waiter->required_buffer_count;
                 first_reservation = waiter->first_reservation;
                 second_reservation = waiter->second_reservation;
                 waiter->granted = false;
             }
             waiter->queued = false;
+            waiter->waiter = {};
         }
 
         if (reserved_count >= 1)
@@ -338,17 +414,53 @@ namespace rpc::io_uring
 
     void controller::fail_staging_buffer_waiters(int error_code) noexcept
     {
-        std::lock_guard<rpc::spin_mutex> lock(staging_buffer_mutex_);
-        for (auto& waiter : staging_buffer_waiters_)
+        std::deque<std::shared_ptr<staging_buffer_waiter>> failed_waiters;
         {
-            if (waiter)
+            std::lock_guard<rpc::spin_mutex> lock(staging_buffer_mutex_);
+            for (auto& waiter : staging_buffer_waiters_)
             {
-                waiter->error_code = error_code;
-                waiter->queued = false;
-                waiter->granted = false;
+                if (waiter)
+                {
+                    waiter->error_code = error_code;
+                    waiter->queued = false;
+                    waiter->granted = false;
+                }
             }
+            staging_buffer_waiters_.swap(failed_waiters);
         }
-        staging_buffer_waiters_.clear();
+
+        // Resuming while holding staging_buffer_mutex_ would let user coroutine
+        // code re-enter allocation or release paths from inside the lock.
+        for (const auto& waiter : failed_waiters)
+        {
+            resume_staging_buffer_waiter(waiter);
+        }
+    }
+
+    void controller::resume_staging_buffer_waiter(const std::shared_ptr<staging_buffer_waiter>& waiter) noexcept
+    {
+        if (!waiter)
+        {
+            return;
+        }
+
+        auto awaiting_coroutine = waiter->waiter;
+        waiter->waiter = {};
+        if (!awaiting_coroutine || awaiting_coroutine.done())
+        {
+            return;
+        }
+
+        // Use the controller scheduler when available so a buffer release does
+        // not run arbitrary coroutine work inline on the releasing call stack.
+        if (scheduler_)
+        {
+            scheduler_->resume(awaiting_coroutine);
+        }
+        else
+        {
+            awaiting_coroutine.resume();
+        }
     }
 
     controller::staging_buffer_pair_allocation_result controller::make_staging_buffers_from_reservations(
@@ -488,6 +600,9 @@ namespace rpc::io_uring
                 {
                     if (staging_buffer_waiters_.empty())
                     {
+                        // Fast path: no queued waiters means this coroutine can
+                        // try the pool directly. Once anyone is queued, later
+                        // callers must join the queue to avoid cutting ahead.
                         err = reserve_staging_buffers_locked(
                             required_buffer_count,
                             first_requested_size,
@@ -523,6 +638,10 @@ namespace rpc::io_uring
                                 std::terminate();
                             }
 
+                            // There may already be enough free slots by the
+                            // time the waiter is enqueued. Grant while still
+                            // under the mutex so the waiter cannot miss the
+                            // transition from queued to granted.
                             grant_next_staging_buffer_waiter_locked();
                             if (waiter->granted)
                             {
@@ -565,8 +684,16 @@ namespace rpc::io_uring
                 continue;
             }
 
-            (void)should_wait;
-            CO_AWAIT wait_before_next_poll();
+            if (should_wait)
+            {
+                // Suspends until release_staging_buffer() reserves the slots
+                // for this exact waiter or shutdown fails the queue.
+                CO_AWAIT staging_buffer_wait_awaiter{*this, waiter};
+            }
+            else
+            {
+                CO_AWAIT wait_before_next_poll();
+            }
         }
 
         cancel_staging_buffer_waiter(waiter);
@@ -602,14 +729,21 @@ namespace rpc::io_uring
         uint32_t slot,
         uint64_t generation) noexcept
     {
-        std::lock_guard<rpc::spin_mutex> lock(staging_buffer_mutex_);
-        if (generation != staging_buffer_generation_ || slot >= staging_buffer_slots_in_use_.size())
+        std::shared_ptr<staging_buffer_waiter> waiter_to_resume;
         {
-            return;
-        }
+            std::lock_guard<rpc::spin_mutex> lock(staging_buffer_mutex_);
+            if (generation != staging_buffer_generation_ || slot >= staging_buffer_slots_in_use_.size())
+            {
+                return;
+            }
 
-        staging_buffer_slots_in_use_[slot] = 0;
-        grant_next_staging_buffer_waiter_locked();
+            staging_buffer_slots_in_use_[slot] = 0;
+            waiter_to_resume = grant_next_staging_buffer_waiter_locked();
+        }
+        // The waiter now owns any granted slots. Resume it after dropping the
+        // lock so its coroutine can allocate guards or release on failure
+        // without recursively entering the staging-buffer mutex.
+        resume_staging_buffer_waiter(waiter_to_resume);
     }
 
     // Allocates a staging buffer and writes an IPv4 sockaddr into it so

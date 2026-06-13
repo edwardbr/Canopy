@@ -718,10 +718,6 @@ namespace io_uring_test_enclave
                 CO_AWAIT acceptor->close();
                 CO_RETURN rpc::error::TRANSPORT_ERROR();
             }
-        }
-
-        for (uint32_t connection_index = 0; connection_index < connection_count; ++connection_index)
-        {
             auto client_task = [](std::shared_ptr<rpc::io_uring::controller> controller,
                                    std::shared_ptr<multi_stream_state> state,
                                    uint16_t port,

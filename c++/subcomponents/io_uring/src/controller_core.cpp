@@ -316,8 +316,13 @@ namespace rpc::io_uring
     }
 
     // Resumes coroutines whose CQEs have been matched to controller-owned
-    // operation records. The linked list is produced while the operation engine lock is
-    // held, then resumed outside that lock by this function.
+    // operation records.
+    //
+    //     operation_engine lock held:  build next_completed linked list
+    //     controller resumes here:     lock is already released
+    //
+    // A resumed coroutine is allowed to submit more io_uring work, so this
+    // function must remain outside the operation-engine critical section.
     void controller::resume_completed_operations(
         detail::direct_ring_operation_engine::operation_ptr completed_operations) noexcept
     {

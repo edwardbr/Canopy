@@ -8,6 +8,7 @@
 #include <atomic>
 #include <array>
 #include <chrono>
+#include <coroutine>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -30,8 +31,18 @@ namespace rpc::io_uring
     public:
         struct options
         {
-            // Cooperative polling keeps all waiting in the caller coroutine.
-            // Proactor mode uses the scheduler to run a shared completion pump.
+            // Selects who is responsible for draining the io_uring completion
+            // queue while operations are outstanding:
+            //
+            //     cooperative_poll: each waiting coroutine pumps the CQ itself
+            //     proactor:         a scheduler task pumps the CQ and resumes
+            //                       the matching waiting coroutine
+            //
+            // Sensible default: leave this as cooperative_poll unless profiling
+            // shows many concurrent direct io_uring operations spending too
+            // much time in repeated CQ polling. Proactor is a throughput tuning
+            // option for scheduler-backed workloads, not a requirement for
+            // ordinary users of the controller.
             wait_strategy completion_wait_strategy{wait_strategy::cooperative_poll};
             // Linux MSG_* bits applied to direct TCP send/receive SQEs. Keep
             // these zero unless a caller deliberately wants socket-level
@@ -165,6 +176,30 @@ namespace rpc::io_uring
     private:
         friend class direct_descriptor;
 
+        // Direct io_uring has two address spaces to keep in mind.
+        //
+        // In a normal host build, and only when options allow it, a send/receive
+        // SQE can point straight at the caller's byte span:
+        //
+        //     caller span ------------------------------> SQE.addr
+        //
+        // In the SGX/direct path, caller memory is enclave-private and the
+        // kernel must not dereference it. The controller therefore borrows a
+        // slot from a host-visible staging pool described by ring_data.buffers:
+        //
+        //     enclave/private memory      host-visible staging slot      kernel
+        //     +---------------------+     +-------------------------+    +------+
+        //     | RPC buffers, stack  | <-> | ring_data.buffers[N]    | -> | SQE  |
+        //     +---------------------+     +-------------------------+    +------+
+        //
+        // SEND copies caller bytes into the staging slot before submission.
+        // RECV submits the staging slot address, then copies completed bytes
+        // back to the caller. Small kernel inputs such as sockaddr, timespec
+        // and setsockopt values use the same pool for the same reason.
+        //
+        // staging_buffer is the RAII owner for one borrowed slot. Holding a
+        // shared_ptr<staging_buffer> keeps the slot reserved until the SQE has
+        // completed and any copy-back has happened.
         class staging_buffer
         {
         public:
@@ -211,6 +246,10 @@ namespace rpc::io_uring
 
         struct staging_buffer_reservation
         {
+            // A reservation is the lock-protected, allocation-free form of a
+            // staging slot. We first reserve raw slots while holding
+            // staging_buffer_mutex_, then construct shared_ptr guards after
+            // leaving the spin-lock critical section.
             uint32_t slot{0};
             uint64_t generation{0};
             uint8_t* data{nullptr};
@@ -219,18 +258,35 @@ namespace rpc::io_uring
 
         struct staging_buffer_waiter
         {
+            // Waiters queue for one or two staging slots. Two-slot reservations
+            // are intentionally atomic: linked operations such as
+            // RECV+LINK_TIMEOUT must not hold a data buffer while separately
+            // waiting for a timeout buffer in a tiny SGX pool.
+            //
+            //     available slot(s)
+            //             |
+            //             v
+            //     front waiter reserves both required slots
+            //             |
+            //             v
+            //     coroutine resumes and wraps reservations in staging_buffer
             uint32_t required_buffer_count{0};
             size_t first_requested_size{0};
             size_t second_requested_size{0};
             bool queued{false};
             bool granted{false};
             int error_code{rpc::error::OK()};
+            std::coroutine_handle<> waiter;
             staging_buffer_reservation first_reservation;
             staging_buffer_reservation second_reservation;
         };
 
         struct submission_waiter
         {
+            // Admission token for the SQ. This is separate from the operation
+            // table lock: it keeps coroutines from repeatedly racing each other
+            // for a full ring, and preserves FIFO ordering when the ring is
+            // deliberately small in stress tests.
             uint32_t required_sqe_count{0};
             bool queued{false};
             int error_code{rpc::error::OK()};
@@ -268,6 +324,20 @@ namespace rpc::io_uring
             detail::sqe_64& linked_sqe,
             void* context);
 
+        // The controller owns the lifetime around SQE.user_data:
+        //
+        //     caller coroutine
+        //             |
+        //             v
+        //     direct_ring_operation --user_data--> SQE.user_data
+        //             ^                              |
+        //             |                              v
+        //     resumed from CQE.user_data <---- operation_engine pump
+        //
+        // The kernel only sees the integer user_data. The actual operation
+        // object, coroutine handle, keep-alive references and copied CQE result
+        // stay in controller-owned memory.
+        struct staging_buffer_wait_awaiter;
         struct operation_completion_awaiter;
 
         enum class lifecycle_state : uint8_t
@@ -319,6 +389,7 @@ namespace rpc::io_uring
             staging_buffer_reservation& second_reservation) noexcept;
         std::shared_ptr<staging_buffer_waiter> grant_next_staging_buffer_waiter_locked() noexcept;
         void cancel_staging_buffer_waiter(const std::shared_ptr<staging_buffer_waiter>& waiter) noexcept;
+        void resume_staging_buffer_waiter(const std::shared_ptr<staging_buffer_waiter>& waiter) noexcept;
         [[nodiscard]] staging_buffer_pair_allocation_result make_staging_buffers_from_reservations(
             uint32_t required_buffer_count,
             const staging_buffer_reservation& first_reservation,
@@ -411,6 +482,9 @@ namespace rpc::io_uring
         std::atomic<int> shutdown_error_code_{rpc::error::OK()};
         std::atomic<bool> completion_pump_active_{false};
         rpc::spin_mutex staging_buffer_mutex_;
+        // Bitmap for ring_data.buffers. A non-zero byte means the matching slot
+        // is currently owned by a staging_buffer guard or by a granted waiter
+        // that has not yet converted its reservation into a guard.
         std::vector<uint8_t> staging_buffer_slots_in_use_;
         std::deque<std::shared_ptr<staging_buffer_waiter>> staging_buffer_waiters_;
         rpc::spin_mutex submission_waiter_mutex_;

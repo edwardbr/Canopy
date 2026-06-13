@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-#include <connection_factory/detail/context.h>
+#include <connection_factory/context.h>
 #include <connection_factory_config/connection_factory_config.h>
 #include <rpc/rpc.h>
 
@@ -28,7 +28,7 @@ namespace rpc::connection_factory
     struct application_context_result
     {
         int error_code{rpc::error::OK()};
-        layered_connection_context context;
+        context context;
         std::string message;
     };
 

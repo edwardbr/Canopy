@@ -114,7 +114,17 @@ namespace rpc::io_uring
 
     enum class wait_strategy : uint32_t
     {
+        // The coroutine waiting for an operation also pumps the completion
+        // queue. This is the most self-contained mode: no background task is
+        // needed, and progress happens whenever any waiter reaches its polling
+        // loop. Recommended default for most applications.
         cooperative_poll = 0,
+        // A scheduler-owned completion pump drains the completion queue and
+        // resumes the coroutine registered on the completed operation. This
+        // centralizes CQ polling for many concurrent operations, but requires a
+        // scheduler; the controller falls back to cooperative polling when no
+        // pump can be started. Prefer this only for workloads with enough
+        // concurrent direct io_uring operations to benefit from one shared pump.
         proactor = 1
     };
 

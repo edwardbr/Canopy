@@ -233,7 +233,7 @@ namespace rpc::connection_factory
     template<
         class Remote,
         class Local>
-    CORO_TASK(layered_accept_result)
+    CORO_TASK(accept_result)
     accept_rpc(
         rpc_factory<
             Remote,
@@ -245,17 +245,17 @@ namespace rpc::connection_factory
     {
         auto transport = detail::transport_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
-            CO_RETURN layered_accept_result{transport.error_code, {}, {}};
+            CO_RETURN accept_result{transport.error_code, {}, {}};
         if (transport.type != "stream_rpc")
-            CO_RETURN layered_accept_result{rpc::error::INVALID_DATA(), {}, {}};
+            CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
         auto rpc_settings = detail::resolve_stream_rpc_settings(settings);
         if (rpc_settings.error_code != rpc::error::OK())
-            CO_RETURN layered_accept_result{rpc_settings.error_code, {}, {}};
+            CO_RETURN accept_result{rpc_settings.error_code, {}, {}};
 
         auto resolved_service = ensure_service(rpc_settings.settings, std::move(service), "layered_rpc_accept");
         if (!resolved_service)
-            CO_RETURN layered_accept_result{rpc::error::INVALID_DATA(), {}, {}};
+            CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
         auto acceptor = CO_AWAIT open_stream_acceptor(settings, resolved_service, factory_context);
         if (acceptor.error_code == rpc::error::OK())
@@ -269,24 +269,24 @@ namespace rpc::connection_factory
                 acceptor.port,
                 std::move(observe_transport),
                 detail::make_accept_stream_transformer(settings, 1, factory_context));
-            CO_RETURN layered_accept_result{listener.error_code, std::move(listener.handle), {}};
+            CO_RETURN accept_result{listener.error_code, std::move(listener.handle), {}};
         }
         if (acceptor.error_code != rpc::error::INVALID_DATA())
-            CO_RETURN layered_accept_result{acceptor.error_code, {}, {}};
+            CO_RETURN accept_result{acceptor.error_code, {}, {}};
 
         auto accepted_stream = CO_AWAIT accept_stream(settings, resolved_service, factory_context);
         if (accepted_stream.error_code != rpc::error::OK())
-            CO_RETURN layered_accept_result{accepted_stream.error_code, {}, {}};
+            CO_RETURN accept_result{accepted_stream.error_code, {}, {}};
 
         auto connection = CO_AWAIT accept_rpc_stream<Remote, Local>(
             std::move(accepted_stream.stream), std::move(factory), rpc_settings.settings, std::move(resolved_service));
-        CO_RETURN layered_accept_result{connection.error_code, {}, std::move(connection.handle)};
+        CO_RETURN accept_result{connection.error_code, {}, std::move(connection.handle)};
     }
 
     template<
         class Remote,
         class Local>
-    CORO_TASK(layered_accept_result)
+    CORO_TASK(accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
         const connection_settings& settings,

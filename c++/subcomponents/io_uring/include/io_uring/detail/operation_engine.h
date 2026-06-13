@@ -27,6 +27,39 @@
 
 namespace rpc::io_uring::detail
 {
+    // Direct-ring operation model
+    // ---------------------------
+    //
+    // The controller writes directly into the io_uring submission queue (SQ)
+    // and reads directly from the completion queue (CQ). In SGX builds those
+    // queues are outside the enclave, so the code treats ring memory as a
+    // shared ABI surface rather than trusted object storage.
+    //
+    // Submission:
+    //
+    //     direct_ring_operation
+    //          |
+    //          | user_data = monotonically allocated token
+    //          v
+    //     SQE.user_data  ----------------------------> kernel
+    //
+    // Completion:
+    //
+    //     kernel writes CQE.user_data
+    //          |
+    //          v
+    //     copy CQE into stack memory
+    //          |
+    //          v
+    //     operations_[user_data] -> trusted operation record
+    //          |
+    //          v
+    //     mark complete and resume the waiter outside the engine lock
+    //
+    // Only the integer token crosses through ring memory. The coroutine handle,
+    // keep-alive references, copied result and error state stay in controller
+    // memory.
+
     struct command_op_fields
     {
         uint32_t cmd_op{0};
@@ -258,8 +291,14 @@ namespace rpc::io_uring::detail
     {
         std::atomic<bool> submitted{false};
         std::atomic<bool> completed{false};
+        // Set only for proactor waits. Cooperative waits poll completed.
         std::coroutine_handle<> waiter{};
+        // Intrusive single-linked list used to hand completed operations back
+        // to controller code without allocating while the engine lock is held.
         std::shared_ptr<direct_ring_operation> next_completed;
+        // Keeps staging buffers or timeout objects alive until the linked SQE's
+        // own CQE has been matched. Linked timeout CQEs can arrive after the
+        // primary operation has already resumed the caller.
         std::shared_ptr<void> keep_alive;
         uint64_t user_data{0};
         int32_t cqe_result{0};
@@ -317,6 +356,9 @@ namespace rpc::io_uring::detail
 
             if (operations_.size() >= ring_data.completion_queue.cq_ring_entries)
             {
+                // Do not submit more operations than the CQ can report. This is
+                // conservative but avoids a direct-ring deadlock where the
+                // kernel has completions to post but no free CQE slots.
                 return {rpc::error::OK(), false, completion_count, std::move(completed_operations_)};
             }
 
@@ -330,9 +372,14 @@ namespace rpc::io_uring::detail
             const auto tail = load_ring_u32_acquire(sq_tail);
             if ((tail - head) >= sq.sq_ring_entries)
             {
+                // The SQ is full for now. The caller will yield or spin, while
+                // already-pumped completions may let another waiter complete.
                 return {rpc::error::OK(), false, completion_count, std::move(completed_operations_)};
             }
 
+            // Register the operation before publishing the SQ tail. A fast
+            // kernel can complete the SQE as soon as the tail is visible, and
+            // the CQ pump must then be able to resolve user_data immediately.
             const auto user_data = next_user_data_++;
             operation->user_data = user_data;
 
@@ -409,6 +456,9 @@ namespace rpc::io_uring::detail
 
             try
             {
+                // Linked operations produce two CQEs. Track both records so the
+                // later timeout-cancellation CQE is not mistaken for an unknown
+                // completion after the primary operation has resumed.
                 operations_.emplace(primary_user_data, primary_operation);
                 operations_.emplace(linked_user_data, linked_operation);
             }
@@ -481,6 +531,8 @@ namespace rpc::io_uring::detail
 
             if (operation->completed.load(std::memory_order_acquire))
             {
+                // Completion won the race with waiter registration. The caller
+                // should not suspend; it will observe the completed flag.
                 return false;
             }
 
@@ -502,6 +554,9 @@ namespace rpc::io_uring::detail
                 return;
             }
 
+            // Build a handoff list for controller::resume_completed_operations().
+            // The actual resume happens after the engine lock is released, so a
+            // resumed coroutine can submit or wait for more io_uring work.
             operation->next_completed = std::move(completed_operations_);
             completed_operations_ = operation;
         }
@@ -538,6 +593,9 @@ namespace rpc::io_uring::detail
                 {
                     auto operation = op->second;
                     operations_.erase(op);
+                    // From this point onward the operation record is the source
+                    // of truth. Do not read the shared CQE again after advancing
+                    // local state.
                     operation->cqe_result = cqe.res;
                     operation->cqe_flags = cqe.flags;
                     operation->error_code = cqe.res >= 0 ? rpc::error::OK() : rpc::error::NATIVE_IO_ERROR();

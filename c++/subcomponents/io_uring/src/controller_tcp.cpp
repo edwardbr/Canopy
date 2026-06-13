@@ -79,6 +79,22 @@ namespace rpc::io_uring
 #endif
     } // namespace
 
+    // TCP data movement in the direct controller
+    // ------------------------------------------
+    //
+    // Socket creation, bind, listen, accept, connect, send and receive all use
+    // SQEs written by controller_submission.cpp. The TCP-specific code here is
+    // mostly responsible for choosing the right kernel-visible pointers:
+    //
+    //     bind/connect: sockaddr      -> staging buffer -> SQE.addr
+    //     setsockopt:   int option    -> staging buffer -> SQE.optval
+    //     send:         caller bytes  -> staging buffer -> SQE.addr
+    //     recv:         SQE.addr      -> staging buffer -> caller bytes
+    //
+    // Host-only builds may skip staging for transfer buffers when
+    // use_caller_buffers_for_transfers is enabled. SGX builds always stage
+    // because enclave-private addresses are not valid kernel addresses.
+
     // Creates a TCP socket directly into the io_uring fixed-file table. The
     // returned descriptor is a direct descriptor index, not a normal process
     // file descriptor visible inside the enclave.
@@ -113,6 +129,9 @@ namespace rpc::io_uring
             CO_RETURN descriptor_result{result.error_code, 0, result.native_result, result.cqe_flags};
         }
 
+        // TCP_NODELAY is best-effort only. In direct fixed-file mode the
+        // setsockopt URING_CMD also needs a staging buffer, so doing it here can
+        // block connection establishment under deliberately tiny SGX pools.
         CO_RETURN descriptor_result{
             rpc::error::OK(), static_cast<uint32_t>(result.native_result), result.native_result, result.cqe_flags};
     }
@@ -463,16 +482,6 @@ namespace rpc::io_uring
             CO_RETURN descriptor_result{result.error_code, 0, result.native_result, result.cqe_flags};
         }
 
-        auto no_delay_result = CO_AWAIT set_tcp_no_delay(static_cast<uint32_t>(result.native_result));
-        if (no_delay_result.error_code != rpc::error::OK())
-        {
-            RPC_WARNING(
-                "direct io_uring TCP_NODELAY failed for accepted descriptor={} error_code={} native_result={}",
-                result.native_result,
-                no_delay_result.error_code,
-                no_delay_result.native_result);
-        }
-
         CO_RETURN descriptor_result{
             rpc::error::OK(), static_cast<uint32_t>(result.native_result), result.native_result, result.cqe_flags};
     }
@@ -530,65 +539,71 @@ namespace rpc::io_uring
             CO_RETURN socket_result;
         }
 
-        auto address_buffer_result = CO_AWAIT make_ipv4_address_buffer(address, port);
-        if (address_buffer_result.error_code != rpc::error::OK())
-        {
-            CO_AWAIT close_direct(socket_result.descriptor);
-            CO_RETURN descriptor_result{address_buffer_result.error_code, 0, 0, 0};
-        }
-
-        struct context
-        {
-            uint32_t descriptor;
-            std::shared_ptr<staging_buffer> address_buffer;
-            std::shared_ptr<staging_buffer> timeout_buffer;
-            uint64_t address_size;
-        } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv4_sockaddr_size};
-
         operation_result connect_result;
-        if (timeout > std::chrono::milliseconds{0})
         {
-            auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
-            if (timeout_buffer_result.error_code != rpc::error::OK())
+            // Keep the staged sockaddr and optional timeout scoped to just the
+            // connect SQE. Once submit_linked_operation/submit_operation
+            // returns, the kernel has completed the operation and the buffers
+            // can be released before optional post-connect work.
+            auto address_buffer_result = CO_AWAIT make_ipv4_address_buffer(address, port);
+            if (address_buffer_result.error_code != rpc::error::OK())
             {
                 CO_AWAIT close_direct(socket_result.descriptor);
-                CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+                CO_RETURN descriptor_result{address_buffer_result.error_code, 0, 0, 0};
             }
 
-            auto timeout_spec = make_kernel_timespec(timeout);
-            std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
-            operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+            struct context
+            {
+                uint32_t descriptor;
+                std::shared_ptr<staging_buffer> address_buffer;
+                std::shared_ptr<staging_buffer> timeout_buffer;
+                uint64_t address_size;
+            } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv4_sockaddr_size};
 
-            connect_result = CO_AWAIT submit_linked_operation(
-                [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+            if (timeout > std::chrono::milliseconds{0})
+            {
+                auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
+                if (timeout_buffer_result.error_code != rpc::error::OK())
                 {
-                    auto& operation_context = *static_cast<context*>(data);
-                    connect_sqe.opcode = detail::io_uring_op_connect;
-                    connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
-                    connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
-                    connect_sqe.addr = operation_context.address_buffer->address();
-                    connect_sqe.off = operation_context.address_size;
+                    CO_AWAIT close_direct(socket_result.descriptor);
+                    CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+                }
 
-                    timeout_sqe.opcode = detail::io_uring_op_link_timeout;
-                    timeout_sqe.addr = operation_context.timeout_buffer->address();
-                    timeout_sqe.len = 1;
-                },
-                &operation_context,
-                operation_context.timeout_buffer);
-        }
-        else
-        {
-            connect_result = CO_AWAIT submit_operation(
-                [](detail::sqe_64& sqe, void* data)
-                {
-                    auto& operation_context = *static_cast<context*>(data);
-                    sqe.opcode = detail::io_uring_op_connect;
-                    sqe.flags = detail::io_uring_sqe_fixed_file;
-                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
-                    sqe.addr = operation_context.address_buffer->address();
-                    sqe.off = operation_context.address_size;
-                },
-                &operation_context);
+                auto timeout_spec = make_kernel_timespec(timeout);
+                std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
+                operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+
+                connect_result = CO_AWAIT submit_linked_operation(
+                    [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+                    {
+                        auto& operation_context = *static_cast<context*>(data);
+                        connect_sqe.opcode = detail::io_uring_op_connect;
+                        connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
+                        connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                        connect_sqe.addr = operation_context.address_buffer->address();
+                        connect_sqe.off = operation_context.address_size;
+
+                        timeout_sqe.opcode = detail::io_uring_op_link_timeout;
+                        timeout_sqe.addr = operation_context.timeout_buffer->address();
+                        timeout_sqe.len = 1;
+                    },
+                    &operation_context,
+                    operation_context.timeout_buffer);
+            }
+            else
+            {
+                connect_result = CO_AWAIT submit_operation(
+                    [](detail::sqe_64& sqe, void* data)
+                    {
+                        auto& operation_context = *static_cast<context*>(data);
+                        sqe.opcode = detail::io_uring_op_connect;
+                        sqe.flags = detail::io_uring_sqe_fixed_file;
+                        sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                        sqe.addr = operation_context.address_buffer->address();
+                        sqe.off = operation_context.address_size;
+                    },
+                    &operation_context);
+            }
         }
 
         if (connect_result.error_code != rpc::error::OK())
@@ -603,16 +618,9 @@ namespace rpc::io_uring
                 connect_result.error_code, 0, connect_result.native_result, connect_result.cqe_flags};
         }
 
-        auto no_delay_result = CO_AWAIT set_tcp_no_delay(socket_result.descriptor);
-        if (no_delay_result.error_code != rpc::error::OK())
-        {
-            RPC_WARNING(
-                "direct io_uring TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
-                socket_result.descriptor,
-                no_delay_result.error_code,
-                no_delay_result.native_result);
-        }
-
+        // The direct fixed-file path avoids optional TCP_NODELAY here because
+        // the staged setsockopt can starve real connect/send/receive work under
+        // constrained SGX buffer pools.
         CO_RETURN descriptor_result{
             rpc::error::OK(), socket_result.descriptor, connect_result.native_result, connect_result.cqe_flags};
     }
@@ -662,65 +670,70 @@ namespace rpc::io_uring
             CO_RETURN socket_result;
         }
 
-        auto address_buffer_result = CO_AWAIT make_ipv6_address_buffer(address, port);
-        if (address_buffer_result.error_code != rpc::error::OK())
-        {
-            CO_AWAIT close_direct(socket_result.descriptor);
-            CO_RETURN descriptor_result{address_buffer_result.error_code, 0, 0, 0};
-        }
-
-        struct context
-        {
-            uint32_t descriptor;
-            std::shared_ptr<staging_buffer> address_buffer;
-            std::shared_ptr<staging_buffer> timeout_buffer;
-            uint64_t address_size;
-        } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv6_sockaddr_size};
-
         operation_result connect_result;
-        if (timeout > std::chrono::milliseconds{0})
         {
-            auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
-            if (timeout_buffer_result.error_code != rpc::error::OK())
+            // See the IPv4 connect path above. The scoped block is intentional:
+            // staged address/timeout buffers are scarce in small SGX pools and
+            // should not be held after the connect CQE has been consumed.
+            auto address_buffer_result = CO_AWAIT make_ipv6_address_buffer(address, port);
+            if (address_buffer_result.error_code != rpc::error::OK())
             {
                 CO_AWAIT close_direct(socket_result.descriptor);
-                CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+                CO_RETURN descriptor_result{address_buffer_result.error_code, 0, 0, 0};
             }
 
-            auto timeout_spec = make_kernel_timespec(timeout);
-            std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
-            operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+            struct context
+            {
+                uint32_t descriptor;
+                std::shared_ptr<staging_buffer> address_buffer;
+                std::shared_ptr<staging_buffer> timeout_buffer;
+                uint64_t address_size;
+            } operation_context{socket_result.descriptor, std::move(address_buffer_result.buffer), {}, ipv6_sockaddr_size};
 
-            connect_result = CO_AWAIT submit_linked_operation(
-                [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+            if (timeout > std::chrono::milliseconds{0})
+            {
+                auto timeout_buffer_result = CO_AWAIT allocate_staging_buffer(sizeof(detail::kernel_timespec));
+                if (timeout_buffer_result.error_code != rpc::error::OK())
                 {
-                    auto& operation_context = *static_cast<context*>(data);
-                    connect_sqe.opcode = detail::io_uring_op_connect;
-                    connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
-                    connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
-                    connect_sqe.addr = operation_context.address_buffer->address();
-                    connect_sqe.off = operation_context.address_size;
+                    CO_AWAIT close_direct(socket_result.descriptor);
+                    CO_RETURN descriptor_result{timeout_buffer_result.error_code, 0, 0, 0};
+                }
 
-                    timeout_sqe.opcode = detail::io_uring_op_link_timeout;
-                    timeout_sqe.addr = operation_context.timeout_buffer->address();
-                    timeout_sqe.len = 1;
-                },
-                &operation_context,
-                operation_context.timeout_buffer);
-        }
-        else
-        {
-            connect_result = CO_AWAIT submit_operation(
-                [](detail::sqe_64& sqe, void* data)
-                {
-                    auto& operation_context = *static_cast<context*>(data);
-                    sqe.opcode = detail::io_uring_op_connect;
-                    sqe.flags = detail::io_uring_sqe_fixed_file;
-                    sqe.fd = static_cast<int32_t>(operation_context.descriptor);
-                    sqe.addr = operation_context.address_buffer->address();
-                    sqe.off = operation_context.address_size;
-                },
-                &operation_context);
+                auto timeout_spec = make_kernel_timespec(timeout);
+                std::memcpy(timeout_buffer_result.buffer->data(), &timeout_spec, sizeof(timeout_spec));
+                operation_context.timeout_buffer = std::move(timeout_buffer_result.buffer);
+
+                connect_result = CO_AWAIT submit_linked_operation(
+                    [](detail::sqe_64& connect_sqe, detail::sqe_64& timeout_sqe, void* data)
+                    {
+                        auto& operation_context = *static_cast<context*>(data);
+                        connect_sqe.opcode = detail::io_uring_op_connect;
+                        connect_sqe.flags = detail::io_uring_sqe_fixed_file | detail::io_uring_sqe_io_link;
+                        connect_sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                        connect_sqe.addr = operation_context.address_buffer->address();
+                        connect_sqe.off = operation_context.address_size;
+
+                        timeout_sqe.opcode = detail::io_uring_op_link_timeout;
+                        timeout_sqe.addr = operation_context.timeout_buffer->address();
+                        timeout_sqe.len = 1;
+                    },
+                    &operation_context,
+                    operation_context.timeout_buffer);
+            }
+            else
+            {
+                connect_result = CO_AWAIT submit_operation(
+                    [](detail::sqe_64& sqe, void* data)
+                    {
+                        auto& operation_context = *static_cast<context*>(data);
+                        sqe.opcode = detail::io_uring_op_connect;
+                        sqe.flags = detail::io_uring_sqe_fixed_file;
+                        sqe.fd = static_cast<int32_t>(operation_context.descriptor);
+                        sqe.addr = operation_context.address_buffer->address();
+                        sqe.off = operation_context.address_size;
+                    },
+                    &operation_context);
+            }
         }
 
         if (connect_result.error_code != rpc::error::OK())
@@ -735,16 +748,9 @@ namespace rpc::io_uring
                 connect_result.error_code, 0, connect_result.native_result, connect_result.cqe_flags};
         }
 
-        auto no_delay_result = CO_AWAIT set_tcp_no_delay(socket_result.descriptor);
-        if (no_delay_result.error_code != rpc::error::OK())
-        {
-            RPC_WARNING(
-                "direct io_uring TCP_NODELAY failed for connected descriptor={} error_code={} native_result={}",
-                socket_result.descriptor,
-                no_delay_result.error_code,
-                no_delay_result.native_result);
-        }
-
+        // The direct fixed-file path avoids optional TCP_NODELAY here because
+        // the staged setsockopt can starve real connect/send/receive work under
+        // constrained SGX buffer pools.
         CO_RETURN descriptor_result{
             rpc::error::OK(), socket_result.descriptor, connect_result.native_result, connect_result.cqe_flags};
     }
@@ -800,6 +806,12 @@ namespace rpc::io_uring
 #ifndef FOR_SGX
         if (options_.use_caller_buffers_for_transfers)
         {
+            // Host-only fast path:
+            //
+            //     caller bytes ----------------------> SQE.addr
+            //
+            // This is disabled for real SGX because the kernel cannot legally
+            // read from enclave-private memory.
             const auto transfer_size = clamped_transfer_size(buffer.size());
             auto transfer_buffer = buffer.subspan(0, transfer_size);
 
@@ -843,6 +855,12 @@ namespace rpc::io_uring
             uint32_t msg_flags;
         } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
+        // Staged send:
+        //
+        //     caller bytes ----memcpy----> staging slot ----SQE.addr----> kernel
+        //
+        // The staging_buffer shared_ptr in operation_context keeps the slot
+        // alive until submit_operation has observed the send CQE.
         std::memcpy(operation_context.buffer->data(), buffer.data(), operation_context.buffer->size());
         auto result = CO_AWAIT submit_operation(
             [](detail::sqe_64& sqe, void* data)
@@ -924,6 +942,12 @@ namespace rpc::io_uring
 #ifndef FOR_SGX
         if (options_.use_caller_buffers_for_transfers)
         {
+            // Host-only fast path:
+            //
+            //     kernel ----SQE.addr----> caller buffer
+            //
+            // Real SGX uses the staging path below so the kernel writes only
+            // into host-visible memory.
             const auto transfer_size = clamped_transfer_size(buffer.size());
             auto transfer_buffer = buffer.subspan(0, transfer_size);
 
@@ -967,6 +991,12 @@ namespace rpc::io_uring
             uint32_t msg_flags;
         } operation_context{descriptor, std::move(buffer_result.buffer), msg_flags};
 
+        // Staged receive:
+        //
+        //     kernel ----SQE.addr----> staging slot ----memcpy----> caller bytes
+        //
+        // Copy-back happens only after the CQE reports a successful positive
+        // byte count.
         auto result = CO_AWAIT submit_operation(
             [](detail::sqe_64& sqe, void* data)
             {
@@ -1109,6 +1139,14 @@ namespace rpc::io_uring
             CO_RETURN transfer_result{buffer_pair_result.error_code, 0, 0, 0};
         }
 
+        // Timed receive uses two SQEs and two kernel-visible pointers:
+        //
+        //     RECV SQE.addr  --------> staging data buffer
+        //     TIMEOUT SQE.addr -----> staging timespec buffer
+        //
+        // The pair allocation reserves both slots together. That prevents a
+        // tiny pool from deadlocking with one coroutine holding a data buffer
+        // while another holds the only timeout buffer.
         auto timeout_spec = make_kernel_timespec(timeout);
         std::memcpy(buffer_pair_result.second_buffer->data(), &timeout_spec, sizeof(timeout_spec));
 
