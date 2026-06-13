@@ -20,7 +20,6 @@
 // Suppress unused function warnings from llama.cpp headers
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
-#include <chat.h>
 
 #define FILE int
 

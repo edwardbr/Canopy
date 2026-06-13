@@ -23,7 +23,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #include <common.h>
-#include <chat.h>
+#include "llama_chat_include.h"
 
 #define FILE int
 

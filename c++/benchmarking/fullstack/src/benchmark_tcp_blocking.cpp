@@ -282,8 +282,8 @@ namespace comprehensive::v1
         bool wrap_websocket(benchmark_stream_pair& pair)
         {
             pair.server = std::make_shared<streaming::websocket::stream>(pair.server);
-            pair.client
-                = std::make_shared<streaming::websocket::stream>(pair.client, streaming::websocket::stream_role::client);
+            pair.client = std::make_shared<streaming::websocket::stream>(
+                pair.client, rpc::websocket_stream::endpoint_role::client);
             return true;
         }
 #endif
