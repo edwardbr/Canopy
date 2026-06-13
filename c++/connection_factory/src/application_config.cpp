@@ -25,7 +25,13 @@
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-#  include <streaming/secure_stream.h>
+#  ifdef CANOPY_CONNECTION_FACTORY_HAS_OPENSSL_TLS_CONFIG
+#    include <openssl_tls_stream/openssl_tls_stream_config.h>
+#    include <openssl_tls_stream/openssl_tls_stream_config_schema.h>
+#  elif defined(CANOPY_CONNECTION_FACTORY_HAS_MBEDTLS_CONFIG)
+#    include <mbedtls_stream/mbedtls_stream_config.h>
+#    include <mbedtls_stream/mbedtls_stream_config_schema.h>
+#  endif
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
@@ -118,20 +124,14 @@ namespace rpc::connection_factory
         }
 #endif
 
+#if defined(CANOPY_CONNECTION_FACTORY_HAS_TLS) && defined(CANOPY_CONNECTION_FACTORY_HAS_OPENSSL_TLS_CONFIG)
+        namespace tls_config = rpc::openssl_tls_stream;
+#elif defined(CANOPY_CONNECTION_FACTORY_HAS_TLS) && defined(CANOPY_CONNECTION_FACTORY_HAS_MBEDTLS_CONFIG)
+        namespace tls_config = rpc::mbedtls_stream;
+#endif
+
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-        [[nodiscard]] auto secure_peer_verification(tls_peer_verification value) -> ::streaming::secure::peer_verification
-        {
-            switch (value)
-            {
-            case tls_peer_verification::optional:
-                return ::streaming::secure::peer_verification::optional;
-            case tls_peer_verification::required:
-                return ::streaming::secure::peer_verification::required;
-            case tls_peer_verification::none:
-            default:
-                return ::streaming::secure::peer_verification::none;
-            }
-        }
+        using tls_stream_settings = tls_config::stream_settings;
 
         [[nodiscard]] auto configured_pem_or_file(
             const std::filesystem::path& base_directory,
@@ -145,61 +145,61 @@ namespace rpc::connection_factory
             return {};
         }
 
-        [[nodiscard]] auto make_tls_client_context(
+        void resolve_pem_file(
             const std::filesystem::path& base_directory,
-            const tls_runtime_settings& settings) -> std::shared_ptr<::streaming::secure::client_context>
+            std::string& pem,
+            std::string& file,
+            bool& changed)
         {
-            ::streaming::secure::client_context_options options;
-            options.verify_peer = settings.client_verify_peer;
+            if (file.empty())
+                return;
 
-            auto trust_anchor = configured_pem_or_file(
-                base_directory, settings.client_trust_anchor_pem, settings.client_trust_anchor_file);
-            auto context = trust_anchor.empty()
-                               ? std::make_shared<::streaming::secure::client_context>(options)
-                               : std::make_shared<::streaming::secure::client_context>(std::move(trust_anchor), options);
-            if (!context->is_valid())
-                throw runtime_config_error("failed to initialise TLS client context");
-            return context;
+            if (pem.empty())
+                pem = configured_pem_or_file(base_directory, pem, file);
+            file.clear();
+            changed = true;
         }
 
-        [[nodiscard]] auto make_tls_server_context(
+        void resolve_tls_layer_files(
             const std::filesystem::path& base_directory,
-            const tls_runtime_settings& settings) -> std::shared_ptr<::streaming::secure::context>
+            const std::string& connection_name,
+            rpc::stream_layers::stream_layer_settings& layer)
         {
-            const auto has_inline_credentials
-                = !settings.server_certificate_pem.empty() || !settings.server_private_key_pem.empty();
-            const auto has_file_credentials
-                = !settings.server_certificate_file.empty() || !settings.server_private_key_file.empty();
-            if (!has_inline_credentials && !has_file_credentials)
-                return {};
+            if (layer.type != "tls")
+                return;
 
-            ::streaming::secure::server_context_options options;
-            options.verify_peer = secure_peer_verification(settings.server_peer_verification);
+            auto materialised = materialise_settings<tls_stream_settings>(detail::settings_object(layer));
+            if (materialised.error_code != rpc::error::OK())
+                throw runtime_config_error("invalid tls settings for connection " + connection_name);
 
-            const auto has_trust_anchor
-                = !settings.server_trust_anchor_pem.empty() || !settings.server_trust_anchor_file.empty();
-            if (!has_inline_credentials && !has_trust_anchor)
+            auto& settings = materialised.settings;
+            bool changed = false;
+            resolve_pem_file(base_directory, settings.client.trust_anchor, settings.client.trust_anchor_file, changed);
+
+            if (settings.server.credentials)
             {
-                auto context = std::make_shared<::streaming::secure::context>(
-                    resolve_path(base_directory, settings.server_certificate_file).string(),
-                    resolve_path(base_directory, settings.server_private_key_file).string(),
-                    options);
-                if (!context->is_valid())
-                    throw runtime_config_error("failed to initialise TLS server context");
-                return context;
+                auto& credentials = settings.server.credentials.value();
+                resolve_pem_file(base_directory, credentials.certificate, credentials.certificate_file, changed);
+                resolve_pem_file(base_directory, credentials.private_key, credentials.private_key_file, changed);
+                resolve_pem_file(base_directory, credentials.trust_anchor, credentials.trust_anchor_file, changed);
             }
 
-            ::streaming::secure::pem_credentials credentials;
-            credentials.certificate = configured_pem_or_file(
-                base_directory, settings.server_certificate_pem, settings.server_certificate_file);
-            credentials.private_key = configured_pem_or_file(
-                base_directory, settings.server_private_key_pem, settings.server_private_key_file);
-            credentials.trust_anchor = configured_pem_or_file(
-                base_directory, settings.server_trust_anchor_pem, settings.server_trust_anchor_file);
-            auto context = std::make_shared<::streaming::secure::context>(credentials, options);
-            if (!context->is_valid())
-                throw runtime_config_error("failed to initialise TLS server context");
-            return context;
+            if (changed)
+            {
+                using json::v1::convert::to_json_object;
+                layer.settings = to_json_object(settings);
+            }
+        }
+
+        void resolve_tls_layer_files(
+            topology_settings& settings,
+            const std::filesystem::path& base_directory)
+        {
+            for (auto& connection : settings.connections)
+            {
+                for (auto& layer : connection.connection.stream_layers)
+                    resolve_tls_layer_files(base_directory, connection.name, layer);
+            }
         }
 #endif
 
@@ -292,11 +292,6 @@ namespace rpc::connection_factory
         std::unordered_map<std::string, rpc::spsc_queue::queue_pair> spsc_queues;
 #endif
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-        std::shared_ptr<::streaming::secure::client_context> tls_client_context;
-        std::shared_ptr<::streaming::secure::context> tls_server_context;
-#endif
-
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION
         std::unordered_map<std::string, std::shared_ptr<canopy::security::attestation::attestation_service>> attestation_services;
 #endif
@@ -328,15 +323,9 @@ namespace rpc::connection_factory
                 throw runtime_config_error("SPSC queue runtime settings were provided, but SPSC support is not built");
 #endif
 
-            if (settings.rpc_runtime.tls)
-            {
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-                tls_client_context = make_tls_client_context(base_directory, settings.rpc_runtime.tls.value());
-                tls_server_context = make_tls_server_context(base_directory, settings.rpc_runtime.tls.value());
-#else
-                throw runtime_config_error("TLS runtime settings were provided, but TLS support is not built");
+            resolve_tls_layer_files(settings, base_directory);
 #endif
-            }
 
             if (!settings.rpc_runtime.attestation_services.empty())
             {
@@ -376,13 +365,6 @@ namespace rpc::connection_factory
                 context.set_stream_scheduler(std::move(executor));
 #else
             (void)executor;
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-            if (tls_client_context)
-                context.set_tls_client_context(tls_client_context);
-            if (tls_server_context)
-                context.set_tls_server_context(tls_server_context);
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION

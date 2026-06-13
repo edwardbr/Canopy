@@ -80,49 +80,6 @@ namespace rpc
             acceptor = 1,
         };
 
-        enum tls_peer_verification : uint8_t
-        {
-            none = 0,
-            optional = 1,
-            required = 2,
-        };
-
-        // Host-side TLS resources used by stream-layer factories. Callers can
-        // provide PEM file paths or inline PEM blobs. Relative file paths are
-        // resolved by the application runtime loader relative to the JSON file.
-        struct tls_runtime_settings
-        {
-            [description="PEM encoded server certificate or certificate chain file."]
-            std::string server_certificate_file = "";
-
-            [description="PEM encoded server private key file."]
-            std::string server_private_key_file = "";
-
-            [description="Inline PEM encoded server certificate or certificate chain."]
-            std::string server_certificate_pem = "";
-
-            [description="Inline PEM encoded server private key."]
-            std::string server_private_key_pem = "";
-
-            [description="PEM trust-anchor file used by the server context when peer verification is enabled."]
-            std::string server_trust_anchor_file = "";
-
-            [description="Inline PEM trust anchor used by the server context when peer verification is enabled."]
-            std::string server_trust_anchor_pem = "";
-
-            [description="Require peer verification for client-side TLS contexts."]
-            bool client_verify_peer = false;
-
-            [description="PEM trust-anchor file used by client-side TLS contexts."]
-            std::string client_trust_anchor_file = "";
-
-            [description="Inline PEM trust anchor used by client-side TLS contexts."]
-            std::string client_trust_anchor_pem = "";
-
-            [description="Peer verification policy for server-side TLS contexts."]
-            tls_peer_verification server_peer_verification = tls_peer_verification::none;
-        };
-
         struct spsc_queue_runtime_settings
         {
             [description="Application-defined queue-pair name. Empty names configure the default unnamed pair."]
@@ -179,12 +136,13 @@ namespace rpc
             attestation_policy_settings policy = {};
         };
 
-        // Host-side resources shared by JSON-created connections. This is not
-        // enclave configuration. SGX transport/enclave settings remain under
-        // the SGX transport's own transport.settings object.
+        // Host-side resources shared by JSON-created connections. TLS material
+        // belongs to each tls stream layer's settings, not to this global
+        // runtime block. This is not enclave configuration. SGX
+        // transport/enclave settings remain under the SGX transport's own
+        // transport.settings object.
         struct rpc_runtime_settings
         {
-            rpc::optional<tls_runtime_settings> tls;
             std::vector<spsc_queue_runtime_settings> spsc_queues = {};
             std::vector<attestation_service_settings> attestation_services = {};
         };

@@ -24,7 +24,7 @@ namespace config_demo
             [description="Named acceptor connection used by paired stream RPC demos. Leave empty for native connector-only transports."]
             std::string server_connection = "server";
 
-            [description="Host-side RPC resources that the connection factory can place into connection contexts."]
+            [description="Host-side RPC resources that the connection factory can place into connection contexts. TLS material belongs to each tls stream layer."]
             rpc::connection_factory::rpc_runtime_settings rpc_runtime = {};
 
             [description="Named connector and acceptor definitions that the application looks up and passes to the connection factory."]

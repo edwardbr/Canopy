@@ -5,12 +5,6 @@
   "client_connection": "client",
   "server_connection": "server",
   "rpc_runtime": {
-    "tls": {
-      "server_certificate_file": "../certs/server.crt",
-      "server_private_key_file": "../certs/server.key",
-      "client_verify_peer": false,
-      "server_peer_verification": "none"
-    },
     "attestation_services": [
       {
         "name": "server_attestation",
@@ -69,7 +63,19 @@
           { "type": "tcp_coroutine", "settings": { "host": "127.0.0.1", "port": 26072, "ipv6": false, "connect_timeout": 5000 } },
           { "type": "spsc_wrapping", "settings": { "name": "server_spsc_wrapper" } },
           { "type": "compression", "settings": { "algorithm": "zstd", "level": 3, "send_buffer_bytes": 16384, "receive_buffer_bytes": 16384, "max_expansion_ratio": 32 } },
-          { "type": "tls", "settings": { "client": { "verify_peer": false, "trust_anchor": "" }, "server": { "verify_peer": "none" } } },
+          {
+            "type": "tls",
+            "settings": {
+              "client": { "verify_peer": false, "trust_anchor": "" },
+              "server": {
+                "verify_peer": "none",
+                "credentials": {
+                  "certificate_file": "../certs/server.crt",
+                  "private_key_file": "../certs/server.key"
+                }
+              }
+            }
+          },
           { "type": "websocket", "settings": { "keep_alive": { "enabled": false, "interval_ms": 30000, "timeout_ms": 10000 }, "max_message_bytes": 1048576, "max_frame_payload_bytes": 1048576, "max_decoded_messages": 16 } },
           { "type": "attestation", "settings": { "transcript_id": 1, "handshake_timeout_ms": 5000, "service_name": "server_attestation" } }
         ]
@@ -96,7 +102,19 @@
           { "type": "tcp_coroutine", "settings": { "host": "127.0.0.1", "port": 26072, "ipv6": false, "connect_timeout": 5000 } },
           { "type": "spsc_wrapping", "settings": { "name": "client_spsc_wrapper" } },
           { "type": "compression", "settings": { "algorithm": "zstd", "level": 3, "send_buffer_bytes": 16384, "receive_buffer_bytes": 16384, "max_expansion_ratio": 32 } },
-          { "type": "tls", "settings": { "client": { "verify_peer": false, "trust_anchor": "" }, "server": { "verify_peer": "none" } } },
+          {
+            "type": "tls",
+            "settings": {
+              "client": { "verify_peer": false, "trust_anchor": "" },
+              "server": {
+                "verify_peer": "none",
+                "credentials": {
+                  "certificate_file": "../certs/server.crt",
+                  "private_key_file": "../certs/server.key"
+                }
+              }
+            }
+          },
           { "type": "websocket", "settings": { "keep_alive": { "enabled": false, "interval_ms": 30000, "timeout_ms": 10000 }, "max_message_bytes": 1048576, "max_frame_payload_bytes": 1048576, "max_decoded_messages": 16 } },
           { "type": "attestation", "settings": { "transcript_id": 1, "handshake_timeout_ms": 5000, "service_name": "client_attestation" } }
         ]

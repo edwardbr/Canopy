@@ -329,11 +329,6 @@ namespace rpc::connection_factory
         {
             ::streaming::layer_factory::layer_context result;
 
-#if defined(CANOPY_CONNECTION_FACTORY_HAS_TLS) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS)
-            result.tls_client_context = dependency_from_state<::streaming::secure::client_context>(state);
-            result.tls_server_context = dependency_from_state<::streaming::secure::context>(state);
-#endif
-
 #if defined(CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING)
             if (layer_type == "spsc_wrapping" || layer_type == "spsc_wrapper")
             {
@@ -550,18 +545,6 @@ namespace rpc::connection_factory
     void context::set_spsc_queues(rpc::spsc_queue::queue_pair queues)
     {
         set_dependency_value(std::move(queues));
-    }
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-    void context::set_tls_client_context(std::shared_ptr<::streaming::secure::client_context> tls_context)
-    {
-        set_dependency(std::move(tls_context));
-    }
-
-    void context::set_tls_server_context(std::shared_ptr<::streaming::secure::context> tls_context)
-    {
-        set_dependency(std::move(tls_context));
     }
 #endif
 

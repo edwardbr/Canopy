@@ -17,18 +17,29 @@ namespace rpc
         };
 
         // PEM material used when a factory constructs an mbedTLS server or
-        // client context from configuration. Empty fields mean the caller
-        // must supply the corresponding context object out of band.
+        // client context from configuration. Inline PEM fields are consumed
+        // directly by the stream-layer factory. The *_file fields are resolved
+        // by higher-level application configuration loaders that know the
+        // configuration file's base directory.
         struct pem_credentials
         {
             [description="PEM encoded leaf certificate or certificate chain."]
-            std::string certificate;
+            std::string certificate = "";
+
+            [description="PEM encoded leaf certificate or certificate chain file, resolved by application configuration loaders before stream construction."]
+            std::string certificate_file = "";
 
             [description="PEM encoded private key matching the certificate."]
-            std::string private_key;
+            std::string private_key = "";
+
+            [description="PEM encoded private key file, resolved by application configuration loaders before stream construction."]
+            std::string private_key_file = "";
 
             [description="PEM encoded trust anchor used when peer verification is enabled."]
-            std::string trust_anchor;
+            std::string trust_anchor = "";
+
+            [description="PEM encoded trust-anchor file, resolved by application configuration loaders before stream construction."]
+            std::string trust_anchor_file = "";
         };
 
         struct server_context_settings
@@ -46,12 +57,15 @@ namespace rpc
             bool verify_peer = false;
 
             [description="Optional PEM trust anchor used by the client context when verify_peer is true."]
-            std::string trust_anchor;
+            std::string trust_anchor = "";
+
+            [description="Optional PEM trust-anchor file resolved by application configuration loaders before stream construction."]
+            std::string trust_anchor_file = "";
         };
 
-        // Stream-layer settings. The live stream object still receives a
-        // concrete context object; this IDL describes the JSON shape a
-        // factory can materialise before creating that context.
+        // Stream-layer settings. Each TLS layer owns its own client/server
+        // context material, so layered topologies can use different identities
+        // or trust anchors for different links.
         struct stream_settings
         {
             [description="Client-side context settings used when connecting through an mbedTLS stream layer."]

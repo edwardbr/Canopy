@@ -212,8 +212,7 @@ namespace streaming::layer_factory
         auto apply_tls_layer(
             std::shared_ptr<::streaming::stream> stream,
             const rpc::stream_layers::stream_layer_settings& layer,
-            layer_direction direction,
-            const layer_context& context) -> CORO_TASK(stream_layer_result)
+            layer_direction direction) -> CORO_TASK(stream_layer_result)
         {
             auto settings = materialise_layer_settings<tls_stream_settings>(layer_settings_object(layer));
             if (!settings)
@@ -222,9 +221,7 @@ namespace streaming::layer_factory
             std::shared_ptr<::streaming::secure::stream> tls_stream;
             if (direction == layer_direction::accept)
             {
-                auto server_context = context.tls_server_context;
-                if (!server_context)
-                    server_context = make_tls_server_context(*settings);
+                auto server_context = make_tls_server_context(*settings);
                 if (!server_context)
                     CO_RETURN stream_layer_result{rpc::error::INVALID_DATA(), {}};
                 tls_stream = std::make_shared<::streaming::secure::stream>(std::move(stream), std::move(server_context));
@@ -233,9 +230,7 @@ namespace streaming::layer_factory
             }
             else
             {
-                auto client_context = context.tls_client_context;
-                if (!client_context)
-                    client_context = make_tls_client_context(*settings);
+                auto client_context = make_tls_client_context(*settings);
                 tls_stream = std::make_shared<::streaming::secure::stream>(std::move(stream), std::move(client_context));
                 if (!CO_AWAIT tls_stream->client_handshake())
                     CO_RETURN stream_layer_result{rpc::error::TRANSPORT_ERROR(), {}};
@@ -392,7 +387,7 @@ namespace streaming::layer_factory
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
         if (layer.type == "tls")
-            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction, context);
+            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction);
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING

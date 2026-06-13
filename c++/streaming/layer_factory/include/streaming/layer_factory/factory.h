@@ -15,10 +15,6 @@
 #include <streaming/stream.h>
 #include <streaming/stream_layers.h>
 
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
-#  include <streaming/secure_stream.h>
-#endif
-
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION
 #  include <security/attestation/service.h>
 #endif
@@ -49,11 +45,6 @@ namespace streaming::layer_factory
 
     struct layer_context
     {
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
-        std::shared_ptr<::streaming::secure::client_context> tls_client_context;
-        std::shared_ptr<::streaming::secure::context> tls_server_context;
-#endif
-
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_WRAPPING
         rpc::executor_ptr stream_scheduler;
 #endif

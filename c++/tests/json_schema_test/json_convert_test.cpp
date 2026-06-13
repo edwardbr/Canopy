@@ -1002,21 +1002,35 @@ namespace
         TlsLayerSettingsUseOpenSslGeneratedConfig)
     {
         const auto valid = json::v1::parse(R"json({
-            "client": {"verify_peer": true},
-            "server": {"verify_peer": "required"}
+            "client": {"verify_peer": true, "trust_anchor_file": "client-ca.pem"},
+            "server": {
+                "verify_peer": "required",
+                "credentials": {
+                    "certificate_file": "server.crt",
+                    "private_key_file": "server.key",
+                    "trust_anchor_file": "server-ca.pem"
+                }
+            }
         })json");
 
         const auto materialised
             = rpc::connection_factory::materialise_settings<rpc::openssl_tls_stream::stream_settings>(valid);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
         EXPECT_TRUE(materialised.settings.client.verify_peer);
+        EXPECT_EQ(materialised.settings.client.trust_anchor_file, "client-ca.pem");
         EXPECT_EQ(materialised.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::required);
+        ASSERT_TRUE(materialised.settings.server.credentials.has_value());
+        EXPECT_EQ(materialised.settings.server.credentials.value().certificate_file, "server.crt");
+        EXPECT_EQ(materialised.settings.server.credentials.value().private_key_file, "server.key");
+        EXPECT_EQ(materialised.settings.server.credentials.value().trust_anchor_file, "server-ca.pem");
 
         const auto sparse = rpc::connection_factory::materialise_settings<rpc::openssl_tls_stream::stream_settings>(
             json::v1::parse(R"json({})json"));
         ASSERT_EQ(sparse.error_code, rpc::error::OK());
         EXPECT_FALSE(sparse.settings.client.verify_peer);
+        EXPECT_TRUE(sparse.settings.client.trust_anchor_file.empty());
         EXPECT_EQ(sparse.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::none);
+        EXPECT_FALSE(sparse.settings.server.credentials.has_value());
     }
 #endif
 

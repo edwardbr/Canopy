@@ -15,10 +15,6 @@
 
 #include <connection_factory/handles.h>
 
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-#  include <streaming/secure_stream.h>
-#endif
-
 namespace streaming
 {
     class stream;
@@ -125,11 +121,6 @@ namespace rpc::connection_factory
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC
         void set_spsc_queues(rpc::spsc_queue::queue_pair queues);
-#endif
-
-#ifdef CANOPY_CONNECTION_FACTORY_HAS_TLS
-        void set_tls_client_context(std::shared_ptr<::streaming::secure::client_context> tls_context);
-        void set_tls_server_context(std::shared_ptr<::streaming::secure::context> tls_context);
 #endif
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_SPSC_WRAPPING

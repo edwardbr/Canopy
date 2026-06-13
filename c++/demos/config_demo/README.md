@@ -8,13 +8,16 @@ The JSON file uses the generated `config_demo::v1::demo_settings` schema:
 - `iterations`, `scheduler_threads`, `client_connection`, and
   `server_connection`: executable-owned demo settings.
 - `rpc_runtime`: host-side resources the connection factory can place into
-  connection contexts, including TLS contexts, SPSC queue pairs, and generic
-  `null_backend`, `fake_backend`, or `sgx_sim_backend` attestation services.
+  connection contexts, including SPSC queue pairs and generic `null_backend`,
+  `fake_backend`, or `sgx_sim_backend` attestation services.
 - `connections`: named connector or acceptor definitions. Each item owns the
   generated transport and stream-layer settings for that connection.
 
 `rpc_runtime` is host-side RPC runtime setup. SGX transport and enclave-specific
 settings remain inside the SGX transport's own `transport.settings` object.
+TLS identities, trust anchors, and certificate/key file references belong to
+the `tls` object in each connection's `stream_layers[].settings`, so different
+links can use different TLS material.
 `config_demo` parses its own generated IDL type from JSON, then passes only
 `rpc_runtime` and `connections` into the connection factory runtime.
 
