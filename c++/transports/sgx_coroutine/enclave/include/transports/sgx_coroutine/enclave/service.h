@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace streaming
 {
@@ -27,12 +28,12 @@ namespace rpc
     {
     public:
         enclave_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id,
             rpc::destination_zone parent_zone_id,
             const rpc::executor_ptr& executor)
             : rpc::child_service(
-                  name,
+                  std::move(name),
                   zone_id,
                   parent_zone_id,
                   executor)

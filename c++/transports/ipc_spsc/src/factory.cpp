@@ -61,10 +61,6 @@ namespace rpc::ipc_spsc
         if (!resolved_service)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto transport_name = rpc::transport_creation::configured_name(settings.name, "ipc_spsc");
-        auto proxy_name = rpc::transport_creation::configured_name(
-            settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "ipc_spsc_child"));
-
         if (!settings.use_sidecar)
         {
             if (settings.peer_to_peer_shared_memory_file.empty())
@@ -74,7 +70,7 @@ namespace rpc::ipc_spsc
             // existing rendezvous file by default, or create and initialise it
             // when explicitly requested by the caller.
             auto transport = rpc::ipc_spsc::make_peer_client(
-                transport_name,
+                rpc::transport_creation::configured_name(settings.name, "ipc_spsc"),
                 resolved_service,
                 shared_memory_file_options{.path = settings.peer_to_peer_shared_memory_file,
                     .create = settings.create_peer_to_peer_shared_memory_file,
@@ -82,7 +78,11 @@ namespace rpc::ipc_spsc
             if (!transport)
                 return {rpc::error::TRANSPORT_ERROR(), {}, {}, {}};
 
-            return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+            return {rpc::error::OK(),
+                std::move(resolved_service),
+                std::move(transport),
+                rpc::transport_creation::configured_name(
+                    settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "ipc_spsc_child"))};
         }
 
         auto executable_path = sidecar_executable_for_settings(settings);
@@ -98,8 +98,13 @@ namespace rpc::ipc_spsc
         options.child_scheduler_thread_count = settings.scheduler_thread_count;
         options.kill_child_on_parent_death = settings.kill_child_on_parent_death;
 
-        auto transport = rpc::ipc_spsc::make_client(transport_name, resolved_service, std::move(options));
-        return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+        auto transport = rpc::ipc_spsc::make_client(
+            rpc::transport_creation::configured_name(settings.name, "ipc_spsc"), resolved_service, std::move(options));
+        return {rpc::error::OK(),
+            std::move(resolved_service),
+            std::move(transport),
+            rpc::transport_creation::configured_name(
+                settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "ipc_spsc_child"))};
     }
 } // namespace rpc::ipc_spsc
 

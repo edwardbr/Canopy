@@ -25,18 +25,18 @@ namespace rpc::sgx_blocking_transport
         if (!resolved_service)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto transport_name = rpc::transport_creation::configured_name(settings.name, "sgx_blocking_transport");
-        auto proxy_name = rpc::transport_creation::configured_name(
-            settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "sgx_blocking_child"));
-
         auto startup_error = rpc::sgx_blocking_transport::enclave_transport::validate_startup_settings(settings);
         if (startup_error != rpc::error::OK())
             return {startup_error, {}, {}, {}};
 
         auto transport = std::make_shared<rpc::sgx_blocking_transport::enclave_transport>(
-            transport_name, resolved_service, settings);
+            rpc::transport_creation::configured_name(settings.name, "sgx_blocking_transport"), resolved_service, settings);
 
-        return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+        return {rpc::error::OK(),
+            std::move(resolved_service),
+            std::move(transport),
+            rpc::transport_creation::configured_name(
+                settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "sgx_blocking_child"))};
     }
 } // namespace rpc::sgx_blocking_transport
 

@@ -95,7 +95,9 @@ namespace rpc::connection_factory
                 CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
             CO_RETURN CO_AWAIT connect_context.service->template connect_to_zone<In, Out>(
-                connect_context.service_proxy_name.c_str(), std::move(connect_context.transport), std::move(input_interface));
+                std::move(connect_context.service_proxy_name),
+                std::move(connect_context.transport),
+                std::move(input_interface));
         }
 #endif
 
@@ -147,7 +149,9 @@ namespace rpc::connection_factory
                 CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
             CO_RETURN CO_AWAIT connect_context.service->template connect_to_zone<In, Out>(
-                connect_context.service_proxy_name.c_str(), std::move(connect_context.transport), std::move(input_interface));
+                std::move(connect_context.service_proxy_name),
+                std::move(connect_context.transport),
+                std::move(input_interface));
         }
     } // namespace detail
 
@@ -191,7 +195,7 @@ namespace rpc::connection_factory
         local_transport->template set_child_entry_point<In, Out>(std::move(entry_point));
 
         CO_RETURN CO_AWAIT local.service->template connect_to_zone<In, Out>(
-            local.service_proxy_name.c_str(), std::move(local_transport), std::move(input_interface));
+            std::move(local.service_proxy_name), std::move(local_transport), std::move(input_interface));
     }
 #endif
 

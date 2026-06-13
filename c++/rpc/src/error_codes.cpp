@@ -2,6 +2,8 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+#include <string_view>
+
 #include <rpc/rpc.h>
 
 namespace rpc
@@ -189,7 +191,7 @@ namespace rpc
 
         int sanitise_public_control_status(
             int err,
-            const char* operation)
+            std::string_view operation)
         {
             (void)operation;
             if (is_public_control_status(err))
@@ -212,7 +214,7 @@ namespace rpc
             state().offset_val_is_negative = val;
         }
 
-        const char* to_string(int err)
+        std::string_view to_string(int err)
         {
             if (err == OK())
             {

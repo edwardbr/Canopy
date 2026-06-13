@@ -21,7 +21,7 @@
  * int err = CO_AWAIT proxy->some_method();
  * if (err != rpc::error::OK()) {
  *     // Handle error
- *     const char* msg = rpc::error::to_string(err);
+ *     std::string_view msg = rpc::error::to_string(err);
  * }
  * @endcode
  *
@@ -29,6 +29,8 @@
  */
 
 #pragma once
+
+#include <string_view>
 
 namespace rpc
 {
@@ -74,11 +76,11 @@ namespace rpc
         bool is_public_control_status(int err); // OK or a built-in RPC error, never an application-domain result
         int sanitise_public_control_status(
             int err,
-            const char* operation);
+            std::string_view operation);
 
         void set_OK_val(int val);
         void set_offset_val(int val);
         void set_offset_val_is_negative(bool val);
-        const char* to_string(int);
+        std::string_view to_string(int);
     };
 }

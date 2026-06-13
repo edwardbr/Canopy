@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include <rpc/rpc.h>
 #include <secure_coroutine_module/secure_coroutine_module.h>
@@ -30,6 +31,6 @@ namespace rpc::sgx_coroutine_transport::host
             CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
         CO_RETURN CO_AWAIT context.service->template connect_to_zone<rpc::v4::secure_coroutine_module::i_io_uring_control, Out>(
-            context.service_proxy_name.c_str(), std::move(context.transport), std::move(context.control));
+            std::move(context.service_proxy_name), std::move(context.transport), std::move(context.control));
     }
 } // namespace rpc::sgx_coroutine_transport::host

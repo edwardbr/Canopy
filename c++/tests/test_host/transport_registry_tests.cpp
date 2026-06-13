@@ -59,9 +59,9 @@ namespace
     {
         auto local_zone = rpc::zone{make_local_zone_address(1)};
 #ifdef CANOPY_BUILD_COROUTINE
-        return rpc::root_service::create(name.c_str(), local_zone, scheduler);
+        return rpc::root_service::create(name, local_zone, scheduler);
 #else
-        return rpc::root_service::create(name.c_str(), local_zone);
+        return rpc::root_service::create(name, local_zone);
 #endif
     }
 
@@ -70,21 +70,21 @@ namespace
     public:
 #ifdef CANOPY_BUILD_COROUTINE
         registry_test_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id,
             const std::shared_ptr<coro::scheduler>& scheduler)
             : rpc::root_service(
-                  name,
+                  std::move(name),
                   zone_id,
                   scheduler)
         {
         }
 #else
         registry_test_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id)
             : rpc::root_service(
-                  name,
+                  std::move(name),
                   zone_id)
         {
         }
@@ -101,21 +101,21 @@ namespace
     public:
 #ifdef CANOPY_BUILD_COROUTINE
         bind_failure_registry_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id,
             const std::shared_ptr<coro::scheduler>& scheduler)
             : rpc::root_service(
-                  name,
+                  std::move(name),
                   zone_id,
                   scheduler)
         {
         }
 #else
         bind_failure_registry_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id)
             : rpc::root_service(
-                  name,
+                  std::move(name),
                   zone_id)
         {
         }
@@ -144,9 +144,9 @@ namespace
     {
         auto local_zone = rpc::zone{make_local_zone_address(1)};
 #ifdef CANOPY_BUILD_COROUTINE
-        return std::make_shared<registry_test_service>(name.c_str(), local_zone, scheduler);
+        return std::make_shared<registry_test_service>(name, local_zone, scheduler);
 #else
-        return std::make_shared<registry_test_service>(name.c_str(), local_zone);
+        return std::make_shared<registry_test_service>(name, local_zone);
 #endif
     }
 
@@ -160,9 +160,9 @@ namespace
     {
         auto local_zone = rpc::zone{make_local_zone_address(1)};
 #ifdef CANOPY_BUILD_COROUTINE
-        return std::make_shared<bind_failure_registry_service>(name.c_str(), local_zone, scheduler);
+        return std::make_shared<bind_failure_registry_service>(name, local_zone, scheduler);
 #else
-        return std::make_shared<bind_failure_registry_service>(name.c_str(), local_zone);
+        return std::make_shared<bind_failure_registry_service>(name, local_zone);
 #endif
     }
 

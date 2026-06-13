@@ -14,6 +14,7 @@
 #  include <fcntl.h>
 #  include <new>
 #  include <random>
+#  include <string_view>
 #  include <sys/mman.h>
 #  include <sys/stat.h>
 #  include <utility>
@@ -56,9 +57,10 @@ namespace rpc::sgx_coroutine_transport::sidecar
         [[nodiscard]] const char* option_value(
             int argc,
             char** argv,
-            const char* name)
+            std::string_view name)
         {
-            const std::string expected = std::string("--") + name;
+            std::string expected = "--";
+            expected += name;
             for (int index = 1; index + 1 < argc; ++index)
             {
                 if (argv[index] && expected == argv[index])
@@ -70,9 +72,10 @@ namespace rpc::sgx_coroutine_transport::sidecar
         [[nodiscard]] bool option_present(
             int argc,
             char** argv,
-            const char* name)
+            std::string_view name)
         {
-            const std::string expected = std::string("--") + name;
+            std::string expected = "--";
+            expected += name;
             for (int index = 1; index < argc; ++index)
             {
                 if (argv[index] && expected == argv[index])

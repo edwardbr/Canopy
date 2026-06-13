@@ -25,13 +25,15 @@ namespace rpc::blocking_dll
         if (!resolved_service)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto transport_name = rpc::transport_creation::configured_name(settings.name, "blocking_dll");
-        auto proxy_name = rpc::transport_creation::configured_name(
-            settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "blocking_dll_child"));
-
-        auto transport
-            = std::make_shared<child_transport>(transport_name, resolved_service, settings.dynamic_library_path);
-        return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+        auto transport = std::make_shared<child_transport>(
+            rpc::transport_creation::configured_name(settings.name, "blocking_dll"),
+            resolved_service,
+            settings.dynamic_library_path);
+        return {rpc::error::OK(),
+            std::move(resolved_service),
+            std::move(transport),
+            rpc::transport_creation::configured_name(
+                settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "blocking_dll_child"))};
     }
 } // namespace rpc::blocking_dll
 

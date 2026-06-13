@@ -518,7 +518,7 @@ namespace rpc::sgx_coroutine_transport::host
     CORO_TASK(rpc::service_connect_result<Local>)
     connect_to_enclave_zone(
         const std::shared_ptr<rpc::service>& service,
-        const char* name,
+        std::string name,
         std::shared_ptr<rpc::transport> enclave_transport,
         rpc::shared_ptr<Remote> input_interface,
         rpc::io_uring::host_controller::options controller_options
@@ -564,6 +564,6 @@ namespace rpc::sgx_coroutine_transport::host
         }
 
         CO_RETURN CO_AWAIT service->template connect_to_zone<rpc::v4::secure_coroutine_module::i_io_uring_control, Local>(
-            name, std::move(enclave_transport), std::move(control));
+            std::move(name), std::move(enclave_transport), std::move(control));
     }
 }

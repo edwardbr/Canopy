@@ -12,18 +12,19 @@
 #include <cstdio>
 #include <limits>
 #include <algorithm>
+#include <utility>
 
 namespace rpc
 {
     service_proxy::service_proxy(
-        const std::string& name,
+        std::string name,
         const zone zone_id,
         destination_zone destination_zone_id,
         std::shared_ptr<service> service,
         const std::shared_ptr<transport>& transport,
         uint64_t version,
         encoding enc)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(zone_id)
         , destination_zone_id_(destination_zone_id)
         , service_(service)
@@ -34,13 +35,13 @@ namespace rpc
     }
 
     std::shared_ptr<service_proxy> service_proxy::create(
-        const std::string& name,
+        std::string name,
         std::shared_ptr<service> service,
         const std::shared_ptr<transport>& transport,
         destination_zone destination_zone_id)
     {
         auto ret = std::shared_ptr<service_proxy>(new service_proxy(
-            name,
+            std::move(name),
             service->get_zone_id(),
             destination_zone_id,
             service,
@@ -52,7 +53,7 @@ namespace rpc
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_creation(
-                {service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id()});
+                {service->get_name(), ret->get_name(), service->get_zone_id(), destination_zone_id, service->get_zone_id()});
         }
 #endif
         return ret;

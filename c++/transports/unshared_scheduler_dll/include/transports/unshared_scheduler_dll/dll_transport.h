@@ -124,7 +124,7 @@ namespace rpc::unshared_scheduler_dll
         auto pt = runtime->pending_transport;
 
         auto create_result = co_await rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-            pt->get_name().c_str(), pt, *settings, std::move(factory), runtime->scheduler);
+            pt->get_name(), pt, *settings, std::move(factory), runtime->scheduler);
 
         if (create_result.error_code != rpc::error::OK())
             co_return rpc::connect_result{create_result.error_code, {}};

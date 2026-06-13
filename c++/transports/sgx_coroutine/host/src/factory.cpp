@@ -25,18 +25,19 @@ namespace rpc::sgx_coroutine_transport::host
         if (!resolved_service)
             return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-        auto transport_name = rpc::transport_creation::configured_name(settings.name, "sgx_coroutine_transport");
-        auto proxy_name = rpc::transport_creation::configured_name(
-            settings.service_proxy_name, rpc::transport_creation::configured_name(settings.name, "sgx_coroutine_child"));
-
         auto startup_error = rpc::sgx_coroutine_transport::host::transport::validate_startup_settings(settings);
         if (startup_error != rpc::error::OK())
             return {startup_error, {}, {}, {}};
 
-        auto transport
-            = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(transport_name, resolved_service, settings);
+        auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
+            rpc::transport_creation::configured_name(settings.name, "sgx_coroutine_transport"), resolved_service, settings);
 
-        return {rpc::error::OK(), std::move(resolved_service), std::move(transport), std::move(proxy_name)};
+        return {rpc::error::OK(),
+            std::move(resolved_service),
+            std::move(transport),
+            rpc::transport_creation::configured_name(
+                settings.service_proxy_name,
+                rpc::transport_creation::configured_name(settings.name, "sgx_coroutine_child"))};
     }
 } // namespace rpc::sgx_coroutine_transport::host
 

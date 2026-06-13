@@ -28,6 +28,8 @@
 
 #include <atomic>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 
 // Forward declaration to avoid circular dependency
@@ -164,7 +166,7 @@ namespace rpc
         template<typename Params>
         bool resolve_payload_encoding_from_service(
             Params& params,
-            const char* operation);
+            std::string_view operation);
 
     protected:
         struct status_transition_result
@@ -228,13 +230,13 @@ namespace rpc
     public:
         ~transport() override;
 
-        std::string get_name() const { return name_; }
+        const std::string& get_name() const { return name_; }
 
         std::shared_ptr<service> get_service() const { return service_.lock(); }
         void set_service(std::shared_ptr<service> service);
 
         virtual std::shared_ptr<child_service> make_child_service(
-            const char* name,
+            std::string name,
             zone zone_id,
             destination_zone parent_zone_id,
             const rpc::executor_ptr& executor);

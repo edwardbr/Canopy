@@ -731,11 +731,11 @@ namespace
         static constexpr int positive_allocator_status = 41;
 
         positive_zone_allocator_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id,
             const std::shared_ptr<coro::scheduler>& scheduler)
             : rpc::root_service(
-                  name,
+                  std::move(name),
                   zone_id,
                   scheduler)
         {
@@ -1678,9 +1678,9 @@ namespace
         CORO_ASSERT_EQ(local_object.has_value(), true);
         CORO_ASSERT_EQ(destination_object.has_value(), true);
 
-        auto make_service = [&](const char* name)
+        auto make_service = [&](std::string name)
         {
-            auto service = std::make_shared<rpc::enclave_service>(name, local_zone, adjacent_zone, scheduler);
+            auto service = std::make_shared<rpc::enclave_service>(std::move(name), local_zone, adjacent_zone, scheduler);
             service->set_add_ref_attestation_required(true);
             return service;
         };

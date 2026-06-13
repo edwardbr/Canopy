@@ -179,8 +179,7 @@ namespace rpc::shared_scheduler_dll
         auto create_fn = reinterpret_cast<dll_create_fn>(resolve_symbol("canopy_shared_scheduler_dll_create"));
 
         dll_create_params create_params{};
-        std::string transport_name = get_name();
-        create_params.name = transport_name.c_str();
+        create_params.name = get_name().c_str();
         create_params.dll_zone = adjacent_zone_id;
         create_params.host_zone = get_zone_id();
         create_params.host_ctx = this;

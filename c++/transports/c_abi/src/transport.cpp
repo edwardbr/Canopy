@@ -1025,14 +1025,13 @@ namespace rpc::c_abi
         if (int load_err = load_library(); load_err != rpc::error::OK())
             CO_RETURN rpc::connect_result{load_err, {}};
 
-        std::string transport_name = get_name();
         borrowed_connection_settings borrowed_input_descr(input_descr);
         auto parent_zone_id = get_zone_id();
         auto parent_zone = borrow_zone(parent_zone_id);
         auto child_zone = borrow_zone(adjacent_zone_id);
 
         canopy_dll_init_params init_params{};
-        init_params.name = transport_name.c_str();
+        init_params.name = get_name().c_str();
         init_params.parent_zone = parent_zone;
         init_params.child_zone = child_zone;
         init_params.input_descr = &borrowed_input_descr.raw;

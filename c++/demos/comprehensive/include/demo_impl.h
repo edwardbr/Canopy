@@ -18,6 +18,7 @@
 #include <memory>
 #include <atomic>
 #include <functional>
+#include <utility>
 
 #include <comprehensive/comprehensive.h>
 #include <transports/local/transport.h>
@@ -339,17 +340,17 @@ namespace comprehensive
 
         public:
             demo_service_impl(
-                const char* name,
+                std::string name,
                 std::shared_ptr<rpc::service> service)
-                : name_(name)
+                : name_(std::move(name))
                 , this_service_(service)
             {
             }
 
             demo_service_impl(
-                const char* name,
+                std::string name,
                 const std::shared_ptr<rpc::child_service>& service)
-                : name_(name)
+                : name_(std::move(name))
                 , this_service_(service)
             {
             }
@@ -376,7 +377,6 @@ namespace comprehensive
                     CO_RETURN rpc::error::OBJECT_NOT_FOUND();
 
                 auto child_transport = std::make_shared<rpc::local::child_transport>("child", service);
-                auto zone_name = name_ + "_child_" + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
                 child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
                     [](const rpc::shared_ptr<i_demo_service>& parent,
                         const std::shared_ptr<rpc::child_service>& child_service_ptr)
@@ -384,11 +384,13 @@ namespace comprehensive
                     {
                         CO_RETURN rpc::service_connect_result<i_demo_service>{rpc::error::OK(),
                             rpc::shared_ptr<i_demo_service>(
-                                new demo_service_impl(child_service_ptr->get_name().c_str(), child_service_ptr))};
+                                new demo_service_impl(child_service_ptr->get_name(), child_service_ptr))};
                     });
 
                 auto connect_result = CO_AWAIT service->connect_to_zone<i_demo_service, i_demo_service>(
-                    zone_name.c_str(), child_transport, rpc::static_pointer_cast<i_demo_service>(shared_from_this()));
+                    name_ + "_child_" + std::to_string(child_transport->get_adjacent_zone_id().get_subnet()),
+                    child_transport,
+                    rpc::static_pointer_cast<i_demo_service>(shared_from_this()));
                 child_service_ptr = std::move(connect_result.output_interface);
                 auto ret = connect_result.error_code;
 
@@ -449,17 +451,17 @@ namespace comprehensive
         }
 
         inline rpc::shared_ptr<i_demo_service> create_demo_service(
-            const char* name,
+            std::string name,
             std::shared_ptr<rpc::service> service)
         {
-            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(name, service));
+            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(std::move(name), service));
         }
 
         inline rpc::shared_ptr<i_demo_service> create_demo_service(
-            const char* name,
+            std::string name,
             const std::shared_ptr<rpc::child_service>& service)
         {
-            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(name, service));
+            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(std::move(name), service));
         }
     }
 }

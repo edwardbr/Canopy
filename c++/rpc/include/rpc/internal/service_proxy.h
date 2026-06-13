@@ -61,7 +61,7 @@ namespace rpc
         encoding enc_;
 
         service_proxy(
-            const std::string& name,
+            std::string name,
             zone zone_id,
             destination_zone destination_zone_id,
             std::shared_ptr<service> service,
@@ -71,14 +71,14 @@ namespace rpc
 
     public:
         static std::shared_ptr<service_proxy> create(
-            const std::string& name,
+            std::string name,
             std::shared_ptr<service> service,
             const std::shared_ptr<transport>& transport,
             destination_zone destination_zone_id);
 
         virtual ~service_proxy();
 
-        std::string get_name() const { return name_; }
+        const std::string& get_name() const { return name_; }
 
         uint64_t get_remote_rpc_version() const { return version_.load(); }
         void update_remote_rpc_version(uint64_t version);

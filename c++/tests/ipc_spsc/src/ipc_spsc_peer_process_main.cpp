@@ -9,6 +9,7 @@
 #  include <chrono>
 #  include <memory>
 #  include <string>
+#  include <string_view>
 #  include <thread>
 
 #  include <common/tests.h>
@@ -26,9 +27,10 @@ namespace
     const char* option_value(
         int argc,
         char** argv,
-        const char* name)
+        std::string_view name)
     {
-        const std::string expected = std::string("--") + name;
+        std::string expected = "--";
+        expected += name;
         for (int index = 1; index + 1 < argc; ++index)
         {
             if (argv[index] && expected == argv[index])

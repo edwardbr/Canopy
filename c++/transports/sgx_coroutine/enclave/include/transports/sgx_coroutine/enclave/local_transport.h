@@ -58,7 +58,7 @@ namespace rpc::sgx_coroutine_transport::enclave
         }
 
         [[nodiscard]] std::shared_ptr<rpc::child_service> make_child_service(
-            const char* name,
+            std::string name,
             rpc::zone zone_id,
             rpc::destination_zone parent_zone_id,
             const rpc::executor_ptr& executor) override;
@@ -76,11 +76,11 @@ namespace rpc::sgx_coroutine_transport::enclave
     }
 
     inline std::shared_ptr<rpc::child_service> local_parent_transport::make_child_service(
-        const char* name,
+        std::string name,
         rpc::zone zone_id,
         rpc::destination_zone parent_zone_id,
         const rpc::executor_ptr& executor)
     {
-        return std::make_shared<rpc::enclave_service>(name, zone_id, parent_zone_id, executor);
+        return std::make_shared<rpc::enclave_service>(std::move(name), zone_id, parent_zone_id, executor);
     }
 }

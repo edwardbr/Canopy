@@ -163,8 +163,8 @@ namespace rpc::stream_transport
         }
 
         rpc::service_config config;
-        const auto name = service_name(settings, std::move(default_name));
-        auto created = rpc::root_service::create(name.c_str(), config, make_default_executor());
+        auto created
+            = rpc::root_service::create(service_name(settings, std::move(default_name)), config, make_default_executor());
         configure_service(created, transport_settings);
         return created;
     }

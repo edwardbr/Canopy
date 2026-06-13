@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <mutex>
 #include <memory>
+#include <utility>
 
 // RPC headers
 #include <rpc/rpc.h>
@@ -64,7 +65,7 @@ namespace rpc
     template<typename Params>
     bool transport::resolve_payload_encoding_from_service(
         Params& params,
-        const char* operation)
+        std::string_view operation)
     {
         (void)operation;
 
@@ -87,7 +88,7 @@ namespace rpc
     transport::transport(
         std::string name,
         std::shared_ptr<service> service)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(service->get_zone_id())
         , service_(service)
     {
@@ -96,7 +97,7 @@ namespace rpc
     transport::transport(
         std::string name,
         zone zone_id_)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(zone_id_)
     {
     }
@@ -119,12 +120,12 @@ namespace rpc
     }
 
     std::shared_ptr<child_service> transport::make_child_service(
-        const char* name,
+        std::string name,
         zone zone_id,
         destination_zone parent_zone_id,
         const rpc::executor_ptr& executor)
     {
-        return std::make_shared<child_service>(name, zone_id, parent_zone_id, executor);
+        return std::make_shared<child_service>(std::move(name), zone_id, parent_zone_id, executor);
     }
 
     void transport::set_adjacent_zone_id(zone new_adjacent_zone_id)

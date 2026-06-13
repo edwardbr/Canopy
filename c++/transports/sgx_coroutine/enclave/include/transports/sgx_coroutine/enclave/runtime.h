@@ -17,6 +17,7 @@
 #include <secure_coroutine_module/secure_coroutine_module.h>
 #include <streaming/stream.h>
 #include <string>
+#include <string_view>
 #include <transports/sgx_coroutine/enclave/io_uring_controller.h>
 #include <transports/sgx_coroutine/enclave/service.h>
 #include <transports/sgx_coroutine/enclave/host_transport.h>
@@ -56,7 +57,7 @@ namespace rpc::sgx_coroutine_transport::enclave
         class Local>
     CORO_TASK(rpc::remote_object_result)
     create_child_enclave_zone(
-        const char* name,
+        std::string_view name,
         std::shared_ptr<rpc::transport> parent_transport,
         rpc::connection_settings input_descr,
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
@@ -259,19 +260,19 @@ namespace rpc::sgx_coroutine_transport::enclave
         class Remote,
         class Local>
     void register_connection_factory(
-        const char* name,
+        std::string name,
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
             std::shared_ptr<rpc::service>)> factory)
     {
         register_acceptor_factory(
-            [name = std::string(name), factory = std::move(factory)](
+            [name = std::move(name), factory = std::move(factory)](
                 rpc::connection_settings input,
                 std::shared_ptr<rpc::service> svc,
                 std::shared_ptr<rpc::transport> transport) -> CORO_TASK(rpc::connection_handler_result)
             {
                 auto result = CO_AWAIT create_child_enclave_zone<Remote, Local>(
-                    name.c_str(), std::move(transport), std::move(input), factory, std::move(svc));
+                    name, std::move(transport), std::move(input), factory, std::move(svc));
                 CO_RETURN rpc::connection_handler_result{result.error_code, std::move(result.descriptor)};
             });
     }

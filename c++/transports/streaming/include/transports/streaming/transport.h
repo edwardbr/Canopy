@@ -654,7 +654,7 @@ namespace rpc::stream_transport
             std::shared_ptr<rpc::service>)> factory,
         stream_transport_options options = {})
     {
-        auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
+        auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name, std::move(factory));
         return create(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
     }
 

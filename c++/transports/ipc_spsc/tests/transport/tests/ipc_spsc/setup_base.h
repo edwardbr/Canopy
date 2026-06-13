@@ -70,7 +70,7 @@ protected:
             });
 
         auto connect_result = CO_AWAIT this->root_service_->template connect_to_zone<yyy::i_host, yyy::i_example>(
-            child_name.c_str(), transport, this->local_host_ptr_.lock());
+            child_name, transport, this->local_host_ptr_.lock());
         example = std::move(connect_result.output_interface);
         startup_count_.fetch_add(1);
         CO_RETURN connect_result.error_code == rpc::error::OK();

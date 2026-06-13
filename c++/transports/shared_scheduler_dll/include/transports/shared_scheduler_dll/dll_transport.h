@@ -200,7 +200,7 @@ namespace rpc::shared_scheduler_dll
         auto pt = std::shared_ptr<parent_transport>(static_cast<parent_transport*>(transport_ctx));
 
         auto create_result = co_await rpc::child_service::create_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>(
-            pt->get_name().c_str(), pt, *settings, std::move(factory), *scheduler);
+            pt->get_name(), pt, *settings, std::move(factory), *scheduler);
 
         if (create_result.error_code != rpc::error::OK())
             co_return rpc::connect_result{create_result.error_code, {}};

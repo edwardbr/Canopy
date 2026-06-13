@@ -218,11 +218,8 @@ namespace rpc::blocking_dll
         if (int load_err = load_library(); load_err != rpc::error::OK())
             CO_RETURN rpc::connect_result{load_err, {}};
 
-        // Build the init parameters struct.
-        // Store the name in a local so init_params.name doesn't dangle.
-        std::string transport_name = get_name();
         dll_init_params init_params{};
-        init_params.name = transport_name.c_str();
+        init_params.name = get_name().c_str();
         init_params.host_zone = get_zone_id();
         init_params.dll_zone = adjacent_zone_id;
         init_params.input_descr = &input_descr;

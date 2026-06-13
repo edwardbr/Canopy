@@ -81,7 +81,7 @@ namespace rpc::transport_creation
             executor = make_default_executor();
 
         rpc::service_config config;
-        auto created = rpc::root_service::create(default_name.c_str(), config, std::move(executor));
+        auto created = rpc::root_service::create(std::move(default_name), config, std::move(executor));
         configure_service_encoding(created, encoding);
         return created;
     }
@@ -100,6 +100,6 @@ namespace rpc::transport_creation
             CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
         CO_RETURN CO_AWAIT connection.service->template connect_to_zone<In, Out>(
-            connection.service_proxy_name.c_str(), std::move(connection.transport), std::move(input_interface));
+            std::move(connection.service_proxy_name), std::move(connection.transport), std::move(input_interface));
     }
 } // namespace rpc::transport_creation

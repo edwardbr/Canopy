@@ -37,6 +37,7 @@
 #include <limits>
 #include <functional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace rpc
@@ -245,20 +246,20 @@ namespace rpc
         // pre-existing synchronous experience for users that do not need
         // streaming. The executor-taking variants are opt-in for streaming.
         explicit service(
-            const char* name,
+            std::string name,
             zone zone_id);
         explicit service(
-            const char* name,
+            std::string name,
             zone zone_id,
             child_service_tag);
 #endif
 
         explicit service(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor);
         explicit service(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor,
             child_service_tag);
@@ -350,7 +351,7 @@ namespace rpc
          */
         object generate_new_object_id() const;
 
-        std::string get_name() const { return name_; }
+        const std::string& get_name() const { return name_; }
         zone get_zone_id() const { return zone_id_; }
 
         /**
@@ -456,7 +457,7 @@ namespace rpc
             class out_param_type>
         CORO_TASK(service_connect_result<out_param_type>)
         connect_to_zone(
-            const char* name,
+            std::string name,
             std::shared_ptr<transport> child_transport,
             rpc::shared_ptr<in_param_type> input_interface);
 
@@ -486,7 +487,7 @@ namespace rpc
             class CHILD_INTERFACE>
         CORO_TASK(remote_object_result)
         attach_remote_zone(
-            const char* name,
+            std::string name,
             std::shared_ptr<transport> peer_transport,
             rpc::connection_settings input_descr,
             std::function<CORO_TASK(service_connect_result<CHILD_INTERFACE>)(
@@ -797,50 +798,50 @@ namespace rpc
     public:
 #ifdef CANOPY_BUILD_COROUTINE
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor);
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             const service_config& config,
             const rpc::executor_ptr& executor);
 
         explicit root_service(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor);
         explicit root_service(
-            const char* name,
+            std::string name,
             const service_config& config,
             const rpc::executor_ptr& executor);
 #else
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             zone zone_id);
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             const service_config& config);
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor);
         static std::shared_ptr<root_service> create(
-            const char* name,
+            std::string name,
             const service_config& config,
             const rpc::executor_ptr& executor);
 
         explicit root_service(
-            const char* name,
+            std::string name,
             zone zone_id);
         explicit root_service(
-            const char* name,
+            std::string name,
             const service_config& config);
         explicit root_service(
-            const char* name,
+            std::string name,
             zone zone_id,
             const rpc::executor_ptr& executor);
         explicit root_service(
-            const char* name,
+            std::string name,
             const service_config& config,
             const rpc::executor_ptr& executor);
 #endif
@@ -976,29 +977,29 @@ namespace rpc
     public:
 #ifndef CANOPY_BUILD_COROUTINE
         explicit child_service(
-            const char* name,
+            std::string name,
             zone zone_id,
             destination_zone parent_zone_id)
             : service(
-                  name,
+                  std::move(name),
                   zone_id,
                   child_service_tag{})
             , parent_zone_id_(parent_zone_id)
         {
 #  if defined(CANOPY_USE_TELEMETRY)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
+                telemetry_service->on_service_creation({get_name(), zone_id, parent_zone_id});
 #  endif
         }
 #endif
 
         explicit child_service(
-            const char* name,
+            std::string name,
             zone zone_id,
             destination_zone parent_zone_id,
             const rpc::executor_ptr& executor)
             : service(
-                  name,
+                  std::move(name),
                   zone_id,
                   executor,
                   child_service_tag{})
@@ -1006,7 +1007,7 @@ namespace rpc
         {
 #if defined(CANOPY_USE_TELEMETRY)
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_service_creation({name, zone_id, parent_zone_id});
+                telemetry_service->on_service_creation({get_name(), zone_id, parent_zone_id});
 #endif
         }
 
@@ -1020,7 +1021,7 @@ namespace rpc
             class PARENT_INTERFACE,
             class CHILD_INTERFACE>
         static CORO_TASK(remote_object_result) create_child_zone(
-            const char* name,
+            std::string name,
             std::shared_ptr<transport> parent_transport,
             rpc::connection_settings input_descr,
             std::function<CORO_TASK(service_connect_result<CHILD_INTERFACE>)(
@@ -1070,7 +1071,7 @@ namespace rpc
                     executor = parent_service->get_executor();
             }
 
-            auto child_svc = parent_transport->make_child_service(name, zone_id, adjacent_zone_id, executor);
+            auto child_svc = parent_transport->make_child_service(std::move(name), zone_id, adjacent_zone_id, executor);
             if (!child_svc)
             {
                 result.error_code = rpc::error::INVALID_DATA();
@@ -1186,7 +1187,7 @@ namespace rpc
         class out_param_type>
     CORO_TASK(service_connect_result<out_param_type>)
     service::connect_to_zone(
-        const char* name,
+        std::string name,
         std::shared_ptr<transport> child_transport,
         rpc::shared_ptr<in_param_type> input_interface)
     {
@@ -1315,7 +1316,7 @@ namespace rpc
             auto proxy_transport = add_transport(child_transport->get_adjacent_zone_id(), child_transport);
             // Create service_proxy for this connection
             new_service_proxy = rpc::service_proxy::create(
-                name, shared_from_this(), proxy_transport, child_transport->get_adjacent_zone_id());
+                std::move(name), shared_from_this(), proxy_transport, child_transport->get_adjacent_zone_id());
             new_service_proxy->set_encoding(input_descr.encoding_type);
 
             // add the proxy to the service
@@ -1351,7 +1352,7 @@ namespace rpc
         class CHILD_INTERFACE>
     CORO_TASK(remote_object_result)
     service::attach_remote_zone(
-        const char* name,
+        std::string name,
         std::shared_ptr<transport> peer_transport,
         rpc::connection_settings input_descr,
         std::function<CORO_TASK(service_connect_result<CHILD_INTERFACE>)(
@@ -1393,7 +1394,7 @@ namespace rpc
         if (input_descr.get_object_id() != 0)
         {
             auto parent_service_proxy = rpc::service_proxy::create(
-                name, shared_from_this(), route_transport, input_descr.remote_object_id.as_zone());
+                std::move(name), shared_from_this(), route_transport, input_descr.remote_object_id.as_zone());
             parent_service_proxy->set_encoding(input_descr.encoding_type);
 
             parent_service_proxy = add_zone_proxy(parent_service_proxy);
@@ -1662,20 +1663,20 @@ namespace rpc
         class Remote,
         class Local>
     connection_handler make_new_zone_connection_handler(
-        const char* name,
+        std::string name,
         std::function<CORO_TASK(service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,
             std::shared_ptr<rpc::service>)> factory)
     {
         // The handler owns its coroutine closure and the captures live with that handler.
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-        return [name_str = std::string(name), fn = std::move(factory)](
+        return [name_str = std::move(name), fn = std::move(factory)](
                    rpc::connection_settings input,
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<rpc::transport> tp) -> CORO_TASK(connection_handler_result)
         {
             // forward to the service to bind the transport to its registerd transports proxies and stubs
-            auto result = CO_AWAIT svc->attach_remote_zone<Remote, Local>(name_str.c_str(), tp, input, fn);
+            auto result = CO_AWAIT svc->attach_remote_zone<Remote, Local>(name_str, tp, input, fn);
             CO_RETURN connection_handler_result{result.error_code, std::move(result.descriptor)};
         };
     }
@@ -1691,7 +1692,7 @@ namespace rpc
             rpc::shared_ptr<Remote>,
             std::shared_ptr<service>)> fn)
     {
-        auto handler = make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(fn));
+        auto handler = make_new_zone_connection_handler<Remote, Local>(name, std::move(fn));
         CO_RETURN CO_AWAIT factory(std::move(name), shared_from_this(), std::move(handler));
     }
 }

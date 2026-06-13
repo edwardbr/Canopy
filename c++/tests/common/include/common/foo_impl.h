@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <variant>
 #include <example/example.h>
 
@@ -31,12 +33,12 @@ namespace marshalled_tests
     }
 
     inline void emit_impl_creation_telemetry(
-        const char* name,
+        std::string_view name,
         std::uintptr_t address)
     {
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_impl_creation({name, address, current_service_zone()});
+            telemetry_service->on_impl_creation({std::string(name), address, current_service_zone()});
         }
     }
 

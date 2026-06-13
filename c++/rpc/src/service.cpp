@@ -5,6 +5,7 @@
 
 // Standard C++ headers
 #include <algorithm>
+#include <utility>
 
 // RPC headers
 #include <rpc/internal/polyfill/format.h>
@@ -257,22 +258,22 @@ namespace rpc
     }
 
     service::service(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor)
         : zone_id_(zone_id)
-        , name_(name)
+        , name_(std::move(name))
         , executor_(executor)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
     service::service(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor,
         child_service_tag)
         : zone_id_(zone_id)
-        , name_(name)
+        , name_(std::move(name))
         , executor_(executor)
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
@@ -281,19 +282,19 @@ namespace rpc
 
 #ifndef CANOPY_BUILD_COROUTINE
     service::service(
-        const char* name,
+        std::string name,
         zone zone_id)
         : zone_id_(zone_id)
-        , name_(name)
+        , name_(std::move(name))
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
     }
     service::service(
-        const char* name,
+        std::string name,
         zone zone_id,
         child_service_tag)
         : zone_id_(zone_id)
-        , name_(name)
+        , name_(std::move(name))
     {
         RPC_ASSERT(zone_id_.get_subnet() != 0);
         // No telemetry call for child services
@@ -306,32 +307,32 @@ namespace rpc
 
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor)
     {
-        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id, executor));
+        auto service = std::shared_ptr<root_service>(new root_service(std::move(name), zone_id, executor));
 #  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+            telemetry_service->on_service_creation({service->get_name(), zone_id, destination_zone()});
 #  endif
         return service;
     }
 
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         const service_config& config,
         const rpc::executor_ptr& executor)
     {
-        return create(name, config.initial_zone, executor);
+        return create(std::move(name), config.initial_zone, executor);
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor)
         : service(
-              name,
+              std::move(name),
               zone_id,
               executor)
         , zone_allocator_(zone_id.get_address())
@@ -339,81 +340,81 @@ namespace rpc
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         const service_config& config,
         const rpc::executor_ptr& executor)
         : root_service(
-              name,
+              std::move(name),
               config.initial_zone,
               executor)
     {
     }
 #else
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         zone zone_id)
     {
-        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id));
+        auto service = std::shared_ptr<root_service>(new root_service(std::move(name), zone_id));
 #  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+            telemetry_service->on_service_creation({service->get_name(), zone_id, destination_zone()});
 #  endif
         return service;
     }
 
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         const service_config& config)
     {
-        return create(name, config.initial_zone);
+        return create(std::move(name), config.initial_zone);
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         zone zone_id)
         : service(
-              name,
+              std::move(name),
               zone_id)
         , zone_allocator_(zone_id.get_address())
     {
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         const service_config& config)
         : root_service(
-              name,
+              std::move(name),
               config.initial_zone)
     {
     }
 
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor)
     {
-        auto service = std::shared_ptr<root_service>(new root_service(name, zone_id, executor));
+        auto service = std::shared_ptr<root_service>(new root_service(std::move(name), zone_id, executor));
 #  ifdef CANOPY_USE_TELEMETRY
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-            telemetry_service->on_service_creation({name, zone_id, destination_zone()});
+            telemetry_service->on_service_creation({service->get_name(), zone_id, destination_zone()});
 #  endif
         return service;
     }
 
     std::shared_ptr<root_service> root_service::create(
-        const char* name,
+        std::string name,
         const service_config& config,
         const rpc::executor_ptr& executor)
     {
-        return create(name, config.initial_zone, executor);
+        return create(std::move(name), config.initial_zone, executor);
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         zone zone_id,
         const rpc::executor_ptr& executor)
         : service(
-              name,
+              std::move(name),
               zone_id,
               executor)
         , zone_allocator_(zone_id.get_address())
@@ -421,11 +422,11 @@ namespace rpc
     }
 
     root_service::root_service(
-        const char* name,
+        std::string name,
         const service_config& config,
         const rpc::executor_ptr& executor)
         : root_service(
-              name,
+              std::move(name),
               config.initial_zone,
               executor)
     {

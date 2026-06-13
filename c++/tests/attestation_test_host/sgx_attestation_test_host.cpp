@@ -470,11 +470,11 @@ namespace
     {
     public:
         root_service_owner(
-            const char* name,
+            std::string name,
             const std::shared_ptr<coro::scheduler>& scheduler)
             : service_(
                   rpc::root_service::create(
-                      name,
+                      std::move(name),
                       rpc::DEFAULT_PREFIX,
                       scheduler))
         {
@@ -575,16 +575,16 @@ namespace
         }
 
         [[nodiscard]] bool connect_enclave(
-            const char* name,
+            std::string name,
             rpc::shared_ptr<attestation_test::i_attestation_enclave_test>& test)
         {
-            auto transport
-                = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(name, root_service_->service(), enclave_path_);
+            auto transport = std::make_shared<rpc::sgx_coroutine_transport::host::transport>(
+                name, root_service_->service(), enclave_path_);
             transport_refs_.push_back(transport);
             auto result = run_on_manual_scheduler<rpc::service_connect_result<attestation_test::i_attestation_enclave_test>>(
                 scheduler_,
                 rpc::sgx_coroutine_transport::host::connect_to_enclave_zone<yyy::i_host, attestation_test::i_attestation_enclave_test>(
-                    root_service_->service(), name, std::move(transport), host_));
+                    root_service_->service(), std::move(name), std::move(transport), host_));
 
             test = std::move(result.output_interface);
             if (result.error_code != rpc::error::OK() || !test)

@@ -268,7 +268,7 @@ namespace rpc::stream_transport
         if (transport_result.error_code != rpc::error::OK())
             CO_RETURN rpc::service_connect_result<Out>{transport_result.error_code, {}};
         CO_RETURN CO_AWAIT transport_result.service->template connect_to_zone<In, Out>(
-            service_proxy_name(settings.transport, "main child").c_str(),
+            service_proxy_name(settings.transport, "main child"),
             std::move(transport_result.transport),
             std::move(input_interface));
     }

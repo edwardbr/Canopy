@@ -135,9 +135,8 @@ namespace config_demo::v1
 
             auto context = std::move(context_result.context);
             auto shutdown_event = std::make_shared<rpc::event>();
-            const auto root_service_name = service_name(server);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), rpc::create_local_zone(server.zone_subnet), std::move(scheduler));
+                service_name(server), rpc::create_local_zone(server.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
             service->set_shutdown_event(shutdown_event);
 
@@ -197,9 +196,8 @@ namespace config_demo::v1
             }
 
             auto context = std::move(context_result.context);
-            const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
+                service_name(client), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
@@ -259,9 +257,8 @@ namespace config_demo::v1
                 CO_RETURN demo_error::INVALID_CONFIGURATION;
             }
 
-            const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
+                service_name(client), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_local_child_rpc<i_calculator, i_calculator>(
@@ -332,9 +329,8 @@ namespace config_demo::v1
                 CO_RETURN demo_error::INVALID_CONFIGURATION;
 
             auto context = std::move(context_result.context);
-            const auto root_service_name = service_name(client);
             auto service = rpc::root_service::create(
-                root_service_name.c_str(), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
+                service_name(client), rpc::create_local_zone(client.zone_subnet), std::move(scheduler));
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<i_calculator, i_calculator>(
