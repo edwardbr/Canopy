@@ -18,13 +18,15 @@
 // exactly those two interfaces.
 namespace
 {
-    TEST(schema_introspection_tests, base_enumerates_all_implemented_interfaces)
+    TEST(
+        schema_introspection_tests,
+        base_enumerates_all_implemented_interfaces)
     {
         marshalled_tests::baz obj;
 
-        std::vector<rpc::interface_descriptor> descriptors;
-        obj.__rpc_enumerate_schemas(
-            rpc::encoding::yas_json, rpc::schema_flavor::config, /*include_deprecated*/ false, descriptors);
+        const rpc::casting_interface& iface = static_cast<const xxx::i_baz&>(obj);
+        auto descriptors = rpc::casting_interface::get_schema(
+            iface, rpc::encoding::yas_json, rpc::schema_flavor::config, /*include_deprecated*/ false);
 
         ASSERT_EQ(descriptors.size(), 2u);
 
@@ -48,7 +50,9 @@ namespace
         EXPECT_EQ(names.count("xxx::i_bar"), 1u);
     }
 
-    TEST(schema_introspection_tests, interface_proxy_describes_single_interface)
+    TEST(
+        schema_introspection_tests,
+        interface_proxy_describes_single_interface)
     {
         // The local interface_proxy<T> path (Tier 1): describing a single
         // generated interface type yields exactly one descriptor naming it.

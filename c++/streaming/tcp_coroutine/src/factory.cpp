@@ -86,7 +86,7 @@ namespace rpc::tcp_coroutine
         std::shared_ptr<rpc::service> service)
     {
         const bool borrowed_scheduler = service && service->get_executor();
-        auto scheduler = borrowed_scheduler ? service->get_executor() : rpc::stream_transport::make_default_executor();
+        auto scheduler = borrowed_scheduler ? service->get_executor() : rpc::make_executor();
         if (!scheduler)
             return {rpc::error::TRANSPORT_ERROR(), {}, {}};
 

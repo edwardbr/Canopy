@@ -26,9 +26,10 @@ through the same scheduler instance.
 
 The DLL author provides:
 
-- `canopy_shared_scheduler_dll_init`
+- `canopy_module_init` by including `<rpc_objects/object_registration.h>`
 - `rpc_log`
 
+The transport registration adapter provides `canopy_shared_scheduler_dll_init`.
 The transport library provides `canopy_shared_scheduler_dll_create`.
 That entry point is called synchronously during connection to exchange raw
 `coro::task` function pointers for host-to-DLL and DLL-to-host calls.

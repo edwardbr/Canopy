@@ -17,7 +17,7 @@ CanopyGenerate(
   ${CMAKE_BINARY_DIR}/generated
   ""
   yas_json
-  dependencies rpc_types_idl
+  dependencies rpc_types_idl json_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
@@ -37,23 +37,22 @@ target_include_directories(
 
 target_link_libraries(
   transport_unshared_scheduler_dll
-  PUBLIC transport_factory unshared_dll_config_idl
+  PUBLIC transport_factory
+         unshared_dll_config_idl
+         json
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 if(UNIX AND NOT APPLE)
   target_link_libraries(transport_unshared_scheduler_dll PRIVATE dl)
 endif()
 
-target_compile_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_COMPILE_OPTIONS}
-                                                                               ${CANOPY_WARN_OK})
+target_compile_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-set_property(TARGET transport_unshared_scheduler_dll
-             PROPERTY COMPILE_PDB_NAME transport_unshared_scheduler_dll)
+set_property(TARGET transport_unshared_scheduler_dll PROPERTY COMPILE_PDB_NAME transport_unshared_scheduler_dll)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
-  set_target_properties(transport_unshared_scheduler_dll PROPERTIES CXX_CLANG_TIDY
-                                                                                   "${CLANG_TIDY_COMMAND}")
+  set_target_properties(transport_unshared_scheduler_dll PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -69,8 +68,10 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
-target_link_libraries(transport_unshared_scheduler_dll_runtime PRIVATE yas_common rpc_types_idl
-                                                                                  ${CANOPY_LIBRARIES})
+target_link_libraries(
+  transport_unshared_scheduler_dll_runtime
+  PUBLIC rpc::modules
+  PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 target_compile_options(
   transport_unshared_scheduler_dll_runtime
@@ -82,17 +83,16 @@ target_compile_options(
 
 target_link_options(transport_unshared_scheduler_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-set_property(TARGET transport_unshared_scheduler_dll_runtime
-             PROPERTY COMPILE_PDB_NAME transport_unshared_scheduler_dll_runtime)
+set_property(TARGET transport_unshared_scheduler_dll_runtime PROPERTY COMPILE_PDB_NAME
+                                                                      transport_unshared_scheduler_dll_runtime)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
-  set_target_properties(transport_unshared_scheduler_dll_runtime PROPERTIES CXX_CLANG_TIDY
-                                                                                       "${CLANG_TIDY_COMMAND}")
+  set_target_properties(transport_unshared_scheduler_dll_runtime PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()
 
 # ---------------------------------------------------------------------------
 # Test support: INTERFACE library that exposes the setup.h include path
 # ---------------------------------------------------------------------------
 add_library(transport_unshared_scheduler_dll_test INTERFACE)
-target_include_directories(transport_unshared_scheduler_dll_test
-                           INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(
+  transport_unshared_scheduler_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")

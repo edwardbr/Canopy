@@ -5,11 +5,9 @@
 
 #pragma once
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 
 #include <rpc/rpc.h>
@@ -53,18 +51,6 @@ namespace rpc::transport_creation
         return rpc::error::OK();
     }
 
-    inline rpc::executor_ptr make_default_executor()
-    {
-#ifdef CANOPY_BUILD_COROUTINE
-        auto options = rpc::coro::scheduler::options{};
-        options.thread_strategy = rpc::coro::scheduler::thread_strategy_t::spawn;
-        options.pool.thread_count = std::max(1U, std::thread::hardware_concurrency());
-        return rpc::coro::make_shared_scheduler(options);
-#else
-        return std::make_shared<rpc::executor>();
-#endif
-    }
-
     inline std::shared_ptr<rpc::service> ensure_service(
         std::shared_ptr<rpc::service> service,
         const rpc::optional<rpc::encoding>& encoding,
@@ -78,7 +64,7 @@ namespace rpc::transport_creation
         }
 
         if (!executor)
-            executor = make_default_executor();
+            executor = rpc::make_executor();
 
         rpc::service_config config;
         auto created = rpc::root_service::create(std::move(default_name), config, std::move(executor));

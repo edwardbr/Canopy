@@ -105,8 +105,7 @@ namespace rpc::tcp_blocking
         std::shared_ptr<rpc::service> service)
     {
 #ifdef CANOPY_BUILD_COROUTINE
-        auto executor = service && service->get_executor() ? service->get_executor()
-                                                           : rpc::stream_transport::make_default_executor();
+        auto executor = service && service->get_executor() ? service->get_executor() : rpc::make_executor();
         if (!executor)
             CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 

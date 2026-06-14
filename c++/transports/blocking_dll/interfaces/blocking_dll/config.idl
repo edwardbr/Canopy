@@ -4,6 +4,7 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "json/json.idl"
 
 namespace rpc
 {
@@ -28,6 +29,12 @@ namespace rpc
 
             [description="Path to the shared library loaded into the host process. The library must export the blocking dynamic-library ABI entry point."]
             std::string dynamic_library_path;
+
+            [description="Module-global JSON passed to the loaded module. When omitted, the module receives an empty object."]
+            rpc::optional<json::v1::object> module_settings;
+
+            [description="Named application startup blobs passed only to this loaded module instance. This is module-local configuration; it must not include applications belonging to another module or the host executable."]
+            std::map<std::string, json::v1::object> startup_applications = {};
         };
     }
 }

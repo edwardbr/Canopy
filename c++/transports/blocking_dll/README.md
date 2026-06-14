@@ -24,10 +24,11 @@ adding process isolation.
 
 The DLL author provides:
 
-- `canopy_dll_init`
+- `canopy_module_init` by including `<rpc_objects/object_registration.h>`
 - `rpc_log`
 
-The transport library provides the rest of the exported `canopy_dll_*` ABI.
+The transport registration adapter provides `canopy_dll_init`; the transport
+library provides the rest of the exported `canopy_dll_*` ABI.
 
 ## Use this when
 

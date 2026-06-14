@@ -8,10 +8,10 @@
 // Included by both the host side (transport_blocking_dll) and
 // the DLL side (transport_blocking_dll_runtime).
 //
-// All boundary crossings use void* for context handles plus pointers to
-// rpc:: param/result structs.  Both sides compile against the same rpc
-// headers and share the same C++ runtime, so passing C++ objects by
-// pointer across the in-process boundary is safe.
+// Boundary crossings use void* for context handles plus pointers to RPC
+// param/result structs. Higher-level module settings and module-local
+// application settings cross as JSON text rather than as C++ DOM objects so
+// the object module owns any parsed representation.
 
 #ifndef CANOPY_BUILD_COROUTINE
 
@@ -76,6 +76,8 @@ namespace rpc::blocking_dll
         rpc::zone host_zone;
         rpc::zone dll_zone;
         const rpc::connection_settings* input_descr;
+        const char* module_settings_json;
+        const char* startup_applications_json;
         void* host_ctx;
 
         // Host callback function pointers

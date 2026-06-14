@@ -65,6 +65,11 @@ namespace rpc
         // An interface always carries both pieces of information so this should never fail;
         // an assertion fires in debug builds if it unexpectedly does.
         static remote_object get_remote_object(const casting_interface& iface);
+        static std::vector<rpc::interface_descriptor> get_schema(
+            const casting_interface& iface,
+            rpc::encoding enc = rpc::encoding::yas_json,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
     };
 
     bool are_in_same_zone(

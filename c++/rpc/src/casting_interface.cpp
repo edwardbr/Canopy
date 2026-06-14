@@ -72,5 +72,16 @@ namespace rpc
         return std::move(*r);
     }
 
+    std::vector<rpc::interface_descriptor> casting_interface::get_schema(
+        const casting_interface& iface,
+        rpc::encoding enc,
+        rpc::schema_flavor flavor,
+        bool include_deprecated)
+    {
+        std::vector<rpc::interface_descriptor> out;
+        iface.__rpc_enumerate_schemas(enc, flavor, include_deprecated, out);
+        return out;
+    }
+
     // (Removed dead commented-out function get_channel_zone)
 }

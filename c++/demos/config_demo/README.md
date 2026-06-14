@@ -6,7 +6,7 @@ It is intended as a readable starting point for future transport demos.
 The JSON file uses the generated `config_demo::v1::demo_settings` schema:
 
 - `execution`: executable-owned demo settings, including calculator
-  iterations, scheduler thread count, and the named client/server connections
+  iterations, executor thread count, and the named client/server connections
   this demo should run.
 - `spsc_queues`: named in-process SPSC queue pairs that the connection factory
   can place into connection contexts.
@@ -34,6 +34,11 @@ transport and stream-layer schemas.
 Build and run:
 
 ```bash
+cmake --preset Debug
+cmake --build build_debug --target config_demo
+./build_debug/output/config_demo \
+  c++/demos/config_demo/samples/tcp_blocking_websocket.json
+
 cmake --preset Debug_Coroutine
 cmake --build build_debug_coroutine --target config_demo
 ./build_debug_coroutine/output/config_demo \
@@ -43,6 +48,7 @@ cmake --build build_debug_coroutine --target config_demo
 The build also copies samples and fixture certificates into:
 
 ```text
+build_debug/c++/demos/config_demo/
 build_debug_coroutine/c++/demos/config_demo/
 ```
 
@@ -56,7 +62,8 @@ build_debug_coroutine/c++/demos/config_demo/schemas/config_demo_config.schema.js
 
 Runnable local samples:
 
-- `tcp_websocket.json`
+- `tcp_blocking_websocket.json` in blocking builds
+- `tcp_websocket.json` in coroutine builds
 - `spsc_websocket.json`
 - `local_child.json`
 - `tcp_tls_websocket_attestation.json` when TLS and attestation support are built

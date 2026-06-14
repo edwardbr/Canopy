@@ -5,9 +5,7 @@
 
 #include <transports/streaming/factory.h>
 
-#include <algorithm>
 #include <chrono>
-#include <thread>
 #include <utility>
 
 #include <streaming/listener.h>
@@ -65,18 +63,6 @@ namespace rpc::stream_transport
         if (!owner)
             return stream;
         return std::make_shared<owning_stream>(std::move(stream), std::move(owner));
-    }
-
-    rpc::executor_ptr make_default_executor()
-    {
-#ifdef CANOPY_BUILD_COROUTINE
-        auto options = rpc::coro::scheduler::options{};
-        options.thread_strategy = rpc::coro::scheduler::thread_strategy_t::spawn;
-        options.pool.thread_count = std::max(1U, std::thread::hardware_concurrency());
-        return rpc::coro::make_shared_scheduler(options);
-#else
-        return std::make_shared<rpc::executor>();
-#endif
     }
 
     std::optional<rpc::encoding> encoding_option(const transport_settings& settings)
@@ -163,8 +149,8 @@ namespace rpc::stream_transport
         }
 
         rpc::service_config config;
-        auto created
-            = rpc::root_service::create(service_name(settings, std::move(default_name)), config, make_default_executor());
+        auto created = rpc::root_service::create(
+            service_name(settings, std::move(default_name)), config, rpc::make_executor(settings.executor));
         configure_service(created, transport_settings);
         return created;
     }
@@ -201,7 +187,7 @@ namespace rpc::stream_transport
         uint16_t port)
         : acceptor_(std::move(acceptor))
         , service_(std::move(service))
-        , executor_(service_ ? service_->get_executor() : make_default_executor())
+        , executor_(service_ ? service_->get_executor() : rpc::make_executor())
         , callback_(std::move(callback))
         , owner_(std::move(owner))
         , port_(port)

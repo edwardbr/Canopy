@@ -26,8 +26,10 @@
 #ifndef CANOPY_BUILD_COROUTINE
 
 #  include <functional>
+#  include <map>
 #  include <string>
 #  include <atomic>
+#  include <json/json_dom.h>
 
 #  if defined(_WIN32)
 #    include <windows.h>
@@ -63,6 +65,8 @@ namespace rpc::blocking_dll
 
         // Path to the shared object
         const std::string library_path_;
+        std::string module_settings_json_;
+        std::string startup_applications_json_;
 
         // Called by parent_transport (DLL side) when it disconnects
         void on_dll_disconnected();
@@ -118,7 +122,11 @@ namespace rpc::blocking_dll
         child_transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::string library_path);
+            std::string library_path,
+            json::v1::object module_settings = json::v1::object{json::v1::map{}},
+            std::map<
+                std::string,
+                json::v1::object> startup_applications = {});
 
         ~child_transport() override;
 

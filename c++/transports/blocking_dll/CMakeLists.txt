@@ -1,6 +1,6 @@
 #
-# transport_blocking_dll       — host-side library (links into the host process) transport_blocking_dll_runtime   —
-# DLL-side library  (links into the loaded shared object)
+# transport_blocking_dll       - host-side library (links into the host process)
+# transport_blocking_dll_runtime - DLL-side library (links into the loaded shared object)
 #
 
 include(CanopyCreateBlockingDll)
@@ -12,7 +12,7 @@ CanopyGenerate(
   ${CMAKE_BINARY_DIR}/generated
   ""
   yas_json
-  dependencies rpc_types_idl
+  dependencies rpc_types_idl json_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
@@ -32,10 +32,11 @@ target_include_directories(
 
 target_link_libraries(
   transport_blocking_dll
-  PUBLIC transport_factory blocking_dll_config_idl
+  PUBLIC transport_factory
+         blocking_dll_config_idl
+         json
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
-# Link dl on Linux for dlopen/dlclose/dlsym
 if(UNIX AND NOT APPLE)
   target_link_libraries(transport_blocking_dll PRIVATE dl)
 endif()
@@ -51,33 +52,25 @@ endif()
 
 # ---------------------------------------------------------------------------
 # DLL-side transport library
-#
-# Shared objects that want to participate in the blocking_dll transport link this library.  It provides the
-# canopy_dll_destroy / canopy_dll_send / ... entry points.  The DLL author only needs to provide canopy_dll_init (using
-# the init_child_zone<> helper from dll_transport.h).
-#
-# Build with -fvisibility=hidden to keep implementation symbols private; the CANOPY_DLL_EXPORT attribute on the
-# canopy_dll_* symbols overrides that for the handful of entry points the host must be able to find via dlsym.
 # ---------------------------------------------------------------------------
 add_library(transport_blocking_dll_runtime STATIC src/dll_transport.cpp)
 
-target_compile_definitions(
-  transport_blocking_dll_runtime PRIVATE ${CANOPY_DEFINES} CANOPY_DLL_BUILDING # activates __declspec(dllexport) on
-                                                                              # Windows
-)
+target_compile_definitions(transport_blocking_dll_runtime PRIVATE ${CANOPY_DEFINES} CANOPY_DLL_BUILDING)
 
 target_include_directories(
   transport_blocking_dll_runtime
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
-target_link_libraries(transport_blocking_dll_runtime PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
+target_link_libraries(
+  transport_blocking_dll_runtime
+  PUBLIC rpc::modules
+  PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 target_compile_options(
   transport_blocking_dll_runtime
   PRIVATE ${CANOPY_COMPILE_OPTIONS}
           ${CANOPY_WARN_OK}
-          # Hide all symbols by default; canopy_dll_* use __attribute__((visibility("default")))
           $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
           $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
 
@@ -93,5 +86,5 @@ endif()
 # Test support: INTERFACE library that exposes the setup.h include path
 # ---------------------------------------------------------------------------
 add_library(transport_blocking_dll_test INTERFACE)
-target_include_directories(transport_blocking_dll_test
-                           INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(
+  transport_blocking_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")

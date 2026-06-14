@@ -11,6 +11,8 @@
 #  include <transports/shared_scheduler_dll/transport.h>
 #  include <rpc/rpc.h>
 
+#  include <json/convert.h>
+
 #  include <chrono>
 #  include <thread>
 
@@ -22,11 +24,17 @@ namespace rpc::shared_scheduler_dll
     child_transport::child_transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::string library_path)
+        std::string library_path,
+        json::v1::object module_settings,
+        std::map<
+            std::string,
+            json::v1::object> startup_applications)
         : rpc::transport(
               name,
               service)
         , library_path_(std::move(library_path))
+        , module_settings_json_(json::v1::dump(module_settings))
+        , startup_applications_json_(json::v1::dump(json::v1::convert::to_json_object(startup_applications)))
     {
     }
 
@@ -182,6 +190,8 @@ namespace rpc::shared_scheduler_dll
         create_params.name = get_name().c_str();
         create_params.dll_zone = adjacent_zone_id;
         create_params.host_zone = get_zone_id();
+        create_params.module_settings_json = module_settings_json_.c_str();
+        create_params.startup_applications_json = startup_applications_json_.c_str();
         create_params.host_ctx = this;
         create_params.host_send = &child_transport::host_inbound_send;
         create_params.host_post = &child_transport::host_inbound_post;

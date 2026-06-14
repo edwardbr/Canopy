@@ -13,7 +13,10 @@ CanopyGenerate(
   ""
   yas_binary
   yas_json
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_INTERFACE_SOURCE_DIR}
+  dependencies calculator_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+                ${CANOPY_CPP_SOURCE_DIR}/demos/rpc_objects/calculator/idl
+                ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
 CanopyGenerate(

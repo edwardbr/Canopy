@@ -31,7 +31,7 @@ namespace rpc::connection_factory::detail
                 if (!settings.stream_layers.empty())
                     return {rpc::error::INVALID_DATA(), {}, {}, {}};
 
-                auto service_settings = detail::service_settings_from_connection(settings);
+                auto service_settings = materialise_service_settings(settings);
                 if (service_settings.error_code != rpc::error::OK())
                     return {service_settings.error_code, {}, {}, {}};
 

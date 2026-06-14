@@ -17,9 +17,11 @@
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  include <atomic>
+#  include <map>
 #  include <memory>
 #  include <string>
 
+#  include <json/json_dom.h>
 #  include <rpc/rpc.h>
 #  include <transports/unshared_scheduler_dll/dll_abi.h>
 
@@ -37,6 +39,8 @@ namespace rpc::unshared_scheduler_dll
         void* dll_ctx_ = nullptr;
         dll_begin_table dll_begin_;
         const std::string library_path_;
+        std::string module_settings_json_;
+        std::string startup_applications_json_;
 
         static int host_begin_send(
             void* ctx,
@@ -169,7 +173,11 @@ namespace rpc::unshared_scheduler_dll
         child_transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::string library_path);
+            std::string library_path,
+            json::v1::object module_settings = json::v1::object{json::v1::map{}},
+            std::map<
+                std::string,
+                json::v1::object> startup_applications = {});
 
         ~child_transport() override;
 

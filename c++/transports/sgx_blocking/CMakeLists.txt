@@ -5,7 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-# SGX transport requires enclave support
+#SGX transport requires enclave support
 if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
   CanopyGenerate(
     sgx_blocking_transport_config
@@ -14,7 +14,7 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
     ${CMAKE_BINARY_DIR}/generated
     ""
     yas_json
-    dependencies rpc_types_idl sgx_enclave_runtime_config_idl
+    dependencies rpc_types_idl json_idl sgx_enclave_runtime_config_idl
     include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
                   ${CMAKE_CURRENT_SOURCE_DIR}/../sgx_common/interfaces
                   ${CMAKE_CURRENT_SOURCE_DIR}/../../subcomponents/io_uring_config/interfaces
@@ -33,7 +33,9 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
     PRIVATE ${CANOPY_INCLUDES})
   target_link_libraries(
     transport_sgx_blocking
-    PUBLIC transport_factory sgx_blocking_transport_config_idl
+    PUBLIC transport_factory
+           sgx_blocking_transport_config_idl
+           json
     PRIVATE yas_common
             sgx_blocking_marshal_idl
             rpc_types_idl
@@ -60,6 +62,8 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     transport_sgx_blocking_enclave
     PUBLIC sgx_blocking_transport_config_idl_enclave
+           json_enclave
+           rpc::modules_enclave
     PRIVATE yas_common
             sgx_blocking_marshal_idl_enclave
             rpc_types_idl_enclave
@@ -70,6 +74,32 @@ if(CANOPY_BUILD_ENCLAVE AND NOT CANOPY_BUILD_COROUTINE)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
     set_target_properties(transport_sgx_blocking_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+  endif()
+
+  add_library(transport_sgx_blocking_object_runtime_enclave STATIC src/object_runtime_exports.cpp)
+  target_compile_definitions(transport_sgx_blocking_object_runtime_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES}
+                                                                                   CANOPY_BUILD_ENCLAVE)
+  target_compile_options(transport_sgx_blocking_object_runtime_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+                                                                               ${CANOPY_WARN_OK_ENCLAVE})
+  target_include_directories(
+    transport_sgx_blocking_object_runtime_enclave
+    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
+  target_link_libraries(
+    transport_sgx_blocking_object_runtime_enclave
+    PUBLIC transport_sgx_blocking_enclave
+           rpc::modules_enclave
+    PRIVATE yas_common
+            sgx_blocking_marshal_idl_enclave
+            rpc_types_idl_enclave
+            rpc::rpc_enclave
+            sgx_blocking_transport_edl_enclave)
+  set_property(TARGET transport_sgx_blocking_object_runtime_enclave PROPERTY COMPILE_PDB_NAME
+                                                                             transport_sgx_blocking_object_runtime_enclave)
+
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    set_target_properties(transport_sgx_blocking_object_runtime_enclave PROPERTIES CXX_CLANG_TIDY
+                                                                                  "${CLANG_TIDY_COMMAND}")
   endif()
 
   add_library(transport_sgx_blocking_test INTERFACE)

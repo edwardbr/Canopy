@@ -4,6 +4,7 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "calculator/calculator.idl"
 
 namespace comprehensive
 {
@@ -32,22 +33,6 @@ namespace comprehensive
 
             [description = "A benchmark server is already running for this object."]
             SERVER_ALREADY_RUNNING
-        };
-
-        // Simple calculator interface for basic RPC demos
-        interface i_calculator
-        {
-            [description="Add two integers"] 
-            comprehensive_error add(int a, int b, [out] int& sum);
-
-            [description="Subtract two integers"]
-            comprehensive_error subtract(int a, int b, [out] int& difference);
-
-            [description="Multiply two integers"]
-            comprehensive_error multiply(int a, int b, [out] int& product);
-
-            [description="Divide two integers"]
-            comprehensive_error divide(int a, int b, [out] int& quotient);
         };
 
         // Interface with complex types for serialization demos

@@ -31,6 +31,7 @@ namespace rpc::stream_transport
     struct service_settings
     {
         rpc::optional<std::string> name;
+        rpc::executor_options executor = {};
     };
 
     struct connection_settings
@@ -49,8 +50,6 @@ namespace rpc::stream_transport
     std::shared_ptr<::streaming::stream> keep_owner(
         std::shared_ptr<::streaming::stream> stream,
         std::shared_ptr<void> owner);
-
-    rpc::executor_ptr make_default_executor();
 
     std::optional<rpc::encoding> encoding_option(const transport_settings& settings);
 

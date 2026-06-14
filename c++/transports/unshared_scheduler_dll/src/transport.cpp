@@ -12,6 +12,7 @@
 #  include <rpc/rpc.h>
 
 #  include <coro/scheduler.hpp>
+#  include <json/convert.h>
 
 #  include <coroutine>
 #  include <exception>
@@ -98,6 +99,8 @@ namespace rpc::unshared_scheduler_dll
 
         std::string library_path;
         std::string transport_name;
+        std::string module_settings_json;
+        std::string startup_applications_json;
         rpc::connection_settings settings;
         std::shared_ptr<ready_state> ready;
         std::thread entry_thread;
@@ -325,11 +328,17 @@ namespace rpc::unshared_scheduler_dll
     child_transport::child_transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::string library_path)
+        std::string library_path,
+        json::v1::object module_settings,
+        std::map<
+            std::string,
+            json::v1::object> startup_applications)
         : rpc::transport(
               name,
               service)
         , library_path_(std::move(library_path))
+        , module_settings_json_(json::v1::dump(module_settings))
+        , startup_applications_json_(json::v1::dump(json::v1::convert::to_json_object(startup_applications)))
     {
     }
 
@@ -748,6 +757,8 @@ namespace rpc::unshared_scheduler_dll
 
         auto loaded = std::make_unique<loaded_runtime>(library_path_, scheduler);
         loaded->transport_name = get_name();
+        loaded->module_settings_json = module_settings_json_;
+        loaded->startup_applications_json = startup_applications_json_;
         loaded->settings = input_descr;
         auto* loaded_ptr = loaded.get();
 
@@ -784,6 +795,8 @@ namespace rpc::unshared_scheduler_dll
                 params.dll_zone = adjacent_zone_id;
                 params.host_zone = get_zone_id();
                 params.settings = &loaded_ptr->settings;
+                params.module_settings_json = loaded_ptr->module_settings_json.c_str();
+                params.startup_applications_json = loaded_ptr->startup_applications_json.c_str();
                 params.host_ctx = this;
                 params.host_send = &child_transport::host_begin_send;
                 params.host_post = &child_transport::host_begin_post;

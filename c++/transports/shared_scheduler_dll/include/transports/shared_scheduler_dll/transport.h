@@ -18,8 +18,10 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
+#  include <map>
 #  include <string>
 #  include <memory>
+#  include <json/json_dom.h>
 
 #  if defined(_WIN32)
 #    include <windows.h>
@@ -53,6 +55,8 @@ namespace rpc::shared_scheduler_dll
 
         // Path to the shared object
         const std::string library_path_;
+        std::string module_settings_json_;
+        std::string startup_applications_json_;
 
         // Host scheduler used to defer final keep-alive release until after a
         // DLL-originated destructor callback has unwound out of DLL code.
@@ -143,7 +147,11 @@ namespace rpc::shared_scheduler_dll
         child_transport(
             std::string name,
             std::shared_ptr<rpc::service> service,
-            std::string library_path);
+            std::string library_path,
+            json::v1::object module_settings = json::v1::object{json::v1::map{}},
+            std::map<
+                std::string,
+                json::v1::object> startup_applications = {});
 
         ~child_transport() override;
 

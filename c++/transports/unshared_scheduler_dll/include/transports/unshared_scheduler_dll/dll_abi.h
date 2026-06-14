@@ -151,6 +151,8 @@ namespace rpc::unshared_scheduler_dll
         rpc::zone dll_zone = {};
         rpc::zone host_zone = {};
         const rpc::connection_settings* settings = nullptr;
+        const char* module_settings_json = nullptr;
+        const char* startup_applications_json = nullptr;
         void* host_ctx = nullptr;
 
         host_begin_send_fn host_send = nullptr;

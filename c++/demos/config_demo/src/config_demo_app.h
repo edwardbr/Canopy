@@ -26,11 +26,8 @@ namespace config_demo::v1
         std::filesystem::path base_directory,
         std::shared_ptr<rpc::connection_factory::application_runtime>& runtime,
         std::string& error_message) -> demo_error;
-    [[nodiscard]] auto make_scheduler(uint32_t thread_count) -> std::shared_ptr<coro::scheduler>;
 
     [[nodiscard]] auto run_configured_demo(
         const rpc::connection_factory::application_runtime& runtime,
-        const execution_settings& execution,
-        const std::shared_ptr<coro::scheduler>& scheduler_1,
-        const std::shared_ptr<coro::scheduler>& scheduler_2) -> demo_error;
+        const execution_settings& execution) -> demo_error;
 } // namespace config_demo::v1

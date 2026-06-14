@@ -33,6 +33,7 @@ namespace comprehensive
 {
     namespace v1
     {
+        namespace calc = ::calculator::v1;
 
 #ifdef CANOPY_BUILD_COROUTINE
         CORO_TASK(bool)
@@ -45,7 +46,7 @@ namespace comprehensive
             std::atomic<bool>& is_loaded,
             rpc::event& client_finished)
         {
-            rpc::shared_ptr<comprehensive::v1::i_calculator> remote_calculator;
+            rpc::shared_ptr<calc::i_calculator> remote_calculator;
             auto on_shutdown_event = std::make_shared<rpc::event>();
             int error = rpc::error::OK();
 
@@ -54,7 +55,7 @@ namespace comprehensive
 
                 service_1->set_shutdown_event(on_shutdown_event);
 
-                rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
+                rpc::shared_ptr<calc::i_calculator> local_calculator;
 
                 rpc::connection_factory::stream_rpc_connection_settings options;
                 options.service.name = "process_1";
@@ -63,7 +64,7 @@ namespace comprehensive
                 options.transport.call_timeout_sweep = uint64_t{1};
 
                 std::cout << "Process 1: Connecting...\n";
-                auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<i_calculator, i_calculator>(
+                auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<calc::i_calculator, calc::i_calculator>(
                     local_calculator, queues, options, service_1);
                 remote_calculator = connect_result.output_interface;
                 error = connect_result.error_code;
@@ -137,15 +138,14 @@ namespace comprehensive
             options.transport.service_proxy_name = "process_2";
             options.transport.call_timeout_sweep = uint64_t{1};
 
-            auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<i_calculator, i_calculator>(
+            auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<calc::i_calculator, calc::i_calculator>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&](const rpc::shared_ptr<i_calculator>&,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+                [&](const rpc::shared_ptr<calc::i_calculator>&,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
                 {
                     on_connected.set();
                     std::cout << "Process 2: Created calculator service\n";
-                    CO_RETURN rpc::service_connect_result<i_calculator>{
-                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
+                    CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
                 },
                 queues,
                 options,

@@ -169,8 +169,8 @@ namespace
     rpc::connection_settings from_sgx_request(const init_request& request)
     {
         rpc::connection_settings input_descr{};
-        input_descr.inbound_interface_id = yyy::i_host::get_id(rpc::get_version());
-        input_descr.outbound_interface_id = yyy::i_example::get_id(rpc::get_version());
+        input_descr.inbound_interface_id = request.inbound_interface_id;
+        input_descr.outbound_interface_id = request.outbound_interface_id;
         input_descr.encoding_type = request.encoding_type;
         input_descr.remote_object_id = request.host_remote_object;
         return input_descr;
@@ -452,12 +452,4 @@ int get_new_zone_id_enclave(
 
     new_zone_id_response result{rpc::error::NOT_IMPLEMENTED(), {}, {}};
     return write_blob_response(result, resp_cap, resp, resp_sz);
-}
-
-extern "C"
-{
-    int _Uelf64_valid_object()
-    {
-        return -1;
-    }
 }

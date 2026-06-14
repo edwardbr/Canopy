@@ -4,7 +4,7 @@
 ]]
 
 # Test DLL for the unshared_scheduler_dll transport (coroutine builds only). Provides
-# canopy_unshared_scheduler_dll_init wired to marshalled_tests::example.
+# canopy_module_init wired to marshalled_tests::example.
 
 if(NOT CANOPY_BUILD_COROUTINE)
   return()

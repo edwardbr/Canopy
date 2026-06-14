@@ -34,6 +34,8 @@ target_include_directories(
 target_link_libraries(
   local_transport_demo
   PUBLIC comprehensive_idl
+         demo_calculator_rpc_object
+         calculator_idl
          transport_local
          rpc
          ${CANOPY_LIBRARIES}
@@ -59,6 +61,8 @@ if(CANOPY_BUILD_COROUTINE)
     target_link_libraries(
       tcp_transport_demo
       PUBLIC comprehensive_idl
+             demo_calculator_rpc_object
+             calculator_idl
              transport_local
              transport_streaming
              connection_factory
@@ -87,6 +91,8 @@ if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     spsc_transport_demo
     PUBLIC comprehensive_idl
+           demo_calculator_rpc_object
+           calculator_idl
            transport_local
            transport_streaming
            connection_factory
@@ -111,6 +117,8 @@ target_include_directories(
 target_link_libraries(
   serialisation_demo
   PUBLIC comprehensive_idl
+         demo_calculator_rpc_object
+         calculator_idl
          rpc
          transport_local
          ${CANOPY_LIBRARIES}
@@ -130,6 +138,8 @@ target_include_directories(
 target_link_libraries(
   shared_ptr_demo
   PUBLIC comprehensive_idl
+         demo_calculator_rpc_object
+         calculator_idl
          rpc
          transport_local
          ${CANOPY_LIBRARIES}
@@ -147,6 +157,8 @@ target_include_directories(
 target_link_libraries(
   optimistic_ptr_demo
   PUBLIC comprehensive_idl
+         demo_calculator_rpc_object
+         calculator_idl
          rpc
          transport_local
          ${CANOPY_LIBRARIES}

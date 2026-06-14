@@ -57,6 +57,16 @@ namespace rpc
             // thread each for the lifetime of a connection. Default leaves
             // room for moderate fan-out without overcommitting.
             std::size_t thread_count{0};
+
+            // Upper bound for adaptive worker growth. Zero derives a bounded
+            // host default from thread_count/hardware_concurrency.
+            std::size_t max_thread_count{0};
+
+            // Host blocking builds can pin every worker in long-running waits.
+            // When enabled, queued work plus all active workers running grows
+            // the pool up to max_thread_count. Enclave builds do not use this
+            // executor.
+            bool enable_adaptive_threads{true};
         };
 
         blocking_executor();
@@ -80,25 +90,40 @@ namespace rpc
 
         [[nodiscard]] bool is_shutdown() const noexcept { return shutdown_.load(std::memory_order_acquire); }
 
-        [[nodiscard]] std::size_t worker_count() const noexcept { return workers_.size(); }
+        [[nodiscard]] std::size_t worker_count() const noexcept
+        {
+            return worker_count_.load(std::memory_order_acquire);
+        }
 
     private:
+        struct queued_task
+        {
+            std::function<void()> fn;
+        };
+
         struct worker_slot
         {
-            std::deque<std::function<void()>> queue;
+            std::deque<queued_task> queue;
             mutable std::mutex mtx;
         };
 
+        void start_worker_locked(std::size_t index);
+        void maybe_grow();
         void worker_loop(std::size_t index);
         bool try_pop_own(
             std::size_t self_index,
-            std::function<void()>& out);
+            queued_task& out);
         bool try_steal(
             std::size_t self_index,
-            std::function<void()>& out);
+            queued_task& out);
 
         std::vector<std::unique_ptr<worker_slot>> slots_;
         std::vector<std::thread> workers_;
+        mutable std::mutex worker_control_mtx_;
+        std::size_t max_thread_count_{0};
+        bool enable_adaptive_threads_{true};
+        std::atomic<std::size_t> worker_count_{0};
+        std::atomic<std::size_t> running_tasks_{0};
 
         // Global condition for waking idle workers. notify_one on post(),
         // notify_all on shutdown(). The cv is decoupled from any single

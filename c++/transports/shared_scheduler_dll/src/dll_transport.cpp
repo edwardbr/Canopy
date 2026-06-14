@@ -6,7 +6,8 @@
 // DLL-side (parent_transport) implementation.  Coroutine-build only.
 //
 // Compiled into transport_shared_scheduler_dll_runtime, which the DLL links.
-// The DLL author only needs to provide canopy_shared_scheduler_dll_init.
+// Object modules include <rpc_objects/object_registration.h> and provide
+// canopy_module_init; the adapter supplies canopy_shared_scheduler_dll_init.
 
 #ifdef CANOPY_BUILD_COROUTINE
 
@@ -22,6 +23,8 @@ namespace rpc::shared_scheduler_dll
         std::string name,
         rpc::zone dll_zone,
         rpc::zone host_zone,
+        const char* module_settings_json,
+        const char* startup_applications_json,
         void* host_ctx,
         host_coro_send_fn send,
         host_coro_post_fn post,
@@ -36,6 +39,8 @@ namespace rpc::shared_scheduler_dll
               name,
               dll_zone)
         , host_ctx_(host_ctx)
+        , module_settings_json_(module_settings_json ? module_settings_json : "")
+        , startup_applications_json_(startup_applications_json ? startup_applications_json : "")
         , host_send_(send)
         , host_post_(post)
         , host_try_cast_(try_cast)
@@ -134,6 +139,8 @@ extern "C" CANOPY_SHARED_SCHEDULER_DLL_EXPORT void canopy_shared_scheduler_dll_c
         params->name,
         params->dll_zone,
         params->host_zone,
+        params->module_settings_json,
+        params->startup_applications_json,
         params->host_ctx,
         params->host_send,
         params->host_post,

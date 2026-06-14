@@ -13,6 +13,7 @@ add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
 add_subdirectory(subcomponents/json)
+add_subdirectory(subcomponents/modules)
 add_subdirectory(subcomponents/io_uring_config)
 
 # The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking,

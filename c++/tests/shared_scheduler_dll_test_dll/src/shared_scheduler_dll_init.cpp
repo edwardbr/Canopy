@@ -7,9 +7,8 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#  include <transports/shared_scheduler_dll/dll_transport.h>
-#  include <rpc/rpc.h>
 #  include <common/tests.h>
+#  include <rpc_objects/object_registration.h>
 
 #  include <atomic>
 
@@ -27,26 +26,18 @@ extern "C" CANOPY_SHARED_SCHEDULER_DLL_EXPORT int canopy_shared_scheduler_dll_te
     return ++dll_static_probe_counter();
 }
 
-namespace rpc::shared_scheduler_dll
+static CORO_TASK(int) canopy_module_init(rpc::object_module_init_params* params)
 {
-    // Concrete init coroutine called through the host-scheduled direct coroutine ABI.
-    coro::task<rpc::connect_result> canopy_shared_scheduler_dll_init(
-        void* transport_ctx,
-        const rpc::connection_settings* settings,
-        std::shared_ptr<coro::scheduler>* scheduler)
-    {
-        canopy_shared_scheduler_dll_test_increment_static_probe();
-        return init_child_zone<yyy::i_host, yyy::i_example>(
-            transport_ctx,
-            settings,
-            scheduler,
-            [](rpc::shared_ptr<yyy::i_host> host,
-                std::shared_ptr<rpc::child_service> svc) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
-            {
-                CO_RETURN rpc::service_connect_result<yyy::i_example>{
-                    rpc::error::OK(), rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host))};
-            });
-    }
+    canopy_shared_scheduler_dll_test_increment_static_probe();
+    CO_RETURN CO_AWAIT rpc::register_object<yyy::i_host, yyy::i_example>(
+        params,
+        [](rpc::shared_ptr<yyy::i_host> host,
+            std::shared_ptr<rpc::service> svc,
+            rpc::module::object_factory_context) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{
+                rpc::error::OK(), rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(svc, host))};
+        });
 }
 
 #endif // CANOPY_BUILD_COROUTINE

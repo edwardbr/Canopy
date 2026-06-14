@@ -349,7 +349,7 @@ namespace rpc::connection_factory
                     RPC_ERROR(
                         "spsc_buffered_stream stream layer requires service '{}' to have an executor; construct the "
                         "service "
-                        "with rpc::stream_transport::make_default_executor() or let connection_factory create it",
+                        "with rpc::make_executor() or let connection_factory create it",
                         service->get_name());
                     result.error_code = rpc::error::INVALID_DATA();
                     return result;
@@ -505,6 +505,7 @@ namespace rpc::connection_factory
     {
         rpc::stream_transport::service_settings stream_service_settings;
         stream_service_settings.name = settings.name;
+        stream_service_settings.executor = settings.executor;
         return rpc::stream_transport::ensure_service(
             stream_service_settings, transport_settings, std::move(service), std::move(default_name));
     }
@@ -930,7 +931,7 @@ namespace rpc::connection_factory
         if (topology_error != rpc::error::OK())
             CO_RETURN stream_result{topology_error, {}};
 
-        auto service_settings = detail::service_settings_from_connection(settings);
+        auto service_settings = materialise_service_settings(settings);
         if (service_settings.error_code != rpc::error::OK())
             CO_RETURN stream_result{service_settings.error_code, {}};
 
@@ -958,7 +959,7 @@ namespace rpc::connection_factory
         if (topology_error != rpc::error::OK())
             CO_RETURN stream_result{topology_error, {}};
 
-        auto service_settings = detail::service_settings_from_connection(settings);
+        auto service_settings = materialise_service_settings(settings);
         if (service_settings.error_code != rpc::error::OK())
             CO_RETURN stream_result{service_settings.error_code, {}};
 
@@ -985,7 +986,7 @@ namespace rpc::connection_factory
         if (!callback)
             CO_RETURN stream_accept_result{rpc::error::INVALID_DATA(), {}};
 
-        auto service_settings = detail::service_settings_from_connection(settings);
+        auto service_settings = materialise_service_settings(settings);
         if (service_settings.error_code != rpc::error::OK())
             CO_RETURN stream_accept_result{service_settings.error_code, {}};
 

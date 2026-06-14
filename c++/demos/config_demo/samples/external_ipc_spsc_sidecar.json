@@ -2,7 +2,6 @@
   "$schema": "../schemas/config_demo_config.schema.json",
   "execution": {
     "iterations": 1,
-    "scheduler_threads": 2,
     "client_connection": "client",
     "server_connection": ""
   },
@@ -10,9 +9,17 @@
     {
       "name": "client",
       "role": "connector",
-      "service_name": "config_demo_ipc_parent",
       "zone_subnet": 302,
       "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_ipc_parent",
+            "executor": {
+              "thread_count": 2
+            }
+          }
+        },
         "transport": {
           "type": "ipc_spsc",
           "settings": {

@@ -24,7 +24,7 @@ namespace rpc::connection_factory::detail
                 const rpc::connection_factory::connection_settings& settings,
                 std::shared_ptr<rpc::service> service) const -> transport_connect_context override
             {
-                auto service_settings = detail::service_settings_from_connection(settings);
+                auto service_settings = materialise_service_settings(settings);
                 if (service_settings.error_code != rpc::error::OK())
                     return {service_settings.error_code, {}, {}, {}};
 

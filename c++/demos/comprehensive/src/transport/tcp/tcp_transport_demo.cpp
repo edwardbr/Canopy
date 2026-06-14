@@ -134,6 +134,8 @@ namespace comprehensive
 {
     namespace v1
     {
+        namespace calc = ::calculator::v1;
+
         struct tcp_connection_options
         {
             ::streaming::tcp::endpoint endpoint;
@@ -182,12 +184,11 @@ namespace comprehensive
 
             auto options = tcp_options_from_endpoint(
                 listen_ep, "tcp_server", "server_transport", "server_transport", "tcp_server");
-            auto accept_result = CO_AWAIT rpc::tcp_coroutine::accept_rpc<i_calculator, i_calculator>(
-                [](const rpc::shared_ptr<i_calculator>&,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+            auto accept_result = CO_AWAIT rpc::tcp_coroutine::accept_rpc<calc::i_calculator, calc::i_calculator>(
+                [](const rpc::shared_ptr<calc::i_calculator>&,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
                 {
-                    CO_RETURN rpc::service_connect_result<i_calculator>{
-                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
+                    CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
                 },
                 options.endpoint,
                 options.factory,
@@ -228,7 +229,7 @@ namespace comprehensive
 
             auto client_service = rpc::root_service::create("tcp_client", client_zone, scheduler);
 
-            rpc::shared_ptr<i_calculator> remote_calculator;
+            rpc::shared_ptr<calc::i_calculator> remote_calculator;
 
             {
                 co_await server_ready.wait();
@@ -245,8 +246,8 @@ namespace comprehensive
 
                 auto options = tcp_options_from_endpoint(
                     connect_ep, "tcp_client", "client_listener", "client_transport", "tcp_server");
-                auto connect_result = CO_AWAIT rpc::tcp_coroutine::connect_rpc<i_calculator, i_calculator>(
-                    rpc::shared_ptr<i_calculator>(), options.endpoint, options.factory, client_service);
+                auto connect_result = CO_AWAIT rpc::tcp_coroutine::connect_rpc<calc::i_calculator, calc::i_calculator>(
+                    rpc::shared_ptr<calc::i_calculator>(), options.endpoint, options.factory, client_service);
                 remote_calculator = connect_result.output_interface;
                 auto error = connect_result.error_code;
 

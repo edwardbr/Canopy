@@ -2,7 +2,6 @@
   "$schema": "../schemas/config_demo_config.schema.json",
   "execution": {
     "iterations": 1,
-    "scheduler_threads": 2,
     "client_connection": "client",
     "server_connection": "server"
   },
@@ -13,10 +12,23 @@
     {
       "name": "server",
       "role": "acceptor",
-      "service_name": "config_demo_spsc_server",
       "zone_subnet": 2,
       "connection": {
-        "listener": { "type": "stream_rpc", "settings": { "name": "config_demo_spsc_listener" } },
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_spsc_server",
+            "executor": {
+              "thread_count": 2
+            }
+          }
+        },
+        "listener": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_spsc_listener"
+          }
+        },
         "transport": {
           "type": "stream_rpc",
           "settings": {
@@ -28,11 +40,18 @@
           }
         },
         "stream_layers": [
-          { "type": "spsc_queue", "settings": { "queue_pair": "config_demo_in_process_pair" } },
+          {
+            "type": "spsc_queue",
+            "settings": {
+              "queue_pair": "config_demo_in_process_pair"
+            }
+          },
           {
             "type": "websocket",
             "settings": {
-              "keep_alive": { "enabled": false },
+              "keep_alive": {
+                "enabled": false
+              },
               "max_message_bytes": 1048576,
               "max_frame_payload_bytes": 1048576,
               "max_decoded_messages": 16
@@ -44,9 +63,17 @@
     {
       "name": "client",
       "role": "connector",
-      "service_name": "config_demo_spsc_client",
       "zone_subnet": 101,
       "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_spsc_client",
+            "executor": {
+              "thread_count": 2
+            }
+          }
+        },
         "transport": {
           "type": "stream_rpc",
           "settings": {
@@ -58,11 +85,18 @@
           }
         },
         "stream_layers": [
-          { "type": "spsc_queue", "settings": { "queue_pair": "config_demo_in_process_pair" } },
+          {
+            "type": "spsc_queue",
+            "settings": {
+              "queue_pair": "config_demo_in_process_pair"
+            }
+          },
           {
             "type": "websocket",
             "settings": {
-              "keep_alive": { "enabled": false },
+              "keep_alive": {
+                "enabled": false
+              },
               "max_message_bytes": 1048576,
               "max_frame_payload_bytes": 1048576,
               "max_decoded_messages": 16

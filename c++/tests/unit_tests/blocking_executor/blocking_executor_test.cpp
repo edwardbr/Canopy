@@ -15,6 +15,21 @@
 
 namespace
 {
+    template<typename Predicate>
+    bool wait_until(
+        Predicate&& predicate,
+        std::chrono::milliseconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (predicate())
+                return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return predicate();
+    }
+
     TEST(
         BlockingExecutor,
         ConstructsWithDefaultThreadCount)
@@ -32,6 +47,40 @@ namespace
         opts.thread_count = 3;
         rpc::blocking_executor ex(opts);
         EXPECT_EQ(ex.worker_count(), 3u);
+    }
+
+    TEST(
+        BlockingExecutor,
+        GrowsWhenQueuedWorkFindsAllWorkersBusy)
+    {
+        rpc::blocking_executor::options opts;
+        opts.thread_count = 1;
+        opts.max_thread_count = 3;
+        rpc::blocking_executor ex(opts);
+
+        rpc::event blocker_started;
+        rpc::event release_blocker;
+        std::atomic<bool> queued_task_ran{false};
+
+        ASSERT_TRUE(ex.post(
+            [&]
+            {
+                blocker_started.set();
+                release_blocker.wait();
+            }));
+        blocker_started.wait();
+
+        const bool posted_queued_task = ex.post([&] { queued_task_ran.store(true, std::memory_order_release); });
+        const bool ran_before_release = wait_until(
+            [&] { return queued_task_ran.load(std::memory_order_acquire); }, std::chrono::milliseconds(2000));
+        const auto grown_worker_count = ex.worker_count();
+
+        release_blocker.set();
+        ex.shutdown();
+
+        EXPECT_TRUE(posted_queued_task);
+        EXPECT_TRUE(ran_before_release);
+        EXPECT_GE(grown_worker_count, 2u);
     }
 
     TEST(

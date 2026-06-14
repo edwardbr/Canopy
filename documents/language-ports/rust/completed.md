@@ -721,7 +721,7 @@ be translated to other language backends without carrying that history in
   - Rust does not reserve `__` the way C++ does, so the internal-only intent is
     now reinforced with `#[doc(hidden)]`
   - this keeps the future application-facing surface focused on generated
-    interfaces plus a `make_local(...)`-style wrapper rather than low-level RPC
+    interfaces plus a `local_factory(...)`-style wrapper rather than low-level RPC
     plumbing
 - Added the first generated `make_rpc_object(...)` application-facing wrapper:
   - generated interface modules now emit `RpcObjectAdapter`

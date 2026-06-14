@@ -8,6 +8,7 @@
 #include <chrono>
 #include <exception>
 #include <string_view>
+#include <utility>
 
 namespace rpc::connection_factory
 {
@@ -25,6 +26,14 @@ namespace rpc::connection_factory
             std::string_view expected)
         {
             return typed.type == expected;
+        }
+
+        rpc::stream_transport::service_settings stream_service_settings_from(service_settings settings)
+        {
+            rpc::stream_transport::service_settings result;
+            result.name = std::move(settings.name);
+            result.executor = settings.executor;
+            return result;
         }
     } // namespace
 
@@ -64,8 +73,7 @@ namespace rpc::connection_factory
         return typed.settings.value();
     }
 
-    materialise_settings_result<service_settings> detail::service_settings_from_connection(
-        const connection_settings& settings)
+    materialise_settings_result<service_settings> materialise_service_settings(const connection_settings& settings)
     {
         if (!settings.service)
             return {rpc::error::OK(), {}};
@@ -113,10 +121,10 @@ namespace rpc::connection_factory
     detail::resolve_stream_rpc_settings_result detail::resolve_stream_rpc_settings(const connection_settings& settings)
     {
         detail::resolve_stream_rpc_settings_result result;
-        auto service = detail::service_settings_from_connection(settings);
+        auto service = materialise_service_settings(settings);
         if (service.error_code != rpc::error::OK())
             return {service.error_code, {}};
-        result.settings.service.name = std::move(service.settings.name);
+        result.settings.service = stream_service_settings_from(std::move(service.settings));
 
         auto transport = detail::stream_rpc_transport_settings_from_connection(settings);
         if (transport.error_code != rpc::error::OK())
@@ -135,10 +143,8 @@ namespace rpc::connection_factory
         service_settings service,
         rpc::stream_transport::listener_settings listener)
     {
-        rpc::stream_transport::service_settings stream_service;
-        stream_service.name = std::move(service.name);
         return rpc::stream_transport::make_connection_settings(
-            std::move(transport), std::move(stream_service), std::move(listener));
+            std::move(transport), stream_service_settings_from(std::move(service)), std::move(listener));
     }
 
     std::optional<rpc::encoding> encoding_option(const rpc::stream_transport::transport_settings& settings)

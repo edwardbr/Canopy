@@ -125,6 +125,8 @@ namespace rpc::shared_scheduler_dll
         const char* name;
         rpc::zone dll_zone; // assigned by the host via get_new_zone_id
         rpc::zone host_zone;
+        const char* module_settings_json;
+        const char* startup_applications_json;
         void* host_ctx;
 
         // Host coroutine callbacks (DLL calls these to reach the host)

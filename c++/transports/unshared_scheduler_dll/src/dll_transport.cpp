@@ -6,7 +6,8 @@
 // DLL-side (parent_transport) implementation.  Coroutine-build only.
 //
 // Compiled into transport_unshared_scheduler_dll_runtime, which the DLL links.
-// The DLL author only needs to provide canopy_unshared_scheduler_dll_init.
+// Object modules include <rpc_objects/object_registration.h> and provide
+// canopy_module_init; the adapter supplies canopy_unshared_scheduler_dll_init.
 
 #ifdef CANOPY_BUILD_COROUTINE
 
@@ -704,6 +705,8 @@ extern "C" CANOPY_UNSHARED_SCHEDULER_DLL_EXPORT void canopy_unshared_scheduler_d
         {
             runtime->scheduler = make_runtime_scheduler();
             runtime->runtime_finished = std::make_shared<runtime_finish_gate>();
+            runtime->module_settings_json = params->module_settings_json ? params->module_settings_json : "";
+            runtime->startup_applications_json = params->startup_applications_json ? params->startup_applications_json : "";
             runtime->pending_transport = std::make_shared<parent_transport>(
                 params->name ? params->name : "",
                 params->dll_zone,

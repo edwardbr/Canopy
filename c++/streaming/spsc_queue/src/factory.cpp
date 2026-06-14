@@ -19,8 +19,7 @@ namespace rpc::spsc_queue
             bool connect_side,
             std::shared_ptr<rpc::service> service)
         {
-            auto scheduler = service && service->get_executor() ? service->get_executor()
-                                                                : rpc::stream_transport::make_default_executor();
+            auto scheduler = service && service->get_executor() ? service->get_executor() : rpc::make_executor();
             if (!scheduler)
                 CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 

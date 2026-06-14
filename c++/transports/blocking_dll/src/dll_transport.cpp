@@ -7,8 +7,10 @@
 // points that the host resolves at load time.
 //
 // This file is compiled into transport_blocking_dll_runtime, which is linked
-// by the user's shared object.  The user provides canopy_dll_init themselves
-// (using the init_child_zone<> helper).  All other entry points are here.
+// by the user's shared object. Object modules normally include
+// <rpc_objects/object_registration.h> and provide canopy_module_init; the
+// transport adapter supplies canopy_dll_init and calls the low-level helper.
+// All other entry points are here.
 
 #include <transports/blocking_dll/dll_transport.h>
 #include <rpc/rpc.h>

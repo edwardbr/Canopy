@@ -21,6 +21,18 @@ namespace rpc
             // callers so a single transport does not starve the service.
             return std::max<std::size_t>(hw, 4);
         }
+
+        std::size_t resolve_max_thread_count(
+            std::size_t initial_thread_count,
+            std::size_t requested_max_thread_count) noexcept
+        {
+            if (requested_max_thread_count != 0)
+                return std::max(initial_thread_count, requested_max_thread_count);
+
+            auto doubled = initial_thread_count > (static_cast<std::size_t>(-1) / 2) ? initial_thread_count
+                                                                                     : initial_thread_count * 2;
+            return std::max<std::size_t>(std::max(initial_thread_count + 4, doubled), 8);
+        }
     }
 
     blocking_executor::blocking_executor()
@@ -29,14 +41,21 @@ namespace rpc
     }
 
     blocking_executor::blocking_executor(options opts)
+        : max_thread_count_(resolve_max_thread_count(
+              resolve_thread_count(opts.thread_count),
+              opts.max_thread_count))
+        , enable_adaptive_threads_(opts.enable_adaptive_threads)
     {
         auto count = resolve_thread_count(opts.thread_count);
-        slots_.reserve(count);
-        for (std::size_t i = 0; i < count; ++i)
+        if (max_thread_count_ < count)
+            max_thread_count_ = count;
+
+        slots_.reserve(max_thread_count_);
+        for (std::size_t i = 0; i < max_thread_count_; ++i)
             slots_.emplace_back(std::make_unique<worker_slot>());
-        workers_.reserve(count);
+        workers_.reserve(max_thread_count_);
         for (std::size_t i = 0; i < count; ++i)
-            workers_.emplace_back([this, i] { worker_loop(i); });
+            start_worker_locked(i);
     }
 
     blocking_executor::~blocking_executor()
@@ -53,7 +72,11 @@ namespace rpc
 
         // Round-robin: a task posted from worker A lands on a different
         // worker's queue (usually). Work-stealing rebalances under load.
-        auto idx = dispatch_index_.fetch_add(1, std::memory_order_relaxed) % slots_.size();
+        auto active_workers = worker_count_.load(std::memory_order_acquire);
+        if (active_workers == 0)
+            return false;
+
+        auto idx = dispatch_index_.fetch_add(1, std::memory_order_relaxed) % active_workers;
         {
             std::lock_guard<std::mutex> lock(slots_[idx]->mtx);
             // Re-check shutdown_ INSIDE the lock so the rest of the body is
@@ -62,7 +85,7 @@ namespace rpc
             // empty, leaving an orphan task that workers never run.
             if (shutdown_.load(std::memory_order_relaxed))
                 return false;
-            slots_[idx]->queue.push_back(std::move(fn));
+            slots_[idx]->queue.push_back(queued_task{std::move(fn)});
             // pending_tasks_ is mutated under the queue lock so workers'
             // (queue, counter) view is always consistent. A worker that sees
             // pending_tasks_ > 0 either finds the task in a queue or another
@@ -79,6 +102,7 @@ namespace rpc
             std::lock_guard<std::mutex> lock(wake_mtx_);
         }
         wake_cv_.notify_one();
+        maybe_grow();
         return true;
     }
 
@@ -112,17 +136,57 @@ namespace rpc
         wake_cv_.notify_all();
         timer_cv_.notify_all();
 
-        for (auto& t : workers_)
+        std::vector<std::thread> workers;
+        {
+            std::lock_guard<std::mutex> lock(worker_control_mtx_);
+            workers.swap(workers_);
+        }
+
+        for (auto& t : workers)
         {
             if (t.joinable())
                 t.join();
         }
-        workers_.clear();
+        worker_count_.store(0, std::memory_order_release);
+    }
+
+    void blocking_executor::start_worker_locked(std::size_t index)
+    {
+        workers_.emplace_back([this, index] { worker_loop(index); });
+        worker_count_.store(workers_.size(), std::memory_order_release);
+    }
+
+    void blocking_executor::maybe_grow()
+    {
+        if (!enable_adaptive_threads_)
+            return;
+        if (shutdown_.load(std::memory_order_acquire))
+            return;
+        if (pending_tasks_.load(std::memory_order_acquire) == 0)
+            return;
+
+        auto active_workers = worker_count_.load(std::memory_order_acquire);
+        if (active_workers >= max_thread_count_)
+            return;
+        if (running_tasks_.load(std::memory_order_acquire) < active_workers)
+            return;
+
+        std::lock_guard<std::mutex> lock(worker_control_mtx_);
+        if (shutdown_.load(std::memory_order_acquire))
+            return;
+        active_workers = workers_.size();
+        if (active_workers >= max_thread_count_)
+            return;
+        if (running_tasks_.load(std::memory_order_acquire) < active_workers)
+            return;
+
+        start_worker_locked(active_workers);
+        wake_cv_.notify_one();
     }
 
     bool blocking_executor::try_pop_own(
         std::size_t self_index,
-        std::function<void()>& out)
+        queued_task& out)
     {
         std::lock_guard<std::mutex> lock(slots_[self_index]->mtx);
         if (slots_[self_index]->queue.empty())
@@ -139,13 +203,13 @@ namespace rpc
 
     bool blocking_executor::try_steal(
         std::size_t self_index,
-        std::function<void()>& out)
+        queued_task& out)
     {
         // Scan peers, stealing one task from the first non-empty queue we
         // find. Steal from the BACK of the victim's deque (LIFO from
         // victim's perspective) to minimise contention with the victim's
         // own front-pops.
-        auto n = slots_.size();
+        auto n = worker_count_.load(std::memory_order_acquire);
         for (std::size_t offset = 1; offset < n; ++offset)
         {
             auto victim = (self_index + offset) % n;
@@ -164,7 +228,7 @@ namespace rpc
     {
         for (;;)
         {
-            std::function<void()> task;
+            queued_task task;
 
             // Take from own queue first (recently-dispatched-to-me tasks);
             // then steal from peers — this is what unsticks tasks
@@ -174,13 +238,17 @@ namespace rpc
             {
                 try
                 {
-                    task();
+                    running_tasks_.fetch_add(1, std::memory_order_acq_rel);
+                    maybe_grow();
+                    task.fn();
                 }
                 catch (...)
                 {
                     // Worker threads must not propagate exceptions; posted
                     // callables own their own error handling.
                 }
+                running_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                maybe_grow();
                 continue;
             }
 

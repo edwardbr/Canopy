@@ -2,7 +2,6 @@
   "$schema": "../schemas/config_demo_config.schema.json",
   "execution": {
     "iterations": 1,
-    "scheduler_threads": 4,
     "client_connection": "client",
     "server_connection": "server"
   },
@@ -10,10 +9,23 @@
     {
       "name": "server",
       "role": "acceptor",
-      "service_name": "config_demo_server",
       "zone_subnet": 1,
       "connection": {
-        "listener": { "type": "stream_rpc", "settings": { "name": "config_demo_listener" } },
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_server",
+            "executor": {
+              "thread_count": 4
+            }
+          }
+        },
+        "listener": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_listener"
+          }
+        },
         "transport": {
           "type": "stream_rpc",
           "settings": {
@@ -60,9 +72,17 @@
     {
       "name": "client",
       "role": "connector",
-      "service_name": "config_demo_client",
       "zone_subnet": 100,
       "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_client",
+            "executor": {
+              "thread_count": 4
+            }
+          }
+        },
         "transport": {
           "type": "stream_rpc",
           "settings": {

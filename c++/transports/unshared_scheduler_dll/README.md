@@ -26,11 +26,12 @@ until the DLL-side transport dies.
 
 The DLL author provides:
 
-- `canopy_unshared_scheduler_dll_init`
+- `canopy_module_init` by including `<rpc_objects/object_registration.h>`
 - `rpc_log`
 
-The transport library provides `canopy_unshared_scheduler_dll_start` and the rest of the
-cross-boundary begin/complete callback plumbing.
+The transport registration adapter provides `canopy_unshared_scheduler_dll_init`.
+The transport library provides `canopy_unshared_scheduler_dll_start` and the
+rest of the cross-boundary begin/complete callback plumbing.
 
 ## Difference from `blocking_dll`
 

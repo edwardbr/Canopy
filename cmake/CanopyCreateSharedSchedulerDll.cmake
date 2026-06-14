@@ -35,8 +35,7 @@ function(CanopyCreateSharedSchedulerDll target_name)
             transport_shared_scheduler_dll_runtime
             -Wl,--no-whole-archive
             ${CANOPY_PLUGIN_LINK_LIBRARIES}
-            yas_common
-            rpc::rpc
+            rpc::modules
             ${CANOPY_LIBRARIES})
 
   target_compile_options(

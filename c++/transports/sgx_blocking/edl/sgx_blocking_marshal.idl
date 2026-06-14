@@ -19,8 +19,11 @@ namespace rpc
             struct init_request
             {
                 rpc::remote_object host_remote_object;
+                rpc::interface_ordinal inbound_interface_id;
+                rpc::interface_ordinal outbound_interface_id;
                 rpc::encoding encoding_type;
                 rpc::zone child_zone_id;
+                std::map<std::string, json::v1::object> applications;
                 // Runtime-owned startup policy supplied by the host transport
                 // configuration. Debug enclaves may materialise this directly;
                 // release enclaves may ignore or replace security-sensitive

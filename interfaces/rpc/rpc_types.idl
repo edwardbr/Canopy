@@ -152,6 +152,21 @@ namespace rpc
         mcp = 1
     };
 
+    // Common executor construction settings. Coroutine builds use
+    // thread_count; host blocking builds also use max_thread_count and
+    // enable_adaptive_threads. SGX inline executors ignore these values.
+    struct executor_options
+    {
+        [description="Initial executor worker count. Zero selects the build-specific default."]
+        uint32_t thread_count = 0;
+
+        [description="Maximum worker count for adaptive host blocking executors. Zero selects a bounded host default."]
+        uint32_t max_thread_count = 0;
+
+        [description="Allow host blocking executors to grow when queued work would otherwise starve behind busy workers."]
+        bool enable_adaptive_threads = true;
+    };
+
     // Back-channel entry for marshalling reference-counted objects across zones
     [no_fingerprint]
     struct back_channel_entry

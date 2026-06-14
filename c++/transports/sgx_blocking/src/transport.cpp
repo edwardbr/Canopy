@@ -91,11 +91,22 @@ namespace rpc::sgx_blocking_transport
 
         init_request to_sgx_request(
             const rpc::remote_object& host_remote_object,
+            rpc::interface_ordinal inbound_interface_id,
+            rpc::interface_ordinal outbound_interface_id,
             rpc::encoding encoding_type,
             rpc::zone child_zone_id,
+            std::map<
+                std::string,
+                json::v1::object> applications,
             json::v1::object runtime_settings)
         {
-            return init_request{host_remote_object, encoding_type, child_zone_id, std::move(runtime_settings)};
+            return init_request{host_remote_object,
+                inbound_interface_id,
+                outbound_interface_id,
+                encoding_type,
+                child_zone_id,
+                std::move(applications),
+                std::move(runtime_settings)};
         }
 
         send_request to_sgx_request(const rpc::send_params& params)
@@ -376,6 +387,7 @@ namespace rpc::sgx_blocking_transport
         , enclave_path_(std::move(settings.enclave_path))
     {
         enclave_runtime_settings_ = std::move(settings.enclave);
+        enclave_startup_applications_ = std::move(settings.startup_applications);
     }
 
     CORO_TASK(rpc::connect_result)
@@ -438,8 +450,11 @@ namespace rpc::sgx_blocking_transport
 
         auto init_request = to_sgx_blob(to_sgx_request(
             input_descr.remote_object_id.is_set() ? input_descr.remote_object_id : get_zone_id().get_address(),
+            input_descr.inbound_interface_id,
+            input_descr.outbound_interface_id,
             input_descr.encoding_type,
             adjacent_zone_id,
+            enclave_startup_applications_,
             runtime_settings_to_json(enclave_runtime_settings_)));
         std::vector<char> init_response_blob(1024);
         int err_code = rpc::error::OK();

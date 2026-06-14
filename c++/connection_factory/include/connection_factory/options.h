@@ -64,8 +64,6 @@ namespace rpc::connection_factory
         const json::v1::object& settings_object(const typed_settings& typed);
         const json::v1::object& settings_object(const rpc::stream_layers::stream_layer_settings& typed);
 
-        materialise_settings_result<service_settings> service_settings_from_connection(const connection_settings& settings);
-
         transport_selection_result transport_from_connection(const connection_settings& settings);
 
         materialise_settings_result<rpc::stream_transport::transport_settings>
@@ -93,6 +91,8 @@ namespace rpc::connection_factory
     materialise_connection_settings_result materialise_connection_settings(
         const json::v1::object& client_overrides,
         const json::v1::object& default_values = empty_options());
+
+    materialise_settings_result<service_settings> materialise_service_settings(const connection_settings& settings);
 
     template<class Settings>
     inline materialise_settings_result<Settings> materialise_settings(const json::v1::object& settings)
@@ -144,6 +144,4 @@ namespace rpc::connection_factory
 
     rpc::stream_transport::stream_transport_options transport_options(
         const rpc::stream_transport::transport_settings& settings);
-
-    using rpc::stream_transport::make_default_executor;
 } // namespace rpc::connection_factory

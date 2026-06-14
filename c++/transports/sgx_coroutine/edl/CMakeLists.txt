@@ -22,7 +22,8 @@ target_include_directories(
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../local/include>"
             "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../../security/attestation/include>"
             "$<INSTALL_INTERFACE:include>")
-target_link_libraries(transport_sgx_coroutine_enclave_headers INTERFACE transport_secure_coroutine_module_headers)
+target_link_libraries(transport_sgx_coroutine_enclave_headers INTERFACE transport_secure_coroutine_module_headers
+                                                                       rpc::modules_enclave)
 
 if(CANOPY_BUILD_ENCLAVE)
   host_edl_library(

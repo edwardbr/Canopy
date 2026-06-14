@@ -15,9 +15,6 @@ namespace config_demo
             [description="Number of calculator RPC rounds to run."]
             uint64_t iterations = 1;
 
-            [description="Thread count for each demo scheduler."]
-            uint32_t scheduler_threads = 4;
-
             [description="Named connector connection used by the demo client."]
             std::string client_connection = "client";
 

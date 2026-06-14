@@ -52,7 +52,9 @@ namespace rpc
                 error_code* error = 0;
                 uint64_t ticks_per_millisecond = 0;
                 uint64_t initial_unix_epoch_milliseconds = 0;
-                // Runtime receives one raw JSON fragment per app. Each app
+                // Runtime receives one raw JSON fragment per application in
+                // this module instance. It must not receive configuration for
+                // applications belonging to other loaded modules. Each app
                 // validates and converts its own fragment against its own IDL
                 // schema.
                 std::map<std::string, json::v1::object> applications = {};

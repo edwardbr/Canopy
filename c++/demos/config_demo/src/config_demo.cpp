@@ -54,15 +54,8 @@ int main(
         return 1;
     }
 
-    const auto& execution = settings.execution;
-    auto scheduler_1 = make_scheduler(execution.scheduler_threads);
-    auto scheduler_2 = make_scheduler(execution.scheduler_threads);
-
-    error_code = run_configured_demo(*runtime, execution, scheduler_1, scheduler_2);
+    error_code = run_configured_demo(*runtime, settings.execution);
     runtime.reset();
-
-    scheduler_1->shutdown();
-    scheduler_2->shutdown();
 
     if (error_code != rpc::error::OK())
         return 1;

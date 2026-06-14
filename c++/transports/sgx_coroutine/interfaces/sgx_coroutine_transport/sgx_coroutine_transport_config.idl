@@ -54,7 +54,7 @@ namespace rpc
             [description="Common enclave runtime startup policy shared with other SGX transports. Its io_uring field uses the enclave host controller profile, not the generic host TCP profile. Debug enclaves may use host-provided values directly; release enclaves may use compiled production policy instead."]
             rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave;
 
-            [description="Named application startup blobs delivered to the enclave bootstrap. Each value remains application-owned JSON and is validated by that application inside the secure coroutine module. The host transport enforces the secure_coroutine_module startup resource limits before the blobs are sent."]
+            [description="Named application startup blobs delivered to this secure coroutine module instance. This map is module-local and must not include application configuration for other loaded modules. Each value remains application-owned JSON and is validated by that application inside the secure coroutine module. The host transport enforces the secure_coroutine_module startup resource limits before the blobs are sent."]
             std::map<std::string, json::v1::object> startup_applications = {};
         };
     }

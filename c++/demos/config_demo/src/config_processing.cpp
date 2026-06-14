@@ -61,12 +61,4 @@ namespace config_demo::v1
         return rpc::error::OK();
     }
 
-    auto make_scheduler(uint32_t thread_count) -> std::shared_ptr<coro::scheduler>
-    {
-        thread_count = std::max<uint32_t>(thread_count, 1);
-        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-                .pool = coro::thread_pool::options{.thread_count = thread_count},
-                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
-    }
 } // namespace config_demo::v1

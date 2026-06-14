@@ -6,6 +6,7 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
+#  include <map>
 #  include <memory>
 #  include <string>
 #  include <json/json_dom.h>
@@ -34,6 +35,7 @@ namespace rpc::sgx_blocking_transport
         uint64_t eid_ = 0;
         const std::string enclave_path_;
         rpc::optional<rpc::sgx_enclave_runtime::runtime_settings> enclave_runtime_settings_;
+        std::map<std::string, json::v1::object> enclave_startup_applications_;
 
     public:
         [[nodiscard]] static int validate_startup_settings(const transport_settings& settings);

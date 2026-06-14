@@ -6,10 +6,12 @@
 
 // DLL-side unshared_scheduler_dll transport.  Coroutine-build only.
 //
-// This header is included by shared objects that participate in the
-// Canopy unshared_scheduler_dll transport.  The shared object supplies
-// canopy_unshared_scheduler_dll_init; the transport library supplies the exported
-// canopy_unshared_scheduler_dll_start entry point.
+// This header is included by the transport-owned object registration adapter
+// for shared objects that participate in the Canopy unshared_scheduler_dll
+// transport. Object modules normally include <rpc_objects/object_registration.h>
+// and provide canopy_module_init; the adapter supplies
+// canopy_unshared_scheduler_dll_init, and the transport runtime supplies the
+// exported canopy_unshared_scheduler_dll_start entry point.
 
 #ifdef CANOPY_BUILD_COROUTINE
 
@@ -18,6 +20,7 @@
 #  include <functional>
 #  include <memory>
 #  include <mutex>
+#  include <string>
 
 #  include <rpc/rpc.h>
 #  include <transports/unshared_scheduler_dll/dll_abi.h>
@@ -104,6 +107,8 @@ namespace rpc::unshared_scheduler_dll
         std::shared_ptr<runtime_finish_gate> runtime_finished;
         std::shared_ptr<parent_transport> pending_transport;
         std::weak_ptr<parent_transport> transport;
+        std::string module_settings_json;
+        std::string startup_applications_json;
         std::atomic_bool destroyed{false};
     };
 

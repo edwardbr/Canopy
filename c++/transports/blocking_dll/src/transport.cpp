@@ -21,6 +21,8 @@
 
 #ifndef CANOPY_BUILD_COROUTINE
 
+#  include <json/convert.h>
+
 namespace rpc::blocking_dll
 {
     // -------------------------------------------------------------------------
@@ -29,11 +31,17 @@ namespace rpc::blocking_dll
     child_transport::child_transport(
         std::string name,
         std::shared_ptr<rpc::service> service,
-        std::string library_path)
+        std::string library_path,
+        json::v1::object module_settings,
+        std::map<
+            std::string,
+            json::v1::object> startup_applications)
         : rpc::transport(
               name,
               service)
         , library_path_(std::move(library_path))
+        , module_settings_json_(json::v1::dump(module_settings))
+        , startup_applications_json_(json::v1::dump(json::v1::convert::to_json_object(startup_applications)))
     {
         // Status remains at its base-class default (CONNECTING) until inner_connect
         // succeeds and explicitly transitions to CONNECTED.
@@ -223,6 +231,8 @@ namespace rpc::blocking_dll
         init_params.host_zone = get_zone_id();
         init_params.dll_zone = adjacent_zone_id;
         init_params.input_descr = &input_descr;
+        init_params.module_settings_json = module_settings_json_.c_str();
+        init_params.startup_applications_json = startup_applications_json_.c_str();
         init_params.host_ctx = this;
         init_params.host_send = &child_transport::cb_send;
         init_params.host_post = &child_transport::cb_post;

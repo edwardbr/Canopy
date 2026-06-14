@@ -28,7 +28,9 @@ namespace rpc::unshared_scheduler_dll
         auto transport = std::make_shared<child_transport>(
             rpc::transport_creation::configured_name(settings.name, "unshared_scheduler_dll"),
             resolved_service,
-            settings.dynamic_library_path);
+            settings.dynamic_library_path,
+            settings.module_settings ? settings.module_settings.value() : json::v1::object{json::v1::map{}},
+            settings.startup_applications);
         return {rpc::error::OK(),
             std::move(resolved_service),
             std::move(transport),

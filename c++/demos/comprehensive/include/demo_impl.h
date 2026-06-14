@@ -21,73 +21,13 @@
 #include <utility>
 
 #include <comprehensive/comprehensive.h>
+#include <rpc_objects/calculator/calculator_impl.h>
 #include <transports/local/transport.h>
 
 namespace comprehensive
 {
     namespace v1
     {
-        // ============================================================================
-        // Calculator Implementation (Basic RPC)
-        // ============================================================================
-        class calculator_impl : public rpc::base<calculator_impl, i_calculator>,
-                                public rpc::enable_shared_from_this<calculator_impl>
-        {
-            std::weak_ptr<rpc::service> this_service_;
-
-        public:
-            calculator_impl()
-                : this_service_()
-            {
-            }
-
-            calculator_impl(std::shared_ptr<rpc::service> service)
-                : this_service_(service)
-            {
-            }
-
-            CORO_TASK(comprehensive_error)
-            add(int a,
-                int b,
-                int& sum) override
-            {
-                sum = a + b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(comprehensive_error)
-            subtract(
-                int a,
-                int b,
-                int& difference) override
-            {
-                difference = a - b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(comprehensive_error)
-            multiply(
-                int a,
-                int b,
-                int& product) override
-            {
-                product = a * b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(comprehensive_error)
-            divide(
-                int a,
-                int b,
-                int& quotient) override
-            {
-                if (b == 0)
-                    CO_RETURN comprehensive_error::INVALID_ARGUMENT;
-                quotient = a / b;
-                CO_RETURN rpc::error::OK();
-            }
-        };
-
         // ============================================================================
         // Data Processor Implementation (Serialization Demo)
         // ============================================================================
@@ -429,9 +369,9 @@ namespace comprehensive
 {
     namespace v1
     {
-        inline rpc::shared_ptr<i_calculator> create_calculator()
+        inline rpc::shared_ptr<::calculator::v1::i_calculator> create_calculator()
         {
-            return rpc::shared_ptr<i_calculator>(new calculator_impl());
+            return ::calculator::v1::make_calculator();
         }
 
         inline rpc::shared_ptr<i_data_processor> create_data_processor()

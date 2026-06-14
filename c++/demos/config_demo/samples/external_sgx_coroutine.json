@@ -2,7 +2,6 @@
   "$schema": "../schemas/config_demo_config.schema.json",
   "execution": {
     "iterations": 1,
-    "scheduler_threads": 4,
     "client_connection": "client",
     "server_connection": ""
   },
@@ -10,9 +9,17 @@
     {
       "name": "client",
       "role": "connector",
-      "service_name": "config_demo_sgx_coroutine_host",
       "zone_subnet": 300,
       "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_sgx_coroutine_host",
+            "executor": {
+              "thread_count": 4
+            }
+          }
+        },
         "transport": {
           "type": "sgx_coroutine",
           "settings": {

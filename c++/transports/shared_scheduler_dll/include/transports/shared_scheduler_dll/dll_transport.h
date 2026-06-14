@@ -6,40 +6,41 @@
 
 // DLL-side shared_scheduler_dll transport.  Coroutine-build only.
 //
-// This header is included by shared objects that participate in the
-// Canopy shared_scheduler_dll transport.  It provides:
+// This header is included by the transport-owned object registration adapter
+// for shared objects that participate in the Canopy shared_scheduler_dll
+// transport.  It provides:
 //
 //   1. parent_transport — rpc::transport subclass that lives inside the DLL
 //      and calls into the host via stored coroutine function pointers.
 //      Static inbound trampolines are returned to the host as dll_coro_*_fn
 //      pointers via dll_create_result.
 //
-//   2. init_child_zone<P, C>() — CORO_TASK template the DLL author
-//      calls from their concrete do_init static function.  It adopts the raw
-//      parent_transport pointer, runs create_child_zone, and releases all
-//      temporaries before returning.  After it returns, only objects owned by
-//      the parent_transport (or by stubs/proxies) remain live.
+//   2. init_child_zone<P, C>() — low-level CORO_TASK adapter helper used by
+//      <rpc_objects/object_registration.h>. It adopts the raw parent_transport
+//      pointer, runs create_child_zone, and releases all temporaries before
+//      returning. After it returns, only objects owned by the parent_transport
+//      or by stubs/proxies remain live.
 //
 // Usage pattern (DLL author — shared_scheduler_dll_init.cpp):
 //
-//   namespace rpc::shared_scheduler_dll
+//   #include <rpc_objects/object_registration.h>
+//
+//   static CORO_TASK(int) canopy_module_init(rpc::object_module_init_params* p)
 //   {
-//       coro::task<rpc::connect_result> canopy_shared_scheduler_dll_init(
-//           void* ctx, const rpc::connection_settings* s,
-//           std::shared_ptr<coro::scheduler>* sched)
-//       {
-//           return init_child_zone<i_host, i_example>(
-//               ctx, s, sched,
-//               [](rpc::shared_ptr<i_host> h, std::shared_ptr<rpc::child_service> svc)
-//                   -> CORO_TASK(rpc::service_connect_result<i_example>)
-//               { CO_RETURN {rpc::error::OK(), rpc::make_shared<MyImpl>(svc, h)}; });
-//       }
+//       CO_RETURN CO_AWAIT rpc::register_object<i_host, i_example>(
+//           p,
+//           [](rpc::shared_ptr<i_host> h,
+//              std::shared_ptr<rpc::service> svc,
+//              rpc::module::object_factory_context)
+//               -> CORO_TASK(rpc::service_connect_result<i_example>)
+//           { CO_RETURN {rpc::error::OK(), rpc::make_shared<MyImpl>(svc, h)}; });
 //   }
 
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  include <functional>
 #  include <memory>
+#  include <string>
 
 #  include <rpc/rpc.h>
 #  include <transports/shared_scheduler_dll/dll_abi.h>
@@ -63,6 +64,8 @@ namespace rpc::shared_scheduler_dll
     class parent_transport : public rpc::transport
     {
         void* host_ctx_;
+        std::string module_settings_json_;
+        std::string startup_applications_json_;
 
         host_coro_send_fn host_send_;
         host_coro_post_fn host_post_;
@@ -79,6 +82,8 @@ namespace rpc::shared_scheduler_dll
             std::string name,
             rpc::zone dll_zone,
             rpc::zone host_zone,
+            const char* module_settings_json,
+            const char* startup_applications_json,
             void* host_ctx,
             host_coro_send_fn send,
             host_coro_post_fn post,
@@ -91,6 +96,9 @@ namespace rpc::shared_scheduler_dll
             host_coro_release_parent_fn host_coro_release_parent);
 
         ~parent_transport() override;
+
+        const std::string& module_settings_json() const { return module_settings_json_; }
+        const std::string& startup_applications_json() const { return startup_applications_json_; }
 
         // inner_connect / inner_accept are unused; the transport is wired
         // directly by init_child_zone.
@@ -176,9 +184,9 @@ namespace rpc::shared_scheduler_dll
     // -------------------------------------------------------------------------
     // init_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>
     //
-    // Called from the DLL author's concrete do_init static function (which has
-    // the right signature for dll_coro_init_fn).  Adopts transport_ctx into a
-    // shared_ptr, runs create_child_zone, then lets all temporaries go.
+    // Low-level helper called by the object registration adapter. Adopts
+    // transport_ctx into a shared_ptr, runs create_child_zone, then lets all
+    // temporaries go.
     //
     // After this coroutine returns, the service is the sole owner of the
     // parent_transport.  No shared_ptr to the service or transport is retained

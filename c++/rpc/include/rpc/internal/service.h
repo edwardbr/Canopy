@@ -300,8 +300,6 @@ namespace rpc
             return executor_->spawn_detached(std::forward<coro::task<void>>(callable));
         }
         auto get_scheduler() const { return executor_; }
-
-        void set_shutdown_event(const std::shared_ptr<rpc::event>& e) { on_shutdown_ = e; }
 #else
         // Blocking-mode spawn dispatches a callable to the executor's pool.
         // Returns false if no executor is configured (non-streaming setup).
@@ -312,6 +310,8 @@ namespace rpc
             return executor_->post(std::move(fn));
         }
 #endif
+
+        void set_shutdown_event(const std::shared_ptr<rpc::event>& e) { on_shutdown_ = e; }
 
         // Unified accessor available in both modes. May return nullptr in
         // blocking mode when the service was constructed without an executor.

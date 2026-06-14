@@ -6,8 +6,9 @@
 
 // DLL-side blocking_dll transport.
 //
-// This header is included by shared objects that want to participate in the
-// Canopy dynamic-library transport.  It provides:
+// This header is included by the transport-owned object registration adapter
+// for shared objects that participate in the Canopy dynamic-library transport.
+// It provides:
 //
 //   1.  parent_transport — an rpc::transport subclass that lives inside the
 //       DLL and communicates back to the host via stored function pointers.
@@ -16,31 +17,30 @@
 //       canopy_dll_init and passes back as the opaque dll_ctx handle.  The
 //       host passes it to every subsequent canopy_dll_* entry point.
 //
-//   3.  init_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>() — a template
-//       helper the DLL author calls from their canopy_dll_init implementation
-//       to wire everything up without boilerplate.
+//   3.  init_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>() — the low-level
+//       adapter helper used by <rpc_objects/object_registration.h>.
 //
 // Usage pattern (DLL author):
 //
-//   #include <transports/blocking_dll/dll_transport.h>
+//   #include <rpc_objects/object_registration.h>
 //
-//   extern "C" CANOPY_DLL_EXPORT
-//   int canopy_dll_init(rpc::blocking_dll::dll_init_params* p)
+//   static CORO_TASK(int) canopy_module_init(rpc::object_module_init_params* p)
 //   {
-//       return rpc::blocking_dll::init_child_zone<IHostService, IMyService>(
+//       CO_RETURN CO_AWAIT rpc::register_object<IHostService, IMyService>(
 //           p,
 //           [](rpc::shared_ptr<IHostService> host,
-//              std::shared_ptr<rpc::child_service> svc)
+//              std::shared_ptr<rpc::service> svc,
+//              rpc::module::object_factory_context)
 //           {
-//               return rpc::service_connect_result<IMyService>{
+//               CO_RETURN rpc::service_connect_result<IMyService>{
 //                   rpc::error::OK(),
 //                   rpc::make_shared<MyServiceImpl>(svc, host)};
 //           });
 //   }
 //
-// The remaining canopy_dll_* entry points (canopy_dll_send, etc.) are
-// provided as compiled symbols by transport_blocking_dll_runtime and do
-// not need to be written by the DLL author.
+// The exported canopy_dll_init wrapper and the remaining canopy_dll_* entry
+// points are provided by the transport adapter/runtime and do not need to be
+// written by the DLL author.
 
 #ifndef CANOPY_BUILD_COROUTINE
 
@@ -133,9 +133,9 @@ namespace rpc::blocking_dll
     // -------------------------------------------------------------------------
     // init_child_zone<PARENT_INTERFACE, CHILD_INTERFACE>
     //
-    // Template helper called from canopy_dll_init.  Creates the parent_transport
-    // and child_service, invokes the user factory, and writes outputs back into
-    // *params.  Returns rpc::error::OK() on success.
+    // Low-level helper called by the object registration adapter. Creates the
+    // parent_transport and child_service, invokes the selected factory, and
+    // writes outputs back into *params. Returns rpc::error::OK() on success.
     // -------------------------------------------------------------------------
     template<
         class PARENT_INTERFACE,
@@ -186,8 +186,9 @@ namespace rpc::blocking_dll
 // canopy_dll_* entry point declarations
 //
 // Defined in dll_transport.cpp (transport_blocking_dll_runtime library).
-// The DLL author links that library and gets these for free; they only need
-// to provide canopy_dll_init.
+// The DLL author links that library and gets these for free. Object modules
+// should include <rpc_objects/object_registration.h> and provide
+// canopy_module_init.
 // ---------------------------------------------------------------------------
 extern "C"
 {
