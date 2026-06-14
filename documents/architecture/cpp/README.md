@@ -16,6 +16,7 @@ Use these detailed documents as C++-primary references:
 - [Architecture Overview](../01-overview.md)
 - [Transports and Passthroughs](../06-transports-and-passthroughs.md)
 - [Passthroughs](../passthroughs.md)
+- [Connection Factory Schema And Dependency Injection](connection-factory-schema-and-dependency-injection.md)
 
 When examples, class names, coroutine macros, build targets, or transport
 library names appear without qualification, interpret them as C++ references.
