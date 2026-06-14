@@ -276,6 +276,38 @@ TYPED_TEST(
     run_coro_test(*this, [](auto& lib) { return coro_remote_standard_tests<TypeParam>(lib); });
 }
 
+template<class T> CORO_TASK(bool) coro_remote_get_schema_routes_like_try_cast(T& lib)
+{
+    auto example = lib.get_example();
+    CORO_ASSERT_NE(example, nullptr);
+    CORO_ASSERT_EQ(example->__rpc_is_local(), false);
+
+    std::vector<rpc::interface_descriptor> interfaces;
+    auto err = CO_AWAIT rpc::casting_interface::get_schema(
+        *example, interfaces, rpc::encoding::yas_json, rpc::schema_flavor::mcp, false);
+    CORO_ASSERT_EQ(err, rpc::error::OK());
+
+    bool found_example = false;
+    for (const auto& descriptor : interfaces)
+    {
+        if (descriptor.qualified_name == "yyy::i_example")
+        {
+            found_example = true;
+            CORO_ASSERT_NE(descriptor.interface_id.get_val(), 0U);
+            CORO_ASSERT_EQ(descriptor.methods.empty(), false);
+        }
+    }
+    CORO_ASSERT_EQ(found_example, true);
+    CO_RETURN true;
+}
+
+TYPED_TEST(
+    remote_type_test,
+    remote_get_schema_routes_like_try_cast)
+{
+    run_coro_test(*this, [](auto& lib) { return coro_remote_get_schema_routes_like_try_cast<TypeParam>(lib); });
+}
+
 // TYPED_TEST(remote_type_test, multithreaded_standard_tests)
 // {
 //     if(!enable_multithreaded_tests || lib.is_sgx_setup())

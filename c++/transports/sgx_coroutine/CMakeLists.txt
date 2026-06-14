@@ -67,11 +67,16 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
                                                                                        CANOPY_BUILD_ENCLAVE)
   target_compile_options(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_COMPILE_OPTIONS}
                                                                                    ${CANOPY_WARN_OK})
-  target_include_directories(transport_sgx_coroutine_enclave_service_host_test PRIVATE ${CANOPY_INCLUDES})
+  target_include_directories(
+    transport_sgx_coroutine_enclave_service_host_test
+    PRIVATE ${CANOPY_INCLUDES}
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/enclave/include>"
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../local/include>"
+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../security/attestation/include>")
   target_link_libraries(
     transport_sgx_coroutine_enclave_service_host_test
-    PUBLIC transport_sgx_coroutine_enclave_headers transport_secure_coroutine_module_headers
-    PRIVATE canopy::security_attestation
+    PRIVATE transport_secure_coroutine_module_headers
+            canopy::security_attestation
             canopy_io_uring
             route_attestation_protocol_idl
             secure_coroutine_module_idl
@@ -141,5 +146,8 @@ if(CANOPY_BUILD_ENCLAVE AND CANOPY_BUILD_COROUTINE)
   add_library(transport_sgx_coroutine_test INTERFACE)
   target_include_directories(
     transport_sgx_coroutine_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>"
-                                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sgx/tests>")
+                                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../sgx/tests>"
+                                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/enclave/include>"
+                                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../local/include>"
+                                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../security/attestation/include>")
 endif()

@@ -87,6 +87,22 @@ namespace rpc
                 rpc::optional<rpc::typed_payload> payload;
             };
 
+            struct get_schema_request
+            {
+                uint64_t protocol_version;
+                rpc::caller_zone caller_zone_id;
+                rpc::destination_zone destination_zone_id;
+                std::vector<rpc::back_channel_entry> in_back_channel;
+                rpc::variant<rpc::get_schema_query, rpc::typed_payload> query;
+            };
+
+            struct get_schema_response
+            {
+                int error_code;
+                std::vector<rpc::back_channel_entry> out_back_channel;
+                rpc::variant<rpc::get_schema_response, rpc::typed_payload> response;
+            };
+
             struct add_ref_request
             {
                 uint64_t protocol_version;

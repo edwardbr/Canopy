@@ -43,6 +43,7 @@ namespace
             {
                 EXPECT_FALSE(method.name.empty());
                 EXPECT_NE(method.id.get_val(), 0u);
+                EXPECT_FALSE(method.deprecated);
             }
         }
 
@@ -64,5 +65,7 @@ namespace
         EXPECT_EQ(descriptors.front().qualified_name, "xxx::i_baz");
         EXPECT_NE(descriptors.front().interface_id.get_val(), 0u);
         EXPECT_FALSE(descriptors.front().methods.empty());
+        for (const auto& method : descriptors.front().methods)
+            EXPECT_FALSE(method.deprecated);
     }
 }

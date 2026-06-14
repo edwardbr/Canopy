@@ -42,6 +42,7 @@ namespace rpc::sgx_blocking_transport
         CORO_TASK(rpc::send_result) outbound_send(rpc::send_params params) override;
         CORO_TASK(void) outbound_post(rpc::post_params params) override;
         CORO_TASK(rpc::standard_result) outbound_try_cast(rpc::try_cast_params params) override;
+        CORO_TASK(rpc::get_schema_result) outbound_get_schema(rpc::get_schema_params params) override;
         CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override;
         CORO_TASK(rpc::standard_result) outbound_release(rpc::release_params params) override;
         CORO_TASK(void) outbound_object_released(rpc::object_released_params params) override;

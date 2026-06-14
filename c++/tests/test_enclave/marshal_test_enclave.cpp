@@ -111,6 +111,15 @@ namespace
             request.payload};
     }
 
+    rpc::get_schema_params from_sgx_request(const get_schema_request& request)
+    {
+        return rpc::get_schema_params{request.protocol_version,
+            request.caller_zone_id,
+            request.destination_zone_id,
+            request.in_back_channel,
+            request.query};
+    }
+
     rpc::add_ref_params from_sgx_request(const add_ref_request& request)
     {
         return rpc::add_ref_params{request.protocol_version,
@@ -164,6 +173,11 @@ namespace
     standard_response to_sgx_response(const rpc::standard_result& result)
     {
         return standard_response{result.error_code, result.out_back_channel};
+    }
+
+    get_schema_response to_sgx_response(const rpc::get_schema_result& result)
+    {
+        return get_schema_response{result.error_code, result.out_back_channel, result.response};
     }
 
     rpc::connection_settings from_sgx_request(const init_request& request)
@@ -343,6 +357,31 @@ int try_cast_enclave(
     }
 
     auto result = tp->inbound_try_cast(std::move(params));
+    return write_blob_response(to_sgx_response(result), resp_cap, resp, resp_sz);
+}
+
+int get_schema_enclave(
+    size_t req_sz,
+    const char* req,
+    size_t resp_cap,
+    char* resp,
+    size_t* resp_sz)
+{
+    get_schema_request request;
+    auto err = from_sgx_blob(req_sz, req, request);
+    if (err != rpc::error::OK())
+        return err;
+    auto params = from_sgx_request(request);
+    if (params.protocol_version > rpc::get_version())
+        return rpc::error::INVALID_VERSION();
+    auto tp = g_host_transport.lock();
+    if (!tp)
+    {
+        RPC_ERROR("host transport is missing");
+        return rpc::error::INVALID_DATA();
+    }
+
+    auto result = tp->inbound_get_schema(std::move(params));
     return write_blob_response(to_sgx_response(result), resp_cap, resp, resp_sz);
 }
 

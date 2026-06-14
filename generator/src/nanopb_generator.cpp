@@ -1148,15 +1148,31 @@ namespace nanopb_generator
             if (const auto* nested_struct
                 = find_struct_or_template_entity(lib, field_type, &nested_concrete_template_param))
             {
-                write_nanopb_message_to_cpp(
-                    lib,
-                    *nested_struct,
-                    package_name,
-                    source_expr + "." + field_name,
-                    dest_expr,
-                    state_prefix,
-                    cpp,
-                    nested_concrete_template_param);
+                if (!has_explicit_access_markers(*nested_struct))
+                {
+                    write_nanopb_message_to_cpp(
+                        lib,
+                        *nested_struct,
+                        package_name,
+                        source_expr + "." + field_name,
+                        dest_expr,
+                        state_prefix,
+                        cpp,
+                        nested_concrete_template_param);
+                }
+                else
+                {
+                    const auto nested_c_type = nanopb_c_type_for_cpp_type(package_name, field_type);
+                    cpp("{{");
+                    cpp("std::vector<char> {}_buffer;", state_prefix);
+                    cpp("rpc::serialization::nanopb::encode_message({}_buffer, {}_fields, &{}.{});",
+                        state_prefix,
+                        nested_c_type,
+                        source_expr,
+                        field_name);
+                    cpp("{}.nanopb_deserialise({}_buffer);", dest_expr, state_prefix);
+                    cpp("}}");
+                }
             }
             else
             {

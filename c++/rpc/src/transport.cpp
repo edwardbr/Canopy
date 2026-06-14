@@ -1106,14 +1106,26 @@ namespace rpc
             CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
         }
 
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
         std::shared_ptr<i_marshaller> dest;
-        if (params.remote_object_id.get_address().same_zone(zone_id_.get_address()))
+        if (destination_zone_id.get_address().same_zone(zone_id_.get_address()))
         {
             dest = service_.lock();
         }
         else
         {
-            dest = get_passthrough(params.remote_object_id.as_zone(), params.caller_zone_id);
+            dest = get_passthrough(destination_zone_id, params.caller_zone_id);
             if (!dest)
             {
                 CO_RETURN get_schema_result{error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
@@ -1535,6 +1547,18 @@ namespace rpc
 
     CORO_TASK(get_schema_result) transport::get_schema(get_schema_params params)
     {
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
         CO_RETURN CO_AWAIT outbound_get_schema(std::move(params));
     }
 

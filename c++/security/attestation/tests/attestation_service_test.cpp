@@ -66,6 +66,8 @@ namespace
     using canopy::security::attestation::null_backend;
     using canopy::security::attestation::null_backend_id;
     using canopy::security::attestation::protect_add_ref_request;
+    using canopy::security::attestation::protect_get_schema_request;
+    using canopy::security::attestation::protect_get_schema_response;
     using canopy::security::attestation::protect_object_released_request;
     using canopy::security::attestation::protect_post_request;
     using canopy::security::attestation::protect_release_request;
@@ -133,6 +135,8 @@ namespace
     using canopy::security::attestation::simulation_evidence_media_type;
     using canopy::security::attestation::simulation_report_evidence_content_format;
     using canopy::security::attestation::unprotect_add_ref_request;
+    using canopy::security::attestation::unprotect_get_schema_request;
+    using canopy::security::attestation::unprotect_get_schema_response;
     using canopy::security::attestation::unprotect_object_released_request;
     using canopy::security::attestation::unprotect_post_request;
     using canopy::security::attestation::unprotect_release_request;
@@ -2210,6 +2214,125 @@ TEST(
     ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 1U);
     EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 99U);
     EXPECT_EQ(unprotected_response.value.out_back_channel[0].payload, std::vector<uint8_t>({4, 5, 6}));
+}
+
+TEST(
+    AttestationService,
+    ProtectsGetSchemaRequestAndResponse)
+{
+    auto service_a = make_service("enclave-a", "zone-a");
+    auto service_b = make_service("enclave-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 333);
+    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 333);
+
+    auto caller_zone = make_zone(12);
+    auto destination_zone = make_zone(22);
+    auto remote_object = destination_zone.with_object(rpc::object(19));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::get_schema_query query;
+    query.encoding_type = rpc::encoding::yas_json;
+    query.flavor = rpc::schema_flavor::config;
+    query.remote_object_id = *remote_object;
+    query.interface_id = rpc::interface_ordinal(0x445577);
+    query.include_deprecated = true;
+
+    rpc::get_schema_params params;
+    params.protocol_version = rpc::get_version();
+    params.caller_zone_id = caller_zone;
+    params.destination_zone_id = destination_zone;
+    params.in_back_channel.push_back(rpc::back_channel_entry{43, {1, 3, 5}});
+    params.query = query;
+
+    auto protected_request = protect_get_schema_request(*service_a, context_a, params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(protected_request.value.params.destination_zone_id, destination_zone);
+    ASSERT_TRUE(rpc::holds_alternative<rpc::typed_payload>(protected_request.value.params.query));
+    const auto& protected_query = rpc::get<rpc::typed_payload>(protected_request.value.params.query);
+    EXPECT_EQ(protected_query.get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+    EXPECT_EQ(protected_query.get_encoding(), rpc::encoding::yas_binary);
+    EXPECT_FALSE(protected_query.get_payload().empty());
+
+    auto receiver_request = protected_request.value.params;
+    receiver_request.in_back_channel.push_back(rpc::back_channel_entry{44, {2, 4, 6}});
+
+    auto unprotected_request = unprotect_get_schema_request(*service_b, receiver_request);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.destination_zone_id, params.destination_zone_id);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 43U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[1].type_id, 44U);
+
+    const auto* unprotected_query = unprotected_request.value.params.query_if_plain();
+    ASSERT_NE(unprotected_query, nullptr);
+    EXPECT_EQ(unprotected_query->encoding_type, query.encoding_type);
+    EXPECT_EQ(unprotected_query->flavor, query.flavor);
+    EXPECT_EQ(unprotected_query->remote_object_id, query.remote_object_id);
+    ASSERT_TRUE(unprotected_query->interface_id.has_value());
+    EXPECT_EQ(unprotected_query->interface_id.value(), query.interface_id.value());
+    EXPECT_EQ(unprotected_query->include_deprecated, query.include_deprecated);
+
+    rpc::function_info method;
+    method.full_name = "xxx::i_secure.describe";
+    method.name = "describe";
+    method.id = rpc::method(7);
+    method.tag = 11;
+    method.marshalls_interfaces = false;
+    method.description = "schema method";
+    method.in_json_schema = R"({"type":"object"})";
+    method.out_json_schema = R"({"type":"object","properties":{"ok":{"type":"boolean"}}})";
+
+    rpc::interface_descriptor descriptor;
+    descriptor.interface_id = rpc::interface_ordinal(0x887766);
+    descriptor.qualified_name = "xxx::i_secure";
+    descriptor.deprecated = false;
+    descriptor.schema = R"({"title":"secure schema"})";
+    descriptor.methods.push_back(method);
+
+    rpc::get_schema_result plain_response{rpc::error::OK(),
+        rpc::encoding::yas_json,
+        std::vector<rpc::interface_descriptor>{descriptor},
+        std::vector<rpc::back_channel_entry>{rpc::back_channel_entry{45, {7, 8, 9}}}};
+
+    auto protected_response = protect_get_schema_response(
+        *service_b,
+        context_b,
+        protected_request.value.params,
+        unprotected_request.value.request_counter,
+        std::move(plain_response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    ASSERT_TRUE(rpc::holds_alternative<rpc::typed_payload>(protected_response.value.response));
+    const auto& protected_schema_response = rpc::get<rpc::typed_payload>(protected_response.value.response);
+    EXPECT_EQ(protected_schema_response.get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+    EXPECT_EQ(protected_schema_response.get_encoding(), rpc::encoding::yas_binary);
+    EXPECT_FALSE(protected_schema_response.get_payload().empty());
+
+    protected_response.value.out_back_channel.push_back(rpc::back_channel_entry{46, {10, 11, 12}});
+    auto unprotected_response = unprotect_get_schema_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 45U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].type_id, 46U);
+
+    const auto* schema_response = unprotected_response.value.response_if_plain();
+    ASSERT_NE(schema_response, nullptr);
+    EXPECT_EQ(schema_response->encoding_type, rpc::encoding::yas_json);
+    ASSERT_EQ(schema_response->interfaces.size(), 1U);
+    EXPECT_EQ(schema_response->interfaces[0].interface_id, descriptor.interface_id);
+    EXPECT_EQ(schema_response->interfaces[0].qualified_name, descriptor.qualified_name);
+    EXPECT_EQ(schema_response->interfaces[0].schema, descriptor.schema);
+    ASSERT_EQ(schema_response->interfaces[0].methods.size(), 1U);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].full_name, method.full_name);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].id, method.id);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].out_json_schema, method.out_json_schema);
 }
 
 TEST(

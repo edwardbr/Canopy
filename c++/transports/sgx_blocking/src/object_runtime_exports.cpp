@@ -52,6 +52,16 @@ int try_cast_enclave(
     return rpc::sgx_blocking_transport::object_runtime::runtime::try_cast(req_sz, req, resp_cap, resp, resp_sz);
 }
 
+int get_schema_enclave(
+    size_t req_sz,
+    const char* req,
+    size_t resp_cap,
+    char* resp,
+    size_t* resp_sz)
+{
+    return rpc::sgx_blocking_transport::object_runtime::runtime::get_schema(req_sz, req, resp_cap, resp, resp_sz);
+}
+
 int add_ref_enclave(
     size_t req_sz,
     const char* req,

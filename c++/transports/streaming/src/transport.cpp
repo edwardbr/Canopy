@@ -276,6 +276,32 @@ namespace rpc::stream_transport
         CO_RETURN standard_result{response_data.err_code, std::move(response_data.back_channel)};
     }
 
+    CORO_TASK(get_schema_result)
+    transport::outbound_get_schema(get_schema_params params)
+    {
+        RPC_DEBUG("stream_transport::transport::outbound_get_schema zone={}", get_zone_id().get_subnet());
+
+        auto response_result = CO_AWAIT call_peer<get_schema_send, get_schema_receive>(
+            params.protocol_version,
+            get_schema_send{FLD(caller_zone_id) params.caller_zone_id,
+                FLD(destination_zone_id) params.destination_zone_id,
+                FLD(back_channel) std::move(params.in_back_channel),
+                FLD(query) std::move(params.query)});
+        int ret = response_result.error_code;
+        if (ret != rpc::error::OK())
+        {
+            RPC_ERROR("failed get_schema call_peer");
+            CO_RETURN get_schema_result{ret, rpc::encoding::not_set, {}, {}};
+        }
+
+        auto& response_data = response_result.payload;
+        get_schema_result result;
+        result.error_code = response_data.err_code;
+        result.out_back_channel = std::move(response_data.back_channel);
+        result.response = std::move(response_data.response);
+        CO_RETURN result;
+    }
+
     CORO_TASK(standard_result)
     transport::outbound_add_ref(add_ref_params params)
     {
@@ -520,6 +546,16 @@ namespace rpc::stream_transport
             if (!tracker->svc->SPAWN(stub_handle_try_cast(tracker, prefix, std::move(payload))))
             {
                 RPC_ERROR("dispatch_builtin_message: SPAWN(stub_handle_try_cast(tracker, prefix, std::move(payload))) failed — disconnecting");
+                set_status(rpc::transport_status::DISCONNECTING);
+                CO_RETURN false;
+            }
+            CO_RETURN true;
+        }
+        else if (payload.payload_fingerprint == rpc::id<get_schema_send>::get(prefix.version))
+        {
+            if (!tracker->svc->SPAWN(stub_handle_get_schema(tracker, prefix, std::move(payload))))
+            {
+                RPC_ERROR("dispatch_builtin_message: SPAWN(stub_handle_get_schema(tracker, prefix, std::move(payload))) failed — disconnecting");
                 set_status(rpc::transport_status::DISCONNECTING);
                 CO_RETURN false;
             }
@@ -1344,6 +1380,53 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
+    transport::stub_handle_get_schema(
+        std::shared_ptr<activity_tracker>,
+        envelope_prefix prefix,
+        envelope_payload payload)
+    {
+        RPC_DEBUG("stub_handle_get_schema");
+
+        if (get_status() != rpc::transport_status::CONNECTED)
+        {
+            CO_RETURN;
+        }
+
+        get_schema_send request;
+        auto str_err = rpc::from_yas_binary(rpc::byte_span(payload.payload), request);
+        if (!str_err.empty())
+        {
+            RPC_ERROR("failed get_schema_send from_yas_binary");
+            set_status(rpc::transport_status::DISCONNECTING);
+            CO_RETURN;
+        }
+
+        auto schema_result = CO_AWAIT inbound_get_schema(
+            rpc::get_schema_params{
+                FLD(protocol_version) prefix.version,
+                FLD(caller_zone_id) request.caller_zone_id,
+                FLD(destination_zone_id) request.destination_zone_id,
+                FLD(in_back_channel) std::move(request.back_channel),
+                FLD(query) std::move(request.query),
+            });
+
+        if (rpc::error::is_error(schema_result.error_code))
+        {
+            RPC_DEBUG("inbound_get_schema error {}", schema_result.error_code);
+        }
+
+        send_payload_get_schema_receive(
+            prefix.version,
+            message_direction::receive,
+            get_schema_receive{FLD(err_code) schema_result.error_code,
+                FLD(back_channel) std::move(schema_result.out_back_channel),
+                FLD(response) std::move(schema_result.response)},
+            prefix.sequence_number);
+        RPC_DEBUG("stub_handle_get_schema complete");
+        CO_RETURN;
+    }
+
+    CORO_TASK(void)
     transport::stub_handle_add_ref(
         std::shared_ptr<activity_tracker>,
         envelope_prefix prefix,
@@ -1741,6 +1824,17 @@ namespace rpc::stream_transport
         uint64_t protocol_version,
         message_direction direction,
         try_cast_receive&& payload,
+        uint64_t sequence_number)
+    {
+        if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
+            return;
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
+    }
+
+    void transport::send_payload_get_schema_receive(
+        uint64_t protocol_version,
+        message_direction direction,
+        get_schema_receive&& payload,
         uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))

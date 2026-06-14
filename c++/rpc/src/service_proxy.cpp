@@ -294,6 +294,63 @@ namespace rpc
         CO_RETURN last_error;
     }
 
+    [[nodiscard]] CORO_TASK(get_schema_result) service_proxy::sp_get_schema(
+        destination_zone destination_zone_id,
+        object object_id,
+        rpc::optional<interface_ordinal> interface_id,
+        rpc::encoding schema_encoding,
+        rpc::schema_flavor flavor,
+        bool include_deprecated)
+    {
+        auto original_version = version_.load();
+        auto version = original_version;
+        const auto min_version = rpc::LOWEST_SUPPORTED_VERSION ? rpc::LOWEST_SUPPORTED_VERSION : 1;
+        int last_error = rpc::error::INVALID_VERSION();
+
+        auto transport = transport_.get_nullable();
+        if (!transport)
+            CO_RETURN get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+            CO_RETURN get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+
+        while (version >= min_version)
+        {
+            auto dest_with_obj = destination_zone_id.with_object(object_id);
+            if (!dest_with_obj)
+                CO_RETURN get_schema_result{rpc::error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+
+            rpc::get_schema_query query;
+            query.remote_object_id = *dest_with_obj;
+            query.interface_id = interface_id;
+            query.encoding_type = schema_encoding;
+            query.flavor = flavor;
+            query.include_deprecated = include_deprecated;
+
+            get_schema_params params;
+            params.protocol_version = version;
+            params.caller_zone_id = get_zone_id();
+            params.destination_zone_id = destination_zone_id;
+            params.query = std::move(query);
+
+            auto result = CO_AWAIT service->outbound_get_schema(std::move(params), transport);
+            auto ret = result.error_code;
+            if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
+            {
+                if (original_version != version)
+                    version_.compare_exchange_strong(original_version, version);
+                CO_RETURN result;
+            }
+            last_error = ret;
+            if (version == min_version)
+                break;
+            version--;
+        }
+        RPC_ERROR("Incompatible service version in get_schema");
+        CO_RETURN get_schema_result{last_error, rpc::encoding::not_set, {}, {}};
+    }
+
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_add_ref(
         object object_id,
         add_ref_options build_out_param_channel,

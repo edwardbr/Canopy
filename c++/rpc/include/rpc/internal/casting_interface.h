@@ -5,6 +5,7 @@
 #pragma once
 
 // types.h and version.h are included by rpc.h
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <type_traits>
@@ -70,6 +71,23 @@ namespace rpc
             rpc::encoding enc = rpc::encoding::yas_json,
             rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
             bool include_deprecated = false);
+        static CORO_TASK(int) get_schema(
+            const casting_interface& iface,
+            std::vector<rpc::interface_descriptor>& out,
+            rpc::encoding enc = rpc::encoding::yas_json,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false,
+            rpc::optional<rpc::interface_ordinal> interface_id = {});
+        static CORO_TASK(rpc::send_result) call(
+            const casting_interface& iface,
+            rpc::send_params params,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
+        static CORO_TASK(int) post(
+            const casting_interface& iface,
+            rpc::post_params params,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
     };
 
     bool are_in_same_zone(
@@ -104,6 +122,15 @@ namespace rpc
         descriptor.qualified_name = T::__rpc_qualified_name();
         descriptor.deprecated = T::__rpc_is_deprecated();
         descriptor.methods = T::get_function_info();
+        if (!include_deprecated)
+        {
+            descriptor.methods.erase(
+                std::remove_if(
+                    descriptor.methods.begin(),
+                    descriptor.methods.end(),
+                    [](const rpc::function_info& method) { return method.deprecated; }),
+                descriptor.methods.end());
+        }
         out.push_back(std::move(descriptor));
     }
 

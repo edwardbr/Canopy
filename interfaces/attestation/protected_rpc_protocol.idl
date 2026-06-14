@@ -99,6 +99,13 @@ namespace rpc
             rpc::interface_ordinal interface_id;
         };
 
+        struct get_schema_public_aad
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+        };
+
         struct object_released_public_aad
         {
             envelope_metadata envelope;
@@ -194,6 +201,15 @@ namespace rpc
             rpc::optional<rpc::typed_payload> payload;
         };
 
+        struct get_schema_plaintext
+        {
+            envelope_metadata envelope;
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            std::vector<rpc::back_channel_entry> in_back_channel;
+            rpc::get_schema_query query;
+        };
+
         struct object_released_plaintext
         {
             envelope_metadata envelope;
@@ -222,6 +238,14 @@ namespace rpc
             int64_t error_code = 0;
             std::vector<char> out_buf;
             std::vector<rpc::back_channel_entry> out_back_channel;
+        };
+
+        struct get_schema_response_plaintext
+        {
+            envelope_metadata envelope;
+            int64_t error_code = 0;
+            std::vector<rpc::back_channel_entry> out_back_channel;
+            rpc::get_schema_response response;
         };
         }
     }

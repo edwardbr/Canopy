@@ -198,20 +198,43 @@ namespace rpc
     struct get_schema_params
     {
         uint64_t protocol_version;
-        encoding encoding_type;
-        schema_flavor flavor;
-        remote_object remote_object_id;
-        rpc::optional<interface_ordinal> interface_id;
-        bool include_deprecated = false;
         caller_zone caller_zone_id;
         destination_zone destination_zone_id;
         std::vector<rpc::back_channel_entry> in_back_channel;
+        rpc::variant<rpc::get_schema_query, rpc::typed_payload> query;
+
+        [[nodiscard]] const rpc::get_schema_query* query_if_plain() const noexcept
+        {
+            if (!rpc::holds_alternative<rpc::get_schema_query>(query))
+                return nullptr;
+            return &rpc::get<rpc::get_schema_query>(query);
+        }
+
+        [[nodiscard]] rpc::get_schema_query* query_if_plain() noexcept
+        {
+            if (!rpc::holds_alternative<rpc::get_schema_query>(query))
+                return nullptr;
+            return &rpc::get<rpc::get_schema_query>(query);
+        }
+
+        [[nodiscard]] const rpc::typed_payload* query_if_payload() const noexcept
+        {
+            if (!rpc::holds_alternative<rpc::typed_payload>(query))
+                return nullptr;
+            return &rpc::get<rpc::typed_payload>(query);
+        }
+
+        [[nodiscard]] rpc::typed_payload* query_if_payload() noexcept
+        {
+            if (!rpc::holds_alternative<rpc::typed_payload>(query))
+                return nullptr;
+            return &rpc::get<rpc::typed_payload>(query);
+        }
     };
 
     struct get_schema_result : standard_result
     {
-        encoding encoding_type = encoding::not_set;
-        std::vector<rpc::interface_descriptor> interfaces;
+        rpc::variant<rpc::get_schema_response, rpc::typed_payload> response;
 
         get_schema_result() = default;
         get_schema_result(
@@ -222,9 +245,49 @@ namespace rpc
             : standard_result(
                   ec,
                   std::move(bce))
-            , encoding_type(enc)
-            , interfaces(std::move(ifaces))
+            , response(
+                  rpc::get_schema_response{enc,
+                      std::move(ifaces)})
         {
+        }
+
+        get_schema_result(
+            int ec,
+            rpc::typed_payload response_payload,
+            std::vector<rpc::back_channel_entry> bce)
+            : standard_result(
+                  ec,
+                  std::move(bce))
+            , response(std::move(response_payload))
+        {
+        }
+
+        [[nodiscard]] const rpc::get_schema_response* response_if_plain() const noexcept
+        {
+            if (!rpc::holds_alternative<rpc::get_schema_response>(response))
+                return nullptr;
+            return &rpc::get<rpc::get_schema_response>(response);
+        }
+
+        [[nodiscard]] rpc::get_schema_response* response_if_plain() noexcept
+        {
+            if (!rpc::holds_alternative<rpc::get_schema_response>(response))
+                return nullptr;
+            return &rpc::get<rpc::get_schema_response>(response);
+        }
+
+        [[nodiscard]] const rpc::typed_payload* response_if_payload() const noexcept
+        {
+            if (!rpc::holds_alternative<rpc::typed_payload>(response))
+                return nullptr;
+            return &rpc::get<rpc::typed_payload>(response);
+        }
+
+        [[nodiscard]] rpc::typed_payload* response_if_payload() noexcept
+        {
+            if (!rpc::holds_alternative<rpc::typed_payload>(response))
+                return nullptr;
+            return &rpc::get<rpc::typed_payload>(response);
         }
     };
 

@@ -146,6 +146,15 @@ namespace rpc::sgx_blocking_transport
                 params.payload};
         }
 
+        get_schema_request to_sgx_request(const rpc::get_schema_params& params)
+        {
+            return get_schema_request{params.protocol_version,
+                params.caller_zone_id,
+                params.destination_zone_id,
+                params.in_back_channel,
+                params.query};
+        }
+
         add_ref_request to_sgx_request(const rpc::add_ref_params& params)
         {
             return add_ref_request{params.protocol_version,
@@ -193,6 +202,15 @@ namespace rpc::sgx_blocking_transport
             return rpc::standard_result{response.error_code, response.out_back_channel};
         }
 
+        rpc::get_schema_result from_sgx_response(const get_schema_response& response)
+        {
+            rpc::get_schema_result result;
+            result.error_code = response.error_code;
+            result.out_back_channel = response.out_back_channel;
+            result.response = response.response;
+            return result;
+        }
+
         rpc::send_params from_sgx_request(const send_request& request)
         {
             return rpc::send_params{FLD(protocol_version) request.protocol_version,
@@ -228,6 +246,15 @@ namespace rpc::sgx_blocking_transport
                 request.interface_id,
                 request.in_back_channel,
                 request.payload};
+        }
+
+        rpc::get_schema_params from_sgx_request(const get_schema_request& request)
+        {
+            return rpc::get_schema_params{request.protocol_version,
+                request.caller_zone_id,
+                request.destination_zone_id,
+                request.in_back_channel,
+                request.query};
         }
 
         rpc::add_ref_params from_sgx_request(const add_ref_request& request)
@@ -283,6 +310,11 @@ namespace rpc::sgx_blocking_transport
         standard_response to_sgx_response(const rpc::standard_result& result)
         {
             return standard_response{result.error_code, result.out_back_channel};
+        }
+
+        get_schema_response to_sgx_response(const rpc::get_schema_result& result)
+        {
+            return get_schema_response{result.error_code, result.out_back_channel, result.response};
         }
 
         new_zone_id_response to_sgx_response(const rpc::new_zone_id_result& result)
@@ -636,6 +668,50 @@ namespace rpc::sgx_blocking_transport
         CO_RETURN from_sgx_response(result);
     }
 
+    CORO_TASK(rpc::get_schema_result)
+    enclave_transport::outbound_get_schema(rpc::get_schema_params params)
+    {
+        auto req = to_sgx_blob(to_sgx_request(params));
+        std::vector<char> resp(4096);
+        int err_code = rpc::error::OK();
+        size_t resp_sz = 0;
+
+        auto status = call_ecall_with_retry_thread([&]()
+            { return ::get_schema_enclave(eid_, &err_code, req.size(), req.data(), resp.size(), resp.data(), &resp_sz); });
+
+        if (status)
+        {
+            log_sgx_failure("get_schema_enclave", status);
+            CO_RETURN rpc::get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        if (err_code == rpc::error::NEED_MORE_MEMORY())
+        {
+            resp.resize(resp_sz);
+            status = call_ecall_with_retry_thread(
+                [&]()
+                {
+                    return ::get_schema_enclave(
+                        eid_, &err_code, req.size(), req.data(), resp.size(), resp.data(), &resp_sz);
+                });
+            if (status)
+            {
+                log_sgx_failure("get_schema_enclave", status);
+                CO_RETURN rpc::get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+            }
+        }
+
+        if (err_code != rpc::error::OK())
+            CO_RETURN rpc::get_schema_result{err_code, rpc::encoding::not_set, {}, {}};
+
+        get_schema_response result;
+        err_code = from_sgx_blob(resp.data(), resp_sz, result);
+        if (err_code != rpc::error::OK())
+            CO_RETURN rpc::get_schema_result{err_code, rpc::encoding::not_set, {}, {}};
+
+        CO_RETURN from_sgx_response(result);
+    }
+
     CORO_TASK(rpc::standard_result)
     enclave_transport::outbound_add_ref(rpc::add_ref_params params)
     {
@@ -829,6 +905,26 @@ extern "C"
         if (!transport)
             return rpc::error::TRANSPORT_ERROR();
         auto result = transport->inbound_try_cast(rpc::sgx_blocking_transport::from_sgx_request(request));
+        return rpc::sgx_blocking_transport::write_blob_response(
+            rpc::sgx_blocking_transport::to_sgx_response(result), resp_cap, resp, resp_sz);
+    }
+
+    int get_schema_host(
+        uint64_t enclave_id,
+        size_t req_sz,
+        const char* req,
+        size_t resp_cap,
+        char* resp,
+        size_t* resp_sz)
+    {
+        rpc::sgx_blocking_transport::marshal::get_schema_request request;
+        auto err = rpc::sgx_blocking_transport::from_sgx_blob(req, req_sz, request);
+        if (err != rpc::error::OK())
+            return err;
+        auto transport = rpc::sgx_blocking_transport::get_host_transport(enclave_id);
+        if (!transport)
+            return rpc::error::TRANSPORT_ERROR();
+        auto result = transport->inbound_get_schema(rpc::sgx_blocking_transport::from_sgx_request(request));
         return rpc::sgx_blocking_transport::write_blob_response(
             rpc::sgx_blocking_transport::to_sgx_response(result), resp_cap, resp, resp_sz);
     }

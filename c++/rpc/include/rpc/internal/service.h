@@ -571,6 +571,9 @@ namespace rpc
         virtual CORO_TASK(standard_result) outbound_try_cast(
             try_cast_params params,
             std::shared_ptr<transport> transport);
+        virtual CORO_TASK(get_schema_result) outbound_get_schema(
+            get_schema_params params,
+            std::shared_ptr<transport> transport);
         virtual CORO_TASK(standard_result) outbound_add_ref(
             add_ref_params params,
             std::shared_ptr<transport> transport);

@@ -59,6 +59,16 @@ namespace canopy::security::attestation
             return payload ? payload->get_encoding() : rpc::encoding::not_set;
         }
 
+        auto payload_encoding(
+            const rpc::variant<
+                rpc::get_schema_query,
+                rpc::typed_payload>& payload) -> rpc::encoding
+        {
+            if (!rpc::holds_alternative<rpc::typed_payload>(payload))
+                return rpc::encoding::not_set;
+            return rpc::get<rpc::typed_payload>(payload).get_encoding();
+        }
+
         auto make_typed_payload(
             uint64_t type_id,
             rpc::encoding encoding,
@@ -229,6 +239,18 @@ namespace canopy::security::attestation
             return serialise_canonical(aad);
         }
 
+        // Builds the complete AAD byte string passed to AES-GCM for get_schema requests.
+        auto make_get_schema_request_aad(
+            const rpc::get_schema_params& outer,
+            const rpc::encrypted_payload& envelope) -> std::optional<std::vector<uint8_t>>
+        {
+            rpc::attestation::get_schema_public_aad aad;
+            aad.envelope = make_envelope_metadata(outer.protocol_version, envelope);
+            aad.caller_zone_id = outer.caller_zone_id;
+            aad.destination_zone_id = outer.destination_zone_id;
+            return serialise_canonical(aad);
+        }
+
         // Builds the complete AAD byte string passed to AES-GCM for object_released requests.
         auto make_object_released_request_aad(
             const rpc::object_released_params& outer,
@@ -362,6 +384,24 @@ namespace canopy::security::attestation
             return serialise_canonical(plaintext);
         }
 
+        auto encode_get_schema_request_plaintext(
+            const rpc::get_schema_params& params,
+            uint64_t e2e_counter,
+            const security_context& context) -> std::optional<std::vector<uint8_t>>
+        {
+            auto query = params.query_if_plain();
+            if (!query)
+                return std::nullopt;
+
+            rpc::attestation::get_schema_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(params.protocol_version, context, e2e_counter);
+            plaintext.caller_zone_id = params.caller_zone_id;
+            plaintext.destination_zone_id = params.destination_zone_id;
+            plaintext.in_back_channel = params.in_back_channel;
+            plaintext.query = *query;
+            return serialise_canonical(plaintext);
+        }
+
         auto encode_object_released_request_plaintext(
             const rpc::object_released_params& params,
             uint64_t e2e_counter,
@@ -401,6 +441,7 @@ namespace canopy::security::attestation
             rpc::add_ref_params add_ref;
             rpc::release_params release;
             rpc::try_cast_params try_cast;
+            rpc::get_schema_params get_schema;
             rpc::object_released_params object_released;
             rpc::transport_down_params transport_down;
         };
@@ -518,6 +559,25 @@ namespace canopy::security::attestation
             return result;
         }
 
+        auto decode_get_schema_request_plaintext(const std::vector<uint8_t>& plaintext) -> std::optional<decoded_request>
+        {
+            auto decoded = deserialise_canonical<rpc::attestation::get_schema_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->in_back_channel))
+                return std::nullopt;
+
+            decoded_request result;
+            result.kind = protected_rpc_kind::get_schema;
+            result.e2e_counter = decoded->envelope.e2e_counter;
+            result.session_id = decoded->envelope.session_id;
+            result.session_epoch = decoded->envelope.session_epoch;
+            result.get_schema.protocol_version = decoded->envelope.protocol_version;
+            result.get_schema.caller_zone_id = decoded->caller_zone_id;
+            result.get_schema.destination_zone_id = decoded->destination_zone_id;
+            result.get_schema.in_back_channel = std::move(decoded->in_back_channel);
+            result.get_schema.query = std::move(decoded->query);
+            return result;
+        }
+
         auto decode_object_released_request_plaintext(const std::vector<uint8_t>& plaintext)
             -> std::optional<decoded_request>
         {
@@ -572,6 +632,24 @@ namespace canopy::security::attestation
             return serialise_canonical(plaintext);
         }
 
+        auto encode_get_schema_response_plaintext(
+            const rpc::get_schema_result& response,
+            uint64_t protocol_version,
+            uint64_t response_counter,
+            const security_context& context) -> std::optional<std::vector<uint8_t>>
+        {
+            auto schema_response = response.response_if_plain();
+            if (!schema_response)
+                return std::nullopt;
+
+            rpc::attestation::get_schema_response_plaintext plaintext;
+            plaintext.envelope = make_envelope_metadata(protocol_version, context, response_counter);
+            plaintext.error_code = static_cast<int64_t>(response.error_code);
+            plaintext.out_back_channel = response.out_back_channel;
+            plaintext.response = *schema_response;
+            return serialise_canonical(plaintext);
+        }
+
         struct decoded_response
         {
             rpc::send_result response;
@@ -597,6 +675,38 @@ namespace canopy::security::attestation
             result.response.error_code = static_cast<int>(decoded->error_code);
             result.response.out_buf = std::move(decoded->out_buf);
             result.response.out_back_channel = std::move(decoded->out_back_channel);
+            result.response_counter = decoded->envelope.e2e_counter;
+            result.session_id = std::move(decoded->envelope.session_id);
+            result.session_epoch = decoded->envelope.session_epoch;
+            return result;
+        }
+
+        struct decoded_get_schema_response
+        {
+            rpc::get_schema_result response;
+            uint64_t response_counter{0};
+            std::string session_id;
+            uint64_t session_epoch{0};
+        };
+
+        auto decode_get_schema_response_plaintext(const std::vector<uint8_t>& plaintext)
+            -> std::optional<decoded_get_schema_response>
+        {
+            auto decoded = deserialise_canonical<rpc::attestation::get_schema_response_plaintext>(plaintext);
+            if (!decoded || !back_channels_are_reasonable(decoded->out_back_channel))
+            {
+                return std::nullopt;
+            }
+            if (decoded->error_code < std::numeric_limits<int>::min()
+                || decoded->error_code > std::numeric_limits<int>::max())
+            {
+                return std::nullopt;
+            }
+
+            decoded_get_schema_response result;
+            result.response.error_code = static_cast<int>(decoded->error_code);
+            result.response.out_back_channel = std::move(decoded->out_back_channel);
+            result.response.response = std::move(decoded->response);
             result.response_counter = decoded->envelope.e2e_counter;
             result.session_id = std::move(decoded->envelope.session_id);
             result.session_epoch = decoded->envelope.session_epoch;
@@ -784,6 +894,16 @@ namespace canopy::security::attestation
                    && outer.remote_object_id.get_address().same_zone(inner.remote_object_id.get_address());
         }
 
+        auto validate_visible_get_schema_fields(
+            const rpc::get_schema_params& outer,
+            const rpc::get_schema_params& inner) -> bool
+        {
+            auto query = inner.query_if_plain();
+            return query && outer.protocol_version == inner.protocol_version
+                   && outer.caller_zone_id == inner.caller_zone_id && outer.destination_zone_id == inner.destination_zone_id
+                   && outer.destination_zone_id == query->remote_object_id.as_zone();
+        }
+
         auto validate_visible_object_released_fields(
             const rpc::object_released_params& outer,
             const rpc::object_released_params& inner) -> bool
@@ -824,6 +944,16 @@ namespace canopy::security::attestation
         uint64_t protocol_version) -> bool
     {
         return payload && is_protected_rpc_payload(payload->get_type_id(), protocol_version);
+    }
+
+    auto is_protected_rpc_payload(
+        const rpc::variant<
+            rpc::get_schema_query,
+            rpc::typed_payload>& payload,
+        uint64_t protocol_version) -> bool
+    {
+        return rpc::holds_alternative<rpc::typed_payload>(payload)
+               && is_protected_rpc_payload(rpc::get<rpc::typed_payload>(payload).get_type_id(), protocol_version);
     }
 
     auto is_protected_rpc_envelope(
@@ -1560,6 +1690,260 @@ namespace canopy::security::attestation
         value.context = std::move(*context);
         value.request_counter = envelope->e2e_counter;
         return accepted(std::move(value));
+    }
+
+    auto protect_get_schema_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::get_schema_params params,
+        rpc::encoding envelope_encoding) -> protected_rpc_result<protected_get_schema_request>
+    {
+        if (!context.established)
+            return rejected<protected_get_schema_request>(
+                rpc::error::ZONE_NOT_SUPPORTED(), "attestation session is not established");
+        if (is_protected_rpc_payload(params.query, params.protocol_version))
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "get_schema query is already protected");
+        auto query = params.query_if_plain();
+        if (!query)
+            return rejected<protected_get_schema_request>(rpc::error::INVALID_DATA(), "get_schema query is not plaintext");
+        if (envelope_encoding == rpc::encoding::not_set)
+            envelope_encoding = payload_encoding(params.query);
+        if (envelope_encoding == rpc::encoding::not_set)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "protected get_schema requires an envelope encoding");
+
+        auto scope = make_request_scope(context, true, protected_rpc_direction::caller_to_destination);
+        auto key = service.derive_aead_key(scope);
+        if (!key)
+            return rejected<protected_get_schema_request>(
+                rpc::error::SECURITY_ERROR(), "failed to derive protected get_schema key");
+
+        auto counter = service.next_send_counter(scope);
+        if (!counter.accepted)
+            return rejected<protected_get_schema_request>(rpc::error::SECURITY_ERROR(), counter.reason);
+
+        if (!params.destination_zone_id.is_set())
+            params.destination_zone_id = query->remote_object_id.as_zone();
+
+        auto plaintext = encode_get_schema_request_plaintext(params, counter.counter, context);
+        if (!plaintext)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema");
+
+        auto outer = params;
+        auto envelope = prepare_envelope(context, counter.counter);
+        outer.query = make_typed_payload(encrypted_payload_type_id(params.protocol_version), envelope_encoding, {});
+        auto aad = make_get_schema_request_aad(outer, envelope);
+        if (!aad)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema aad");
+
+        auto nonce = make_nonce(service, *key, counter.counter);
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
+            return rejected<protected_get_schema_request>(
+                rpc::error::SECURITY_ERROR(), "failed to encrypt protected get_schema");
+
+        auto wire = serialise_envelope(envelope, envelope_encoding);
+        if (!wire)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "failed to serialise protected get_schema");
+        rpc::get<rpc::typed_payload>(outer.query).set_payload(std::move(*wire));
+
+        protected_get_schema_request value;
+        value.params = std::move(outer);
+        value.context = context;
+        value.request_counter = counter.counter;
+        return accepted(std::move(value));
+    }
+
+    auto unprotect_get_schema_request(
+        attestation_service& service,
+        const rpc::get_schema_params& outer) -> protected_rpc_result<protected_get_schema_request>
+    {
+        if (!is_protected_rpc_payload(outer.query, outer.protocol_version))
+            return rejected<protected_get_schema_request>(rpc::error::INVALID_DATA(), "get_schema query is not protected");
+
+        const auto& carrier = rpc::get<rpc::typed_payload>(outer.query);
+        auto envelope = deserialise_envelope(carrier.get_payload(), carrier.get_encoding());
+        if (!envelope)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "protected get_schema envelope is malformed");
+
+        auto context = service.find_session(envelope->session_id);
+        if (!context)
+            return rejected<protected_get_schema_request>(
+                rpc::error::ZONE_NOT_SUPPORTED(), "protected get_schema session is unknown");
+        if (!validate_envelope_context(*envelope, *context))
+            return rejected<protected_get_schema_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema session metadata mismatch");
+
+        auto scope = make_request_scope(*context, false, protected_rpc_direction::caller_to_destination);
+        auto key = service.derive_aead_key(scope);
+        if (!key)
+            return rejected<protected_get_schema_request>(
+                rpc::error::SECURITY_ERROR(), "failed to derive protected get_schema key");
+
+        auto aad = make_get_schema_request_aad(outer, *envelope);
+        if (!aad)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema aad");
+
+        auto nonce = make_nonce(service, *key, envelope->e2e_counter);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
+        if (!plaintext)
+            return rejected<protected_get_schema_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema authentication failed");
+
+        auto decoded = decode_get_schema_request_plaintext(*plaintext);
+        if (!decoded)
+            return rejected<protected_get_schema_request>(
+                rpc::error::INVALID_DATA(), "protected get_schema plaintext is malformed");
+        if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
+            || decoded->e2e_counter != envelope->e2e_counter
+            || !validate_visible_get_schema_fields(outer, decoded->get_schema))
+        {
+            return rejected<protected_get_schema_request>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema binding mismatch");
+        }
+        decoded->get_schema.in_back_channel = outer.in_back_channel;
+
+        auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
+        if (!counter.accepted)
+            return rejected<protected_get_schema_request>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
+
+        protected_get_schema_request value;
+        value.params = std::move(decoded->get_schema);
+        value.context = std::move(*context);
+        value.request_counter = envelope->e2e_counter;
+        return accepted(std::move(value));
+    }
+
+    auto protect_get_schema_response(
+        attestation_service& service,
+        const security_context& context,
+        const rpc::get_schema_params& outer_request,
+        uint64_t request_counter,
+        rpc::get_schema_result response) -> protected_rpc_result<rpc::get_schema_result>
+    {
+        if (!context.established || request_counter == protected_rpc_invalid_counter)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::SECURITY_ERROR(), "protected get_schema response context is invalid");
+        if (!rpc::holds_alternative<rpc::typed_payload>(outer_request.query))
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response requires protected request carrier");
+
+        auto envelope_encoding = rpc::get<rpc::typed_payload>(outer_request.query).get_encoding();
+        if (envelope_encoding == rpc::encoding::not_set)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response requires an envelope encoding");
+
+        auto scope = make_response_scope(context, false);
+        auto key = service.derive_aead_key(scope);
+        if (!key)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::SECURITY_ERROR(), "failed to derive protected get_schema response key");
+
+        auto counter = service.next_send_counter(scope);
+        if (!counter.accepted)
+            return rejected<rpc::get_schema_result>(rpc::error::SECURITY_ERROR(), counter.reason);
+
+        auto plaintext
+            = encode_get_schema_response_plaintext(response, outer_request.protocol_version, counter.counter, context);
+        if (!plaintext)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema response");
+
+        auto envelope = prepare_envelope(context, counter.counter);
+        auto aad = make_response_aad(outer_request.protocol_version, envelope, request_counter);
+        if (!aad)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema response aad");
+
+        auto nonce = make_nonce(service, *key, counter.counter);
+        if (!encrypt_into_envelope(*key, nonce, *plaintext, *aad, envelope))
+            return rejected<rpc::get_schema_result>(
+                rpc::error::SECURITY_ERROR(), "failed to encrypt protected get_schema response");
+
+        auto wire = serialise_envelope(envelope, envelope_encoding);
+        if (!wire)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "failed to serialise protected get_schema response");
+
+        rpc::get_schema_result outer;
+        outer.error_code = rpc::error::OK();
+        outer.out_back_channel = std::move(response.out_back_channel);
+        outer.response = make_typed_payload(
+            encrypted_payload_type_id(outer_request.protocol_version), envelope_encoding, std::move(*wire));
+        return accepted(std::move(outer));
+    }
+
+    auto unprotect_get_schema_response(
+        attestation_service& service,
+        const security_context& context,
+        const rpc::get_schema_params& outer_request,
+        uint64_t request_counter,
+        rpc::get_schema_result outer_response) -> protected_rpc_result<rpc::get_schema_result>
+    {
+        if (outer_response.error_code != rpc::error::OK())
+        {
+            if (!rpc::error::is_public_control_status(outer_response.error_code))
+            {
+                return rejected<rpc::get_schema_result>(
+                    rpc::error::PROTOCOL_ERROR(), "protected get_schema response exposed a non-RPC carrier status");
+            }
+            return accepted(std::move(outer_response));
+        }
+        if (!rpc::holds_alternative<rpc::typed_payload>(outer_response.response))
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response is not protected");
+        if (!rpc::holds_alternative<rpc::typed_payload>(outer_request.query))
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response request carrier is not protected");
+
+        const auto& carrier = rpc::get<rpc::typed_payload>(outer_response.response);
+        auto envelope = deserialise_envelope(carrier.get_payload(), carrier.get_encoding());
+        if (!envelope)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response envelope is malformed");
+        if (!validate_envelope_context(*envelope, context))
+            return rejected<rpc::get_schema_result>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema response session metadata mismatch");
+
+        auto scope = make_response_scope(context, true);
+        auto key = service.derive_aead_key(scope);
+        if (!key)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::SECURITY_ERROR(), "failed to derive protected get_schema response key");
+
+        auto aad = make_response_aad(outer_request.protocol_version, *envelope, request_counter);
+        if (!aad)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "failed to encode protected get_schema response aad");
+
+        auto nonce = make_nonce(service, *key, envelope->e2e_counter);
+        auto plaintext = decrypt_envelope(*key, nonce, *envelope, *aad);
+        if (!plaintext)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema response authentication failed");
+
+        auto decoded = decode_get_schema_response_plaintext(*plaintext);
+        if (!decoded)
+            return rejected<rpc::get_schema_result>(
+                rpc::error::INVALID_DATA(), "protected get_schema response plaintext is malformed");
+        if (decoded->session_id != envelope->session_id || decoded->session_epoch != envelope->session_epoch
+            || decoded->response_counter != envelope->e2e_counter)
+        {
+            return rejected<rpc::get_schema_result>(
+                rpc::error::FRAUDULANT_REQUEST(), "protected get_schema response binding mismatch");
+        }
+
+        auto counter = service.accept_receive_counter(scope, envelope->e2e_counter);
+        if (!counter.accepted)
+            return rejected<rpc::get_schema_result>(rpc::error::FRAUDULANT_REQUEST(), counter.reason);
+
+        decoded->response.out_back_channel = std::move(outer_response.out_back_channel);
+        return accepted(std::move(decoded->response));
     }
 
     auto protect_object_released_request(

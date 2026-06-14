@@ -121,6 +121,21 @@ namespace rpc
             int err_code;
         };
 
+        struct get_schema_send
+        {
+            rpc::caller_zone caller_zone_id;
+            rpc::destination_zone destination_zone_id;
+            std::vector<rpc::back_channel_entry> back_channel;
+            rpc::variant<rpc::get_schema_query, rpc::typed_payload> query;
+        };
+
+        struct get_schema_receive
+        {
+            int err_code;
+            std::vector<rpc::back_channel_entry> back_channel;
+            rpc::variant<rpc::get_schema_response, rpc::typed_payload> response;
+        };
+
         struct addref_send
         {
             rpc::remote_object destination_zone_id;

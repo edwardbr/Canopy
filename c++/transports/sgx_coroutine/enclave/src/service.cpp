@@ -1682,6 +1682,65 @@ namespace rpc
         CO_RETURN sanitise_public_control_result(std::move(result), "try_cast");
     }
 
+    // Handles inbound schema metadata requests with protected request and
+    // response envelopes when the caller route has established keys.
+    CORO_TASK(get_schema_result)
+    enclave_service::get_schema(get_schema_params params)
+    {
+        const bool protected_payload
+            = canopy::security::attestation::is_protected_rpc_payload(params.query, params.protocol_version);
+        if (protected_payload)
+        {
+            auto service = get_attestation_service();
+            if (!protected_rpc_enabled() || !service)
+                CO_RETURN get_schema_result{rpc::error::ZONE_NOT_SUPPORTED(), rpc::encoding::not_set, {}, {}};
+
+            const auto outer = params;
+            auto request = canopy::security::attestation::unprotect_get_schema_request(*service, outer);
+            if (!request.accepted)
+            {
+                RPC_ERROR(
+                    "protected RPC unprotect get_schema failed: code={} ({}) reason={}",
+                    request.error.error_code,
+                    rpc::error::to_string(request.error.error_code),
+                    request.error.reason);
+                CO_RETURN get_schema_result{request.error.error_code, rpc::encoding::not_set, {}, {}};
+            }
+
+            auto response = CO_AWAIT child_service::get_schema(std::move(request.value.params));
+            auto protected_response = canopy::security::attestation::protect_get_schema_response(
+                *service, request.value.context, outer, request.value.request_counter, std::move(response));
+            if (!protected_response.accepted)
+            {
+                RPC_ERROR(
+                    "protected RPC protect get_schema response failed: code={} ({}) reason={}",
+                    protected_response.error.error_code,
+                    rpc::error::to_string(protected_response.error.error_code),
+                    protected_response.error.reason);
+                CO_RETURN get_schema_result{protected_response.error.error_code, rpc::encoding::not_set, {}, {}};
+            }
+
+            CO_RETURN std::move(protected_response.value);
+        }
+        if (protected_rpc_enabled() && params.query_if_payload())
+        {
+            CO_RETURN get_schema_result{rpc::error::INVALID_VERSION(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto route_result
+            = CO_AWAIT ensure_existing_reference_route_allowed(params.caller_zone_id, "inbound get_schema caller");
+        if (route_result.error_code != rpc::error::OK())
+            CO_RETURN get_schema_result{route_result.error_code, rpc::encoding::not_set, {}, {}};
+
+        if (!protected_payload && protected_rpc_enabled() && get_security_context(params.caller_zone_id))
+        {
+            RPC_WARNING("plaintext get_schema rejected for protected route {}", rpc::to_string(params.caller_zone_id));
+            CO_RETURN get_schema_result{rpc::error::FRAUDULANT_REQUEST(), rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN CO_AWAIT child_service::get_schema(std::move(params));
+    }
+
     // Protects outbound send traffic at the service/transport boundary and
     // unwraps the protected send response on return.
     CORO_TASK(send_result)
@@ -1817,6 +1876,71 @@ namespace rpc
 
         auto result = CO_AWAIT child_service::outbound_try_cast(std::move(request.value.params), std::move(transport));
         CO_RETURN sanitise_public_control_result(std::move(result), "outbound_try_cast");
+    }
+
+    // Protects outbound schema metadata and unwraps the encrypted schema
+    // response when an attested context exists for the destination route.
+    CORO_TASK(get_schema_result)
+    enclave_service::outbound_get_schema(
+        get_schema_params params,
+        std::shared_ptr<transport> transport)
+    {
+        auto service = get_attestation_service();
+        if (!protected_rpc_enabled() || !service)
+        {
+            CO_RETURN CO_AWAIT child_service::outbound_get_schema(std::move(params), std::move(transport));
+        }
+        if (!transport)
+        {
+            CO_RETURN get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            CO_RETURN get_schema_result{rpc::error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
+        auto context = find_security_context_for_protected_call(params.caller_zone_id, destination_zone_id);
+        if (!context)
+        {
+            CO_RETURN get_schema_result{rpc::error::ZONE_NOT_SUPPORTED(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto request = canopy::security::attestation::protect_get_schema_request(
+            *service, *context, std::move(params), get_default_encoding());
+        if (!request.accepted)
+        {
+            RPC_ERROR(
+                "protected RPC protect get_schema failed: code={} ({}) reason={}",
+                request.error.error_code,
+                rpc::error::to_string(request.error.error_code),
+                request.error.reason);
+            CO_RETURN get_schema_result{request.error.error_code, rpc::encoding::not_set, {}, {}};
+        }
+
+        auto outer_request = request.value.params;
+        auto outer_response
+            = CO_AWAIT child_service::outbound_get_schema(std::move(request.value.params), std::move(transport));
+        auto response = canopy::security::attestation::unprotect_get_schema_response(
+            *service, request.value.context, outer_request, request.value.request_counter, std::move(outer_response));
+        if (!response.accepted)
+        {
+            RPC_ERROR(
+                "protected RPC unprotect get_schema response failed: code={} ({}) reason={}",
+                response.error.error_code,
+                rpc::error::to_string(response.error.error_code),
+                response.error.reason);
+            CO_RETURN get_schema_result{response.error.error_code, rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN std::move(response.value);
     }
 
     // Admits and optionally protects outbound add_ref before a remote interface

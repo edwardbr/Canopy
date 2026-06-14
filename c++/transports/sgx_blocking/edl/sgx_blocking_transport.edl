@@ -39,6 +39,13 @@ enclave {
             [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
             [out] size_t* resp_sz                               // actual required serialized response size
         );
+        public int get_schema_enclave(
+            size_t req_sz,                                      // serialized rpc::get_schema_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::get_schema_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::get_schema_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::get_schema_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+        );
         public int add_ref_enclave(
             size_t req_sz,                                      // serialized rpc::add_ref_params blob size
             [in, size=req_sz] const char* req,                  // serialized rpc::add_ref_params blob
@@ -97,6 +104,15 @@ enclave {
             [in, size=req_sz] const char* req,                  // serialized rpc::try_cast_params blob
             size_t resp_cap,                                    // output capacity for serialized rpc::standard_result
             [out, size=resp_cap] char* resp,                    // serialized rpc::standard_result blob
+            [out] size_t* resp_sz                               // actual required serialized response size
+            );
+
+        int get_schema_host(
+            uint64_t enclave_id,
+            size_t req_sz,                                      // serialized rpc::get_schema_params blob size
+            [in, size=req_sz] const char* req,                  // serialized rpc::get_schema_params blob
+            size_t resp_cap,                                    // output capacity for serialized rpc::get_schema_result
+            [out, size=resp_cap] char* resp,                    // serialized rpc::get_schema_result blob
             [out] size_t* resp_sz                               // actual required serialized response size
             );
 

@@ -2273,6 +2273,10 @@ namespace synchronous_generator
                     tag = "0";
 
                 bool marshalls_interfaces = false;
+                bool is_post = function->has_value("post");
+                bool deprecated
+                    = function->has_value(rpc_attribute_types::deprecated_function)
+                      || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function);
 
                 for (const auto& parameter : function->get_parameters())
                 {
@@ -2298,58 +2302,22 @@ namespace synchronous_generator
                 proxy(
                     "functions.emplace_back(rpc::function_info{{FLD(full_name)\"{0}.{1}\", FLD(name)\"{1}\", "
                     "FLD(id){{{2}}}, FLD(tag)static_cast<uint64_t>({3}), "
-                    "FLD(marshalls_interfaces){4}, FLD(description)R\"__({5})__\", FLD(in_json_schema)R\"__({6})__\", "
-                    "FLD(out_json_schema)R\"__({7})__\"}});",
+                    "FLD(marshalls_interfaces){4}, FLD(post){5}, FLD(deprecated){6}, "
+                    "FLD(description)R\"__({7})__\", FLD(in_json_schema)R\"__({8})__\", "
+                    "FLD(out_json_schema)R\"__({9})__\"}});",
                     full_name,
                     function->get_name(),
                     function_count,
                     tag,
                     marshalls_interfaces,
+                    is_post,
+                    deprecated,
                     description,
                     in_json_schema,
                     out_json_schema);
                 function_count++;
             }
             proxy("return functions;");
-            proxy("}}");
-        }
-
-        // generate __rpc_methods: a static per-method table (element type
-        // rpc::interface_method_info) for runtime schema introspection. Same
-        // per-method data as get_function_info; returned by pointer + count so
-        // the Phase 2 casting_interface fold can assemble an interface_descriptor
-        // without allocating.
-        {
-            proxy("const rpc::interface_method_info* {0}::__rpc_methods(size_t& count)", interface_name);
-            proxy("{{");
-            proxy("static const std::vector<rpc::interface_method_info> methods = {{");
-            const auto& methods_library = get_root(m_ob);
-            int method_count = 1;
-            for (auto& function : m_ob.get_functions())
-            {
-                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                    continue;
-                const bool method_deprecated
-                    = function->has_value(rpc_attribute_types::deprecated_function)
-                      || function->has_value(rpc_attribute_types::fingerprint_contaminating_deprecated_function);
-                const auto method_in_schema = json_schema::generate_function_input_parameter_schema_with_recursion(
-                    methods_library, m_ob, *function);
-                const auto method_out_schema = json_schema::generate_function_output_parameter_schema_with_recursion(
-                    methods_library, m_ob, *function);
-                proxy(
-                    "rpc::interface_method_info{{FLD(name)\"{0}\", FLD(id){{{1}}}, "
-                    "FLD(in_json_schema)R\"__({2})__\", FLD(out_json_schema)R\"__({3})__\", "
-                    "FLD(deprecated){4}}},",
-                    function->get_name(),
-                    method_count,
-                    method_in_schema,
-                    method_out_schema,
-                    method_deprecated ? "true" : "false");
-                method_count++;
-            }
-            proxy("}};");
-            proxy("count = methods.size();");
-            proxy("return methods.data();");
             proxy("}}");
         }
 

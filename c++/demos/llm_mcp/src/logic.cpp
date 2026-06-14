@@ -105,7 +105,7 @@ namespace llm_mcp
             {
                 for (const auto& method : descriptor.methods)
                 {
-                    if (method.marshalls_interfaces)
+                    if (method.marshalls_interfaces || method.post)
                         continue;
 
                     mcp_tool tool;
@@ -322,12 +322,12 @@ namespace llm_mcp
 
         CORO_TASK(llm_mcp_error) schema_mcp::list_interfaces(std::vector<rpc::interface_descriptor>& interfaces)
         {
+            interfaces.clear();
             if (!target_)
                 CO_RETURN llm_mcp_error::INVALID_ARGUMENT;
 
-            interfaces
-                = rpc::casting_interface::get_schema(*target_, rpc::encoding::yas_json, rpc::schema_flavor::mcp, false);
-            CO_RETURN rpc::error::OK();
+            CO_RETURN CO_AWAIT rpc::casting_interface::get_schema(
+                *target_, interfaces, rpc::encoding::yas_json, rpc::schema_flavor::mcp, false);
         }
 
         CORO_TASK(llm_mcp_error) schema_mcp::list_tools(std::vector<mcp_tool>& tools)
@@ -372,7 +372,7 @@ namespace llm_mcp
                     if (make_tool_name(target_name_, method.name) != tool_name)
                         continue;
 
-                    if (method.marshalls_interfaces)
+                    if (method.marshalls_interfaces || method.post)
                         CO_RETURN llm_mcp_error::TOOL_UNSUPPORTED;
 
                     rpc::send_params params{};
@@ -383,7 +383,8 @@ namespace llm_mcp
                     params.method_id = method.id;
                     params.in_data.assign(arguments_json.begin(), arguments_json.end());
 
-                    auto result = CO_AWAIT target_->__rpc_call(std::move(params));
+                    auto result = CO_AWAIT rpc::casting_interface::call(*target_, std::move(params));
+
                     result_json.assign(result.out_buf.begin(), result.out_buf.end());
                     if (result.error_code == rpc::error::OK())
                         CO_RETURN rpc::error::OK();

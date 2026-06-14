@@ -3317,8 +3317,20 @@ namespace protobuf_generator
         }
         else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
         {
-            generate_struct_to_proto_copy(
-                root_entity, nested_struct, source_expr, "(*" + proto_var + ".mutable_" + field_accessor + "())", cpp, indent);
+            cpp("{}{{", indent);
+            cpp("{}    std::vector<char> {}_buf;", indent, field_name);
+            cpp("{}    {}.protobuf_serialise({}_buf);", indent, source_expr, field_name);
+            cpp("{}    if (!{}.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name,
+                field_name);
+            cpp("{}        throw std::runtime_error(\"Failed to parse nested {} for field {}\");",
+                indent,
+                field_type,
+                field_name);
+            cpp("{}}}", indent);
         }
         else if (is_enum_type(root_entity, field_type))
         {
@@ -3479,8 +3491,20 @@ namespace protobuf_generator
         }
         else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
         {
-            generate_proto_to_struct_copy(
-                root_entity, nested_struct, proto_var + "." + field_accessor + "()", dest_expr, cpp, indent);
+            cpp("{}{{", indent);
+            cpp("{}    std::vector<char> {}_buf({}.{}().ByteSizeLong());", indent, field_name, proto_var, field_accessor);
+            cpp("{}    if (!{}.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name,
+                field_name);
+            cpp("{}        throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                indent,
+                field_type,
+                field_name);
+            cpp("{}    {}.protobuf_deserialise({}_buf);", indent, dest_expr, field_name);
+            cpp("{}}}", indent);
         }
         else if (is_enum_type(root_entity, field_type))
         {

@@ -34,11 +34,18 @@ namespace rpc
     };
 
 #cpp_quote(R^__(
-    template<class OutputBlob, typename T>
-    OutputBlob serialise(const T& obj, encoding enc);
+    template<
+        class OutputBlob,
+        typename T>
+    OutputBlob serialise(
+        const T& obj,
+        encoding enc);
 
     template<typename T>
-    std::string deserialise(encoding enc, const std::vector<char>& data, T& obj);
+    std::string deserialise(
+        encoding enc,
+        const std::vector<char>& data,
+        T& obj);
     )__^)
 
     enum transport_status : uint8_t
@@ -157,19 +164,19 @@ namespace rpc
     // enable_adaptive_threads. SGX inline executors ignore these values.
     struct executor_options
     {
-        [description="Initial executor worker count. Zero selects the build-specific default."]
-        uint32_t thread_count = 0;
+        [description = "Initial executor worker count. Zero selects the build-specific default."] uint32_t thread_count
+            = 0;
 
-        [description="Maximum worker count for adaptive host blocking executors. Zero selects a bounded host default."]
-        uint32_t max_thread_count = 0;
+        [description = "Maximum worker count for adaptive host blocking executors. Zero selects a bounded host "
+                       "default."] uint32_t max_thread_count = 0;
 
-        [description="Allow host blocking executors to grow when queued work would otherwise starve behind busy workers."]
-        bool enable_adaptive_threads = true;
+        [description
+            = "Allow host blocking executors to grow when queued work would otherwise starve behind busy workers."] bool enable_adaptive_threads
+            = true;
     };
 
     // Back-channel entry for marshalling reference-counted objects across zones
-    [no_fingerprint]
-    struct back_channel_entry
+    [no_fingerprint] struct back_channel_entry
     {
         uint64_t type_id;
         std::vector<uint8_t> payload;
@@ -207,7 +214,10 @@ namespace rpc
             const typed_payload& rhs);
 
         typed_payload() = default;
-        typed_payload(uint64_t type_id, encoding payload_encoding, std::vector<char> payload)
+        typed_payload(
+            uint64_t type_id,
+            encoding payload_encoding,
+            std::vector<char> payload)
             : type_id(type_id)
             , payload_encoding(payload_encoding)
             , payload(std::move(payload))
@@ -223,20 +233,18 @@ namespace rpc
         void set_encoding(encoding value) noexcept { payload_encoding = value; }
         void set_payload(std::vector<char> value) { payload = std::move(value); }
 
-        template<typename T>
-        void set_type(uint64_t protocol_version)
-        {
-            type_id = rpc::id<T>::get(protocol_version);
-        }
+        template<typename T> void set_type(uint64_t protocol_version) { type_id = rpc::id<T>::get(protocol_version); }
 
-        template<typename T>
-        [[nodiscard]] bool is_type(uint64_t protocol_version) const
+        template<typename T> [[nodiscard]] bool is_type(uint64_t protocol_version) const
         {
             return type_id == rpc::id<T>::get(protocol_version);
         }
 
         template<typename T>
-        void set_value(const T& value, uint64_t protocol_version, encoding encoding_type)
+        void set_value(
+            const T& value,
+            uint64_t protocol_version,
+            encoding encoding_type)
         {
             type_id = rpc::id<T>::get(protocol_version);
             payload_encoding = encoding_type;
@@ -244,7 +252,9 @@ namespace rpc
         }
 
         template<typename T>
-        [[nodiscard]] std::string get_value(T& value, uint64_t protocol_version) const
+        [[nodiscard]] std::string get_value(
+            T& value,
+            uint64_t protocol_version) const
         {
             if (!is_type<T>(protocol_version))
                 return "typed payload fingerprint does not match the requested type";
@@ -892,22 +902,11 @@ namespace rpc
         method id;
         uint64_t tag;
         bool marshalls_interfaces;
+        bool post = false;
+        bool deprecated = false;
         std::string description;
         std::string in_json_schema;
         std::string out_json_schema;
-    };
-
-    // Lightweight per-method record for runtime discovery, returned by each
-    // interface's __rpc_methods(). Same fields as the relevant part of
-    // function_info; it is the element type of the static per-interface method
-    // table exposed for introspection.
-    struct interface_method_info
-    {
-        std::string name;
-        method id;
-        std::string in_json_schema;
-        std::string out_json_schema;
-        bool deprecated;
     };
 
     // Runtime description of one interface and its callable methods, returned by
@@ -923,6 +922,21 @@ namespace rpc
         bool deprecated;
         std::string schema;
         std::vector<function_info> methods;
+    };
+
+    struct get_schema_query
+    {
+        encoding encoding_type = encoding::not_set;
+        schema_flavor flavor = schema_flavor::config;
+        remote_object remote_object_id;
+        rpc::optional<interface_ordinal> interface_id;
+        bool include_deprecated = false;
+    };
+
+    struct get_schema_response
+    {
+        encoding encoding_type = encoding::not_set;
+        std::vector<interface_descriptor> interfaces;
     };
 
     struct telemetry_event

@@ -113,6 +113,14 @@ namespace rpc
             object object_id,
             std::function<interface_ordinal(uint64_t)> id_getter);
 
+        [[nodiscard]] CORO_TASK(get_schema_result) sp_get_schema(
+            destination_zone destination_zone_id,
+            object object_id,
+            rpc::optional<interface_ordinal> interface_id,
+            rpc::encoding schema_encoding,
+            rpc::schema_flavor flavor,
+            bool include_deprecated);
+
         [[nodiscard]] CORO_TASK(int) sp_add_ref(
             object object_id,
             add_ref_options build_out_param_channel,

@@ -201,6 +201,54 @@ namespace rpc
         CO_RETURN result;
     }
 
+    CORO_TASK(get_schema_result)
+    pass_through::get_schema(get_schema_params params)
+    {
+        if (!begin_call())
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+        auto keep_alive = shared_from_this();
+
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            end_call();
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
+        auto target_transport = get_directional_transport(destination_zone_id);
+        if (!target_transport)
+        {
+            end_call();
+            CO_RETURN get_schema_result{error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+        }
+
+        if (target_transport->get_status() != transport_status::CONNECTED)
+        {
+            end_call();
+            trigger_self_destruction();
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto result = CO_AWAIT target_transport->get_schema(std::move(params));
+
+        end_call();
+
+        if (error::is_critical(result.error_code))
+        {
+            trigger_self_destruction();
+        }
+
+        CO_RETURN result;
+    }
+
     CORO_TASK(standard_result)
     pass_through::add_ref(add_ref_params params)
     {

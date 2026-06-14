@@ -28,7 +28,8 @@ namespace canopy::security::attestation
         release = 5,
         try_cast = 6,
         object_released = 7,
-        transport_down = 8
+        transport_down = 8,
+        get_schema = 9
     };
 
     struct protected_rpc_error
@@ -79,6 +80,13 @@ namespace canopy::security::attestation
         uint64_t request_counter{protected_rpc_invalid_counter};
     };
 
+    struct protected_get_schema_request
+    {
+        rpc::get_schema_params params;
+        security_context context;
+        uint64_t request_counter{protected_rpc_invalid_counter};
+    };
+
     struct protected_object_released_request
     {
         rpc::object_released_params params;
@@ -106,6 +114,12 @@ namespace canopy::security::attestation
 
     [[nodiscard]] auto is_protected_rpc_payload(
         const rpc::optional<rpc::typed_payload>& payload,
+        uint64_t protocol_version) -> bool;
+
+    [[nodiscard]] auto is_protected_rpc_payload(
+        const rpc::variant<
+            rpc::get_schema_query,
+            rpc::typed_payload>& payload,
         uint64_t protocol_version) -> bool;
 
     // True when a send/post-style interface+method pair is the protected envelope carrier.
@@ -175,6 +189,30 @@ namespace canopy::security::attestation
     [[nodiscard]] auto unprotect_try_cast_request(
         attestation_service& service,
         const rpc::try_cast_params& outer) -> protected_rpc_result<protected_try_cast_request>;
+
+    [[nodiscard]] auto protect_get_schema_request(
+        attestation_service& service,
+        const security_context& context,
+        rpc::get_schema_params params,
+        rpc::encoding envelope_encoding = rpc::encoding::not_set) -> protected_rpc_result<protected_get_schema_request>;
+
+    [[nodiscard]] auto unprotect_get_schema_request(
+        attestation_service& service,
+        const rpc::get_schema_params& outer) -> protected_rpc_result<protected_get_schema_request>;
+
+    [[nodiscard]] auto protect_get_schema_response(
+        attestation_service& service,
+        const security_context& context,
+        const rpc::get_schema_params& outer_request,
+        uint64_t request_counter,
+        rpc::get_schema_result response) -> protected_rpc_result<rpc::get_schema_result>;
+
+    [[nodiscard]] auto unprotect_get_schema_response(
+        attestation_service& service,
+        const security_context& context,
+        const rpc::get_schema_params& outer_request,
+        uint64_t request_counter,
+        rpc::get_schema_result outer_response) -> protected_rpc_result<rpc::get_schema_result>;
 
     [[nodiscard]] auto protect_object_released_request(
         attestation_service& service,

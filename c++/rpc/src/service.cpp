@@ -912,13 +912,19 @@ namespace rpc
     CORO_TASK(get_schema_result)
     service::get_schema(get_schema_params params)
     {
+        auto query = params.query_if_plain();
+        if (!query)
+        {
+            RPC_ERROR("Invalid data - get_schema query is not plaintext");
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+
         auto protocol_version = params.protocol_version;
-        auto remote_object_id = params.remote_object_id;
+        auto remote_object_id = query->remote_object_id;
         auto object_id = remote_object_id.get_object_id();
 
         std::ignore = params.caller_zone_id;
         std::ignore = params.in_back_channel;
-        std::ignore = params.interface_id; // object-discovery mode; type-query is a later slice
 
         if (!remote_object_id.get_address().same_zone(zone_id_.get_address()))
         {
@@ -941,8 +947,18 @@ namespace rpc
             CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
         }
         std::vector<rpc::interface_descriptor> descriptors;
-        stub->enumerate_schemas(params.encoding_type, params.flavor, params.include_deprecated, descriptors);
-        CO_RETURN get_schema_result{rpc::error::OK(), params.encoding_type, std::move(descriptors), {}};
+        stub->enumerate_schemas(query->encoding_type, query->flavor, query->include_deprecated, descriptors);
+        if (query->interface_id.has_value() && query->interface_id->get_val() != 0)
+        {
+            descriptors.erase(
+                std::remove_if(
+                    descriptors.begin(),
+                    descriptors.end(),
+                    [&](const rpc::interface_descriptor& descriptor)
+                    { return descriptor.interface_id != *query->interface_id; }),
+                descriptors.end());
+        }
+        CO_RETURN get_schema_result{rpc::error::OK(), query->encoding_type, std::move(descriptors), {}};
     }
 
     CORO_TASK(standard_result)
@@ -1833,6 +1849,15 @@ namespace rpc
     {
         // Default implementation - directly call the transport
         CO_RETURN CO_AWAIT transport->try_cast(std::move(params));
+    }
+
+    CORO_TASK(get_schema_result)
+    service::outbound_get_schema(
+        get_schema_params params,
+        std::shared_ptr<transport> transport)
+    {
+        // Default implementation - directly call the transport
+        CO_RETURN CO_AWAIT transport->get_schema(std::move(params));
     }
 
     CORO_TASK(standard_result)

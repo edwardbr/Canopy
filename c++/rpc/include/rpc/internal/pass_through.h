@@ -145,6 +145,7 @@ namespace rpc
         CORO_TASK(send_result) send(send_params params) override;
         CORO_TASK(void) post(post_params params) override;
         CORO_TASK(standard_result) try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) release(release_params params) override;
         CORO_TASK(void) object_released(object_released_params params) override;
