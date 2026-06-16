@@ -1,0 +1,61 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "io_uring/io_uring_config.idl"
+
+namespace rpc
+{
+    namespace tcp_coroutine_stream
+    {
+        enum receive_timeout_strategy : uint8_t
+        {
+            linked_timeout = 0,
+            nonblocking_poll = 1,
+        };
+
+        // Per-stream TCP coroutine behaviour. These settings tune the
+        // io_uring-backed stream implementation after the host controller
+        // has been created.
+        struct stream_options
+        {
+            [description="Maximum transfer size per stream operation. Zero keeps the implementation default."]
+            uint64_t max_transfer_size = 0;
+
+            [description="Receive timeout implementation strategy used by the TCP coroutine stream."]
+            receive_timeout_strategy timeout_strategy = receive_timeout_strategy::linked_timeout;
+        };
+
+        // Settings for the TCP coroutine base stream. This concrete stream
+        // appears as a tcp_coroutine stream_layers item in connection
+        // factory JSON. Listener and connector paths use host/port/ipv6.
+        struct endpoint
+        {
+            [description="Host controller settings used when the factory creates or borrows an io_uring controller."]
+            canopy::io_uring::host_controller_options controller = {};
+
+            [description="Remote address to connect to, or local bind address to listen on. Use numeric IPv4 or IPv6 text."]
+            std::string host = "127.0.0.1";
+
+            [description="TCP port to connect to or listen on. Zero means a listener searches first_port..last_port."]
+            uint16_t port = 0;
+
+            [description="Use IPv6 socket/address handling when true."]
+            bool ipv6 = false;
+
+            [description="Connect timeout in milliseconds. Zero disables the connect deadline."]
+            uint64_t connect_timeout = 5000;
+
+            [description="First candidate listener port when port is zero."]
+            uint16_t first_port = 26000;
+
+            [description="One-past-last candidate listener port when port is zero."]
+            uint16_t last_port = 26064;
+
+            [description="Per-stream TCP coroutine settings."]
+            rpc::tcp_coroutine_stream::stream_options stream = {};
+        };
+    }
+}

@@ -101,7 +101,7 @@ namespace javascript_generator
         {
             for (auto& fn : iface_entity.get_functions())
             {
-                if (fn->get_entity_type() == entity_type::FUNCTION_METHOD && !fn->has_value("post"))
+                if (fn->get_entity_type() == entity_type::FUNCTION_METHOD)
                     return true;
             }
             return false;
@@ -152,9 +152,8 @@ namespace javascript_generator
             {
                 if (fn->get_entity_type() != entity_type::FUNCTION_METHOD)
                     continue;
-                if (fn->has_value("post"))
-                    continue;
 
+                const bool is_post = fn->has_value("post");
                 const std::string method = fn->get_name();
                 const std::string req_name = proto_request_name(iface, method);
                 const std::string resp_name = proto_response_name(iface, method);
@@ -177,8 +176,14 @@ namespace javascript_generator
                         out_param_names.push_back(p.get_name());
                 }
 
-                // Function signature
-                out << "    " << iface << "_proxy.prototype." << method << " = async function(";
+                // Function signature. [post] proxies are synchronous fire-and-
+                // forget: no Promise, no return payload — the generator
+                // enforces at the IDL level that [post] has no [out] params and
+                // no interface params.
+                if (is_post)
+                    out << "    " << iface << "_proxy.prototype." << method << " = function(";
+                else
+                    out << "    " << iface << "_proxy.prototype." << method << " = async function(";
                 for (size_t i = 0; i < in_param_names.size(); i++)
                 {
                     if (i > 0)
@@ -209,20 +214,32 @@ namespace javascript_generator
                 }
                 out << "        });\n";
                 out << "        var reqBytes = this._proto." << req_name << ".encode(req).finish();\n";
-                out << "        var respBytes = await this._transport.call(\n";
-                out << "            " << to_upper(iface) << "_ID,\n";
-                out << "            " << iface << "_method." << method << ",\n";
-                out << "            reqBytes);\n";
-                out << "        var resp = this._proto." << resp_name << ".decode(respBytes);\n";
 
-                // Return object
-                out << "        return {\n";
-                if (has_return)
-                    out << "            result: resp.result,\n";
-                for (auto& op : out_param_names)
-                    out << "            " << op << ": resp." << proto_js_field(op) << ",\n";
-                out << "        };\n";
-                out << "    };\n\n";
+                if (is_post)
+                {
+                    out << "        this._transport.callPost(\n";
+                    out << "            " << to_upper(iface) << "_ID,\n";
+                    out << "            " << iface << "_method." << method << ",\n";
+                    out << "            reqBytes);\n";
+                    out << "    };\n\n";
+                }
+                else
+                {
+                    out << "        var respBytes = await this._transport.call(\n";
+                    out << "            " << to_upper(iface) << "_ID,\n";
+                    out << "            " << iface << "_method." << method << ",\n";
+                    out << "            reqBytes);\n";
+                    out << "        var resp = this._proto." << resp_name << ".decode(respBytes);\n";
+
+                    // Return object
+                    out << "        return {\n";
+                    if (has_return)
+                        out << "            result: resp.result,\n";
+                    for (auto& op : out_param_names)
+                        out << "            " << op << ": resp." << proto_js_field(op) << ",\n";
+                    out << "        };\n";
+                    out << "    };\n\n";
+                }
             }
             // Unused lib suppression
             (void)lib;

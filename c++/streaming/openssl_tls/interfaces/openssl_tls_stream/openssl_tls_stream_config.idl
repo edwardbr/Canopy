@@ -1,0 +1,78 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace openssl_tls_stream
+    {
+        enum peer_verification : uint8_t
+        {
+            none = 0,
+            optional = 1,
+            required = 2,
+        };
+
+        // PEM material used when a factory constructs an OpenSSL TLS server or
+        // client context from configuration. Inline PEM fields are consumed
+        // directly by the stream-layer factory. The *_file fields are resolved
+        // by higher-level application configuration loaders that know the
+        // configuration file's base directory.
+        struct pem_credentials
+        {
+            [description="PEM encoded leaf certificate or certificate chain."]
+            std::string certificate = "";
+
+            [description="PEM encoded leaf certificate or certificate chain file, resolved by application configuration loaders before stream construction."]
+            std::string certificate_file = "";
+
+            [description="PEM encoded private key matching the certificate."]
+            std::string private_key = "";
+
+            [description="PEM encoded private key file, resolved by application configuration loaders before stream construction."]
+            std::string private_key_file = "";
+
+            [description="PEM encoded trust anchor used when peer verification is enabled."]
+            std::string trust_anchor = "";
+
+            [description="PEM encoded trust-anchor file, resolved by application configuration loaders before stream construction."]
+            std::string trust_anchor_file = "";
+        };
+
+        struct server_context_settings
+        {
+            [description="Peer certificate verification policy used by an OpenSSL TLS server context."]
+            peer_verification verify_peer = peer_verification::none;
+
+            [description="Optional inline PEM material for factories that construct the server context from JSON."]
+            rpc::optional<pem_credentials> credentials;
+        };
+
+        struct client_context_settings
+        {
+            [description="Require peer certificate verification when constructing an OpenSSL TLS client context."]
+            bool verify_peer = false;
+
+            [description="Optional PEM trust anchor used by the client context when verify_peer is true."]
+            std::string trust_anchor = "";
+
+            [description="Optional PEM trust-anchor file resolved by application configuration loaders before stream construction."]
+            std::string trust_anchor_file = "";
+        };
+
+        // Stream-layer settings. Each TLS layer owns its own client/server
+        // context material, so layered topologies can use different identities
+        // or trust anchors for different links.
+        struct stream_settings
+        {
+            [description="Client-side context settings used when connecting through an OpenSSL TLS stream layer."]
+            client_context_settings client = {};
+
+            [description="Server-side context settings used when accepting through an OpenSSL TLS stream layer."]
+            server_context_settings server = {};
+        };
+    }
+}

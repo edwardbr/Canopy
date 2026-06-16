@@ -1,11 +1,16 @@
 # Service Object Singleton Proposal
 
-Status: parked proposal.
+Status: parked proposal; superseded for new design discussion by
+`documents/architecture/service-capabilities-and-control-plane-proposal.md`.
 
 This note records a proposed Canopy service-object feature. It is not the
 current SGX io_uring implementation plan. The immediate SGX plan is to pass an
 explicit per-enclave host capability object through the normal RPC connection
 path.
+
+The newer service-capabilities proposal recommends keeping `object_id == 0` as
+the zone-only/no-specific-object value and reserving a small nonzero framework
+object-id range for service control-plane objects instead.
 
 ## Motivation
 
@@ -130,9 +135,9 @@ For SGX io_uring, the preferred current design is to pass an explicit RPC
 object through the normal `connect_to_zone` input path. That object can support:
 
 - `i_host`, for existing SGX transport tests
-- `i_host_io_uring_control`, for waking the host-owned io_uring SQPOLL ring if needed
+- `i_io_uring_control`, for waking the host-owned io_uring SQPOLL ring if needed
 
-The `i_host_io_uring_control` object should be per enclave or per io_uring
+The `i_io_uring_control` object should be per enclave or per io_uring
 context. It should capture exactly the host-side wake capability for that
 enclave's ring. It should not expose a generic syscall bridge.
 

@@ -162,7 +162,7 @@ namespace comprehensive
 
 int main()
 {
-    std::cout << "RPC++ Comprehensive Demo - Local Transport\n";
+    std::cout << "Canopy Comprehensive Demo - Local Transport\n";
     std::cout << "========================================\n";
     std::cout << "Demonstrates in-process communication using local transport\n";
     std::cout << "\n";

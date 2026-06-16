@@ -204,6 +204,36 @@ Useful instrumentation points:
 - Wrapper streams should propagate close to the underlying stream as part of
   the same awaited shutdown path.
 
+## io_uring Stream Rules
+
+These rules apply to both the SGX io_uring stream path and the host-side
+`streaming_io_uring` implementation.
+
+- Treat SQ capacity, CQ capacity, registered host buffers, and fixed-file slots
+  as separate bounded resources.
+- Treat caller buffers and host buffers as different resources. Caller buffers
+  are the variable-sized per-transfer spans passed to `send` and `receive`;
+  host buffers are fixed-size io_uring staging slots.
+- `use_caller_buffers_for_transfers` is host-only. Enclave streams must stage
+  through host-visible buffers because enclave-private caller buffers are not
+  kernel-visible.
+- If encrypted framing is added above the stream, host buffers may contain
+  ciphertext records, but record sizing must include authentication tag, nonce,
+  padding, and frame-header overhead.
+- A stream should own its descriptor through a small owner/guard abstraction so
+  close happens exactly once.
+- Stream close should cancel or drain only operations owned by that stream.
+- Controller shutdown should cancel or fail all operations and then make future
+  submissions fail quickly.
+- Send must handle partial kernel sends and continue until the caller's span is
+  sent, the stream closes, cancellation is requested, or a deadline expires.
+- Receive timeout must not allow caller buffer reuse while a kernel receive can
+  still complete later.
+- Saturation should park work in bounded pending queues or yield fairly; it
+  should not spin or allocate unbounded staging memory.
+- Telemetry should distinguish temporary saturation, timeout, cancellation,
+  peer close, and controller failure.
+
 ## Review Checklist
 
 Use this checklist when reviewing `spsc_queue`, `tcp`, `io_uring`, WebSocket,
@@ -222,6 +252,8 @@ TLS, or future stream implementations.
 - Are watchdog and timeout settings interpreted separately?
 - Would the implementation behave symmetrically on both ends of a benchmarked
   stream pair?
+- For io_uring streams, can close/cancel happen while send or receive is
+  pending without leaking descriptors, host buffers, or operation records?
 
 ## Applying This Guidance
 
@@ -240,9 +272,11 @@ relevant benchmark or test target rather than relying on this document alone.
 ## Annex: 2026 io_uring Fullstack Investigation
 
 This annex records a concrete debugging session that affected
-`streaming::io_uring::stream`, `rpc::stream_transport::transport`, and the
+the io_uring stream path, `rpc::stream_transport::transport`, and the
 io_uring fullstack benchmark wiring. It is explanatory history, not a source of
 truth. Check the current code before assuming every detail here still applies.
+Current io_uring optimisation notes live in
+`../sgx/connectivity/optimisation.md`.
 
 ### Observed Symptoms
 
@@ -260,9 +294,9 @@ several different ways:
 Those symptoms were related, but they did not all have the same immediate
 cause.
 
-### Root Cause 1: io_uring Timed Receive Completion
+### Root Cause 1: Timed Receive Completion
 
-The first real bug was in `streaming::io_uring::stream`.
+The first real bug was in the timed receive path.
 
 The timed receive path used a linked timeout SQE. A timeout CQE could complete
 the waiting receive coroutine before the actual recv CQE or its cancel CQE had
@@ -312,25 +346,27 @@ polling.
 ### Why Priority Still Matters
 
 During debugging it became clear that ordinary outbound requests and responder
-traffic currently share the same producer path. That was not the primary cause
-of the captured stall above, but it is still an architectural concern.
+traffic needed different scheduling priority. That was not the primary cause of
+the captured stall above, but it was still an architectural concern.
 
 Responses created while handling inbound RPCs should conceptually have higher
 priority than fresh outbound requests. In particular, the following classes of
-messages are candidates for a high-priority outbound lane:
+messages now use the high-priority outbound lane in the current C++ streaming
+transport:
 
 - `call_receive`
 - `try_cast_receive`
 - `addref_receive`
 - init / channel setup responses
-- close / control acknowledgements such as `close_connection_ack`
+- close / control messages such as `close_connection_send` and
+  `close_connection_ack`
 
 The reason is simple: once a request has already been accepted and dispatched,
 its response is part of completing existing work, not starting new work.
 
-This priority split was identified as a worthwhile follow-up improvement, but
-it was not the fix that resolved the reproduced benchmark stall in this
-investigation.
+This priority split was not the fix that resolved the reproduced benchmark
+stall in this investigation, but the current implementation now has
+`high_priority_send_queue_` and drains it before the normal send queue.
 
 ### Benchmark Wiring Lesson
 

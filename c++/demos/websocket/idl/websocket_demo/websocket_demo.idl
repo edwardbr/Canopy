@@ -4,28 +4,94 @@
  */
 
 #import "rpc/rpc_types.idl"
+#import "network_config/network_config.idl"
 #import "websocket/websocket_protocol.idl"
 
 namespace websocket_demo
 {
     namespace v1
     {
+        [status=demo]
+        struct tls_options
+        {
+            std::string certificate_path;
+            std::string private_key_path;
+        };
+
+        [status=demo]
+        struct server_options
+        {
+            canopy::network_config::tcp_endpoint listen;
+            std::string path;
+            rpc::optional<tls_options> tls;
+        };
+
+        // Application-level status values for the websocket demo. Negative
+        // values are still reserved for rpc::error failures flowing through a
+        // proxy/stub call; these positive values describe demo behaviour.
+        error websocket_error
+        {
+            [description = "A supplied argument is invalid for this demo operation."]
+            INVALID_ARGUMENT,
+
+            [description = "A callback must be registered before this operation can run."]
+            CALLBACK_NOT_ASSIGNED,
+
+            [description = "A callback has already been registered for this session."]
+            CALLBACK_ALREADY_ASSIGNED,
+
+            [description = "The requested demo feature is not enabled in this build."]
+            FEATURE_NOT_ENABLED,
+
+            [description = "The LLM engine reported an application failure."]
+            LLM_ENGINE_FAILURE
+        };
+
+        // Inbound callback interface. Hosts both LLM
+        // token streaming (piece) and video egress (push_frame). Sharing one
+        // interface here is pragmatic: the untrusted_web transport binds a single
+        // typed sink per connection from its [Remote, Local] template, and
+        // the JS-side proxy for outbound interface-ref params is not wired
+        // up yet. Keeping push_frame here lets the existing chat handshake
+        // path register the sink for video too, with no protocol change.
         interface i_context_event
         {
-            [post] int piece(const std::string& piece);
+            [post] websocket_error piece(const std::string& piece);
+
+            // payload: encoded chunk (codec chosen at session start);
+            // flags bit 0 = keyframe, bit 1 = end-of-stream.
+            [post] websocket_error push_frame(uint64_t seq, uint64_t pts_us, uint32_t flags, const std::vector<uint8_t>& payload);
         };
 
         [status=demo]
         interface i_calculator
         {
-            [description="add"] int add(double first_val, double second_val, [out] double& response);
-            [description="subtract"] int subtract(double first_val, double second_val, [out] double& response);
-            [description="multiply"] int multiply(double first_val, double second_val, [out] double& response);
-            [description="divide"] int divide(double first_val, double second_val, [out] double& response);
+            [description="add"] websocket_error add(double first_val, double second_val, [out] double& response);
+            [description="subtract"] websocket_error subtract(double first_val, double second_val, [out] double& response);
+            [description="multiply"] websocket_error multiply(double first_val, double second_val, [out] double& response);
+            [description="divide"] websocket_error divide(double first_val, double second_val, [out] double& response);
 
-            int add_prompt(const std::string& prompt);
-            // int get_piece([out] std::string& piece, [out] bool& complete);
-            int set_callback(const rpc::shared_ptr<i_context_event>& event);
+            websocket_error add_prompt(const std::string& prompt);
+            // websocket_error get_piece([out] std::string& piece, [out] bool& complete);
+            websocket_error set_callback(const rpc::shared_ptr<i_context_event>& event);
+
+            // Video ingress. One-way; no interface params,
+            // so the JS proxy can marshal it directly with the prototype
+            // generator. The egress side rides on i_context_event::push_frame
+            // registered via the existing set_callback handshake.
+            [post] websocket_error push_video_frame(uint64_t seq, uint64_t pts_us, uint32_t flags, const std::vector<uint8_t>& payload);
+
+            // Live control of the video effects. Regular (non-post)
+            // call so the browser gets confirmation. `effects` is a bitmask:
+            // bit 0 = genie sprite overlay, bit 1 = invert luma.
+            websocket_error set_video_effects(uint32_t effects);
+
+            // Live video parameters. Scalars only (JS-marshalling
+            // safe). brightness: signed luma offset [-128,127] applied to the
+            // decoded frame. bitrate_kbps / cpu_used: VP8 encoder rate and
+            // speed; the engine re-inits the encoder when these (or the
+            // frame size, from a browser resolution switch) change.
+            websocket_error set_video_params(int32_t brightness, uint32_t bitrate_kbps, uint32_t cpu_used);
         };
     }
 }

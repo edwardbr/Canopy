@@ -7,7 +7,7 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
-#  include <transports/ipc_transport/transport.h>
+#  include <transports/ipc_spsc/transport.h>
 
 namespace comprehensive::v1
 {
@@ -27,14 +27,14 @@ namespace comprehensive::v1
         [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
-        auto transport = rpc::ipc_transport::make_client(
+        auto transport = rpc::ipc_spsc::make_client(
             "benchmark_ipc_direct",
             root_service,
-            rpc::ipc_transport::options{
+            rpc::ipc_spsc::options{
                 .process_executable = CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH,
                 .dll_path = {},
                 .dll_zone = child_zone,
-                .process_kind = rpc::ipc_transport::child_process_kind::direct_service,
+                .process_kind = rpc::ipc_spsc::child_process_kind::direct_service,
                 .child_scheduler_thread_count = ipc_child_scheduler_thread_count,
                 .kill_child_on_parent_death = true,
             });
@@ -80,12 +80,12 @@ namespace comprehensive::v1
         [[maybe_unused]] auto ok = child_zone.set_subnet(child_zone.get_subnet() + 1);
         RPC_ASSERT(ok);
 
-        auto transport = rpc::ipc_transport::make_client(
+        auto transport = rpc::ipc_spsc::make_client(
             "benchmark_ipc_dll",
             root_service,
-            rpc::ipc_transport::options{
-                .process_executable = CANOPY_BENCHMARK_IPC_CHILD_HOST_PROCESS_PATH,
-                .dll_path = CANOPY_BENCHMARK_LIBCORO_SPSC_DLL_PATH,
+            rpc::ipc_spsc::options{
+                .process_executable = CANOPY_BENCHMARK_IPC_SPSC_SIDECAR_PROCESS_PATH,
+                .dll_path = CANOPY_BENCHMARK_IPC_SPSC_DLL_PATH,
                 .dll_zone = child_zone,
                 .child_scheduler_thread_count = ipc_child_scheduler_thread_count,
                 .kill_child_on_parent_death = true,

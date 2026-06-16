@@ -26,6 +26,7 @@ add_executable(
   src/fingerprint_generator.cpp
   src/json_schema/per_function_generator.cpp
   src/json_schema/generator.cpp
+  src/json_schema/schema_profile.cpp
   src/type_utils.cpp)
 
 target_compile_definitions(generator PRIVATE ${CANOPY_DEFINES})

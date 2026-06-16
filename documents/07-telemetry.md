@@ -252,34 +252,17 @@ All telemetry callbacks take generated event structures rather than loose
 parameter lists. See `interfaces/rpc/telemetry_types.idl` for the current field
 layout.
 
-## 8. Thread-Local Logging
+## 8. Crash Diagnostics
 
-For crash diagnostics, enable thread-local logging:
+There is no current `CANOPY_USE_THREAD_LOCAL_LOGGING` build option. For crash
+diagnostics, use the active logging and telemetry options:
 
 ```bash
-cmake --preset Debug -DCANOPY_USE_THREAD_LOCAL_LOGGING=ON
+cmake --preset Debug -DCANOPY_USE_LOGGING=ON -DCANOPY_USE_TELEMETRY=ON
 ```
 
-### Features
-
-- Circular buffer per thread
-- Automatic dump on assertion failure
-- Files in `/tmp/rpc_debug_dumps/`
-
-### Sample Crash Report
-
-```
-=== Canopy Thread-Local Crash Report ===
-Timestamp: 2024-01-15 10:30:45
-
-Thread: 140735123456789
-Buffer size: 1024 entries
-
-Entry 0: [DEBUG] service_creation zone=1
-Entry 1: [DEBUG] object_proxy_creation zone=1->2 object=1
-Entry 2: [ERROR] send failed error=5
-...
-```
+For assertion investigations, `CANOPY_HANG_ON_FAILED_ASSERT=ON` leaves the
+process in the failed assertion path so it can be attached to a debugger.
 
 ## 9. Integration with Tests
 

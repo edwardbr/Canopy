@@ -50,7 +50,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 else()
   # Debug configuration
-  set(EXTRA_COMPILE_OPTIONS ${CANOPY_DEBUG_ENCLAVE_OPTIONS})
+  set(EXTRA_COMPILE_OPTIONS)
   set(CMAKE_CXX_FLAGS_DEBUG ${CANOPY_DEBUG_COMPILE_FLAGS})
   set(CMAKE_C_FLAGS_DEBUG ${CMAKE_CXX_FLAGS_DEBUG})
   set(CANOPY_OPTIMIZER_FLAGS -O0)
@@ -118,9 +118,9 @@ else()
   set(CANOPY_CLANG_WARNS
       -Wno-variadic-macros
       -Wno-gnu-zero-variadic-macro-arguments
-      -Wno-c++20-extensions
+      $<$<COMPILE_LANGUAGE:CXX>:-Wno-c++20-extensions>
       # GCC equivalents where available
-      -Wsuggest-override # GCC equivalent of -Winconsistent-missing-override
+      $<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override> # GCC equivalent of -Winconsistent-missing-override
       -Wimplicit-fallthrough=5 # Highest level fallthrough warnings
       -Wunused # Catch unused variables/functions
       -Wformat-security # Format string security

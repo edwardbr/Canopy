@@ -40,7 +40,7 @@ Do not rely on `documents/` for correctness. It may be useful for background, bu
 
 ## Overview
 
-Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files. It supports multiple transport layers, optional coroutine builds, JSON schema metadata, enclave-related builds, demos, and benchmarks.
+Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files. It supports multiple transport layers, optional coroutine builds, JSON schema metadata, demos, and benchmarks.
 
 ## Repository Structure
 
@@ -52,8 +52,8 @@ Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files
   - generated/public interfaces: `rpc/interfaces`
 - `generator/` - IDL code generator
 - `transports/` - transport implementations
-  - current transport subdirectories include `direct`, `local`, `mock_test`, `sgx`, `streaming`
-- `streaming/` - coroutine-only streaming stack and tests
+  - current transport subdirectories include `direct`, `local`, `mock_test`, `streaming`
+- `streaming/` - stream interfaces and concrete stream implementations; TCP, WebSocket, and OpenSSL TLS are dual-mode, while mbedtls/SPSC/attestation/io_uring remain coroutine-only or conditionally built
 - `types/` - additional types, including JSON support
 - `telemetry/` - telemetry/logging support
 - `tests/` - host tests, fixtures, fuzz tests, unit tests, schema tests, serializer tests
@@ -102,11 +102,6 @@ Current top-level configure presets are defined in `CMakePresets.json`. The comm
 - `Release_Coroutines` -> binary dir `build_release_coroutine`
 - `Release_Coroutine_with_No_logging`
 - `Release_with_coroutines_GCC`
-- `Debug_SGX`
-- `Debug_SGX_Sim`
-- `Release_SGX`
-- `Release_SGX_Sim`
-
 Use the exact preset names from `CMakePresets.json`. Do not normalize or rename them in instructions.
 
 ### Build Behaviour
@@ -115,9 +110,10 @@ Use the exact preset names from `CMakePresets.json`. Do not normalize or rename 
 - `CANOPY_BUILD_DEMOS` defaults to `ON`.
 - `CANOPY_BUILD_BENCHMARKING` defaults to `ON`.
 - `CANOPY_BUILD_COROUTINE` defaults to `OFF`.
-- `streaming/` is only added when coroutine builds are enabled.
-- `tests/test_enclave` is only added when `CANOPY_BUILD_ENCLAVE=ON`.
-- `tests/json_schema_test` is only added when `NLOHMANN_JSON_CONFIG_INSTALL_DIR` is defined.
+- `streaming/` is added in both blocking and coroutine builds; individual stream implementations gate coroutine-only pieces locally.
+- `CANOPY_BUILD_RUST` defaults to `OFF`.
+- `CANOPY_BUILD_TEST=OFF` also disables integration/fuzz test targets.
+- `tests/json_schema_test` uses Canopy's native `json::v1::object` schema validator.
 
 ## Common Commands
 
@@ -243,6 +239,7 @@ Verify behaviour in code before restating architectural claims.
 - When changing build, generator, IDL, transport, or lifetime behaviour, inspect the nearest `CMakeLists.txt` and implementation files first.
 - If code changes affect both coroutine and non-coroutine paths, verify both builds when practical.
 - If a test or target is conditionally compiled, mention that condition explicitly in your handoff.
+- After refactors or other cross-cutting changes, update MemPalace with the relevant design decisions, behavioural changes, verification run, and any remaining caveats.
 
 ## Session Completion
 
@@ -251,4 +248,5 @@ When ending a session:
 1. Run the relevant local verification for the files you changed.
 2. State clearly what you verified and what you did not verify.
 3. Do not perform git or remote issue-tracker actions unless the user explicitly requested them.
-4. Note any follow-up work that remains.
+4. For refactors and cross-cutting changes, confirm MemPalace has been updated.
+5. Note any follow-up work that remains.

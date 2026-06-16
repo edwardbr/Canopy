@@ -79,8 +79,10 @@ cmake --list-presets
 | `Release` | Optimized production build |
 | `Debug_SGX` | SGX hardware enclave support (debug) |
 | `Debug_SGX_Sim` | SGX simulation mode (debug) |
+| `Debug_Coroutine_Fake_SGX` | Coroutine SGX transport built against the fake SGX backend for sanitizer/debug testing |
 | `Release_SGX` | SGX hardware release build |
 | `Release_SGX_Sim` | SGX simulation release build |
+| `Release_Coroutine_Fake_SGX` | Optimized coroutine SGX transport built against the fake SGX backend |
 
 ### Local Custom Presets
 
@@ -100,15 +102,21 @@ Example local preset names from the template:
 
 ### Base Configuration
 
-All presets inherit these defaults:
+The tracked repository presets inherit these defaults from `Base`:
 
 ```cmake
 CANOPY_BUILD_COROUTINE=OFF              # Coroutines disabled by default
 CANOPY_BUILD_ENCLAVE=OFF                # SGX enclave support disabled
 CANOPY_BUILD_TEST=ON                    # Test building enabled
-CANOPY_VERBOSE_GENERATOR=OFF                # Debug code generation disabled
-CMAKE_EXPORT_COMPILE_COMMANDS=ON # Export compile commands
+CANOPY_BUILD_DEMOS=ON                   # Demo building enabled in repository presets
+CANOPY_BUILD_BENCHMARKING=ON            # Benchmark building enabled in repository presets
+CANOPY_BUILD_RUST=OFF                   # Rust workspace disabled by default
+CANOPY_VERBOSE_GENERATOR=OFF            # Debug code generation disabled
+CMAKE_EXPORT_COMPILE_COMMANDS=ON        # Export compile commands
 ```
+
+These are repository preset values. The raw CMake option defaults are listed
+below and are more conservative for downstream `add_subdirectory()` consumers.
 
 ### CMake Module Structure
 
@@ -168,6 +176,36 @@ cmake --build build_debug_sgx
 cmake --build build_debug_sgx_sim
 ```
 
+### Fake SGX Coroutine Build
+
+The fake SGX backend builds the coroutine SGX transport and enclave runtime as
+ordinary shared libraries. It does not provide SGX security. Its purpose is to
+exercise `c++/transports/sgx_coroutine` and the Canopy SGX coroutine/polyfill
+code under normal host debuggers and sanitizers.
+
+```bash
+cmake --preset Debug_Coroutine_Fake_SGX
+cmake --build build_debug_coroutine_fake_sgx --target rpc_test
+```
+
+Use `Release_Coroutine_Fake_SGX` for an optimized fake-backend build. The fake
+backend selects `CANOPY_SGX_BACKEND=Fake`, requires coroutines and Nanopb, and
+keeps full Google protobuf out of enclave targets. It provides only the narrow
+host-side SGX shims needed for testing: enclave create/destroy, ECALL dispatch,
+basic enclave/outside memory checks, and the minimum runtime headers needed when
+Intel's enclave C++ support is unavailable or unsuitable for this path.
+
+Fake SGX tests should exercise the same coroutine SGX runtime shutdown contract
+as SGX simulation: release interface pointers, keep driving the scheduler until
+the service shutdown event fires, then release the scheduler/runtime. The
+shutdown event is the completion signal; `check_is_empty()` is diagnostic, not a
+fixture control-flow mechanism.
+
+The shared typed transport fixtures centralise the host/root-service part of
+that teardown in `transport_setup_base`. SGX coroutine fixtures also wait for
+their created stream transports to release final self-references before dropping
+the fixture scheduler, because stream cleanup may complete on a scheduler worker.
+
 ### Release Build
 
 ```bash
@@ -209,6 +247,8 @@ cmake --preset Debug -DCANOPY_BUILD_COROUTINE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_ENCLAVE=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_TEST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_DEMOS=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_BENCHMARKING=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_RUST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_PROTOCOL_BUFFERS=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_NANOPB=ON/OFF
 
@@ -224,25 +264,31 @@ cmake --preset Debug -DCANOPY_DEBUG_UNDEFINED=ON/OFF
 cmake --preset Debug -DCANOPY_DEBUG_LEAK=ON/OFF
 ```
 
-### Full Option List
+### Common Active Options
+
+The raw CMake option defaults are conservative for downstream consumers.
+Repository presets may override these values for local development builds.
 
 ```cmake
 # Core options
 option(CANOPY_BUILD_COROUTINE "Enable C++20 coroutine support" OFF)
 option(CANOPY_BUILD_ENCLAVE "Enable SGX enclave support" OFF)
-option(CANOPY_BUILD_TEST "Build tests" ON)
-option(CANOPY_BUILD_DEMOS "Build demos" ON)
+option(CANOPY_BUILD_TEST "Build test code" OFF)
+option(CANOPY_BUILD_DEMOS "Build demo code" OFF)
+option(CANOPY_BUILD_BENCHMARKING "Build benchmarking code" OFF)
+option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)
 option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include full Google C++ Protocol Buffers support" ON)
 option(CANOPY_BUILD_NANOPB "Include Nanopb protobuf-compatible support" ON)
-option(BUILD_GENERATOR "Build IDL generator" ON)
+option(CANOPY_BUILD_CANONICAL_CRYPTO "Include deterministic canonical_crypto serialization support" ON)
+option(CANOPY_BUILD_WEBSOCKET "Include websocket support" ${CANOPY_BUILD_WEBSOCKET_DEFAULT})
 
 # Debug options
 option(CANOPY_VERBOSE_GENERATOR "Enable debug output for code generation" OFF)
 option(CANOPY_USE_LOGGING "Enable RPC logging" OFF)
 option(CANOPY_USE_TELEMETRY "Enable RPC telemetry" OFF)
 option(CANOPY_USE_CONSOLE_TELEMETRY "Enable console telemetry output" OFF)
-option(CANOPY_USE_THREAD_LOCAL_LOGGING "Enable thread-local logging" OFF)
 option(CANOPY_USE_TELEMETRY_RAII_LOGGING "Enable RAII telemetry logging" OFF)
+option(CANOPY_HANG_ON_FAILED_ASSERT "Hang on failed assert" OFF)
 
 # Sanitizers
 option(CANOPY_DEBUG_ADDRESS "Enable address sanitizer" OFF)
@@ -254,22 +300,59 @@ option(CANOPY_DEBUG_ALL "Enable all sanitizers" OFF)
 # SGX options
 set(SGX_MODE "debug" CACHE STRING "SGX mode: debug or release")
 set(SGX_HW "OFF" CACHE BOOL "Enable SGX hardware (vs simulation)")
+set(CANOPY_SGX_BACKEND "Intel" CACHE STRING "SGX backend: Intel or Fake")
+set(CANOPY_ATTESTATION_BACKEND "NULL" CACHE STRING "Attestation backend")
+set(CANOPY_SECURE_STREAM_BACKEND "OPENSSL" CACHE STRING "Secure stream backend")
+option(CANOPY_BUILD_MBEDTLS "Build bundled Mbed TLS support" ${CANOPY_BUILD_MBEDTLS_DEFAULT})
+option(CANOPY_BOOTSTRAP_SGX_SDK "Build and install the Intel SGX SDK from submodule source when missing" OFF)
+option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation step, which updates nested SGX SDK submodules" ON)
 ```
+
+`CANOPY_BUILD_WEBSOCKET` can be explicitly enabled in both blocking and
+coroutine builds. Its default remains tied to coroutine demo/test presets, so
+blocking consumers should set it to `ON` when they need WebSocket support.
 
 ### Protobuf-Compatible Serialization Options
 
 `CANOPY_BUILD_PROTOCOL_BUFFERS` enables the full Google C++ protobuf runtime and generated C++ protobuf API. It is useful for ordinary host processes that need the full protobuf feature set.
 
-`CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is intended for constrained-runtime builds.
+`CANOPY_BUILD_NANOPB` enables the Nanopb-backed protobuf-compatible runtime. It uses `.proto` files and protobuf wire bytes, but links the small Nanopb C runtime plus Canopy-generated adapters instead of `protobuf::libprotobuf`. This is the intended protobuf-compatible path for SGX enclave builds.
 
-Typical constrained-runtime configurations use:
+These options are independent.  `CanopyGenerate(... protocol_buffers ...)`
+requests protobuf-compatible schema/wire support for an IDL target; CMake then
+generates the full protobuf backend when `CANOPY_BUILD_PROTOCOL_BUFFERS=ON` and
+the Nanopb backend when `CANOPY_BUILD_NANOPB=ON`.  If both are ON, both generated
+backends can coexist and `rpc::encoding::protocol_buffers` and
+`rpc::encoding::nanopb` use their respective backends.
+
+If only one protobuf-compatible backend is enabled, the other encoding is treated
+as an alias.  With `CANOPY_BUILD_PROTOCOL_BUFFERS=OFF` and `CANOPY_BUILD_NANOPB=ON`,
+`rpc::encoding::protocol_buffers` routes through Nanopb.  With
+`CANOPY_BUILD_NANOPB=OFF` and `CANOPY_BUILD_PROTOCOL_BUFFERS=ON`,
+`rpc::encoding::nanopb` routes through the full protobuf backend.
+
+SGX enclave targets never link the full Google C++ protobuf runtime.  When
+`CANOPY_BUILD_ENCLAVE=ON`, host-side targets may still build full protobuf
+support, but enclave compile definitions remove `CANOPY_BUILD_PROTOCOL_BUFFERS`
+and enable the `protocol_buffers` to Nanopb alias.  Typical SGX release-style
+configurations therefore use:
 
 ```cmake
+CANOPY_BUILD_ENCLAVE=ON
 CANOPY_BUILD_NANOPB=ON
 CANOPY_BUILD_PROTOCOL_BUFFERS=OFF
 ```
 
-Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that generated targets link the full protobuf runtime.
+Nanopb still needs protobuf tooling at build time so Canopy can compile the generated `.proto` files. That build-time dependency does not imply that enclave targets link the full protobuf runtime.
+
+Shared objects that link the full Google C++ protobuf runtime must run module
+cleanup before unload.  The dynamic-library transports provide a required
+shutdown hook for this: `canopy_dll_shutdown` for the non-coroutine C++ and C ABI
+DLL transports, and before the coroutine dynamic-library entry point returns.  These
+hooks call `google::protobuf::ShutdownProtobufLibrary()` only when
+`CANOPY_BUILD_PROTOCOL_BUFFERS` is enabled.
+
+`CANOPY_BOOTSTRAP_SGX_SDK=ON` allows CMake to install the SGX SDK from `submodules/confidential-computing.sgx` when no SDK is already available. `CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES=OFF` keeps bootstrap enabled but skips SGX SDK source preparation when an SDK installer or already-prepared source tree is present, avoiding repeated nested SGX submodule updates after the first preparation.
 
 ## 6. Build Targets
 
@@ -292,12 +375,24 @@ cmake --build build_debug --target generator  # IDL code generator
 cmake --build build_debug --target transport_local                # Local transport
 cmake --build build_debug --target transport_dynamic_library      # Blocking DLL transport
 cmake --build build_debug --target transport_c_abi                # C ABI DLL transport
-cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport
+cmake --build build_debug --target transport_streaming            # Stream-backed transport, blocking mode
+cmake --build build_debug_coroutine --target transport_streaming  # Stream-backed transport, coroutine mode
+cmake --build build_debug --target connection_factory_config_idl  # Generated connection factory options
 cmake --build build_debug_coroutine --target transport_ipc_transport
-cmake --build build_debug_coroutine --target transport_libcoro_dynamic_library
+cmake --build build_debug_coroutine --target transport_libcoro_host_scheduled_dynamic_library
+cmake --build build_debug_coroutine --target transport_libcoro_dll_scheduled_dynamic_library
 ```
 
+`connection_factory` is an interface library target used from
+`target_link_libraries`, not a standalone build target.
+
 ### Tests
+
+These targets are available only when `CANOPY_BUILD_TEST=ON`; turning that
+option off also skips the integration fuzz test subdirectory. The optional Rust
+child used by some fuzz parity scenarios is only wired into `fuzz_test_gtest`
+when `CANOPY_BUILD_RUST=ON`, Protocol Buffers are enabled, the build is
+non-coroutine, and `cargo` is found.
 
 ```bash
 cmake --build build_debug --target rpc_test
@@ -309,10 +404,43 @@ cmake --build build_debug --target passthrough_test
 cmake --build build_debug --target zone_address_test
 ```
 
+### Benchmarks
+
+Benchmark targets are available when `CANOPY_BUILD_BENCHMARKING=ON`. The main
+fullstack executable is `benchmark`:
+
+```bash
+cmake --build build_debug --target benchmark
+cmake --build build_debug_coroutine --target benchmark
+
+./build_debug/output/benchmark --html-report build_debug/blocking-fullstack.html
+./build_debug_coroutine/output/benchmark --html-report build_debug_coroutine/coroutine-fullstack.html
+```
+
+The fullstack benchmark can be filtered with:
+
+```bash
+./build_debug/output/benchmark \
+  --transport local,tcp,dll \
+  --size 64,4096 \
+  --format yas_binary,protocol_buffers \
+  --passes 5 \
+  --html-report report.html
+```
+
+Blocking fullstack builds cover `local`, `dll`, `tcp`, and, when the relevant
+features are enabled, `tls+tcp`, `ws+tcp`, and `tls+ws+tcp`.
+
+Coroutine fullstack builds cover `local`, TCP/TLS/WebSocket stream transports,
+`libcoro_dll_scheduled`, `libcoro_host_scheduled`, `ipc_direct`, `ipc_dll`,
+`spsc`, the `io_uring_*` variants, and SGX io_uring variants when enclave
+support is enabled.
+
 ### Demos
 
 ```bash
-cmake --build build_debug_coroutine --target websocket_server   # WebSocket demo server
+cmake --build build_debug --target websocket_server             # Blocking calculator-only WebSocket demo
+cmake --build build_debug_coroutine --target websocket_server   # Coroutine WebSocket demo server
 ```
 
 ## 7. AddressSanitizer Support
@@ -384,6 +512,31 @@ export LSAN_OPTIONS="detect_leaks=0"
 - **Issue**: Protobuf's static initialization triggers container-overflow during test discovery
 - **Suppression**: Set `ASAN_OPTIONS=detect_container_overflow=0`
 - **Impact**: Only affects coroutine builds that use protobuf serialization
+
+**SGX simulation builds:**
+- Standard Clang sanitizers apply to the host/non-enclave objects in the SGX
+  simulation build. They do not instrument enclave code as native SGX
+  sanitizers.
+- For focused SGX simulation ASan runs, use
+  `ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0`. The first option
+  avoids the libstdc++/protobuf static-registration container annotation issue;
+  the second avoids LeakSanitizer shutdown hangs seen in SGX simulation tests.
+- UBSan and TSan can still be useful for host-side SGX transport code. Keep
+  console telemetry disabled for TSan unless the race investigation explicitly
+  needs telemetry output.
+
+**Fake SGX coroutine builds:**
+- `Debug_Coroutine_Fake_SGX` is the preferred preset when the goal is to run the
+  coroutine SGX transport/runtime code under ordinary host sanitizers.
+- The fake backend compiles the enclave runtime sources as a normal shared
+  object, so ASan/UBSan/TSan can see more of the code than Intel SGX simulation
+  builds can.
+- TSan fake-backend runs intentionally preserve copied enclave images under
+  `/tmp` instead of removing them in `sgx_destroy_enclave`. The sanitizer
+  symbolizer needs those paths to remain readable for frames from `dlopen`ed
+  fake enclave objects.
+- Treat fake-backend failures as functional or lifetime bugs to investigate, but
+  do not treat fake-backend success as a hardware SGX security validation.
 
 **Microsoft STL Compliance Tests:**
 - **Test**: `Dev10_445289_make_shared` overrides global `operator new`/`delete`
@@ -464,8 +617,8 @@ ctest --test-dir build_debug --tests-regex fuzz
 | Main typed host tests | Core C++ RPC transport and type suites | `rpc_test` |
 | JSON schema tests | Metadata extraction | `json_schema_metadata_test` |
 | Serializer tests | Serialization-focused checks | `serialiser_test` |
-| Fuzz harness | Iterative fuzz-style runner | `fuzz_test_main` |
-| Fuzz gtests | Discoverable fuzz scenarios | `fuzz_test_gtest` |
+| Fuzz harness | Iterative fuzz-style runner, when `CANOPY_BUILD_TEST=ON` | `fuzz_test_main` |
+| Fuzz gtests | Discoverable fuzz scenarios, when `CANOPY_BUILD_TEST=ON`; Rust child parity is wired only for non-coroutine protobuf builds with `CANOPY_BUILD_RUST=ON` and `cargo` available | `fuzz_test_gtest` |
 | Unit tests | Focused standalone executables | `member_ptr_test`, `passthrough_test`, `zone_address_test` |
 
 ## 9. Build Output
@@ -630,16 +783,16 @@ target_include_directories(
 # Link libraries - order matters for static linking
 target_link_libraries(my_demo
     PUBLIC
-        my_idl_host              # Your generated IDL library
+        my_idl                   # Your generated IDL library
         transport_local          # Local transport (if using)
-        transport_streaming      # Stream transport (if using)
+        connection_factory       # Typed/JSON stream/RPC helpers (if using connection factories)
         rpc::rpc                 # Core RPC library
         ${CANOPY_LIBRARIES}        # System libraries
 )
 
 # Compiler and linker options
 target_compile_options(my_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_options(my_demo PRIVATE ${HOST_LINK_EXE_OPTIONS})
+target_link_options(my_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 # Set PDB name for debugging
 set_property(TARGET my_demo PROPERTY COMPILE_PDB_NAME my_demo)
@@ -657,6 +810,7 @@ endif()
 | Local transport | `transport_local` | In-process communication |
 | Blocking DLL transport | `transport_dynamic_library` | In-process child-zone loading |
 | Streaming transport | `transport_streaming` | Stream-backed RPC transport |
+| Connection factory | `connection_factory` | Interface target for typed and JSON-configured stream/RPC helper APIs |
 | IPC transport | `transport_ipc_transport` | Coroutine process-owned transport |
 | Core RPC | `rpc::rpc` | Base RPC functionality |
 | Logging IDL | `logging_idl` | Generated `rpc::log_record` type |
@@ -672,7 +826,7 @@ endif()
 ```cmake
 target_link_libraries(my_demo
     PUBLIC
-        my_idl_host
+        my_idl
         transport_local  # Required for local transport
         rpc::rpc
         ${CANOPY_LIBRARIES}
@@ -685,11 +839,10 @@ target_link_libraries(my_demo
 
 **Cause**: Missing transport include path
 
-**Solution**: CMake's `${CANOPY_INCLUDES}` should include transport paths. If manual configuration is needed:
+**Solution**: Link the transport target and include `${CANOPY_INCLUDES}`:
 ```cmake
-target_include_directories(my_demo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../transports/local/include
-)
+target_include_directories(my_demo PRIVATE ${CANOPY_INCLUDES})
+target_link_libraries(my_demo PRIVATE transport_local)
 ```
 
 ## 14. Next Steps

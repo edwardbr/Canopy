@@ -4,7 +4,7 @@
  */
 
 /*
- *   Stream Composition Demo — TCP → SPSC → TLS
+ *   Stream Composition Demo — TCP → SPSC buffered stream → TLS
  *
  *   Demonstrates that streaming::stream classes are fully composable.
  *   Each layer wraps the one below via the common stream interface:
@@ -12,17 +12,18 @@
  *       [TCP socket]
  *           ↕  tcp_stream
  *       [SPSC buffering layer]
- *           ↕  spsc_wrapping_stream  (internal SPSC queues; no external pump)
+ *           ↕  spsc_buffered_stream  (internal SPSC queues; no external pump)
  *       [TLS encryption]
- *           ↕  tls_stream
+ *           ↕  secure_stream          (OpenSSL or mbedTLS, selected by CMake)
  *       [streaming_transport / RPC layer]
  *           ↕
  *       [i_echo interface]
  *
- *   The transport drives all I/O.  When it calls receive() the call propagates
- *   down through TLS → SPSC → TCP naturally.  No relay pump coroutines are
- *   needed because the transport guarantees exactly one active task per
- *   direction (receive_consumer_loop / send_producer_loop).
+ *   The transport still sees a normal streaming::stream. When it calls send()
+ *   or receive(), TLS talks to spsc_buffered_stream, and that adapter moves
+ *   bytes through its private SPSC queues to or from TCP. The queues are not a
+ *   configured endpoint rendezvous; they are only a local buffering boundary in
+ *   this stream stack.
  *
  *   Build:
  *       cmake --preset Debug_Coroutine
@@ -39,93 +40,64 @@
 
 #include <echo_impl.h>
 #include <rpc/rpc.h>
+#include <connection_factory/detail/stream_rpc.h>
 
 #include <streaming/listener.h>
-#include <streaming/spsc_wrapping/stream.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
+#include <streaming/spsc_buffered_stream/stream.h>
+#include <streaming/tcp_coroutine/acceptor.h>
+#include <streaming/tcp_coroutine/connector.h>
+#include <streaming/tcp_coroutine/stream.h>
 #include <streaming/secure_stream.h>
 #include <transports/streaming/transport.h>
 
-#include <canopy/network_config/network_args.h>
+#include <io_uring/host_io_uring.h>
 
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/endpoint.h>
+#include <canopy/network_config/zone.h>
 
-#include <cstdio>
+#include <algorithm>
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 // ---------------------------------------------------------------------------
-// Test certificate generation
+// Test certificate preparation
 // ---------------------------------------------------------------------------
 
-// Writes a self-signed RSA-2048 certificate and private key to the given
-// paths using the OpenSSL API.  Used only for demo / testing purposes.
-static bool generate_demo_cert(
+#ifndef DEMO_CERT_FIXTURE_DIR
+#  error "DEMO_CERT_FIXTURE_DIR must point at the stream-composition-local TLS certificate fixtures"
+#endif
+
+// Copies the demo-local fixture certificate into the binary tree. The secure stream backend remains selected by CMake;
+// this helper just avoids requiring OpenSSL in this demo executable solely to generate test credentials.
+static bool prepare_demo_cert(
     const std::string& cert_path,
     const std::string& key_path)
 {
     if (std::filesystem::exists(cert_path) && std::filesystem::exists(key_path))
-        return true; // already generated
+        return true;
 
-    EVP_PKEY* pkey = nullptr;
-    {
-        EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-        if (!kctx)
-            return false;
-        EVP_PKEY_keygen_init(kctx);
-        EVP_PKEY_CTX_set_rsa_keygen_bits(kctx, 2048);
-        EVP_PKEY_keygen(kctx, &pkey);
-        EVP_PKEY_CTX_free(kctx);
-    }
-    if (!pkey)
+    std::error_code error;
+    std::filesystem::create_directories(std::filesystem::path(cert_path).parent_path(), error);
+    if (error)
         return false;
 
-    X509* x509 = X509_new();
-    if (!x509)
-    {
-        EVP_PKEY_free(pkey);
+    const auto fixture_dir = std::filesystem::path(DEMO_CERT_FIXTURE_DIR);
+    std::filesystem::copy_file(
+        fixture_dir / "server.crt", cert_path, std::filesystem::copy_options::overwrite_existing, error);
+    if (error)
         return false;
-    }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
-    X509_gmtime_adj(X509_get_notBefore(x509), 0);
-    X509_gmtime_adj(X509_get_notAfter(x509), 10L * 365 * 24 * 60 * 60);
-    X509_set_pubkey(x509, pkey);
-
-    X509_NAME* name = X509_get_subject_name(x509);
-    X509_NAME_add_entry_by_txt(
-        name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("stream_composition_demo"), -1, -1, 0);
-    X509_set_issuer_name(x509, name);
-    X509_sign(x509, pkey, EVP_sha256());
-
-    FILE* cf = fopen(cert_path.c_str(), "wb");
-    if (!cf)
-    {
-        X509_free(x509);
-        EVP_PKEY_free(pkey);
+    std::filesystem::copy_file(
+        fixture_dir / "server.key", key_path, std::filesystem::copy_options::overwrite_existing, error);
+    if (error)
         return false;
-    }
-    PEM_write_X509(cf, x509);
-    fclose(cf);
 
-    FILE* kf = fopen(key_path.c_str(), "wb");
-    if (!kf)
-    {
-        X509_free(x509);
-        EVP_PKEY_free(pkey);
-        return false;
-    }
-    PEM_write_PrivateKey(kf, pkey, nullptr, nullptr, 0, nullptr, nullptr);
-    fclose(kf);
-
-    X509_free(x509);
-    EVP_PKEY_free(pkey);
-    RPC_INFO("Generated demo TLS certificate: {}", cert_path);
+    RPC_INFO("Prepared demo TLS certificate: {}", cert_path);
     return true;
 }
 
@@ -136,6 +108,47 @@ static bool generate_demo_cert(
 namespace stream_composition
 {
 #ifdef CANOPY_BUILD_COROUTINE
+    namespace
+    {
+        auto make_tcp_coroutine_controller(
+            std::shared_ptr<coro::scheduler> scheduler,
+            const char* role) -> std::shared_ptr<rpc::io_uring::controller>
+        {
+            rpc::io_uring::linux_io_uring_handle::options handle_options;
+            handle_options.queue_depth = 256;
+            handle_options.buffer_count = 128;
+            handle_options.buffer_size = 64U * 1024U;
+            handle_options.fixed_file_count = 256;
+            handle_options.register_fixed_files = true;
+
+            std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
+            const auto error = rpc::io_uring::linux_io_uring_handle::create(handle, handle_options, scheduler);
+            if (error != rpc::error::OK())
+            {
+                RPC_ERROR("{}: failed to create TCP coroutine io_uring handle error={}", role, error);
+                return {};
+            }
+
+            return std::make_shared<rpc::io_uring::controller>(
+                std::move(handle), scheduler.get(), rpc::io_uring::default_controller_options());
+        }
+
+        auto ipv4_address(const canopy::network_config::tcp_endpoint& endpoint) -> std::array<
+            uint8_t,
+            4>
+        {
+            return {endpoint.addr[0], endpoint.addr[1], endpoint.addr[2], endpoint.addr[3]};
+        }
+
+        auto ipv6_address(const canopy::network_config::tcp_endpoint& endpoint) -> std::array<
+            uint8_t,
+            16>
+        {
+            std::array<uint8_t, 16> result{};
+            std::copy(endpoint.addr.begin(), endpoint.addr.end(), result.begin());
+            return result;
+        }
+    } // namespace
 
     CORO_TASK(void)
     run_server(
@@ -161,41 +174,63 @@ namespace stream_composition
             CO_RETURN;
         }
 
-        const auto domain = listen_ep.family == canopy::network_config::ip_address_family::ipv6
-                                ? coro::net::domain_t::ipv6
-                                : coro::net::domain_t::ipv4;
-        const coro::net::socket_address endpoint{
-            coro::net::ip_address::from_string(listen_ep.to_string(), domain), listen_ep.port};
+        auto controller = make_tcp_coroutine_controller(scheduler, "Server");
+        if (!controller)
+        {
+            iteration_ok.store(false);
+            CO_RETURN;
+        }
+
+        auto acceptor = std::make_shared<streaming::coroutine::tcp::acceptor>(controller);
+        int listen_error = rpc::error::OK();
+        if (listen_ep.family == canopy::network_config::ip_address_family::ipv6)
+            listen_error = CO_AWAIT acceptor->listen_ipv6(ipv6_address(listen_ep), listen_ep.port);
+        else
+            listen_error = CO_AWAIT acceptor->listen_ipv4(ipv4_address(listen_ep), listen_ep.port);
+
+        if (listen_error != rpc::error::OK())
+        {
+            RPC_ERROR("Server: TCP coroutine listen failed: {}", listen_error);
+            iteration_ok.store(false);
+            CO_RETURN;
+        }
 
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
         auto tls_transformer = [tls_ctx, scheduler](std::shared_ptr<streaming::stream> tcp_stm)
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
-            auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+            auto spsc_stm = streaming::spsc_buffered_stream::stream::create(tcp_stm, scheduler);
             auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
             CO_RETURN tls_stm;
         };
 
-        auto lst = std::make_shared<streaming::listener>(
-            "server_transport",
-            std::make_shared<streaming::tcp::acceptor>(endpoint),
-            rpc::stream_transport::make_connection_callback<i_echo, i_echo>(
-                [](const rpc::shared_ptr<i_echo>&,
-                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
-                {
-                    CO_RETURN rpc::service_connect_result<i_echo>{
-                        rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
-                }),
+        rpc::connection_factory::stream_rpc_connection_settings options;
+        options.listener.name = "server_transport";
+        options.transport.name = "server_transport";
+        options.transport.encoding = rpc::encoding::yas_binary;
+        auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc_listener<i_echo, i_echo>(
+            std::move(acceptor),
+            [](const rpc::shared_ptr<i_echo>&,
+                const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
+            {
+                CO_RETURN rpc::service_connect_result<i_echo>{rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
+            },
+            options,
+            service,
+            {},
+            listen_ep.port,
+            {},
             std::move(tls_transformer));
 
-        if (!lst->start_listening(service))
+        if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
         {
             RPC_ERROR("Server: failed to start listening");
             iteration_ok.store(false);
             CO_RETURN;
         }
+        auto listener = std::move(accept_result.handle);
 
         RPC_INFO("Server: listening on {}:{}", listen_ep.to_string(), listen_ep.port);
         service.reset();
@@ -204,10 +239,10 @@ namespace stream_composition
         co_await client_finished.wait();
         RPC_INFO("[run_server] client_finished — calling stop_listening");
 
-        co_await lst->stop_listening();
+        co_await listener->stop();
         RPC_INFO("[run_server] stop_listening returned");
-        lst.reset();
-        RPC_INFO("[run_server] lst reset — awaiting shutdown_event");
+        listener.reset();
+        RPC_INFO("[run_server] listener reset — awaiting shutdown_event");
 
         co_await shutdown_event->wait();
         RPC_INFO("Server: shutdown complete");
@@ -230,25 +265,25 @@ namespace stream_composition
 
         RPC_INFO("Client: connecting to {}:{}", connect_ep.to_string(), connect_ep.port);
 
-        const auto domain = connect_ep.family == canopy::network_config::ip_address_family::ipv6
-                                ? coro::net::domain_t::ipv6
-                                : coro::net::domain_t::ipv4;
-        coro::net::tcp::client tcp_client(
-            scheduler,
-            coro::net::socket_address{coro::net::ip_address::from_string(connect_ep.to_string(), domain), connect_ep.port});
-
-        auto conn_status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds{5000});
-        if (conn_status != coro::net::connect_status::connected)
+        auto controller = make_tcp_coroutine_controller(scheduler, "Client");
+        if (!controller)
         {
-            RPC_ERROR("Client: TCP connect failed (status={})", static_cast<int>(conn_status));
+            iteration_ok.store(false);
+            client_finished.set();
+            CO_RETURN;
+        }
+
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, connect_ep.port);
+        if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
+        {
+            RPC_ERROR("Client: TCP coroutine connect failed: {}", tcp_result.error_code);
             iteration_ok.store(false);
             client_finished.set();
             CO_RETURN;
         }
         RPC_INFO("Client: TCP connected");
 
-        auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
-        auto spsc_stm = streaming::spsc_wrapping::stream::create(tcp_stm, scheduler);
+        auto spsc_stm = streaming::spsc_buffered_stream::stream::create(std::move(tcp_result.connection), scheduler);
 
         auto tls_client_ctx = std::make_shared<streaming::secure::client_context>(/*verify_peer=*/false);
         if (!tls_client_ctx->is_valid())
@@ -269,13 +304,15 @@ namespace stream_composition
         }
         RPC_INFO("Client: TLS handshake complete");
 
-        auto client_transport = rpc::stream_transport::make_client("client_transport", client_service, tls_stm);
-
         rpc::shared_ptr<i_echo> local_echo;
         rpc::shared_ptr<i_echo> remote_echo;
 
-        auto connect_result
-            = CO_AWAIT client_service->connect_to_zone<i_echo, i_echo>("echo_server", client_transport, local_echo);
+        rpc::connection_factory::stream_rpc_connection_settings options;
+        options.transport.name = "client_transport";
+        options.transport.service_proxy_name = "echo_server";
+        options.transport.encoding = rpc::encoding::yas_binary;
+        auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc_stream<i_echo, i_echo>(
+            local_echo, tls_stm, options, client_service);
         remote_echo = connect_result.output_interface;
         auto error = connect_result.error_code;
 
@@ -286,11 +323,11 @@ namespace stream_composition
             client_finished.set();
             CO_RETURN;
         }
-        RPC_INFO("Client: RPC connection established over TCP → SPSC → TLS");
+        RPC_INFO("Client: RPC connection established over TCP → SPSC buffered stream → TLS");
 
         const std::vector<std::string> messages = {
             "Hello from stream_composition demo!",
-            "TCP -> SPSC -> TLS composition works!",
+            "TCP -> SPSC buffered stream -> TLS composition works!",
             "Streams are fully composable.",
         };
 
@@ -405,14 +442,14 @@ int main(
     int argc,
     char* argv[])
 {
-    RPC_INFO("Stream Composition Demo — TCP → SPSC → TLS");
+    RPC_INFO("Stream Composition Demo — TCP → SPSC buffered stream → TLS");
     RPC_INFO("============================================");
 
 #ifndef CANOPY_BUILD_COROUTINE
     RPC_ERROR("This demo requires coroutines. Build with: cmake --preset Debug_Coroutine");
     return 1;
 #else
-    args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC → TLS.");
+    args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC buffered stream → TLS.");
     args::HelpFlag help(parser, "help", "Display this help and exit", {'h', "help"});
     auto net = canopy::network_config::add_network_args(parser);
     auto cli = add_default_network_args(argc, argv);
@@ -466,14 +503,14 @@ int main(
             canopy::network_config::ipv4_to_ip_address("127.0.0.1", connect_ep.addr);
     }
 
-    // Generate (or reuse) a self-signed TLS certificate for the demo server.
+    // Prepare (or reuse) a self-signed TLS certificate for the demo server.
     std::string cert_dir = std::string(DEMO_CERT_DIR);
     std::string cert_path = cert_dir + "/cert.pem";
     std::string key_path = cert_dir + "/key.pem";
 
-    if (!generate_demo_cert(cert_path, key_path))
+    if (!prepare_demo_cert(cert_path, key_path))
     {
-        RPC_ERROR("Failed to generate demo TLS certificate in: {}", cert_dir);
+        RPC_ERROR("Failed to prepare demo TLS certificate in: {}", cert_dir);
         return 1;
     }
 

@@ -33,7 +33,7 @@ The coroutine support is encapsulated in a single header file that defines macro
 The syntax-level coroutine abstractions are defined in:
 
 ```
-rpc/include/rpc/internal/coroutine_support.h
+c++/rpc/include/rpc/internal/coroutine_support.h
 ```
 
 ## Required Abstractions
@@ -111,10 +111,10 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 
 ## Candidate Libraries
 
-- [libcoro](libcoro.md) - Current implementation, C++20 coroutine library
-- [libunifex](libunifex.md) - Facebook's sender/receiver framework
-- [cppcoro](cppcoro.md) - Lewis Baker's foundational coroutine library
-- [Asio](asio.md) - Cross-platform async I/O library
+- [libcoro](coroutine-libraries/libcoro.md) - Current implementation, C++20 coroutine library
+- [libunifex](coroutine-libraries/libunifex.md) - Facebook's sender/receiver framework
+- [cppcoro](coroutine-libraries/cppcoro.md) - Lewis Baker's foundational coroutine library
+- [Asio](coroutine-libraries/asio.md) - Cross-platform async I/O library
 
 ## Feature Matrix
 
@@ -130,10 +130,10 @@ For transports that use async I/O (TCP, SPSC), you may need to adapt the network
 
 ## Current Limitations
 
-Some advanced features still require backend-specific integration work:
+Some advanced coroutine features still require backend-specific integration work:
 
-- **Scheduler integration** - Currently tied to the active C++ coroutine backend for TCP and streaming transports
-- **Network primitives** - TCP client/server abstractions are libcoro-specific
+- **Scheduler integration** - Coroutine TCP and streaming paths are still tied to the active C++ coroutine backend
+- **Network primitives** - Coroutine TCP client/server abstractions are libcoro-specific; blocking TCP has a separate POSIX path
 - **Channel/back-channel support** - May require adaptation for sender/receiver models
 
 ## Migration Plan

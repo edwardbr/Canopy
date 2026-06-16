@@ -4,6 +4,17 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+CanopyGenerate(
+  websocket_stream_config
+  websocket_stream/websocket_stream_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
 add_library(streaming_websocket STATIC src/stream.cpp)
 target_include_directories(
   streaming_websocket
@@ -12,10 +23,22 @@ target_include_directories(
 target_compile_definitions(streaming_websocket PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_websocket PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_websocket PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(
-  streaming_websocket
-  PUBLIC streaming
-  PRIVATE wslay rpc libcoro)
+if(CANOPY_BUILD_COROUTINE)
+  target_link_libraries(
+    streaming_websocket
+    PUBLIC streaming websocket_stream_config_idl
+    PRIVATE wslay rpc libcoro)
+else()
+  # Blocking-mode WS stream operates over a dual-mode streaming::stream and the pure-C wslay library; no libcoro link.
+  target_link_libraries(
+    streaming_websocket
+    PUBLIC streaming websocket_stream_config_idl
+    PRIVATE wslay rpc)
+endif()
+if(CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE AND TARGET canopy_zlib)
+  target_compile_definitions(streaming_websocket PUBLIC CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+  target_link_libraries(streaming_websocket PRIVATE canopy_zlib)
+endif()
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_websocket PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

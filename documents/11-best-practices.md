@@ -206,6 +206,35 @@ CORO_TASK(error_code) bad_example(int item)
 | Same machine, high perf | SPSC | Lock-free, fast |
 | Secure computation | SGX | Hardware isolation |
 
+### Factory Configuration
+
+For stream-backed factories, keep JSON at process boundaries and use typed
+options inside the application.
+
+Do:
+
+- Use `rpc::connection_factory::connection_settings` for configured TCP, SPSC,
+  and layered stream/RPC factory calls in normal C++ code.
+- Build each `typed_settings::settings` value from the selected
+  implementation's generated IDL settings type, such as
+  `rpc::tcp_coroutine_stream::endpoint`,
+  `rpc::tcp_blocking_stream::endpoint`,
+  `rpc::spsc_queue_stream::stream_settings`, or
+  `rpc::stream_transport::transport_settings`.
+- Use `json::v1::load_typed_config_file` or `json::v1::load_typed_config` when a
+  config file/blob plus command-line overrides must become a generated IDL
+  options type.
+- Use `rpc::connection_factory::materialise_connection_settings` at
+  connection-factory JSON boundaries.
+
+Don't:
+
+- Thread raw `json::v1::object` lookups through component internals when a typed
+  options object can describe the same contract.
+- Depend on flat legacy aliases for stream factory options. Exact nested schema
+  names inside `typed_settings` envelopes are the supported configuration
+  surface.
+
 ## 6. Zone Hierarchy Design
 
 ### Do
@@ -357,10 +386,10 @@ rpc::telemetry::create_sequence_diagram_telemetry_service(
 // Generates PlantUML file for visualization
 ```
 
-### Thread-Local Logging
+### Logging and Telemetry
 
 ```bash
-cmake --preset Debug -DCANOPY_USE_THREAD_LOCAL_LOGGING=ON
+cmake --preset Debug -DCANOPY_USE_LOGGING=ON -DCANOPY_USE_TELEMETRY=ON
 ```
 
 ## 11. Common Issues and Solutions
@@ -624,7 +653,7 @@ target_link_libraries(my_demo PRIVATE rpc_transport_local)  # Wrong name!
 
 **Correct**:
 ```cmake
-target_link_libraries(my_demo PRIVATE transport_local_host)  # Correct name
+target_link_libraries(my_demo PRIVATE transport_local)  # Correct name
 ```
 
 ### Mistake: Return Type Mismatch in Coroutines

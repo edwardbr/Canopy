@@ -3,7 +3,7 @@
 This file tracks the current active status of the Canopy Rust port.
 
 Completed migration history has been moved to
-[`completed.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/completed.md) to keep
+[`completed.md`](../../../documents/language-ports/rust/completed.md) to keep
 this file focused on the remaining work.
 
 ## Current Status

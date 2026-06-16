@@ -5,7 +5,54 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-find_package(OpenSSL REQUIRED)
+set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET)
+set(CANOPY_HTTP_SERVER_CRYPTO_LIBS)
+set(CANOPY_HTTP_SERVER_TCP_TARGET)
+
+CanopyGenerate(
+  http_server_config
+  http_server/http_server_config.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
+  install_dir ${GENERATED_INSTALL_DIR})
+
+if(CANOPY_BUILD_COROUTINE)
+  if(NOT TARGET streaming_tcp_coroutine)
+    message(FATAL_ERROR "canopy_http_server requires streaming_tcp_coroutine in coroutine builds")
+  endif()
+  set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_coroutine)
+else()
+  if(NOT TARGET streaming_tcp_blocking)
+    message(FATAL_ERROR "canopy_http_server requires streaming_tcp_blocking in blocking builds")
+  endif()
+  set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_blocking)
+endif()
+
+# OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls is
+# still coroutine-only.
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+  if(NOT CANOPY_BUILD_COROUTINE)
+    message(
+      FATAL_ERROR "canopy_http_server requires OpenSSL for non-coroutine builds; mbedtls streams are coroutine-only")
+  endif()
+  if(NOT TARGET streaming_mbedtls)
+    message(FATAL_ERROR "canopy_http_server requires streaming_mbedtls when CANOPY_SECURE_STREAM_BACKEND=MBEDTLS")
+  endif()
+  set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET streaming_mbedtls)
+  set(CANOPY_HTTP_SERVER_CRYPTO_LIBS canopy_mbedtls_crypto)
+elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+  find_package(OpenSSL REQUIRED)
+  if(NOT TARGET streaming_openssl_tls)
+    message(FATAL_ERROR "canopy_http_server requires streaming_openssl_tls when CANOPY_SECURE_STREAM_BACKEND=OPENSSL")
+  endif()
+  set(CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET streaming_openssl_tls)
+  set(CANOPY_HTTP_SERVER_CRYPTO_LIBS OpenSSL::SSL OpenSSL::Crypto)
+else()
+  message(FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND=${CANOPY_SECURE_STREAM_BACKEND}")
+endif()
 
 add_library(canopy_http_server STATIC src/http_acceptor.cpp src/http_client_connection.cpp
                                       src/static_webpage_delivery.cpp)
@@ -22,16 +69,21 @@ target_link_options(canopy_http_server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_libraries(
   canopy_http_server
   PUBLIC streaming
-         streaming_tls
+         http_server_config_idl
+         ${CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET}
          transport_streaming
          llhttp_static
          rpc
-  PRIVATE streaming_tcp
+  PRIVATE ${CANOPY_HTTP_SERVER_TCP_TARGET}
           streaming_websocket
-          OpenSSL::SSL
-          OpenSSL::Crypto
+          ${CANOPY_HTTP_SERVER_CRYPTO_LIBS}
           ${CANOPY_FMT_LIB}
           ${CANOPY_LIBRARIES})
+
+if(CANOPY_BUILD_HTTP_COMPRESSION AND TARGET canopy_zlib)
+  target_compile_definitions(canopy_http_server PRIVATE CANOPY_HTTP_HAS_GZIP)
+  target_link_libraries(canopy_http_server PRIVATE canopy_zlib)
+endif()
 
 set_property(TARGET canopy_http_server PROPERTY COMPILE_PDB_NAME canopy_http_server)
 

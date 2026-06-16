@@ -5,6 +5,7 @@
 #pragma once
 
 // types.h and version.h are included by rpc.h
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <type_traits>
@@ -43,6 +44,19 @@ namespace rpc
 
         virtual CORO_TASK(rpc::send_result) __rpc_call(rpc::send_params params) = 0;
 
+        // Runtime schema introspection: append this object's interface
+        // descriptor(s) to `out`. Default appends nothing; interface_proxy<T>
+        // appends its single interface and rpc::base folds over its interface
+        // pack. Non-pure so existing casting_interface implementors are
+        // unaffected.
+        virtual void __rpc_enumerate_schemas(
+            rpc::encoding /*enc*/,
+            rpc::schema_flavor /*flavor*/,
+            bool /*include_deprecated*/,
+            std::vector<rpc::interface_descriptor>& /*out*/) const
+        {
+        }
+
         static object get_object_id(const casting_interface& iface);
         static std::shared_ptr<rpc::service_proxy> get_service_proxy(const casting_interface& iface);
         static std::shared_ptr<rpc::service> get_service(const casting_interface& iface);
@@ -52,11 +66,73 @@ namespace rpc
         // An interface always carries both pieces of information so this should never fail;
         // an assertion fires in debug builds if it unexpectedly does.
         static remote_object get_remote_object(const casting_interface& iface);
+        static std::vector<rpc::interface_descriptor> get_schema(
+            const casting_interface& iface,
+            rpc::encoding enc = rpc::encoding::yas_json,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
+        static CORO_TASK(int) get_schema(
+            const casting_interface& iface,
+            std::vector<rpc::interface_descriptor>& out,
+            rpc::encoding enc = rpc::encoding::yas_json,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false,
+            rpc::optional<rpc::interface_ordinal> interface_id = {});
+        static CORO_TASK(rpc::send_result) call(
+            const casting_interface& iface,
+            rpc::send_params params,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
+        static CORO_TASK(int) post(
+            const casting_interface& iface,
+            rpc::post_params params,
+            rpc::schema_flavor flavor = rpc::schema_flavor::mcp,
+            bool include_deprecated = false);
     };
 
     bool are_in_same_zone(
         const casting_interface* first,
         const casting_interface* second);
+
+    // Build one interface_descriptor from a generated interface type T's static
+    // introspection surface (get_id / __rpc_qualified_name / __rpc_is_deprecated
+    // / get_function_info) and append it to `out`, honouring the deprecation
+    // filter. Shared by interface_proxy<T> (caller side) and rpc::base (callee
+    // side) so both tiers produce identical descriptors from one place.
+    //
+    // descriptor.schema (the whole-interface document) is left empty here: its
+    // definition lives in the per-module *_schema.h inline accessors, which are
+    // not guaranteed included at every instantiation site. The per-method
+    // schemas carried in descriptor.methods (via get_function_info) are what a
+    // caller needs to build a call; the whole-interface schema is populated by
+    // the schema layer when required.
+    template<class T>
+    inline void append_interface_descriptor(
+        rpc::encoding enc,
+        rpc::schema_flavor flavor,
+        bool include_deprecated,
+        std::vector<rpc::interface_descriptor>& out)
+    {
+        (void)enc;
+        (void)flavor;
+        if (!include_deprecated && T::__rpc_is_deprecated())
+            return;
+        rpc::interface_descriptor descriptor;
+        descriptor.interface_id = T::get_id(rpc::get_version());
+        descriptor.qualified_name = T::__rpc_qualified_name();
+        descriptor.deprecated = T::__rpc_is_deprecated();
+        descriptor.methods = T::get_function_info();
+        if (!include_deprecated)
+        {
+            descriptor.methods.erase(
+                std::remove_if(
+                    descriptor.methods.begin(),
+                    descriptor.methods.end(),
+                    [](const rpc::function_info& method) { return method.deprecated; }),
+                descriptor.methods.end());
+        }
+        out.push_back(std::move(descriptor));
+    }
 
     // T is a class derived from casting_interface its role is to provide access to the object proxy to the remote zone
     template<class T> class interface_proxy : public T
@@ -100,6 +176,16 @@ namespace rpc
         {
             RPC_ASSERT(false);
             CO_RETURN rpc::send_result{rpc::error::INVALID_CAST(), {}, {}};
+        }
+
+        // Tier 1 (local proxy): describe the single interface T this proxy holds.
+        void __rpc_enumerate_schemas(
+            rpc::encoding enc,
+            rpc::schema_flavor flavor,
+            bool include_deprecated,
+            std::vector<rpc::interface_descriptor>& out) const override
+        {
+            rpc::append_interface_descriptor<T>(enc, flavor, include_deprecated, out);
         }
     };
 

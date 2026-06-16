@@ -105,7 +105,7 @@ def _vector_to_bytes(vec_val):
     inferior = gdb.selected_inferior()
 
     # Prefer the public interface first. This is more robust across
-    # libstdc++ and libc++ / SGX libc++.
+    # libstdc++ and libc++ variants.
     try:
         size = int(vec_val["__end_"] - vec_val["__begin_"])
         start = int(vec_val["__begin_"])

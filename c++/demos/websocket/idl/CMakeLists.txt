@@ -5,9 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-include(CanopyJavascriptGenerate)
-
-set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/websocket/js/canopy_websocket_transport.js")
+set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/untrusted_web/js/untrusted_web_transport.js")
 set(demo_idl websocket_demo/websocket_demo.idl)
 
 set(CANOPY_WEBSOCKET_DEMO_ENCODING
@@ -32,7 +30,7 @@ if(CANOPY_WEBSOCKET_DEMO_ENCODING STREQUAL "AUTO")
   endif()
 endif()
 
-set(websocket_demo_serialisers yas_binary yas_compressed_binary yas_json)
+set(websocket_demo_serialisers yas_binary yas_json)
 
 if(CANOPY_WEBSOCKET_DEMO_ENCODING STREQUAL "NANOPB")
   if(NOT CANOPY_BUILD_NANOPB)
@@ -60,6 +58,14 @@ endif()
 
 message("CANOPY_WEBSOCKET_DEMO_ENCODING ${CANOPY_WEBSOCKET_DEMO_ENCODING} -> ${CANOPY_WEBSOCKET_DEMO_ENCODING_VALUE}")
 
+include(CanopyJavascriptGenerate)
+
+if(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+  set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_JS true)
+else()
+  set(CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_JS false)
+endif()
+
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/websocket_demo_config.js.in"
                "${CMAKE_CURRENT_SOURCE_DIR}/../server/www/generated/websocket_demo_config.js" @ONLY)
 
@@ -70,9 +76,12 @@ CanopyGenerate(
   ${CMAKE_BINARY_DIR}/generated
   ""
   ${websocket_demo_serialisers}
-  dependencies rpc_types_idl websocket_protocol_idl
+  dependencies rpc_types_idl websocket_protocol_idl network_config_idl
   install_dir ${GENERATED_INSTALL_DIR}
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
+  include_paths
+  ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
+  ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces)
 
 canopyjavascriptgenerate(
   websocket_demo_client
@@ -82,8 +91,11 @@ canopyjavascriptgenerate(
   dependencies
   rpc_types_idl
   websocket_protocol_idl
+  network_config_idl
   include_paths
   ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
+  ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces
   copy_files
   "${transport_js}"
   compile_proto_js
@@ -98,8 +110,11 @@ canopyjavascriptgenerate(
   dependencies
   rpc_types_idl
   websocket_protocol_idl
+  network_config_idl
   include_paths
   ${CMAKE_CURRENT_SOURCE_DIR}/.
+  ${CANOPY_INTERFACE_SOURCE_DIR}
+  ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces
   copy_files
   "${transport_js}"
   compile_proto_js)

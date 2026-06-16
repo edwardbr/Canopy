@@ -83,6 +83,16 @@ namespace rpc
         return rpc::error::OK();
     }
 
+    void object_stub::enumerate_schemas(
+        rpc::encoding encoding,
+        rpc::schema_flavor flavor,
+        bool include_deprecated,
+        std::vector<rpc::interface_descriptor>& out) const
+    {
+        if (target_)
+            target_->__rpc_enumerate_schemas(encoding, flavor, include_deprecated, out);
+    }
+
     CORO_TASK(int)
     object_stub::add_ref(
         bool is_optimistic,
@@ -140,7 +150,7 @@ namespace rpc
                     = rpc::add_ref_options::build_caller_route
                       | (is_optimistic ? rpc::add_ref_options::optimistic : rpc::add_ref_options::normal);
                 ar_params.request_id = request_id;
-                auto ar_result = CO_AWAIT transport->add_ref(std::move(ar_params));
+                auto ar_result = CO_AWAIT zone_->outbound_add_ref(std::move(ar_params), transport);
                 ret = ar_result.error_code;
             }
         }
@@ -187,7 +197,7 @@ namespace rpc
                 else
                 {
                     // Already cleaned up by release_all_from_zone (concurrent transport teardown)
-                    RPC_WARNING("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
+                    RPC_DEBUG("release: optimistic zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
             if (did_release)
@@ -222,7 +232,7 @@ namespace rpc
                 else
                 {
                     // Already cleaned up by release_all_from_zone (concurrent transport teardown)
-                    RPC_WARNING("release: shared zone entry already removed (concurrent teardown), skipping decrement");
+                    RPC_DEBUG("release: shared zone entry already removed (concurrent teardown), skipping decrement");
                 }
             }
             // Only decrement the global count if we actually consumed a per-zone reference.

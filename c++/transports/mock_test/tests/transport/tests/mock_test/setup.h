@@ -61,39 +61,38 @@ public:
         RPC_INFO("passthrough_setup::CoroSetUp - Starting setup");
         RPC_INFO("passthrough_setup::CoroSetUp - Creating service");
 #ifdef CANOPY_BUILD_COROUTINE
-        service_ = rpc::root_service::create(
-            "test_service",
-            rpc::zone{rpc::zone_address(
-                rpc::zone_address_args(
-                    rpc::default_values::version_3,
-                    rpc::address_type::local,
-                    0,
-                    {},
-                    rpc::default_values::default_subnet_size_bits,
-                    1,
-                    rpc::default_values::default_object_id_size_bits,
-                    0,
-                    {}))},
-            io_scheduler_);
+        auto service_zone_address = rpc::zone_address::create(
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
+                0,
+                {},
+                rpc::default_values::default_subnet_size_bits,
+                1,
+                rpc::default_values::default_object_id_size_bits,
+                0,
+                {}));
+        RPC_ASSERT(service_zone_address);
+        service_ = rpc::root_service::create("test_service", rpc::zone{*service_zone_address}, io_scheduler_);
 #else
-        service_ = rpc::root_service::create(
-            "test_service",
-            rpc::zone{rpc::zone_address(
-                rpc::zone_address_args(
-                    rpc::default_values::version_3,
-                    rpc::address_type::local,
-                    0,
-                    {},
-                    rpc::default_values::default_subnet_size_bits,
-                    1,
-                    rpc::default_values::default_object_id_size_bits,
-                    0,
-                    {}))});
+        auto service_zone_address = rpc::zone_address::create(
+            rpc::zone_address_args(
+                rpc::default_values::version_3,
+                rpc::address_type::local,
+                0,
+                {},
+                rpc::default_values::default_subnet_size_bits,
+                1,
+                rpc::default_values::default_object_id_size_bits,
+                0,
+                {}));
+        RPC_ASSERT(service_zone_address);
+        service_ = rpc::root_service::create("test_service", rpc::zone{*service_zone_address});
 #endif
 
         // Create mock transports
         RPC_INFO("passthrough_setup::CoroSetUp - Setting up destinations");
-        forward_dest_ = rpc::destination_zone{rpc::zone_address(
+        auto forward_dest_address = rpc::zone_address::create(
             rpc::zone_address_args(
                 rpc::default_values::version_3,
                 rpc::address_type::local,
@@ -103,8 +102,8 @@ public:
                 100,
                 rpc::default_values::default_object_id_size_bits,
                 0,
-                {}))};
-        reverse_dest_ = rpc::destination_zone{rpc::zone_address(
+                {}));
+        auto reverse_dest_address = rpc::zone_address::create(
             rpc::zone_address_args(
                 rpc::default_values::version_3,
                 rpc::address_type::local,
@@ -114,7 +113,11 @@ public:
                 200,
                 rpc::default_values::default_object_id_size_bits,
                 0,
-                {}))};
+                {}));
+        RPC_ASSERT(forward_dest_address);
+        RPC_ASSERT(reverse_dest_address);
+        forward_dest_ = rpc::destination_zone{*forward_dest_address};
+        reverse_dest_ = rpc::destination_zone{*reverse_dest_address};
 
         RPC_INFO("passthrough_setup::CoroSetUp - Creating forward transport");
         forward_transport_ = std::make_shared<rpc::mock_test::mock_transport>("forward", service_);

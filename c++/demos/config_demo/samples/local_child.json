@@ -1,0 +1,34 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "execution": {
+    "iterations": 1,
+    "client_connection": "client",
+    "server_connection": ""
+  },
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "zone_subnet": 200,
+      "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_local_parent",
+            "executor": {
+              "thread_count": 2
+            }
+          }
+        },
+        "transport": {
+          "type": "local",
+          "settings": {
+            "name": "config_demo_local_child",
+            "service_proxy_name": "config_demo_local_child",
+            "encoding": "yas_binary"
+          }
+        }
+      }
+    }
+  ]
+}

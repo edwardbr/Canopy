@@ -1,0 +1,871 @@
+diff --git a/c++/security/attestation/include/security/attestation/types.h b/c++/security/attestation/include/security/attestation/types.h
+index 27c312b..a12630b 100644
+--- a/c++/security/attestation/include/security/attestation/types.h
++++ b/c++/security/attestation/include/security/attestation/types.h
+@@ -40 +40 @@ namespace canopy::security::attestation
+-        std::string enclave_id;
++        std::string security_domain_id;
+@@ -230 +230 @@ namespace canopy::security::attestation
+-    // it is fed into the readable string. If enclave_id is present, zone_id is
++    // it is fed into the readable string. If security_domain_id is present, zone_id is
+diff --git a/c++/security/attestation/src/backends/fake/fake_backend.cpp b/c++/security/attestation/src/backends/fake/fake_backend.cpp
+index f4fc97a..85ad34c 100644
+--- a/c++/security/attestation/src/backends/fake/fake_backend.cpp
++++ b/c++/security/attestation/src/backends/fake/fake_backend.cpp
+@@ -19 +19 @@ namespace canopy::security::attestation
+-            std::string enclave_id;
++            std::string security_domain_id;
+@@ -194 +194 @@ namespace canopy::security::attestation
+-            return append_string(out, evidence.backend_id) && append_string(out, evidence.enclave_id)
++            return append_string(out, evidence.backend_id) && append_string(out, evidence.security_domain_id)
+@@ -230 +230 @@ namespace canopy::security::attestation
+-            if (!read_string(payload, offset, evidence.enclave_id))
++            if (!read_string(payload, offset, evidence.security_domain_id))
+@@ -282 +282 @@ namespace canopy::security::attestation
+-        evidence.enclave_id = binding.subject.enclave_id;
++        evidence.security_domain_id = binding.subject.security_domain_id;
+@@ -322 +322 @@ namespace canopy::security::attestation
+-        if (parsed.enclave_id != expected_binding.subject.enclave_id || parsed.zone_id != expected_binding.subject.zone_id)
++        if (parsed.security_domain_id != expected_binding.subject.security_domain_id || parsed.zone_id != expected_binding.subject.zone_id)
+@@ -337 +337 @@ namespace canopy::security::attestation
+-        verdict.peer_identity.enclave_id = parsed.enclave_id;
++        verdict.peer_identity.security_domain_id = parsed.security_domain_id;
+diff --git a/c++/security/attestation/src/backends/sgx_dcap/sgx_dcap_backend.cpp b/c++/security/attestation/src/backends/sgx_dcap/sgx_dcap_backend.cpp
+index cf6edcc..cc1307f 100644
+--- a/c++/security/attestation/src/backends/sgx_dcap/sgx_dcap_backend.cpp
++++ b/c++/security/attestation/src/backends/sgx_dcap/sgx_dcap_backend.cpp
+@@ -41 +41 @@ namespace canopy::security::attestation
+-            out.enclave_id = value.enclave_id;
++            out.security_domain_id = value.security_domain_id;
+@@ -48 +48 @@ namespace canopy::security::attestation
+-            return identity{value.enclave_id, value.zone_id};
++            return identity{value.security_domain_id, value.zone_id};
+@@ -209 +209 @@ namespace canopy::security::attestation
+-            return actual.backend_id == sgx_dcap_backend_id && actual_identity.enclave_id == expected.subject.enclave_id
++            return actual.backend_id == sgx_dcap_backend_id && actual_identity.security_domain_id == expected.subject.security_domain_id
+diff --git a/c++/security/attestation/src/backends/sgx_epid/sgx_epid_backend.cpp b/c++/security/attestation/src/backends/sgx_epid/sgx_epid_backend.cpp
+index b2ea41c..4bd941d 100644
+--- a/c++/security/attestation/src/backends/sgx_epid/sgx_epid_backend.cpp
++++ b/c++/security/attestation/src/backends/sgx_epid/sgx_epid_backend.cpp
+@@ -44 +44 @@ namespace canopy::security::attestation
+-            out.enclave_id = value.enclave_id;
++            out.security_domain_id = value.security_domain_id;
+@@ -51 +51 @@ namespace canopy::security::attestation
+-            return identity{value.enclave_id, value.zone_id};
++            return identity{value.security_domain_id, value.zone_id};
+@@ -218 +218 @@ namespace canopy::security::attestation
+-            return actual.backend_id == sgx_epid_backend_id && actual_identity.enclave_id == expected.subject.enclave_id
++            return actual.backend_id == sgx_epid_backend_id && actual_identity.security_domain_id == expected.subject.security_domain_id
+diff --git a/c++/security/attestation/src/backends/simulation/simulation_backend.cpp b/c++/security/attestation/src/backends/simulation/simulation_backend.cpp
+index 1df38ff..bc72576 100644
+--- a/c++/security/attestation/src/backends/simulation/simulation_backend.cpp
++++ b/c++/security/attestation/src/backends/simulation/simulation_backend.cpp
+@@ -72 +72 @@ namespace canopy::security::attestation
+-            out.enclave_id = value.enclave_id;
++            out.security_domain_id = value.security_domain_id;
+@@ -90 +90 @@ namespace canopy::security::attestation
+-            return identity{value.enclave_id, value.zone_id};
++            return identity{value.security_domain_id, value.zone_id};
+@@ -426 +426 @@ namespace canopy::security::attestation
+-            if (parsed_identity.enclave_id != expected_binding.subject.enclave_id
++            if (parsed_identity.security_domain_id != expected_binding.subject.security_domain_id
+@@ -510 +510 @@ namespace canopy::security::attestation
+-            if (parsed_identity.enclave_id != expected_binding.subject.enclave_id
++            if (parsed_identity.security_domain_id != expected_binding.subject.security_domain_id
+diff --git a/c++/security/attestation/src/kdf.cpp b/c++/security/attestation/src/kdf.cpp
+index 868fd7d..9667ec4 100644
+--- a/c++/security/attestation/src/kdf.cpp
++++ b/c++/security/attestation/src/kdf.cpp
+@@ -106 +106 @@ namespace canopy::security::attestation::detail
+-                append_string(value.enclave_id);
++                append_string(value.security_domain_id);
+@@ -216,2 +216,2 @@ namespace canopy::security::attestation::detail
+-            if (!value.enclave_id.empty())
+-                return value.enclave_id;
++            if (!value.security_domain_id.empty())
++                return value.security_domain_id;
+@@ -221 +221 @@ namespace canopy::security::attestation::detail
+-        void append_canonical_enclave_pair(
++        void append_canonical_domain_pair(
+@@ -264,3 +264,3 @@ namespace canopy::security::attestation::detail
+-            // Multiple zones can share an enclave identity, so the pair is
+-            // canonicalised by enclave id before key material is derived.
+-            append_canonical_enclave_pair(encoder, context.local_identity, context.peer_identity);
++            // Multiple zones can share a domain identity, so the pair is
++            // canonicalised by domain id before key material is derived.
++            append_canonical_domain_pair(encoder, context.local_identity, context.peer_identity);
+@@ -288 +288 @@ namespace canopy::security::attestation::detail
+-            append_canonical_enclave_pair(encoder, context.local_identity, context.peer_identity);
++            append_canonical_domain_pair(encoder, context.local_identity, context.peer_identity);
+diff --git a/c++/security/attestation/src/service.cpp b/c++/security/attestation/src/service.cpp
+index d680779..35ae8e5 100644
+--- a/c++/security/attestation/src/service.cpp
++++ b/c++/security/attestation/src/service.cpp
+@@ -26 +26 @@ namespace canopy::security::attestation
+-            return value.enclave_id + "/" + value.zone_id;
++            return value.security_domain_id + "/" + value.zone_id;
+@@ -49 +49 @@ namespace canopy::security::attestation
+-            return !value.enclave_id.empty();
++            return !value.security_domain_id.empty();
+@@ -86,2 +86,2 @@ namespace canopy::security::attestation
+-            const auto& local = context.local_identity.enclave_id;
+-            const auto& peer = context.peer_identity.enclave_id;
++            const auto& local = context.local_identity.security_domain_id;
++            const auto& peer = context.peer_identity.security_domain_id;
+@@ -89 +89 @@ namespace canopy::security::attestation
+-                = scope.caller_identity.enclave_id == local || scope.caller_identity.enclave_id == peer;
++                = scope.caller_identity.security_domain_id == local || scope.caller_identity.security_domain_id == peer;
+@@ -91 +91 @@ namespace canopy::security::attestation
+-                = scope.destination_identity.enclave_id == local || scope.destination_identity.enclave_id == peer;
++                = scope.destination_identity.security_domain_id == local || scope.destination_identity.security_domain_id == peer;
+diff --git a/c++/security/attestation/src/types.cpp b/c++/security/attestation/src/types.cpp
+index 63ec0b9..259ae54 100644
+--- a/c++/security/attestation/src/types.cpp
++++ b/c++/security/attestation/src/types.cpp
+@@ -24,2 +24,2 @@ namespace canopy::security::attestation
+-            if (!value.enclave_id.empty())
+-                return value.enclave_id;
++            if (!value.security_domain_id.empty())
++                return value.security_domain_id;
+diff --git a/c++/security/attestation/tests/attestation_service_test.cpp b/c++/security/attestation/tests/attestation_service_test.cpp
+index fc9cb24..b3c61d9 100644
+--- a/c++/security/attestation/tests/attestation_service_test.cpp
++++ b/c++/security/attestation/tests/attestation_service_test.cpp
+@@ -151 +151 @@ namespace
+-        std::string enclave_id,
++        std::string security_domain_id,
+@@ -156 +156 @@ namespace
+-        options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
++        options.local_identity = identity{std::move(security_domain_id), std::move(zone_id)};
+@@ -221 +221 @@ namespace
+-        payload.enclave_id = "payload-enclave";
++        payload.security_domain_id = "payload-domain";
+@@ -233 +233 @@ namespace
+-        EXPECT_EQ(decoded.enclave_id, "payload-enclave");
++        EXPECT_EQ(decoded.security_domain_id, "payload-domain");
+@@ -511 +511 @@ TEST(
+-    expected_binding.subject = identity{"enclave-a", "zone-a"};
++    expected_binding.subject = identity{"domain-a", "zone-a"};
+@@ -572 +572 @@ TEST(
+-    expected_binding.subject = identity{"sim-enclave", "sim-zone"};
++    expected_binding.subject = identity{"sim-domain", "sim-zone"};
+@@ -592 +592 @@ TEST(
+-    EXPECT_EQ(verdict.peer_identity.enclave_id, expected_binding.subject.enclave_id);
++    EXPECT_EQ(verdict.peer_identity.security_domain_id, expected_binding.subject.security_domain_id);
+@@ -611 +611 @@ TEST(
+-    expected_binding.subject = identity{"sim-enclave", "sim-zone"};
++    expected_binding.subject = identity{"sim-domain", "sim-zone"};
+@@ -636 +636 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -664 +664 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -682 +682 @@ TEST(
+-    EXPECT_EQ(verdict.peer_identity.enclave_id, expected_binding.subject.enclave_id);
++    EXPECT_EQ(verdict.peer_identity.security_domain_id, expected_binding.subject.security_domain_id);
+@@ -699 +699 @@ TEST(
+-    binding.subject = identity{"epid-enclave", "epid-zone"};
++    binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -729 +729 @@ TEST(
+-        EXPECT_EQ(request.binding.subject.enclave_id, binding.subject.enclave_id);
++        EXPECT_EQ(request.binding.subject.security_domain_id, binding.subject.security_domain_id);
+@@ -800 +800 @@ TEST(
+-    request.binding.subject = identity{"epid-enclave", "epid-zone"};
++    request.binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -813 +813 @@ TEST(
+-    request.binding.subject = identity{"epid-enclave", "epid-zone"};
++    request.binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -863 +863 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -893 +893 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -913 +913 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -961 +961 @@ TEST(
+-    expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -1008 +1008 @@ TEST(
+-    input.expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    input.expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -1027 +1027 @@ TEST(
+-    EXPECT_EQ(verdict.peer_identity.enclave_id, input.expected_binding.subject.enclave_id);
++    EXPECT_EQ(verdict.peer_identity.security_domain_id, input.expected_binding.subject.security_domain_id);
+@@ -1045 +1045 @@ TEST(
+-    input.expected_binding.subject = identity{"epid-enclave", "epid-zone"};
++    input.expected_binding.subject = identity{"epid-domain", "epid-zone"};
+@@ -1071 +1071 @@ TEST(
+-    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1099 +1099 @@ TEST(
+-    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1117 +1117 @@ TEST(
+-    EXPECT_EQ(verdict.peer_identity.enclave_id, expected_binding.subject.enclave_id);
++    EXPECT_EQ(verdict.peer_identity.security_domain_id, expected_binding.subject.security_domain_id);
+@@ -1134 +1134 @@ TEST(
+-    binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1157 +1157 @@ TEST(
+-        EXPECT_EQ(request.binding.subject.enclave_id, binding.subject.enclave_id);
++        EXPECT_EQ(request.binding.subject.security_domain_id, binding.subject.security_domain_id);
+@@ -1218 +1218 @@ TEST(
+-    request.binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    request.binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1231 +1231 @@ TEST(
+-    request.binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    request.binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1314 +1314 @@ TEST(
+-    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    input.expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1326 +1326 @@ TEST(
+-    EXPECT_EQ(verdict.peer_identity.enclave_id, input.expected_binding.subject.enclave_id);
++    EXPECT_EQ(verdict.peer_identity.security_domain_id, input.expected_binding.subject.security_domain_id);
+@@ -1344 +1344 @@ TEST(
+-    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    input.expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1377 +1377 @@ TEST(
+-    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    input.expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1447 +1447 @@ TEST(
+-    input.expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    input.expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1483 +1483 @@ TEST(
+-    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1513 +1513 @@ TEST(
+-    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1533 +1533 @@ TEST(
+-    expected_binding.subject = identity{"dcap-enclave", "dcap-zone"};
++    expected_binding.subject = identity{"dcap-domain", "dcap-zone"};
+@@ -1582 +1582 @@ TEST(
+-            (void)make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"}), "");
++            (void)make_configured_attestation_service_options(identity{"factory-domain", "factory-zone"}), "");
+@@ -1586 +1586 @@ TEST(
+-    auto options = make_configured_attestation_service_options(identity{"factory-enclave", "factory-zone"});
++    auto options = make_configured_attestation_service_options(identity{"factory-domain", "factory-zone"});
+@@ -1589 +1589 @@ TEST(
+-    EXPECT_EQ(options.local_identity.enclave_id, "factory-enclave");
++    EXPECT_EQ(options.local_identity.security_domain_id, "factory-domain");
+@@ -1639 +1639 @@ TEST(
+-        identity{"factory-enclave", "factory-zone"}, std::move(service_overrides));
++        identity{"factory-domain", "factory-zone"}, std::move(service_overrides));
+@@ -1660 +1660 @@ TEST(
+-    SessionIdsAreScopedToEnclavePairs)
++    SessionIdsAreScopedToSecurityDomainPairs)
+@@ -1662,6 +1662,6 @@ TEST(
+-    auto first = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 99);
+-    auto second = make_session_id(identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b-2"}, 99);
+-    auto third = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-c", "zone-c"}, 99);
+-    auto fourth = make_session_id(identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"}, 100);
+-    auto framed_left = make_session_id(identity{"enclave:a", "zone-a"}, identity{"enclave-b", "zone-b"}, 99);
+-    auto framed_right = make_session_id(identity{"enclave", "zone-a"}, identity{"a:enclave-b", "zone-b"}, 99);
++    auto first = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"}, 99);
++    auto second = make_session_id(identity{"domain-a", "zone-a-2"}, identity{"domain-b", "zone-b-2"}, 99);
++    auto third = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-c", "zone-c"}, 99);
++    auto fourth = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"}, 100);
++    auto framed_left = make_session_id(identity{"enclave:a", "zone-a"}, identity{"domain-b", "zone-b"}, 99);
++    auto framed_right = make_session_id(identity{"enclave", "zone-a"}, identity{"a:domain-b", "zone-b"}, 99);
+@@ -1695,2 +1695,2 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a");
+-    auto context = establish(service, identity{"enclave-b", "zone-b"});
++    auto service = make_service("domain-a", "zone-a");
++    auto context = establish(service, identity{"domain-b", "zone-b"});
+@@ -1802 +1802 @@ TEST(
+-    request.claimant.enclave_id = "enclave-a";
++    request.claimant.security_domain_id = "domain-a";
+@@ -1825 +1825 @@ TEST(
+-    response.responder.enclave_id = "enclave-b";
++    response.responder.security_domain_id = "domain-b";
+@@ -1908,3 +1908,3 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a");
+-    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+-    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto service = make_service("domain-a", "zone-a");
++    const auto context = establish(service, identity{"domain-b", "zone-b"});
++    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -1915,10 +1915,4 @@ TEST(
+-    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0x1a,
+-        0xd8,
+-        0x88,
+-        0x7a,
+-        0x84,
+-        0x4d,
+-        0x0f,
+-        0x7c,
+-        0xe5,
+-        0x2a,
++    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0x03,
++        0xc6,
++        0x04,
++        0xeb,
+@@ -1926,10 +1920,7 @@ TEST(
+-        0x25,
+-        0x4d,
+-        0xb8,
+-        0x9b,
+-        0xca,
+-        0xc7,
+-        0x6d,
+-        0x6e,
+-        0xc2,
+-        0x95,
++        0xc6,
++        0xbd,
++        0x20,
++        0x68,
++        0x7b,
++        0xff,
++        0x70,
+@@ -1937,6 +1928 @@ TEST(
+-        0x54,
+-        0x7d,
+-        0xe0,
+-        0x69,
+-        0x27,
+-        0x81,
++        0x8e,
+@@ -1944,3 +1930,17 @@ TEST(
+-        0x19,
+-        0x04,
+-        0x62};
++        0xfe,
++        0xfe,
++        0x13,
++        0x86,
++        0x89,
++        0x7f,
++        0x30,
++        0xd2,
++        0x3b,
++        0x58,
++        0xf8,
++        0x24,
++        0xc0,
++        0x49,
++        0xaa,
++        0x35,
++        0x8d};
+@@ -1948 +1948 @@ TEST(
+-        0xc9, 0x43, 0xc6, 0xa4};
++        0x72, 0xc2, 0xc1, 0x0a};
+@@ -1950 +1950 @@ TEST(
+-        0xc9, 0x43, 0xc6, 0xa4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
++        0x72, 0xc2, 0xc1, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
+@@ -1961 +1961 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a");
++    auto service = make_service("domain-a", "zone-a");
+@@ -1963 +1963 @@ TEST(
+-    const auto context = establish(service, identity{"enclave-b", "zone-b"}, 99, shared_secret);
++    const auto context = establish(service, identity{"domain-b", "zone-b"}, 99, shared_secret);
+@@ -1966 +1966 @@ TEST(
+-    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -1971 +1971 @@ TEST(
+-    auto repeated_context = establish(service, identity{"enclave-b", "zone-b"}, 99, shared_secret);
++    auto repeated_context = establish(service, identity{"domain-b", "zone-b"}, 99, shared_secret);
+@@ -1978 +1978 @@ TEST(
+-    auto conflicting_context = establish(service, identity{"enclave-b", "zone-b"}, 99, {9, 9, 9, 9});
++    auto conflicting_context = establish(service, identity{"domain-b", "zone-b"}, 99, {9, 9, 9, 9});
+@@ -1982 +1982 @@ TEST(
+-    rekey_params.peer_identity = identity{"enclave-b", "zone-b"};
++    rekey_params.peer_identity = identity{"domain-b", "zone-b"};
+@@ -1993 +1993 @@ TEST(
+-    auto rekeyed_scope = make_scope(rekeyed_context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto rekeyed_scope = make_scope(rekeyed_context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -2003 +2003 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a");
++    auto service = make_service("domain-a", "zone-a");
+@@ -2006 +2006 @@ TEST(
+-    params.peer_identity = identity{"enclave-b", "zone-b"};
++    params.peer_identity = identity{"domain-b", "zone-b"};
+@@ -2025,3 +2025,3 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a");
+-    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+-    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto service = make_service("domain-a", "zone-a");
++    const auto context = establish(service, identity{"domain-b", "zone-b"});
++    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -2054,2 +2054,2 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
+@@ -2057,2 +2057,2 @@ TEST(
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"});
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"});
+@@ -2061 +2061 @@ TEST(
+-    auto request_scope = make_scope(context_a, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto request_scope = make_scope(context_a, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -2072,2 +2072,2 @@ TEST(
+-        identity{"enclave-a", "zone-a"},
+-        identity{"enclave-b", "zone-b"},
++        identity{"domain-a", "zone-a"},
++        identity{"domain-b", "zone-b"},
+@@ -2079 +2079 @@ TEST(
+-    auto sibling_zone_scope = make_scope(context_a, identity{"enclave-a", "zone-a-2"}, identity{"enclave-b", "zone-b"});
++    auto sibling_zone_scope = make_scope(context_a, identity{"domain-a", "zone-a-2"}, identity{"domain-b", "zone-b"});
+@@ -2096,4 +2096,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+-    establish(service_b, identity{"enclave-a", "zone-a"});
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
++    establish(service_b, identity{"domain-a", "zone-a"});
+@@ -2101 +2101 @@ TEST(
+-    auto scope = make_scope(context_a, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto scope = make_scope(context_a, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -2126,3 +2126,3 @@ TEST(
+-    auto service = make_service("enclave-a", "zone-a", 2);
+-    const auto context = establish(service, identity{"enclave-b", "zone-b"});
+-    auto scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"enclave-b", "zone-b"});
++    auto service = make_service("domain-a", "zone-a", 2);
++    const auto context = establish(service, identity{"domain-b", "zone-b"});
++    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+@@ -2135 +2135 @@ TEST(
+-    auto attacker_scope = make_scope(context, identity{"enclave-a", "zone-a"}, identity{"attacker", "zone-b"});
++    auto attacker_scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"attacker", "zone-b"});
+@@ -2144,4 +2144,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"});
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"});
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"});
+@@ -2223,4 +2223,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 333);
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 333);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 333);
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 333);
+@@ -2342,4 +2342,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 108);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 108);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 108);
++    establish(service_b, identity{"domain-a", "zone-a"}, 108);
+@@ -2392,4 +2392,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 109);
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 109);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 109);
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 109);
+@@ -2463,4 +2463,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 106);
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 106);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 106);
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 106);
+@@ -2516,4 +2516,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 107);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 107);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 107);
++    establish(service_b, identity{"domain-a", "zone-a"}, 107);
+@@ -2566,4 +2566,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 101);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 101);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 101);
++    establish(service_b, identity{"domain-a", "zone-a"}, 101);
+@@ -2601,4 +2601,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 202);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 202);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 202);
++    establish(service_b, identity{"domain-a", "zone-a"}, 202);
+@@ -2664,4 +2664,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 222);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 222);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 222);
++    establish(service_b, identity{"domain-a", "zone-a"}, 222);
+@@ -2716,4 +2716,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 232);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 232);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 232);
++    establish(service_b, identity{"domain-a", "zone-a"}, 232);
+@@ -2761,4 +2761,4 @@ TEST(
+-    auto service_owner = make_service("enclave-owner", "zone-owner");
+-    auto service_caller = make_service("enclave-caller", "zone-caller");
+-    const auto owner_context = establish(service_owner, identity{"enclave-caller", "zone-caller"}, 242);
+-    establish(service_caller, identity{"enclave-owner", "zone-owner"}, 242);
++    auto service_owner = make_service("domain-owner", "zone-owner");
++    auto service_caller = make_service("domain-caller", "zone-caller");
++    const auto owner_context = establish(service_owner, identity{"domain-caller", "zone-caller"}, 242);
++    establish(service_caller, identity{"domain-owner", "zone-owner"}, 242);
+@@ -2805,4 +2805,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 252);
+-    establish(service_b, identity{"enclave-a", "zone-a"}, 252);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 252);
++    establish(service_b, identity{"domain-a", "zone-a"}, 252);
+@@ -2854,4 +2854,4 @@ TEST(
+-        auto service_a = make_service("enclave-a", "zone-a");
+-        auto service_b = make_service("enclave-b", "zone-b");
+-        const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, transcript_id);
+-        establish(service_b, identity{"enclave-a", "zone-a"}, transcript_id);
++        auto service_a = make_service("domain-a", "zone-a");
++        auto service_b = make_service("domain-b", "zone-b");
++        const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, transcript_id);
++        establish(service_b, identity{"domain-a", "zone-a"}, transcript_id);
+@@ -2973,4 +2973,4 @@ TEST(
+-    auto service_a = make_service("enclave-a", "zone-a");
+-    auto service_b = make_service("enclave-b", "zone-b");
+-    const auto context_a = establish(service_a, identity{"enclave-b", "zone-b"}, 303);
+-    const auto context_b = establish(service_b, identity{"enclave-a", "zone-a"}, 303);
++    auto service_a = make_service("domain-a", "zone-a");
++    auto service_b = make_service("domain-b", "zone-b");
++    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 303);
++    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 303);
+diff --git a/c++/streaming/attestation/CMakeLists.txt b/c++/streaming/attestation/CMakeLists.txt
+index 9cfa84c..ef161b5 100644
+--- a/c++/streaming/attestation/CMakeLists.txt
++++ b/c++/streaming/attestation/CMakeLists.txt
+@@ -69,0 +70,4 @@ if(CANOPY_BUILD_TEST
++  if(NOT CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
++    target_sources(attestation_stream_test PRIVATE
++                   ${CANOPY_CPP_SOURCE_DIR}/security/attestation/src/backends/fake/fake_backend.cpp)
++  endif()
+diff --git a/c++/streaming/attestation/interfaces/attestation_stream/attestation_stream_config.idl b/c++/streaming/attestation/interfaces/attestation_stream/attestation_stream_config.idl
+index 0182257..104be03 100644
+--- a/c++/streaming/attestation/interfaces/attestation_stream/attestation_stream_config.idl
++++ b/c++/streaming/attestation/interfaces/attestation_stream/attestation_stream_config.idl
+@@ -22 +22 @@ namespace rpc
+-        // selection, policy, quote provider, verifier, and enclave identity
++        // selection, policy, quote provider, verifier, and domain identity
+diff --git a/c++/streaming/attestation/src/stream.cpp b/c++/streaming/attestation/src/stream.cpp
+index f091575..5b9bd7c 100644
+--- a/c++/streaming/attestation/src/stream.cpp
++++ b/c++/streaming/attestation/src/stream.cpp
+@@ -279 +279 @@ namespace streaming::attestation
+-            if (!append_string(out, hello.local_identity.enclave_id))
++            if (!append_string(out, hello.local_identity.security_domain_id))
+@@ -297 +297 @@ namespace streaming::attestation
+-            if (!read_string(payload, offset, hello.local_identity.enclave_id))
++            if (!read_string(payload, offset, hello.local_identity.security_domain_id))
+@@ -340 +340 @@ namespace streaming::attestation
+-            if (!append_string(nonce, subject.enclave_id))
++            if (!append_string(nonce, subject.security_domain_id))
+diff --git a/c++/streaming/attestation/tests/attestation_stream_test.cpp b/c++/streaming/attestation/tests/attestation_stream_test.cpp
+index f746c44..f0de495 100644
+--- a/c++/streaming/attestation/tests/attestation_stream_test.cpp
++++ b/c++/streaming/attestation/tests/attestation_stream_test.cpp
+@@ -59 +59 @@ namespace
+-        std::string enclave_id,
++        std::string security_domain_id,
+@@ -66 +66 @@ namespace
+-        options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
++        options.local_identity = identity{std::move(security_domain_id), std::move(zone_id)};
+@@ -111,2 +111,2 @@ TEST(
+-    auto server_a_service = make_service("enclave-a", "zone-a", true, true);
+-    auto server_b_service = make_service("enclave-b", "zone-b", true, true);
++    auto server_a_service = make_service("domain-a", "zone-a", true, true);
++    auto server_b_service = make_service("domain-b", "zone-b", true, true);
+@@ -136,2 +136,2 @@ TEST(
+-    EXPECT_EQ(a_context.peer_identity.enclave_id, "enclave-b");
+-    EXPECT_EQ(b_context.peer_identity.enclave_id, "enclave-a");
++    EXPECT_EQ(a_context.peer_identity.security_domain_id, "domain-b");
++    EXPECT_EQ(b_context.peer_identity.security_domain_id, "domain-a");
+@@ -162 +162 @@ TEST(
+-    auto server_service = make_service("server-enclave", "server-zone", true, false, true);
++    auto server_service = make_service("server-domain", "server-zone", true, false, true);
+@@ -184,2 +184,2 @@ TEST(
+-    EXPECT_EQ(client_context.peer_identity.enclave_id, "server-enclave");
+-    EXPECT_EQ(server_context.peer_identity.enclave_id, "client-process");
++    EXPECT_EQ(client_context.peer_identity.security_domain_id, "server-domain");
++    EXPECT_EQ(server_context.peer_identity.security_domain_id, "client-process");
+@@ -209 +209 @@ TEST(
+-    auto server_service = make_service("server-enclave", "server-zone", true, false);
++    auto server_service = make_service("server-domain", "server-zone", true, false);
+diff --git a/c++/tests/common/include/common/foo_impl.h b/c++/tests/common/include/common/foo_impl.h
+index 0b549c4..3030e25 100644
+--- a/c++/tests/common/include/common/foo_impl.h
++++ b/c++/tests/common/include/common/foo_impl.h
+@@ -66 +66 @@ namespace marshalled_tests
+-        bool enclave);
++        bool supports_process_local_reference_tests);
+@@ -412 +412 @@ namespace marshalled_tests
+-            // #sgx dynamic cast in an enclave this fails
++            // #sgx dynamic cast in an supports_process_local_reference_tests this fails
+diff --git a/c++/tests/common/include/common/tests.h b/c++/tests/common/include/common/tests.h
+index 5c4c446..25032ab 100644
+--- a/c++/tests/common/include/common/tests.h
++++ b/c++/tests/common/include/common/tests.h
+@@ -114 +114 @@ namespace marshalled_tests
+-        bool enclave);
++        bool supports_process_local_reference_tests);
+@@ -122 +122 @@ namespace marshalled_tests
+-        CO_AWAIT standard_tests(f, lib.get_has_enclave());
++        CO_AWAIT standard_tests(f, lib.supports_process_local_reference_tests());
+@@ -145 +145 @@ namespace marshalled_tests
+-        CO_AWAIT standard_tests(*i_foo_ptr, lib.get_has_enclave());
++        CO_AWAIT standard_tests(*i_foo_ptr, lib.supports_process_local_reference_tests());
+diff --git a/c++/tests/common/include/common/transport_setup_base.h b/c++/tests/common/include/common/transport_setup_base.h
+index 06b4859..5f7d910 100644
+--- a/c++/tests/common/include/common/transport_setup_base.h
++++ b/c++/tests/common/include/common/transport_setup_base.h
+@@ -26,2 +25,0 @@ protected:
+-
+-    const bool has_enclave_ = true;              // NOLINT(misc-non-private-member-variables-in-classes)
+@@ -114 +112 @@ public:
+-    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
++    [[nodiscard]] bool supports_process_local_reference_tests() const { return false; }
+diff --git a/c++/tests/common/src/tests.cpp b/c++/tests/common/src/tests.cpp
+index caf142c..073d777 100644
+--- a/c++/tests/common/src/tests.cpp
++++ b/c++/tests/common/src/tests.cpp
+@@ -107 +107 @@ namespace marshalled_tests
+-        bool enclave)
++        bool supports_process_local_reference_tests)
+@@ -131 +131 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -137 +137 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -143 +143 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -178 +178 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -196 +196 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -212 +212 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -218 +218 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+@@ -231 +231 @@ namespace marshalled_tests
+-        if (!enclave)
++        if (supports_process_local_reference_tests)
+diff --git a/c++/tests/test_host/CMakeLists.txt b/c++/tests/test_host/CMakeLists.txt
+index 8411801..2fbd835 100644
+--- a/c++/tests/test_host/CMakeLists.txt
++++ b/c++/tests/test_host/CMakeLists.txt
+@@ -127,0 +128,4 @@ add_executable(
++if(CANOPY_BUILD_COROUTINE AND NOT CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
++  target_sources(rpc_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/security/attestation/src/backends/fake/fake_backend.cpp)
++endif()
++
+diff --git a/c++/tests/test_host/attested_streaming_transport_poc_suite.cpp b/c++/tests/test_host/attested_streaming_transport_poc_suite.cpp
+index 2c801c8..1f828ff 100644
+--- a/c++/tests/test_host/attested_streaming_transport_poc_suite.cpp
++++ b/c++/tests/test_host/attested_streaming_transport_poc_suite.cpp
+@@ -162 +162 @@ namespace
+-        std::string enclave_id,
++        std::string security_domain_id,
+@@ -169 +169 @@ namespace
+-        options.local_identity = identity{std::move(enclave_id), std::move(zone_id)};
++        options.local_identity = identity{std::move(security_domain_id), std::move(zone_id)};
+@@ -197 +197 @@ namespace
+-            std::string enclave_id,
++            std::string security_domain_id,
+@@ -204 +204 @@ namespace
+-                backend, std::move(enclave_id), std::move(zone_id), send_evidence, require_peer_evidence, allow_unattested_peer);
++                backend, std::move(security_domain_id), std::move(zone_id), send_evidence, require_peer_evidence, allow_unattested_peer);
+@@ -252 +252 @@ namespace
+-                "initiator-enclave",
++                "initiator-domain",
+@@ -259 +259 @@ namespace
+-                "responder-enclave",
++                "responder-domain",
+@@ -1129 +1129 @@ namespace
+-            "service-level-initiator-enclave",
++            "service-level-initiator-domain",
+@@ -1136 +1136 @@ namespace
+-            "service-level-responder-enclave",
++            "service-level-responder-domain",
+@@ -1206 +1206 @@ namespace
+-                initiator_state.context->peer_identity.enclave_id, std::string{"service-level-responder-enclave"});
++                initiator_state.context->peer_identity.security_domain_id, std::string{"service-level-responder-domain"});
+@@ -1211 +1211 @@ namespace
+-                responder_state.context->peer_identity.enclave_id, std::string{"service-level-initiator-enclave"});
++                responder_state.context->peer_identity.security_domain_id, std::string{"service-level-initiator-domain"});
+@@ -1390 +1390 @@ namespace
+-            backend, "concurrent-initiator-enclave", "concurrent-initiator-zone", true, true));
++            backend, "concurrent-initiator-domain", "concurrent-initiator-zone", true, true));
+@@ -1392 +1392 @@ namespace
+-            backend, "concurrent-responder-enclave", "concurrent-responder-zone", true, true));
++            backend, "concurrent-responder-domain", "concurrent-responder-zone", true, true));
+@@ -1522 +1522 @@ namespace
+-            = make_test_attestation_service(backend, "stale-route-local-enclave", "stale-route-local-zone", true, true);
++            = make_test_attestation_service(backend, "stale-route-local-domain", "stale-route-local-zone", true, true);
+@@ -1565 +1565 @@ namespace
+-            *attestation_service, identity{"superseding-peer-enclave", "superseding-peer-zone"}, 77);
++            *attestation_service, identity{"superseding-peer-domain", "superseding-peer-zone"}, 77);
+@@ -1583 +1583 @@ namespace
+-        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"superseding-peer-enclave"});
++        CORO_ASSERT_EQ(route_state.context->peer_identity.security_domain_id, std::string{"superseding-peer-domain"});
+@@ -1601 +1601 @@ namespace
+-            backend, "inbound-failed-local-enclave", "inbound-failed-local-zone", true, true);
++            backend, "inbound-failed-local-domain", "inbound-failed-local-zone", true, true);
+@@ -1603 +1603 @@ namespace
+-            *attestation_service, identity{"existing-peer-enclave", "existing-peer-zone"}, 91);
++            *attestation_service, identity{"existing-peer-domain", "existing-peer-zone"}, 91);
+@@ -1609 +1609 @@ namespace
+-        request.claimant = rpc::attestation_identity{"rejected-peer-enclave", "rejected-peer-zone"};
++        request.claimant = rpc::attestation_identity{"rejected-peer-domain", "rejected-peer-zone"};
+@@ -1624 +1624 @@ namespace
+-        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"existing-peer-enclave"});
++        CORO_ASSERT_EQ(route_state.context->peer_identity.security_domain_id, std::string{"existing-peer-domain"});
+@@ -1639 +1639 @@ namespace
+-            backend, "inbound-no-evidence-local-enclave", "inbound-no-evidence-local-zone", false, false, true);
++            backend, "inbound-no-evidence-local-domain", "inbound-no-evidence-local-zone", false, false, true);
+@@ -1643 +1643 @@ namespace
+-            *attestation_service, identity{"existing-attested-peer-enclave", "existing-attested-peer-zone"}, 92);
++            *attestation_service, identity{"existing-attested-peer-domain", "existing-attested-peer-zone"}, 92);
+@@ -1649 +1649 @@ namespace
+-        request.claimant = rpc::attestation_identity{"unattested-peer-enclave", "unattested-peer-zone"};
++        request.claimant = rpc::attestation_identity{"unattested-peer-domain", "unattested-peer-zone"};
+@@ -1663 +1663 @@ namespace
+-        CORO_ASSERT_EQ(route_state.context->peer_identity.enclave_id, std::string{"existing-attested-peer-enclave"});
++        CORO_ASSERT_EQ(route_state.context->peer_identity.security_domain_id, std::string{"existing-attested-peer-domain"});
+@@ -1847 +1847 @@ namespace
+-                backend, "add-ref-route-subject-local-enclave", "add-ref-route-subject-local-zone", true, true);
++                backend, "add-ref-route-subject-local-domain", "add-ref-route-subject-local-zone", true, true);
+@@ -1849 +1849 @@ namespace
+-                *attestation_service, identity{"add-ref-route-subject-caller-enclave", "caller-zone"}, 93);
++                *attestation_service, identity{"add-ref-route-subject-caller-domain", "caller-zone"}, 93);
+@@ -2041 +2041 @@ namespace
+-            "enclave-local-reference-control", local_zone, adjacent_zone, scheduler);
++            "domain-local-reference-control", local_zone, adjacent_zone, scheduler);
+@@ -2098 +2098 @@ namespace
+-            "enclave-local-metadata-control", local_zone, adjacent_zone, scheduler);
++            "domain-local-metadata-control", local_zone, adjacent_zone, scheduler);
+@@ -2101,2 +2101,2 @@ namespace
+-        auto local_identity = identity{"enclave-local-metadata-local", "enclave-local-metadata-local-zone"};
+-        auto referenced_identity = identity{"enclave-local-metadata-referenced", "enclave-local-metadata-referenced-zone"};
++        auto local_identity = identity{"domain-local-metadata-local", "domain-local-metadata-local-zone"};
++        auto referenced_identity = identity{"domain-local-metadata-referenced", "domain-local-metadata-referenced-zone"};
+@@ -2104 +2104 @@ namespace
+-            = make_test_attestation_service(backend, local_identity.enclave_id, local_identity.zone_id, true, true);
++            = make_test_attestation_service(backend, local_identity.security_domain_id, local_identity.zone_id, true, true);
+@@ -2173 +2173 @@ namespace
+-        auto parent_service = rpc::root_service::create("enclave-local-wrapper-parent", parent_zone, scheduler);
++        auto parent_service = rpc::root_service::create("domain-local-wrapper-parent", parent_zone, scheduler);
+@@ -2178 +2178 @@ namespace
+-            "enclave-local-child-transport", parent_service);
++            "domain-local-child-transport", parent_service);
+@@ -2194 +2194 @@ namespace
+-            "enclave-local-parent-transport", child_transport);
++            "domain-local-parent-transport", child_transport);
+@@ -2203 +2203 @@ namespace
+-            "enclave-local-wrapper-child", child_transport, host_ptr);
++            "domain-local-wrapper-child", child_transport, host_ptr);
+@@ -2254,2 +2254,2 @@ namespace
+-        auto initiator_identity = identity{"protected-runtime-initiator-enclave", "protected-runtime-initiator-zone"};
+-        auto responder_identity = identity{"protected-runtime-responder-enclave", "protected-runtime-responder-zone"};
++        auto initiator_identity = identity{"protected-runtime-initiator-domain", "protected-runtime-initiator-zone"};
++        auto responder_identity = identity{"protected-runtime-responder-domain", "protected-runtime-responder-zone"};
+@@ -2257 +2257 @@ namespace
+-            backend, initiator_identity.enclave_id, initiator_identity.zone_id, true, true);
++            backend, initiator_identity.security_domain_id, initiator_identity.zone_id, true, true);
+@@ -2259 +2259 @@ namespace
+-            backend, responder_identity.enclave_id, responder_identity.zone_id, true, true);
++            backend, responder_identity.security_domain_id, responder_identity.zone_id, true, true);
+@@ -2405,2 +2405,2 @@ namespace
+-        auto initiator_identity = identity{"protected-control-initiator-enclave", "protected-control-initiator-zone"};
+-        auto responder_identity = identity{"protected-control-responder-enclave", "protected-control-responder-zone"};
++        auto initiator_identity = identity{"protected-control-initiator-domain", "protected-control-initiator-zone"};
++        auto responder_identity = identity{"protected-control-responder-domain", "protected-control-responder-zone"};
+@@ -2408 +2408 @@ namespace
+-            backend, initiator_identity.enclave_id, initiator_identity.zone_id, true, true);
++            backend, initiator_identity.security_domain_id, initiator_identity.zone_id, true, true);
+@@ -2897,4 +2897,4 @@ template<class T> CORO_TASK(bool) coro_rpc_round_trip_over_attested_stream(T& li
+-    CORO_ASSERT_EQ(initiator_context.local_identity.enclave_id, std::string{"initiator-enclave"});
+-    CORO_ASSERT_EQ(initiator_context.peer_identity.enclave_id, std::string{"responder-enclave"});
+-    CORO_ASSERT_EQ(responder_context.local_identity.enclave_id, std::string{"responder-enclave"});
+-    CORO_ASSERT_EQ(responder_context.peer_identity.enclave_id, std::string{"initiator-enclave"});
++    CORO_ASSERT_EQ(initiator_context.local_identity.security_domain_id, std::string{"initiator-domain"});
++    CORO_ASSERT_EQ(initiator_context.peer_identity.security_domain_id, std::string{"responder-domain"});
++    CORO_ASSERT_EQ(responder_context.local_identity.security_domain_id, std::string{"responder-domain"});
++    CORO_ASSERT_EQ(responder_context.peer_identity.security_domain_id, std::string{"initiator-domain"});
+diff --git a/c++/transports/direct/tests/transport/tests/direct/setup.h b/c++/transports/direct/tests/transport/tests/direct/setup.h
+index 9520222..6e16238 100644
+--- a/c++/transports/direct/tests/transport/tests/direct/setup.h
++++ b/c++/transports/direct/tests/transport/tests/direct/setup.h
+@@ -23,2 +22,0 @@ template<bool UseHostInChild> class in_memory_setup
+-
+-    const bool has_enclave_ = false;
+@@ -36 +34 @@ public:
+-    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
++    [[nodiscard]] bool supports_process_local_reference_tests() const { return true; }
+diff --git a/c++/transports/sgx_blocking/tests/transport/tests/sgx_blocking/setup.h b/c++/transports/sgx_blocking/tests/transport/tests/sgx_blocking/setup.h
+index 29af009..69c8a21 100644
+--- a/c++/transports/sgx_blocking/tests/transport/tests/sgx_blocking/setup.h
++++ b/c++/transports/sgx_blocking/tests/transport/tests/sgx_blocking/setup.h
+@@ -35,2 +34,0 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
+-
+-    const bool has_enclave_ = true;
+@@ -65 +63 @@ public:
+-    bool get_has_enclave() const { return has_enclave_; }
++    bool supports_process_local_reference_tests() const { return false; }
+diff --git a/c++/transports/sgx_coroutine/enclave/src/service.cpp b/c++/transports/sgx_coroutine/enclave/src/service.cpp
+index 550b195..b5c85da 100644
+--- a/c++/transports/sgx_coroutine/enclave/src/service.cpp
++++ b/c++/transports/sgx_coroutine/enclave/src/service.cpp
+@@ -83 +83 @@ namespace rpc
+-            out.enclave_id = value.enclave_id;
++            out.security_domain_id = value.security_domain_id;
+@@ -94 +94 @@ namespace rpc
+-            out.enclave_id = value.enclave_id;
++            out.security_domain_id = value.security_domain_id;
+diff --git a/interfaces/attestation/route_attestation_protocol.idl b/interfaces/attestation/route_attestation_protocol.idl
+index 573c3b8..13275e8 100644
+--- a/interfaces/attestation/route_attestation_protocol.idl
++++ b/interfaces/attestation/route_attestation_protocol.idl
+@@ -12,2 +12,2 @@ namespace rpc
+-        // enclave_id is the security bucket used by the attestation service. Several
+-        // zones may share one enclave identity. zone_id is still included so the RPC
++        // security_domain_id is the security bucket used by the attestation service. Several
++        // zones may share one security domain identity. zone_id is still included so the RPC
+@@ -18,2 +18,2 @@ namespace rpc
+-            [description="Security bucket identifier used by the attestation service. Several Canopy zones may share this identity when one enclave owns them."]
+-            std::string enclave_id;
++            [description="Security bucket identifier used by the attestation service. Several Canopy zones may share this identity when one security domain owns them."]
++            std::string security_domain_id;

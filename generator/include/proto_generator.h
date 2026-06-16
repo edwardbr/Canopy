@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <functional>
 #include <string>
+#include <vector>
 
 class class_entity;
 
@@ -27,6 +28,8 @@ namespace proto_generator
         std::string& first,
         std::string& second);
 
+    std::vector<std::string> split_template_args(const std::string& args);
+
     bool is_map_type(
         const std::string& type,
         std::string& prefix);
@@ -34,6 +37,16 @@ namespace proto_generator
     bool is_sequence_type(
         const std::string& type,
         std::string& prefix);
+
+    bool is_optional_type(
+        const std::string& type,
+        std::string& inner_type);
+
+    std::string optional_inner_type(const std::string& type);
+
+    bool is_variant_type(
+        const std::string& type,
+        std::vector<std::string>& alternative_types);
 
     std::string cpp_scalar_to_proto_type(const std::string& type);
 
@@ -44,6 +57,8 @@ namespace proto_generator
     bool is_enum_type(
         const class_entity& lib,
         const std::string& type_name);
+
+    bool is_json_dom_type(const std::string& type_name);
 
     std::string cpp_type_to_proto_type(const std::string& cpp_type);
 

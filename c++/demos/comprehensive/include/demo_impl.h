@@ -18,8 +18,10 @@
 #include <memory>
 #include <atomic>
 #include <functional>
+#include <utility>
 
 #include <comprehensive/comprehensive.h>
+#include <rpc_objects/calculator/calculator_impl.h>
 #include <transports/local/transport.h>
 
 namespace comprehensive
@@ -27,73 +29,12 @@ namespace comprehensive
     namespace v1
     {
         // ============================================================================
-        // Calculator Implementation (Basic RPC)
-        // ============================================================================
-        class calculator_impl : public rpc::base<calculator_impl, i_calculator>,
-                                public rpc::enable_shared_from_this<calculator_impl>
-        {
-            std::weak_ptr<rpc::service> this_service_;
-
-        public:
-            calculator_impl()
-                : this_service_()
-            {
-            }
-
-            calculator_impl(std::shared_ptr<rpc::service> service)
-                : this_service_(service)
-            {
-            }
-
-            CORO_TASK(int)
-            add(int a,
-                int b,
-                int& sum) override
-            {
-                sum = a + b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(int)
-            subtract(
-                int a,
-                int b,
-                int& difference) override
-            {
-                difference = a - b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(int)
-            multiply(
-                int a,
-                int b,
-                int& product) override
-            {
-                product = a * b;
-                CO_RETURN rpc::error::OK();
-            }
-
-            CORO_TASK(int)
-            divide(
-                int a,
-                int b,
-                int& quotient) override
-            {
-                if (b == 0)
-                    CO_RETURN rpc::error::INVALID_DATA();
-                quotient = a / b;
-                CO_RETURN rpc::error::OK();
-            }
-        };
-
-        // ============================================================================
         // Data Processor Implementation (Serialization Demo)
         // ============================================================================
         class data_processor_impl : public rpc::base<data_processor_impl, i_data_processor>
         {
         public:
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             process_vector(
                 const std::vector<int>& input,
                 std::vector<int>& output) override
@@ -106,7 +47,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             process_map(
                 const std::map<
                     std::string,
@@ -123,7 +64,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             process_struct(
                 const std::string& input,
                 std::string& output) override
@@ -132,7 +73,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             echo_binary(
                 const std::vector<uint8_t>& data,
                 std::vector<uint8_t>& response) override
@@ -152,14 +93,14 @@ namespace comprehensive
             mutable std::mutex mutex_;
 
         public:
-            CORO_TASK(int) on_progress(int percentage) override
+            CORO_TASK(comprehensive_error) on_progress(int percentage) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 received_progress_.push_back(percentage);
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) on_data_update(const std::string& data) override
+            CORO_TASK(comprehensive_error) on_data_update(const std::string& data) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 received_data_.push_back(data);
@@ -177,15 +118,18 @@ namespace comprehensive
             bool running_{false};
 
         public:
-            CORO_TASK(int) set_callback_receiver(rpc::shared_ptr<i_callback_receiver> receiver) override
+            CORO_TASK(comprehensive_error) set_callback_receiver(rpc::shared_ptr<i_callback_receiver> receiver) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 parent_callback_ = receiver;
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) start_work(int iterations) override
+            CORO_TASK(comprehensive_error) start_work(int iterations) override
             {
+                if (iterations <= 0)
+                    CO_RETURN comprehensive_error::INVALID_ARGUMENT;
+
                 running_ = true;
                 for (int i = 0; i < iterations && running_; ++i)
                 {
@@ -215,7 +159,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) send_data(const std::string& data) override
+            CORO_TASK(comprehensive_error) send_data(const std::string& data) override
             {
                 if (parent_callback_)
                 {
@@ -246,19 +190,19 @@ namespace comprehensive
 
             ~managed_object_impl() override { --live_count_; }
 
-            CORO_TASK(int) get_object_id(uint64_t& id) override
+            CORO_TASK(comprehensive_error) get_object_id(uint64_t& id) override
             {
                 id = object_id_;
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) get_ref_count(int& count) override
+            CORO_TASK(comprehensive_error) get_ref_count(int& count) override
             {
                 count = ref_count_;
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             perform_operation(
                 const std::string& operation,
                 std::string& output) override
@@ -268,7 +212,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) ping() override { CO_RETURN rpc::error::OK(); }
+            CORO_TASK(comprehensive_error) ping() override { CO_RETURN rpc::error::OK(); }
         };
 
         std::atomic<uint64_t> managed_object_impl::id_generator{0};
@@ -282,7 +226,7 @@ namespace comprehensive
             mutable std::mutex mutex_;
 
         public:
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             create_object(
                 uint64_t& object_id,
                 rpc::shared_ptr<i_managed_object>& obj) override
@@ -299,7 +243,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             get_object(
                 uint64_t object_id,
                 rpc::shared_ptr<i_managed_object>& obj) override
@@ -311,10 +255,10 @@ namespace comprehensive
                     obj = it->second;
                     CO_RETURN rpc::error::OK();
                 }
-                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                CO_RETURN comprehensive_error::OBJECT_NOT_FOUND;
             }
 
-            CORO_TASK(int) release_object(uint64_t object_id) override
+            CORO_TASK(comprehensive_error) release_object(uint64_t object_id) override
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 auto it = objects_.find(object_id);
@@ -323,7 +267,7 @@ namespace comprehensive
                     objects_.erase(it);
                     CO_RETURN rpc::error::OK();
                 }
-                CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                CO_RETURN comprehensive_error::OBJECT_NOT_FOUND;
             }
         };
 
@@ -339,44 +283,44 @@ namespace comprehensive
 
         public:
             demo_service_impl(
-                const char* name,
+                std::string name,
                 std::shared_ptr<rpc::service> service)
-                : name_(name)
+                : name_(std::move(name))
                 , this_service_(service)
             {
             }
 
             demo_service_impl(
-                const char* name,
+                std::string name,
                 const std::shared_ptr<rpc::child_service>& service)
-                : name_(name)
+                : name_(std::move(name))
                 , this_service_(service)
             {
             }
 
-            CORO_TASK(int) get_zone_id(uint64_t& zone_id) override
+            CORO_TASK(comprehensive_error) get_zone_id(uint64_t& zone_id) override
             {
                 auto service = this_service_.lock();
                 if (!service)
-                    CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                    CO_RETURN comprehensive_error::SERVICE_UNAVAILABLE;
                 zone_id = service->get_zone_id().get_subnet();
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) get_name(std::string& name) override
+            CORO_TASK(comprehensive_error) get_name(std::string& name) override
             {
                 name = name_;
                 CO_RETURN rpc::error::OK();
             }
 
-            CORO_TASK(int) create_child_zone(rpc::shared_ptr<i_demo_service>& child_service_ptr) override
+            CORO_TASK(comprehensive_error)
+            create_child_zone(rpc::shared_ptr<i_demo_service>& child_service_ptr) override
             {
                 auto service = this_service_.lock();
                 if (!service)
-                    CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                    CO_RETURN comprehensive_error::SERVICE_UNAVAILABLE;
 
                 auto child_transport = std::make_shared<rpc::local::child_transport>("child", service);
-                auto zone_name = name_ + "_child_" + std::to_string(child_transport->get_adjacent_zone_id().get_subnet());
                 child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
                     [](const rpc::shared_ptr<i_demo_service>& parent,
                         const std::shared_ptr<rpc::child_service>& child_service_ptr)
@@ -384,24 +328,26 @@ namespace comprehensive
                     {
                         CO_RETURN rpc::service_connect_result<i_demo_service>{rpc::error::OK(),
                             rpc::shared_ptr<i_demo_service>(
-                                new demo_service_impl(child_service_ptr->get_name().c_str(), child_service_ptr))};
+                                new demo_service_impl(child_service_ptr->get_name(), child_service_ptr))};
                     });
 
                 auto connect_result = CO_AWAIT service->connect_to_zone<i_demo_service, i_demo_service>(
-                    zone_name.c_str(), child_transport, rpc::static_pointer_cast<i_demo_service>(shared_from_this()));
+                    name_ + "_child_" + std::to_string(child_transport->get_adjacent_zone_id().get_subnet()),
+                    child_transport,
+                    rpc::static_pointer_cast<i_demo_service>(shared_from_this()));
                 child_service_ptr = std::move(connect_result.output_interface);
                 auto ret = connect_result.error_code;
 
                 CO_RETURN ret;
             }
 
-            CORO_TASK(int)
+            CORO_TASK(comprehensive_error)
             echo_through_child(
                 const std::string& message,
                 std::string& response) override
             {
                 if (!child_service_)
-                    CO_RETURN rpc::error::OBJECT_NOT_FOUND();
+                    CO_RETURN comprehensive_error::OBJECT_NOT_FOUND;
 
                 std::string child_response;
                 auto err = CO_AWAIT child_service_->get_name(child_response);
@@ -423,9 +369,9 @@ namespace comprehensive
 {
     namespace v1
     {
-        inline rpc::shared_ptr<i_calculator> create_calculator()
+        inline rpc::shared_ptr<::calculator::v1::i_calculator> create_calculator()
         {
-            return rpc::shared_ptr<i_calculator>(new calculator_impl());
+            return ::calculator::v1::make_calculator();
         }
 
         inline rpc::shared_ptr<i_data_processor> create_data_processor()
@@ -449,17 +395,17 @@ namespace comprehensive
         }
 
         inline rpc::shared_ptr<i_demo_service> create_demo_service(
-            const char* name,
+            std::string name,
             std::shared_ptr<rpc::service> service)
         {
-            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(name, service));
+            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(std::move(name), service));
         }
 
         inline rpc::shared_ptr<i_demo_service> create_demo_service(
-            const char* name,
+            std::string name,
             const std::shared_ptr<rpc::child_service>& service)
         {
-            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(name, service));
+            return rpc::shared_ptr<i_demo_service>(new demo_service_impl(std::move(name), service));
         }
     }
 }

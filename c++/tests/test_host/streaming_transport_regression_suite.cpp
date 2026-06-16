@@ -5,6 +5,11 @@
 
 #include <rpc/rpc.h>
 #include <common/tests.h>
+#include <array>
+#include <cstring>
+#include <deque>
+#include <mutex>
+#include <optional>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -12,9 +17,26 @@
 #include "test_globals.h"
 
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <transport/tests/streaming_tcp/setup.h>
+#  include <streaming/spsc_queue/factory.h>
+#  include <transport/tests/streaming_layered_spsc/setup.h>
+#  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
+#  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
-#  include <transport/tests/streaming_iouring/setup.h>
+#  ifdef CANOPY_BUILD_COMPRESSION
+#    include <streaming/compression/stream.h>
+#    include <streaming/layer_factory/factory.h>
+#  endif
+#  ifdef CANOPY_BUILD_WEBSOCKET
+#    ifdef CANOPY_BUILD_HTTP_SERVER
+#      include <canopy/http_server/http_client_connection.h>
+#      include <canopy/http_server/static_webpage_delivery.h>
+#    endif
+#    include <common/foo_impl.h>
+#    include <rpc/internal/serialiser.h>
+#    include <streaming/websocket/stream.h>
+#    include <transports/untrusted_web/factory.h>
+#    include <websocket/websocket_protocol.h>
+#  endif
 #endif
 
 #include "type_test_fixture.h"
@@ -24,15 +46,1622 @@ using namespace marshalled_tests;
 template<class T> using streaming_transport_regression_test = type_test<T>;
 
 #ifdef CANOPY_BUILD_COROUTINE
-// Keep this suite on the in-process SPSC streaming path for now. TCP and io_uring
-// need separate host-level coverage once their heavier setup/teardown characteristics
-// are accounted for in the test harness.
+namespace
+{
+    template<class Buffer> rpc::byte_span as_byte_span(const Buffer& buffer)
+    {
+        return rpc::byte_span{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
+    }
+
+#  if defined(CANOPY_BUILD_WEBSOCKET) || defined(CANOPY_BUILD_COMPRESSION)
+    class scripted_stream final : public streaming::stream
+    {
+    public:
+        void push(std::vector<uint8_t> payload)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            incoming_.push_back(chunk{std::move(payload), 0});
+        }
+
+        void push(std::vector<char> payload) { push(std::vector<uint8_t>(payload.begin(), payload.end())); }
+
+        [[nodiscard]] auto sent_messages() const -> std::vector<std::vector<uint8_t>>
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return sent_;
+        }
+
+        auto receive(
+            rpc::mutable_byte_span buffer,
+            std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
+            -> CORO_TASK(::streaming::receive_result) override
+        {
+            std::ignore = timeout;
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (closed_)
+                CO_RETURN std::make_pair(rpc::io_status{FLD(type) rpc::io_status::kind::closed}, rpc::mutable_byte_span{});
+            if (incoming_.empty())
+                CO_RETURN std::make_pair(rpc::io_status{FLD(type) rpc::io_status::kind::timeout}, rpc::mutable_byte_span{});
+
+            auto& front = incoming_.front();
+            auto available = front.payload.size() - front.offset;
+            auto to_copy = std::min(available, buffer.size());
+            std::memcpy(buffer.data(), front.payload.data() + front.offset, to_copy);
+            front.offset += to_copy;
+            if (front.offset >= front.payload.size())
+                incoming_.pop_front();
+
+            CO_RETURN std::make_pair(rpc::io_status{FLD(type) rpc::io_status::kind::ok}, buffer.subspan(0, to_copy));
+        }
+
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (closed_)
+                CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::closed};
+            const auto* begin = reinterpret_cast<const uint8_t*>(buffer.data());
+            sent_.emplace_back(begin, begin + buffer.size());
+            CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::ok};
+        }
+
+        [[nodiscard]] bool is_closed() const override
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return closed_;
+        }
+
+        auto set_closed() -> CORO_TASK(void) override
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            closed_ = true;
+            CO_RETURN;
+        }
+
+        [[nodiscard]] auto get_peer_info() const -> streaming::peer_info override { return {}; }
+
+    private:
+        struct chunk
+        {
+            std::vector<uint8_t> payload;
+            size_t offset{0};
+        };
+
+        mutable std::mutex mutex_;
+        std::deque<chunk> incoming_;
+        std::vector<std::vector<uint8_t>> sent_;
+        bool closed_{false};
+    };
+#  endif
+
+#  ifdef CANOPY_BUILD_WEBSOCKET
+    auto make_test_scheduler() -> std::shared_ptr<coro::scheduler>
+    {
+        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+                .pool = coro::thread_pool::options{.thread_count = 1}}));
+    }
+
+    template<class Predicate>
+    bool process_until(
+        const std::shared_ptr<coro::scheduler>& scheduler,
+        Predicate predicate,
+        int iterations = 3000)
+    {
+        for (int i = 0; i < iterations && !predicate(); ++i)
+            scheduler->process_events(std::chrono::milliseconds{1});
+        return predicate();
+    }
+
+    auto make_client_frame(
+        uint8_t opcode,
+        const std::vector<uint8_t>& payload,
+        bool masked = true,
+        bool fin = true,
+        bool rsv1 = false) -> std::vector<uint8_t>
+    {
+        std::vector<uint8_t> frame;
+        frame.push_back(static_cast<uint8_t>((fin ? 0x80 : 0x00) | (rsv1 ? 0x40 : 0x00) | (opcode & 0x0f)));
+        const auto mask_bit = masked ? 0x80 : 0x00;
+        if (payload.size() <= 125)
+        {
+            frame.push_back(static_cast<uint8_t>(mask_bit | payload.size()));
+        }
+        else if (payload.size() <= 0xffff)
+        {
+            frame.push_back(static_cast<uint8_t>(mask_bit | 126));
+            frame.push_back(static_cast<uint8_t>((payload.size() >> 8) & 0xff));
+            frame.push_back(static_cast<uint8_t>(payload.size() & 0xff));
+        }
+        else
+        {
+            frame.push_back(static_cast<uint8_t>(mask_bit | 127));
+            for (int shift = 56; shift >= 0; shift -= 8)
+                frame.push_back(static_cast<uint8_t>((static_cast<uint64_t>(payload.size()) >> shift) & 0xff));
+        }
+
+        const std::array<uint8_t, 4> mask{{0x12, 0x34, 0x56, 0x78}};
+        if (masked)
+        {
+            frame.insert(frame.end(), mask.begin(), mask.end());
+            for (size_t i = 0; i < payload.size(); ++i)
+                frame.push_back(static_cast<uint8_t>(payload[i] ^ mask[i % mask.size()]));
+        }
+        else
+        {
+            frame.insert(frame.end(), payload.begin(), payload.end());
+        }
+        return frame;
+    }
+
+    constexpr rpc::encoding untrusted_web_test_encoding()
+    {
+#    ifdef CANOPY_WEBSOCKET_ENCODING
+        return CANOPY_WEBSOCKET_ENCODING;
+#    else
+        return CANOPY_DEFAULT_ENCODING;
+#    endif
+    }
+
+    template<
+        class OutputBlob = std::vector<char>,
+        class T>
+    OutputBlob encode_untrusted_web_message(const T& value)
+    {
+        return rpc::serialise<OutputBlob>(value, untrusted_web_test_encoding());
+    }
+
+    template<class T>
+    bool decode_untrusted_web_message(
+        const std::vector<uint8_t>& payload,
+        T& value)
+    {
+        return rpc::deserialise(untrusted_web_test_encoding(), rpc::byte_span{payload}, value).empty();
+    }
+
+    auto make_handshake_message(uint64_t remote_object_id = 1) -> std::vector<uint8_t>
+    {
+        websocket_protocol::v1::connect_request request;
+        request.inbound_interface_id = yyy::i_host::get_id(rpc::get_version());
+        request.outbound_interface_id = yyy::i_example::get_id(rpc::get_version());
+        request.remote_object_id.object_id = remote_object_id;
+
+        websocket_protocol::v1::envelope envelope;
+        envelope.id = 1;
+        envelope.type = websocket_protocol::v1::message_type::handshake;
+        envelope.data = encode_untrusted_web_message(request);
+        auto bytes = encode_untrusted_web_message<std::vector<uint8_t>>(envelope);
+        return bytes;
+    }
+
+    auto make_envelope_message(
+        websocket_protocol::v1::message_type type,
+        std::vector<char> data = {},
+        uint64_t id = 2) -> std::vector<uint8_t>
+    {
+        websocket_protocol::v1::envelope envelope;
+        envelope.id = id;
+        envelope.type = type;
+        envelope.data = std::move(data);
+        return encode_untrusted_web_message<std::vector<uint8_t>>(envelope);
+    }
+
+    auto make_untrusted_web_request_message(
+        const rpc::zone_address_args& destination,
+        websocket_protocol::v1::message_type type,
+        bool inject_back_channel,
+        size_t payload_bytes = 0,
+        uint64_t id = 2) -> std::vector<uint8_t>
+    {
+        websocket_protocol::v1::request request;
+        request.encoding = untrusted_web_test_encoding();
+        request.tag = 77;
+        request.destination_zone_id = destination;
+        request.interface_id = yyy::i_example::get_id(rpc::get_version());
+        request.method_id = 999999;
+        request.data.resize(payload_bytes, 0x42);
+
+        if (inject_back_channel)
+        {
+            rpc::back_channel_entry injected;
+            injected.type_id = 0x1234;
+            injected.payload = {0xde, 0xad, 0xbe, 0xef};
+            request.back_channel.push_back(std::move(injected));
+        }
+
+        return make_envelope_message(type, encode_untrusted_web_message(request), id);
+    }
+
+    auto make_back_channel_injection_message(const rpc::zone_address_args& destination) -> std::vector<uint8_t>
+    {
+        return make_untrusted_web_request_message(destination, websocket_protocol::v1::message_type::send, true);
+    }
+
+    auto parse_handshake_complete_destination(const std::vector<std::vector<uint8_t>>& sent)
+        -> std::optional<rpc::zone_address_args>
+    {
+        for (const auto& raw : sent)
+        {
+            websocket_protocol::v1::envelope envelope;
+            if (!decode_untrusted_web_message(raw, envelope))
+                continue;
+            if (envelope.type != websocket_protocol::v1::message_type::handshake_complete)
+                continue;
+
+            websocket_protocol::v1::connect_response response;
+            if (!rpc::deserialise(untrusted_web_test_encoding(), rpc::byte_span{envelope.data}, response).empty())
+                return std::nullopt;
+            return response.outbound_remote_object;
+        }
+        return std::nullopt;
+    }
+
+    auto parse_response_with_id(
+        const std::vector<std::vector<uint8_t>>& sent,
+        uint64_t id) -> std::optional<websocket_protocol::v1::response>
+    {
+        for (const auto& raw : sent)
+        {
+            websocket_protocol::v1::envelope envelope;
+            if (!decode_untrusted_web_message(raw, envelope))
+                continue;
+            if (envelope.type != websocket_protocol::v1::message_type::response || envelope.id != id)
+                continue;
+
+            websocket_protocol::v1::response response;
+            if (!rpc::deserialise(untrusted_web_test_encoding(), rpc::byte_span{envelope.data}, response).empty())
+                return std::nullopt;
+            return response;
+        }
+        return std::nullopt;
+    }
+
+    template<class Factory>
+    auto run_untrusted_web_accept(
+        std::shared_ptr<scripted_stream> stream,
+        rpc::untrusted_web::transport_settings settings,
+        std::shared_ptr<rpc::service> service,
+        std::shared_ptr<std::atomic_bool> done,
+        std::shared_ptr<rpc::untrusted_web::accept_result> accepted,
+        Factory factory) -> CORO_TASK(void)
+    {
+        *accepted = CO_AWAIT rpc::untrusted_web::accept_rpc<yyy::i_host, yyy::i_example>(
+            stream, std::move(factory), settings, service);
+        done->store(true, std::memory_order_release);
+        CO_RETURN;
+    }
+
+    template<class Factory>
+    auto start_untrusted_web_accept(
+        const std::shared_ptr<coro::scheduler>& scheduler,
+        const std::shared_ptr<scripted_stream>& stream,
+        rpc::untrusted_web::transport_settings settings,
+        std::shared_ptr<std::atomic_bool> done,
+        std::shared_ptr<rpc::untrusted_web::accept_result> accepted,
+        Factory factory) -> std::shared_ptr<rpc::service>
+    {
+        auto service = rpc::root_service::create("untrusted_web_penetration", rpc::DEFAULT_PREFIX, scheduler);
+        RPC_ASSERT(scheduler->spawn_detached(run_untrusted_web_accept(
+            stream, std::move(settings), service, std::move(done), std::move(accepted), std::move(factory))));
+        return service;
+    }
+
+    auto make_untrusted_web_example_factory(std::shared_ptr<std::atomic_bool> handler_called)
+    {
+        return [handler_called](
+                   const rpc::shared_ptr<yyy::i_host>& remote_host,
+                   const std::shared_ptr<rpc::service>& service) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            handler_called->store(true, std::memory_order_release);
+            auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service, remote_host));
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
+        };
+    }
+
+#    ifdef CANOPY_BUILD_HTTP_SERVER
+    auto websocket_upgrade_request(
+        std::string method = "GET",
+        std::string key = "dGhlIHNhbXBsZSBub25jZQ==",
+        std::string version = "13",
+        std::string connection = "keep-alive, Upgrade",
+        std::string extra_headers = {}) -> std::string
+    {
+        return method + " /rpc HTTP/1.1\r\n" + "Host: example.test\r\n" + "Upgrade: websocket\r\n"
+               + "Connection: " + connection + "\r\n" + "Sec-WebSocket-Key: " + key + "\r\n"
+               + "Sec-WebSocket-Version: " + version + "\r\n" + extra_headers + "\r\n";
+    }
+
+    auto run_http_upgrade_request(
+        const std::string& wire_request,
+        std::shared_ptr<std::atomic_bool> upgrade_handler_called,
+        canopy::http_server::client_connection_limits limits = {}) -> std::vector<std::vector<uint8_t>>
+    {
+        auto stream = std::make_shared<scripted_stream>();
+        stream->push(std::vector<uint8_t>(wire_request.begin(), wire_request.end()));
+
+        canopy::http_server::handler_set handlers;
+        handlers.websocket_upgrade_handler
+            = [upgrade_handler_called](
+                  const canopy::http_server::request& request,
+                  std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
+        {
+            std::ignore = request;
+            std::ignore = websocket_stream;
+            upgrade_handler_called->store(true, std::memory_order_release);
+            CO_RETURN nullptr;
+        };
+
+        canopy::http_server::client_connection connection(stream, std::move(handlers), limits);
+        (void)coro::sync_wait(connection.handle());
+        return stream->sent_messages();
+    }
+
+    auto http_request(
+        std::string path,
+        std::string extra_headers = {}) -> std::string
+    {
+        return "GET " + path + " HTTP/1.1\r\n" + "Host: example.test\r\n" + "Connection: close\r\n" + extra_headers + "\r\n";
+    }
+
+    auto run_http_request(
+        const std::string& wire_request,
+        canopy::http_server::handler_set handlers,
+        canopy::http_server::client_connection_limits limits = {}) -> std::vector<std::vector<uint8_t>>
+    {
+        auto stream = std::make_shared<scripted_stream>();
+        stream->push(std::vector<uint8_t>(wire_request.begin(), wire_request.end()));
+
+        canopy::http_server::client_connection connection(stream, std::move(handlers), limits);
+        (void)coro::sync_wait(connection.handle());
+        return stream->sent_messages();
+    }
+
+    auto run_http_rest_response(
+        const std::string& wire_request,
+        canopy::http_server::response response) -> std::vector<std::vector<uint8_t>>
+    {
+        canopy::http_server::handler_set handlers;
+        handlers.rest_handler = [response = std::move(response)](const canopy::http_server::request&)
+        { return std::optional<canopy::http_server::response>{response}; };
+        return run_http_request(wire_request, std::move(handlers));
+    }
+
+    auto sent_http_text(const std::vector<std::vector<uint8_t>>& sent) -> std::string
+    {
+        std::string output;
+        for (const auto& message : sent)
+            output.append(reinterpret_cast<const char*>(message.data()), message.size());
+        return output;
+    }
+
+    auto http_body(std::string_view response) -> std::string_view
+    {
+        const auto separator = response.find("\r\n\r\n");
+        if (separator == std::string_view::npos)
+            return {};
+        return response.substr(separator + 4);
+    }
+#    endif
+#  endif
+
+    CORO_TASK(bool) coro_malformed_init_message_disconnects_transport(std::shared_ptr<coro::scheduler> scheduler)
+    {
+        auto zone_id = rpc::DEFAULT_PREFIX;
+        (void)zone_id.set_subnet(zone_id.get_subnet() + 4096);
+        auto service = rpc::root_service::create("bad_init_transport_test", zone_id, scheduler);
+
+        auto queues = rpc::spsc_queue::queue_pair::create();
+        auto peer_stream = std::make_shared<::streaming::spsc_queue::stream>(
+            queues.connect_to_accept, queues.accept_to_connect, scheduler);
+        auto transport_stream = std::make_shared<::streaming::spsc_queue::stream>(
+            queues.accept_to_connect, queues.connect_to_accept, scheduler);
+
+        auto handler_called = std::make_shared<std::atomic_bool>(false);
+        auto transport = rpc::stream_transport::create(
+            "bad_init_responder",
+            service,
+            std::move(transport_stream),
+            [handler_called](rpc::connection_settings, std::shared_ptr<rpc::service>, std::shared_ptr<rpc::transport>)
+                -> CORO_TASK(rpc::connection_handler_result)
+            {
+                handler_called->store(true, std::memory_order_release);
+                CO_RETURN rpc::connection_handler_result{rpc::error::OK(), {}};
+            },
+            rpc::stream_transport::stream_transport_options{
+                .call_timeout = std::chrono::milliseconds{0},
+                .call_timeout_sweep = std::chrono::milliseconds{0},
+                .shutdown_timeout = std::chrono::milliseconds{1},
+            });
+
+        CO_AWAIT service->schedule();
+
+        rpc::stream_transport::envelope_payload payload{
+            FLD(payload_fingerprint) rpc::id<rpc::stream_transport::init_client_channel_send>::get(rpc::get_version()),
+            FLD(payload) std::vector<uint8_t>{0xde, 0xad, 0xbe, 0xef},
+        };
+        auto payload_bytes = rpc::to_yas_binary(payload);
+        rpc::stream_transport::envelope_prefix prefix{
+            FLD(version) rpc::get_version(),
+            FLD(direction) rpc::stream_transport::message_direction::send,
+            FLD(sequence_number) uint64_t{1},
+            FLD(payload_size) payload_bytes.size(),
+        };
+        auto prefix_bytes = rpc::to_yas_binary(prefix);
+
+        auto send_status = CO_AWAIT peer_stream->send(as_byte_span(prefix_bytes));
+        CORO_ASSERT_EQ(send_status.is_ok(), true);
+        send_status = CO_AWAIT peer_stream->send(as_byte_span(payload_bytes));
+        CORO_ASSERT_EQ(send_status.is_ok(), true);
+
+        bool saw_disconnect_state = false;
+        const auto disconnect_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{50};
+        while (transport->get_status() != rpc::transport_status::DISCONNECTED
+               && std::chrono::steady_clock::now() < disconnect_deadline)
+        {
+            if (transport->get_status() >= rpc::transport_status::DISCONNECTING)
+                saw_disconnect_state = true;
+            CO_AWAIT service->schedule();
+        }
+        saw_disconnect_state = saw_disconnect_state || transport->get_status() >= rpc::transport_status::DISCONNECTING;
+
+        CORO_ASSERT_EQ(handler_called->load(std::memory_order_acquire), false);
+        CORO_ASSERT_EQ(saw_disconnect_state, true);
+        CORO_ASSERT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTED);
+
+        for (int i = 0; i < 8; ++i)
+            CO_AWAIT service->schedule();
+
+        transport.reset();
+        peer_stream.reset();
+        service.reset();
+        CO_RETURN true;
+    }
+}
+
+TEST(
+    StreamingTransportBadMessage,
+    MalformedInitClientChannelSendDisconnects)
+{
+    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::manual,
+            .pool = coro::thread_pool::options{.thread_count = 1}}));
+
+    std::atomic_bool done{false};
+    bool passed = false;
+    auto runner = [&]() -> coro::task<void>
+    {
+        passed = CO_AWAIT coro_malformed_init_message_disconnects_transport(scheduler);
+        done.store(true, std::memory_order_release);
+        CO_RETURN;
+    };
+
+    ASSERT_TRUE(scheduler->spawn_detached(runner()));
+
+    for (int i = 0; i < 3000 && !done.load(std::memory_order_acquire); ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+
+    EXPECT_TRUE(done.load(std::memory_order_acquire));
+    EXPECT_TRUE(passed);
+
+    for (int i = 0; i < 100 && !scheduler->empty(); ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+}
+
+#  ifdef CANOPY_BUILD_COMPRESSION
+TEST(
+    CompressionStream,
+    ZstdRoundTripPreservesByteStream)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+
+    rpc::compression_stream::stream_settings settings;
+    settings.level = 1;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, settings);
+
+    std::vector<uint8_t> payload(4096);
+    for (size_t i = 0; i < payload.size(); ++i)
+        payload[i] = static_cast<uint8_t>('A' + (i % 17));
+
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, settings);
+    std::vector<uint8_t> received;
+    std::array<uint8_t, 257> buffer{};
+    while (received.size() < payload.size())
+    {
+        auto [status, span]
+            = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+        ASSERT_TRUE(status.is_ok());
+        received.insert(received.end(), span.data(), span.data() + span.size());
+    }
+
+    EXPECT_EQ(received, payload);
+}
+
+TEST(
+    CompressionStream,
+    ExpansionRatioLimitCloses)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+    rpc::compression_stream::stream_settings sender_settings;
+    sender_settings.level = 10;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, sender_settings);
+
+    std::vector<uint8_t> payload(8192, 'x');
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    rpc::compression_stream::stream_settings receiver_settings;
+    receiver_settings.max_expansion_ratio = 1;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, receiver_settings);
+
+    std::array<uint8_t, 8192> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed() || !status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
+    CompressionStream,
+    MaxDecompressedChunkBytesCloses)
+{
+    auto outbound_underlying = std::make_shared<scripted_stream>();
+    rpc::compression_stream::stream_settings sender_settings;
+    sender_settings.level = 10;
+    auto outbound = std::make_shared<streaming::compression::stream>(outbound_underlying, sender_settings);
+
+    std::vector<uint8_t> payload(8192, 'x');
+    auto send_status = coro::sync_wait(outbound->send(as_byte_span(payload)));
+    ASSERT_TRUE(send_status.is_ok());
+
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    auto compressed_messages = outbound_underlying->sent_messages();
+    for (auto& message : compressed_messages)
+        inbound_underlying->push(std::move(message));
+
+    rpc::compression_stream::stream_settings receiver_settings;
+    receiver_settings.max_expansion_ratio = 0;
+    receiver_settings.max_decompressed_chunk_bytes = 1024;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, receiver_settings);
+
+    std::array<uint8_t, 8192> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed() || !status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
+    CompressionStream,
+    MalformedCompressedInputCloses)
+{
+    auto inbound_underlying = std::make_shared<scripted_stream>();
+    inbound_underlying->push(std::vector<uint8_t>{0xde, 0xad, 0xbe, 0xef, 0x00, 0x01});
+
+    rpc::compression_stream::stream_settings settings;
+    auto inbound = std::make_shared<streaming::compression::stream>(inbound_underlying, settings);
+
+    std::array<uint8_t, 256> buffer{};
+    auto [status, span] = coro::sync_wait(inbound->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_FALSE(status.is_ok());
+    EXPECT_TRUE(span.empty());
+    EXPECT_TRUE(inbound->is_closed());
+}
+
+TEST(
+    CompressionLayerFactory,
+    AppliesCompressionLayer)
+{
+    rpc::stream_layers::stream_layer_settings layer;
+    layer.type = "compression";
+    layer.settings = json::v1::parse(R"json({"level": 1, "max_expansion_ratio": 16})json");
+
+    auto result = streaming::layer_factory::apply_stream_layer(
+        std::make_shared<scripted_stream>(), layer, streaming::layer_factory::layer_direction::connect);
+
+    EXPECT_EQ(result.error_code, rpc::error::OK());
+    EXPECT_TRUE(result.stream);
+}
+#  endif
+
+#  ifdef CANOPY_BUILD_WEBSOCKET
+TEST(
+    UntrustedWebFactory,
+    RejectsMissingStreamAndHandler)
+{
+    auto result = coro::sync_wait(rpc::untrusted_web::accept_transport(nullptr, {}));
+    EXPECT_EQ(result.error_code, rpc::error::INVALID_DATA());
+    EXPECT_FALSE(result.service);
+    EXPECT_FALSE(result.transport);
+}
+
+TEST(
+    WebSocketPenetration,
+    MaskedClientBinaryFrameDeliversPayload)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    const std::string payload = "valid binary";
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>(payload.begin(), payload.end())));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 64> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    ASSERT_TRUE(status.is_ok());
+    ASSERT_EQ(received.size(), payload.size());
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(received.data()), received.size()), payload);
+    EXPECT_FALSE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    Rsv1WithoutNegotiatedCompressionClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>{0x41}, true, true, true));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+#    ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+TEST(
+    WebSocketPenetration,
+    MaskedCompressedClientBinaryFrameDeliversPayload)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    const std::vector<uint8_t> compressed_hello{{0xf2, 0x48, 0xcd, 0xc9, 0xc9, 0x07, 0x00}};
+    underlying->push(make_client_frame(0x2, compressed_hello, true, true, true));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.permessage_deflate.enabled = true;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    ASSERT_TRUE(status.is_ok());
+    EXPECT_EQ(std::string(reinterpret_cast<const char*>(received.data()), received.size()), "Hello");
+    EXPECT_FALSE(websocket->is_closed());
+}
+#    endif
+
+TEST(
+    WebSocketPenetration,
+    UnmaskedClientFrameClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, {}, false));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    OversizedControlFrameClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x9, std::vector<uint8_t>(126, 0x41)));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    OversizedMessageClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>(9, 0x41)));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_message_bytes = 8;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    DefaultSettingsBoundFramePayload)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>(1024 * 1024 + 1, 0x41)));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    OversizedFramePayloadClosesBeforeWslay)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x2, std::vector<uint8_t>(9, 0x41)));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_frame_payload_bytes = 8;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    FragmentedMessageOverLimitClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    auto first = make_client_frame(0x2, std::vector<uint8_t>(5, 0x41), true, false);
+    auto second = make_client_frame(0x0, std::vector<uint8_t>(4, 0x42), true, true);
+    first.insert(first.end(), second.begin(), second.end());
+    underlying->push(std::move(first));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_message_bytes = 8;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    ContinuationWithoutFragmentClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    underlying->push(make_client_frame(0x0, std::vector<uint8_t>{0x41}));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    NewDataFrameWhileFragmentedClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    auto first = make_client_frame(0x2, std::vector<uint8_t>{0x41}, true, false);
+    auto second = make_client_frame(0x2, std::vector<uint8_t>{0x42}, true, true);
+    first.insert(first.end(), second.begin(), second.end());
+    underlying->push(std::move(first));
+
+    auto websocket
+        = std::make_shared<streaming::websocket::stream>(underlying, rpc::websocket_stream::endpoint_role::server);
+
+    std::array<uint8_t, 8> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+TEST(
+    WebSocketPenetration,
+    DecodedQueueLimitClosesServerStream)
+{
+    auto underlying = std::make_shared<scripted_stream>();
+    auto first = make_client_frame(0x2, std::vector<uint8_t>{0x01});
+    auto second = make_client_frame(0x2, std::vector<uint8_t>{0x02});
+    first.insert(first.end(), second.begin(), second.end());
+    underlying->push(std::move(first));
+
+    rpc::websocket_stream::stream_settings options;
+    options.role = rpc::websocket_stream::endpoint_role::server;
+    options.max_decoded_messages = 1;
+    auto websocket = std::make_shared<streaming::websocket::stream>(underlying, options);
+
+    std::array<uint8_t, 16> buffer{};
+    auto [status, received]
+        = coro::sync_wait(websocket->receive(rpc::mutable_byte_span{buffer}, std::chrono::milliseconds{10}));
+
+    EXPECT_TRUE(status.is_closed());
+    EXPECT_TRUE(received.empty());
+    EXPECT_TRUE(websocket->is_closed());
+}
+
+#    ifdef CANOPY_BUILD_HTTP_SERVER
+#      ifdef CANOPY_HTTP_HAS_GZIP
+TEST(
+    HttpCompression,
+    RestResponseUsesGzipWhenAccepted)
+{
+    const std::string payload = R"({"success":true,"data":")" + std::string(256, 'x') + R"("})";
+    auto response = sent_http_text(run_http_rest_response(
+        http_request("/api/status", "Accept-Encoding: br, gzip\r\n"),
+        canopy::http_server::make_json_response(200, payload)));
+    auto body = http_body(response);
+
+    EXPECT_NE(response.find("HTTP/1.1 200 OK\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Vary: Accept-Encoding\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Length: " + std::to_string(body.size()) + "\r\n"), std::string::npos);
+    ASSERT_GE(body.size(), size_t{2});
+    EXPECT_EQ(static_cast<unsigned char>(body[0]), 0x1f);
+    EXPECT_EQ(static_cast<unsigned char>(body[1]), 0x8b);
+}
+
+TEST(
+    HttpCompression,
+    StaticResponseUsesGzipWhenAccepted)
+{
+    auto file_body
+        = std::make_shared<std::string>("<!doctype html><html><body>" + std::string(256, 's') + "</body></html>");
+    auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
+        "/static",
+        [file_body](std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
+        {
+            EXPECT_EQ(file_path, "/static/index.html");
+            data.assign(file_body->begin(), file_body->end());
+            CO_RETURN rpc::error::OK();
+        });
+
+    canopy::http_server::handler_set handlers;
+    handlers.webpage_handler
+        = [webpage_delivery](
+              const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
+    { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+
+    auto response = sent_http_text(run_http_request(http_request("/", "Accept-Encoding: gzip\r\n"), std::move(handlers)));
+    auto body = http_body(response);
+
+    EXPECT_NE(response.find("HTTP/1.1 200 OK\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Type: text/html\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    ASSERT_GE(body.size(), size_t{2});
+    EXPECT_EQ(static_cast<unsigned char>(body[0]), 0x1f);
+    EXPECT_EQ(static_cast<unsigned char>(body[1]), 0x8b);
+}
+
+TEST(
+    HttpCompression,
+    RespectsRejectedGzipEncoding)
+{
+    const std::string payload = R"({"success":true,"data":"plain"})";
+    auto response = sent_http_text(run_http_rest_response(
+        http_request("/api/status", "Accept-Encoding: gzip;q=0, identity;q=1\r\n"),
+        canopy::http_server::make_json_response(200, payload)));
+
+    EXPECT_EQ(response.find("Content-Encoding: gzip\r\n"), std::string::npos);
+    EXPECT_NE(response.find(payload), std::string::npos);
+}
+#      endif
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    ValidUpgradeUsesHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+    EXPECT_NE(response.find("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), std::string::npos);
+}
+
+#      ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+TEST(
+    HttpWebSocketUpgradePenetration,
+    NegotiatesPermessageDeflateWhenOffered)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET",
+            "dGhlIHNhbXBsZSBub25jZQ==",
+            "13",
+            "keep-alive, Upgrade",
+            "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits\r\n"),
+        called));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_NE(
+        response.find("Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover"),
+        std::string::npos);
+}
+#      endif
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    InvalidClientKeyRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request("GET", "not-a-valid-key"), called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    MissingVersionRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto request = std::string("GET /rpc HTTP/1.1\r\n") + "Host: example.test\r\n" + "Upgrade: websocket\r\n"
+                   + "Connection: Upgrade\r\n" + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" + "\r\n";
+    auto response = sent_http_text(run_http_upgrade_request(request, called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    PostUpgradeRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request("POST"), called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    MissingHostRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto request = std::string("GET /rpc HTTP/1.1\r\n") + "Upgrade: websocket\r\n" + "Connection: Upgrade\r\n"
+                   + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" + "Sec-WebSocket-Version: 13\r\n" + "\r\n";
+    auto response = sent_http_text(run_http_upgrade_request(request, called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    AllowedHostAcceptsMatchingUpgrade)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_hosts.push_back("EXAMPLE.TEST");
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    DisallowedHostRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_hosts.push_back("api.example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    AllowedOriginAcceptsMatchingUpgrade)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.require_websocket_origin = true;
+    limits.allowed_websocket_origins.push_back("https://example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: HTTPS://EXAMPLE.TEST\r\n"),
+        called,
+        limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    RequiredOriginRejectsMissingBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.require_websocket_origin = true;
+
+    auto response = sent_http_text(run_http_upgrade_request(websocket_upgrade_request(), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    DisallowedOriginRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_origins.push_back("https://example.test");
+
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request(
+            "GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: https://attacker.test\r\n"),
+        called,
+        limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    NullOriginRejectsUnlessExplicitlyAllowed)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request("GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: null\r\n"),
+        called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+
+    called->store(false, std::memory_order_release);
+    canopy::http_server::client_connection_limits limits;
+    limits.allowed_websocket_origins.push_back("null");
+    response = sent_http_text(run_http_upgrade_request(
+        websocket_upgrade_request("GET", "dGhlIHNhbXBsZSBub25jZQ==", "13", "keep-alive, Upgrade", "Origin: null\r\n"),
+        called,
+        limits));
+
+    EXPECT_TRUE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 101 Switching Protocols\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    BodyBearingUpgradeRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto request = std::string("GET /rpc HTTP/1.1\r\n") + "Host: example.test\r\n" + "Upgrade: websocket\r\n"
+                   + "Connection: Upgrade\r\n" + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                   + "Sec-WebSocket-Version: 13\r\n" + "Content-Length: 1\r\n" + "\r\n" + "x";
+    auto response = sent_http_text(run_http_upgrade_request(request, called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    OversizedHeaderRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto request = std::string("GET /rpc HTTP/1.1\r\n") + "Host: example.test\r\n" + "Upgrade: websocket\r\n"
+                   + "Connection: Upgrade\r\n" + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                   + "Sec-WebSocket-Version: 13\r\n" + "X-Large: " + std::string(9000, 'a') + "\r\n" + "\r\n";
+    auto response = sent_http_text(run_http_upgrade_request(request, called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    OversizedPendingInputRejectsBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    auto response = sent_http_text(run_http_upgrade_request(std::string(70 * 1024, 'a'), called));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 400 Bad Request\r\n"), size_t{0});
+}
+
+TEST(
+    HttpWebSocketUpgradePenetration,
+    PartialRequestTimesOutBeforeHandler)
+{
+    auto called = std::make_shared<std::atomic_bool>(false);
+    canopy::http_server::client_connection_limits limits;
+    limits.receive_poll_timeout_ms = 1;
+    limits.header_timeout_ms = 1;
+    limits.request_timeout_ms = 1;
+
+    auto response = sent_http_text(
+        run_http_upgrade_request(std::string("GET /rpc HTTP/1.1\r\nHost: example.test\r\n"), called, limits));
+
+    EXPECT_FALSE(called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 408 Request Timeout\r\n"), size_t{0});
+}
+#    endif
+
+TEST(
+    UntrustedWebPenetration,
+    MalformedHandshakeClosesWithoutCallingHandler)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(std::vector<uint8_t>{0xde, 0xad, 0xbe, 0xef});
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_EQ(accepted->error_code, rpc::error::OK());
+    ASSERT_TRUE(accepted->transport);
+
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    EXPECT_FALSE(handler_called->load(std::memory_order_acquire));
+    EXPECT_TRUE(stream->is_closed());
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    OversizedHandshakeClosesWithoutCallingHandler)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(std::vector<uint8_t>(32, 0x7f));
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.max_handshake_bytes = 8;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_EQ(accepted->error_code, rpc::error::OK());
+    ASSERT_TRUE(accepted->transport);
+
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    EXPECT_FALSE(handler_called->load(std::memory_order_acquire));
+    EXPECT_TRUE(stream->is_closed());
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    ZeroClientObjectHandshakeClosesWithoutCallingHandler)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message(0));
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_EQ(accepted->error_code, rpc::error::OK());
+    ASSERT_TRUE(accepted->transport);
+
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    EXPECT_FALSE(handler_called->load(std::memory_order_acquire));
+    EXPECT_TRUE(stream->is_closed());
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    BackChannelInjectionIsNotReflected)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_EQ(accepted->error_code, rpc::error::OK());
+    ASSERT_TRUE(accepted->transport);
+
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    auto destination = parse_handshake_complete_destination(stream->sent_messages());
+    ASSERT_TRUE(destination.has_value());
+
+    stream->push(make_back_channel_injection_message(*destination));
+    ASSERT_TRUE(process_until(scheduler, [&] { return parse_response_with_id(stream->sent_messages(), 2).has_value(); }));
+
+    auto response = parse_response_with_id(stream->sent_messages(), 2);
+    ASSERT_TRUE(response.has_value());
+    EXPECT_TRUE(response->back_channel.empty());
+
+    coro::sync_wait(stream->set_closed());
+    process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }, 1000);
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    DestinationSpoofingClosesWithoutDispatch)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_EQ(accepted->error_code, rpc::error::OK());
+    ASSERT_TRUE(accepted->transport);
+
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    auto destination = parse_handshake_complete_destination(stream->sent_messages());
+    ASSERT_TRUE(destination.has_value());
+    ++destination->object_id;
+
+    stream->push(
+        make_untrusted_web_request_message(*destination, websocket_protocol::v1::message_type::send, false, 0, 55));
+
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    EXPECT_FALSE(parse_response_with_id(stream->sent_messages(), 55).has_value());
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    OversizedPostHandshakeEnvelopeCloses)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.max_envelope_bytes = 8;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    stream->push(std::vector<uint8_t>(settings.max_envelope_bytes + 1, 0x55));
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    OversizedInnerPayloadCloses)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.max_request_payload_bytes = 8;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    auto destination = parse_handshake_complete_destination(stream->sent_messages());
+    ASSERT_TRUE(destination.has_value());
+
+    stream->push(make_untrusted_web_request_message(
+        *destination, websocket_protocol::v1::message_type::send, false, settings.max_request_payload_bytes + 1));
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    UnexpectedEnvelopeTypeAfterHandshakeCloses)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    stream->push(make_envelope_message(websocket_protocol::v1::message_type::handshake, {}, 3));
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    DecodeFailureLimitClosesAfterConfiguredFailures)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.max_decode_failures = 2;
+    settings.close_on_protocol_error = false;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    stream->push(std::vector<uint8_t>{0xde, 0xad});
+    for (int i = 0; i < 100; ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+    EXPECT_NE(accepted->transport->get_status(), rpc::transport_status::DISCONNECTED);
+
+    stream->push(std::vector<uint8_t>{0xbe, 0xef});
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }));
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    InactivityTimeoutCloses)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 5;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    EXPECT_TRUE(process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }, 6000));
+    service.reset();
+}
+
+TEST(
+    UntrustedWebPenetration,
+    PostBackChannelInjectionDoesNotRespondOrClose)
+{
+    auto scheduler = make_test_scheduler();
+    auto stream = std::make_shared<scripted_stream>();
+    stream->push(make_handshake_message());
+
+    rpc::untrusted_web::transport_settings settings;
+    settings.receive_poll_timeout_ms = 1;
+    settings.handshake_timeout_ms = 50;
+    settings.inactivity_timeout_ms = 0;
+
+    auto accepted = std::make_shared<rpc::untrusted_web::accept_result>();
+    auto accepted_done = std::make_shared<std::atomic_bool>(false);
+    auto handler_called = std::make_shared<std::atomic_bool>(false);
+    auto service = start_untrusted_web_accept(
+        scheduler, stream, settings, accepted_done, accepted, make_untrusted_web_example_factory(handler_called));
+
+    ASSERT_TRUE(process_until(scheduler, [&] { return accepted_done->load(std::memory_order_acquire); }));
+    ASSERT_TRUE(process_until(
+        scheduler,
+        [&]
+        {
+            return handler_called->load(std::memory_order_acquire)
+                   && parse_handshake_complete_destination(stream->sent_messages()).has_value();
+        }));
+
+    auto destination = parse_handshake_complete_destination(stream->sent_messages());
+    ASSERT_TRUE(destination.has_value());
+
+    stream->push(make_untrusted_web_request_message(*destination, websocket_protocol::v1::message_type::post, true, 0, 44));
+    for (int i = 0; i < 200; ++i)
+        scheduler->process_events(std::chrono::milliseconds{1});
+
+    EXPECT_FALSE(parse_response_with_id(stream->sent_messages(), 44).has_value());
+    EXPECT_NE(accepted->transport->get_status(), rpc::transport_status::DISCONNECTED);
+
+    coro::sync_wait(stream->set_closed());
+    process_until(
+        scheduler, [&] { return accepted->transport->get_status() == rpc::transport_status::DISCONNECTED; }, 1000);
+    service.reset();
+}
+#  endif
+
+// Keep this suite on the active TCP coroutine and SPSC streaming paths.
 using streaming_transport_regression_implementations = ::testing::Types<
-    streaming_tcp_setup<false, false, false>,
-    streaming_spsc_setup<false, false, false>
-    // ,
-    // streaming_iouring_setup<false, false, false>
-    >;
+    streaming_tcp_coroutine_setup<false, false, false>,
+    streaming_spsc_setup<false, false, false>,
+    streaming_layered_tcp_coroutine_setup<false, false, false>,
+    streaming_layered_spsc_setup<false, false, false>>;
 
 TYPED_TEST_SUITE(
     streaming_transport_regression_test,

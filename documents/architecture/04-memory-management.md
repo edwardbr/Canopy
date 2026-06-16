@@ -82,7 +82,7 @@ if (ptr) {
 ptr.reset();
 
 // Get underlying object
-auto raw = ptr.get_nullable();
+auto raw = ptr.get();
 if (raw) {
     raw->method();
 }
@@ -149,7 +149,7 @@ lifetimes**.
 
 It is typically obtained from:
 1. Another `rpc::optimistic_ptr` (copy)
-2. `rpc::shared_ptr` via implicit conversion or `.to_optimistic()`
+2. `rpc::shared_ptr` or `rpc::weak_ptr` via `CO_AWAIT rpc::make_optimistic(...)`
 
 **Error Behavior**:
 
@@ -519,8 +519,8 @@ single conservative synchronization model.
 
 This is deliberately a correctness baseline. Further exploration:
 
-- Check whether constrained-runtime builds can support a lock-bit, lock-table,
-  or platform-atomic implementation for `rpc::shared_ptr` and
+- Check whether fake-SGX and SGX builds can support a lock-bit, lock-table, or
+  platform-atomic implementation for `rpc::shared_ptr` and
   `rpc::optimistic_ptr`.
 - Preserve the existing API so `member_ptr` and callers do not change.
 - Make `memory_order success` / `memory_order failure` meaningful only when the

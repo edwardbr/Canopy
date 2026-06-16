@@ -1,0 +1,61 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+namespace canopy
+{
+    namespace http_server
+    {
+        // Parser and resource limits for one HTTP client connection.
+        //
+        // These limits protect the HTTP/WebSocket upgrade surface before a
+        // request reaches application code. They are deliberately transport
+        // resource limits, not business policy. Account/session expiry,
+        // authentication, and authorisation still belong above this component.
+        //
+        // A value of zero disables the corresponding byte/count/time limit.
+        // Public endpoints should keep finite values.
+        struct client_connection_limits
+        {
+            [description="Maximum HTTP method bytes accepted before rejecting the request. Zero disables this limit."]
+            uint64_t max_method_bytes = 256;
+
+            [description="Maximum request-target/URL bytes accepted before rejecting the request. Zero disables this limit."]
+            uint64_t max_url_bytes = 4096;
+
+            [description="Maximum bytes accepted for one HTTP header name. Zero disables this limit."]
+            uint64_t max_header_name_bytes = 256;
+
+            [description="Maximum bytes accepted for one HTTP header value. Zero disables this limit."]
+            uint64_t max_header_value_bytes = 8192;
+
+            [description="Maximum number of HTTP headers accepted in one request. Zero disables this limit."]
+            uint64_t max_header_count = 128;
+
+            [description="Maximum HTTP body bytes accepted before rejecting the request. Zero disables this limit."]
+            uint64_t max_body_bytes = 1048576;
+
+            [description="Maximum unparsed input bytes buffered while llhttp is parsing a request. Zero disables this limit."]
+            uint64_t max_pending_input_bytes = 65536;
+
+            [description="Milliseconds used while polling the underlying stream for more HTTP request bytes. Zero makes each receive a nonblocking poll in current stream implementations."]
+            uint64_t receive_poll_timeout_ms = 250;
+
+            [description="Milliseconds allowed for a client to complete HTTP headers. Zero disables the header deadline."]
+            uint64_t header_timeout_ms = 10000;
+
+            [description="Milliseconds allowed for a client to complete the whole HTTP request after headers start. Zero disables the request deadline."]
+            uint64_t request_timeout_ms = 30000;
+
+            [description="Allowed HTTP Host header values for WebSocket upgrades. Values are matched exactly after ASCII case-folding and trimming, including any port. Empty accepts any non-empty Host header."]
+            std::vector<std::string> allowed_websocket_hosts = {};
+
+            [description="When true, WebSocket upgrades must include a non-empty Origin header. If allowed_websocket_origins is also set, the Origin must match that allow-list."]
+            bool require_websocket_origin = false;
+
+            [description="Allowed Origin header values for WebSocket upgrades. Values are matched exactly after ASCII case-folding and trimming. Empty disables Origin allow-listing; the literal origin 'null' is rejected unless explicitly listed here."]
+            std::vector<std::string> allowed_websocket_origins = {};
+        };
+    }
+}

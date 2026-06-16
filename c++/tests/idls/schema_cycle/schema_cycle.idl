@@ -1,0 +1,22 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+typedef int error_code;
+
+namespace schema_cycle
+{
+    [status=demo]
+    struct config_node
+    {
+        std::string name;
+        std::vector<config_node> children;
+    };
+
+    [status=demo]
+    interface i_config_consumer
+    {
+        error_code configure([in] const config_node& options);
+    };
+}

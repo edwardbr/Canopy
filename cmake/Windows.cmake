@@ -19,7 +19,7 @@ message(STATUS "Configuring Windows platform support...")
 # ######################################################################################################################
 # Clear Default Windows Libraries and Flags
 # ######################################################################################################################
-# We need explicit control over libraries and flags for proper enclave support
+# We need explicit control over libraries and flags for predictable platform support.
 set(CMAKE_C_STANDARD_LIBRARIES
     ""
     CACHE STRING "override default windows libraries" FORCE)

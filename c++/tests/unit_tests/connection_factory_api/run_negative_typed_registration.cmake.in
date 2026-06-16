@@ -1,0 +1,41 @@
+#[[
+   Copyright (c) 2026 Edward Boggis-Rolfe
+   All rights reserved.
+]]
+
+set(source_dir "@CMAKE_CURRENT_SOURCE_DIR@/downstream_smoke")
+set(binary_dir "@CMAKE_CURRENT_BINARY_DIR@/negative_typed_registration_build")
+set(expected_message "connection_factory typed registration requires a generated IDL settings type")
+
+file(REMOVE_RECURSE "${binary_dir}")
+
+execute_process(
+  COMMAND
+    "@CMAKE_COMMAND@" -S "${source_dir}" -B "${binary_dir}" -G "@CMAKE_GENERATOR@"
+    "-DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@" "-DCMAKE_C_COMPILER=@CMAKE_C_COMPILER@"
+    "-DCMAKE_CXX_COMPILER=@CMAKE_CXX_COMPILER@" "-DCANOPY_SOURCE_DIR=@CMAKE_SOURCE_DIR@"
+    "-DCANOPY_BUILD_COROUTINE=@CANOPY_BUILD_COROUTINE@"
+    "-DCANOPY_BUILD_WEBSOCKET=@CANOPY_BUILD_WEBSOCKET@"
+  RESULT_VARIABLE configure_result
+  OUTPUT_VARIABLE configure_output
+  ERROR_VARIABLE configure_error)
+
+if(configure_result)
+  message(FATAL_ERROR "Negative typed-registration configure failed:\n${configure_output}\n${configure_error}")
+endif()
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@" --build "${binary_dir}" --target downstream_connection_factory_bad_registration
+  RESULT_VARIABLE build_result
+  OUTPUT_VARIABLE build_output
+  ERROR_VARIABLE build_error)
+
+if(build_result EQUAL 0)
+  message(FATAL_ERROR "Negative typed-registration target compiled successfully but should fail")
+endif()
+
+set(combined_output "${build_output}\n${build_error}")
+if(NOT combined_output MATCHES "${expected_message}")
+  message(FATAL_ERROR
+      "Negative typed-registration failure did not include expected diagnostic:\n${combined_output}")
+endif()

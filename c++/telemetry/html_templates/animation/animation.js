@@ -1,4 +1,4 @@
-const TITLE_PREFIX = 'RPC++ Telemetry Animation';
+const TITLE_PREFIX = 'Canopy Telemetry Animation';
 
 function initAnimationTelemetry() {
     if (window.__animationTelemetryInitialized) {

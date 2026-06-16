@@ -1,0 +1,28 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace text_tools
+{
+    namespace v1
+    {
+        error text_tools_error
+        {
+            [description = "A supplied text tools argument is invalid."]
+            INVALID_ARGUMENT
+        };
+
+        [status=demo]
+        interface i_text_tools
+        {
+            [description="Join two text fragments."]
+            text_tools_error concat(const std::string& left, const std::string& right, [out] std::string& combined);
+
+            [description="Return the input text in uppercase."]
+            text_tools_error uppercase(const std::string& input, [out] std::string& output);
+        };
+    }
+}

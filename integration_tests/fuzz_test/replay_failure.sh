@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Edward Boggis-Rolfe
 # All rights reserved.
 
-# RPC++ Fuzz Test Replay Helper Script
+# Canopy Fuzz Test Replay Helper Script
 # Usage: ./replay_failure.sh [failure_file.json] [output_directory]
 
 REPLAY_DIR="tests/fuzz_test/replays"

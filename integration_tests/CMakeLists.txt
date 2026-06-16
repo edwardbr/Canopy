@@ -5,5 +5,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-add_subdirectory(interfaces)
-add_subdirectory(fuzz_test)
+if(CANOPY_BUILD_TEST)
+  add_subdirectory(interfaces)
+  add_subdirectory(fuzz_test)
+endif()

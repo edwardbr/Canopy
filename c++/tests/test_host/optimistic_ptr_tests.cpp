@@ -15,7 +15,6 @@
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 // Other headers
@@ -48,13 +47,9 @@
 #include "test_host.h"
 #include <transport/tests/direct/setup.h>
 #include <transport/tests/local/setup.h>
-#ifdef CANOPY_BUILD_ENCLAVE
-#  include <transport/tests/sgx/setup.h>
-#endif
 #ifdef CANOPY_BUILD_COROUTINE
-#  include <transport/tests/streaming_tcp/setup.h>
+#  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
-#  include <transport/tests/streaming_iouring/setup.h>
 #endif
 #include "crash_handler.h"
 
@@ -79,14 +74,6 @@ using optimistic_ptr_implementations = ::testing::Types<
     inproc_setup<true, true, true>
 #ifdef CANOPY_BUILD_COROUTINE
     ,
-    streaming_tcp_setup<false, false, false>,
-    streaming_tcp_setup<false, false, true>,
-    streaming_tcp_setup<false, true, false>,
-    streaming_tcp_setup<false, true, true>,
-    streaming_tcp_setup<true, false, false>,
-    streaming_tcp_setup<true, false, true>,
-    streaming_tcp_setup<true, true, false>,
-    streaming_tcp_setup<true, true, true>,
     streaming_spsc_setup<false, false, false>,
     streaming_spsc_setup<false, false, true>,
     streaming_spsc_setup<false, true, false>,
@@ -94,27 +81,15 @@ using optimistic_ptr_implementations = ::testing::Types<
     streaming_spsc_setup<true, false, false>,
     streaming_spsc_setup<true, false, true>,
     streaming_spsc_setup<true, true, false>,
-    streaming_spsc_setup<true, true, true>
-// ,
-// streaming_iouring_setup<false, false, false>,
-// streaming_iouring_setup<false, false, true>,
-// streaming_iouring_setup<false, true, false>,
-// streaming_iouring_setup<false, true, true>,
-// streaming_iouring_setup<true, false, false>,
-// streaming_iouring_setup<true, false, true>,
-// streaming_iouring_setup<true, true, false>,
-// streaming_iouring_setup<true, true, true>
-#endif
-#ifdef CANOPY_BUILD_ENCLAVE
-    ,
-    sgx_setup<false, false, false>,
-    sgx_setup<false, false, true>,
-    sgx_setup<false, true, false>,
-    sgx_setup<false, true, true>,
-    sgx_setup<true, false, false>,
-    sgx_setup<true, false, true>,
-    sgx_setup<true, true, false>,
-    sgx_setup<true, true, true>
+    streaming_spsc_setup<true, true, true>,
+    streaming_tcp_coroutine_setup<false, false, false>,
+    streaming_tcp_coroutine_setup<false, false, true>,
+    streaming_tcp_coroutine_setup<false, true, false>,
+    streaming_tcp_coroutine_setup<false, true, true>,
+    streaming_tcp_coroutine_setup<true, false, false>,
+    streaming_tcp_coroutine_setup<true, false, true>,
+    streaming_tcp_coroutine_setup<true, true, false>,
+    streaming_tcp_coroutine_setup<true, true, true>
 #endif
     >;
 

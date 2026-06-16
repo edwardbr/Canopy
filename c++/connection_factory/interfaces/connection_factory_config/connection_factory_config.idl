@@ -1,0 +1,169 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+#import "streaming/stream_layers.idl"
+
+namespace rpc
+{
+    namespace connection_factory
+    {
+        // Settings for the service object that owns transports created by the
+        // connection factory. JSON never carries service pointers; it only
+        // controls the name used when the factory must create a root service
+        // itself.
+        struct service_settings
+        {
+            [description="Root service name used only when the caller did not pass an existing service to the factory."]
+            rpc::optional<std::string> name;
+
+            [description="Executor settings used when the connection factory creates the root service. Ignored when the caller supplies an existing service."]
+            rpc::executor_options executor = {};
+        };
+
+        // A typed settings blob is the generic envelope used by the connection
+        // factory. The factory owns this envelope only; the implementation
+        // identified by type owns the schema of settings and converts it with
+        // its own generated from_json_object path.
+        //
+        // Examples:
+        //   { "type": "tcp_blocking", "settings": { "host": "127.0.0.1", "port": 8080 } }
+        //   { "type": "tls", "settings": { "client": { "verify_peer": false } } }
+        //   { "type": "websocket", "settings": { "keep_alive": { "enabled": true } } }
+        //   { "type": "stream_rpc", "settings": { "encoding": "nanopb" } }
+        //   { "type": "ipc_spsc", "settings": { "use_sidecar": true, "dynamic_library_path": "./plugin.so" } }
+        //   { "type": "blocking_dll", "settings": { "dynamic_library_path": "./plugin.so" } }
+        struct typed_settings
+        {
+            [description="Implementation type understood by the receiving factory. Base stream values include tcp_blocking, tcp_coroutine, and spsc_queue; stream layer values include tls, websocket, spsc_buffered_stream, and attestation; transport values include stream_rpc, local, ipc_spsc, and blocking_dll."]
+            std::string type;
+
+            [description="Implementation-owned JSON object. The connection factory keeps this opaque and asks the named implementation to materialise it into that implementation's generated IDL settings type."]
+            rpc::optional<json::v1::object> settings;
+        };
+
+        // Declarative connection factory configuration.
+        //
+        // service, listener, and transport are optional because most callers
+        // should be able to use the application defaults. When a value is
+        // present, type names the implementation and settings is materialised
+        // by that implementation's own IDL schema.
+        //
+        // stream_layers describes the byte-stream stack in transport order,
+        // from the innermost carrier outward toward RPC. For stream_rpc, the
+        // first entry creates the concrete base stream, such as TCP or SPSC,
+        // and later entries wrap it, such as TLS or WebSocket. For native
+        // transports that own an internal byte stream, such as a sidecar/SPSC
+        // transport, entries are wrappers around the transport-owned base
+        // stream. Non-stream transports, such as local child-zone or direct
+        // function-call transports, do not use stream_layers.
+        struct connection_settings
+        {
+            [description="Optional service settings. Type service/root_service selects connection_factory service_settings; omit this field to use the supplied service or create the default root service."]
+            rpc::optional<typed_settings> service;
+
+            [description="Optional listener settings used when accepting many stream RPC connections. Type stream_rpc selects connection_factory stream RPC listener settings."]
+            rpc::optional<typed_settings> listener;
+
+            [description="Optional transport settings. Type stream_rpc selects the stream RPC transport adapter and uses stream_layers to create the base stream plus wrappers. Native transport values include local, ipc_spsc, and blocking_dll. Current built-in native transports reject stream_layers; stream-like native transports need explicit support before using this field."]
+            rpc::optional<typed_settings> transport;
+
+            [description="Ordered byte-stream layer stack. For stream_rpc the first item is the base stream and following items are wrappers. For stream-backed native transports this list contains wrappers over the transport-owned base stream. Omit this for non-stream transports."]
+            std::vector<rpc::stream_layers::stream_layer_settings> stream_layers = {};
+        };
+
+        enum connection_role : uint8_t
+        {
+            connector = 0,
+            acceptor = 1,
+        };
+
+        enum attestation_backend_kind : uint8_t
+        {
+            null_backend = 0,
+            fake_backend = 1,
+        };
+
+        enum attestation_security_level : uint8_t
+        {
+            none = 0,
+            development = 1,
+            simulation = 2,
+            hardware_legacy = 3,
+            hardware = 4,
+        };
+
+        struct attestation_identity_settings
+        {
+            [description="Local security-domain identity supplied to the generic attestation service."]
+            std::string security_domain_id = "";
+
+            [description="Local identity zone id supplied to the generic attestation service."]
+            std::string zone_id = "";
+        };
+
+        struct attestation_policy_settings
+        {
+            rpc::optional<bool> send_local_evidence;
+            rpc::optional<bool> require_peer_evidence;
+            rpc::optional<bool> allow_unattested_peer;
+            rpc::optional<bool> allow_development_evidence;
+            rpc::optional<attestation_security_level> minimum_security_level;
+            rpc::optional<std::string> required_backend_id;
+        };
+
+        struct attestation_service_settings
+        {
+            [description="Context name for this attestation service. Empty names configure the default unnamed service."]
+            std::string name = "";
+
+            [description="Generic attestation backend. This stripped branch ships null and fake backends; production hardware backends are intentionally omitted pending the next attestation refactor."]
+            attestation_backend_kind backend = attestation_backend_kind::fake_backend;
+
+            [description="Local identity proven or presented by this service."]
+            attestation_identity_settings identity = {};
+
+            [description="Policy overrides layered on top of the backend default policy."]
+            attestation_policy_settings policy = {};
+        };
+
+        struct named_connection_settings
+        {
+            [description="Application-visible connection name used for lookup."]
+            std::string name;
+
+            [description="Whether this item connects outward or accepts an inbound connection."]
+            connection_role role = connection_role::connector;
+
+            [description="Optional root service name used by applications when they create the owning service."]
+            rpc::optional<std::string> service_name;
+
+            [description="Subnet applied to the root service created for this connection by demos and applications."]
+            uint64_t zone_subnet = 1;
+
+            [description="Connection factory settings understood by built-in or registered transports and stream layers."]
+            connection_settings connection = {};
+        };
+
+        struct configuration
+        {
+            // Names of in-process SPSC queue pairs that application_runtime
+            // should pre-create and place into connection_factory::context.
+            // These queues are consumed by the plain spsc_queue stream adapter
+            // when a stream layer names the same queue_pair. This is not the
+            // file-backed IPC SPSC transport path; ipc_spsc owns its mapped
+            // file lifecycle through its own transport settings.
+            [description="Application-defined in-process SPSC queue-pair names. Empty strings configure the default unnamed pair."]
+            std::vector<std::string> spsc_queues = {};
+
+            [description="Application-defined attestation services that attestation stream layers can reference by name."]
+            std::vector<attestation_service_settings> attestation_services = {};
+
+            [description="Named connector and acceptor definitions that applications can look up by name."]
+            std::vector<named_connection_settings> connections = {};
+        };
+    }
+}

@@ -17,14 +17,21 @@ Canopy uses YAS (Yet Another Serialization) as its primary serialization framewo
 
 ### Default Format Selection
 
-```idl
-// In IDL or build configuration
-encoding = {
-    yas_binary,
-    yas_compressed_binary,
-    yas_json
-}
+```cmake
+CanopyGenerate(
+    my_interface
+    idl/my_interface.idl
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
+    ""
+    yas_binary
+    yas_compressed_binary
+    yas_json)
 ```
+
+Runtime connections use the owning service's default encoding. Configure the
+process default with `CANOPY_DEFAULT_ENCODING`, or set it per service with
+`service->set_default_encoding(...)` before creating new service proxies.
 
 ## 2. Using YAS Serialization
 
@@ -35,12 +42,15 @@ encoding = {
 
 // Serialize an object
 my_struct obj{42, "hello"};
-auto serialized = rpc::serialise(obj, rpc::encoding::yas_binary);
+auto serialized = rpc::serialise<std::vector<char>>(obj, rpc::encoding::yas_binary);
 
 // Deserialize
-rpc::span data(serialized);
 my_struct deserialized;
-auto error = rpc::deserialise(rpc::encoding::yas_binary, data, deserialized);
+auto error = rpc::deserialise(rpc::encoding::yas_binary, serialized, deserialized);
+if (!error.empty())
+{
+    // Handle malformed or incompatible data.
+}
 ```
 
 ### Getting Serialized Size
@@ -51,37 +61,28 @@ auto size = rpc::get_saved_size(obj, rpc::encoding::yas_binary);
 
 ## 3. Format Negotiation
 
-### Automatic Fallback
+### Generated Proxy Fallback
 
-If an encoding is not supported, Canopy falls back to `yas_json`:
+Generated proxies try the current service-proxy encoding. If the generated
+stub/proxy path returns `rpc::error::INCOMPATIBLE_SERIALISATION()` and the
+current encoding is not already `yas_json`, generated code changes that
+service proxy to `yas_json` and retries the call.
+
+That is generated-proxy behavior, not a generic transport negotiation protocol.
+The low-level marshaller and transport APIs use the explicit
+`rpc::encoding` carried in their parameter structs.
 
 ```cpp
-// Client requests binary
-auto error = CO_AWAIT proxy_->send(
-    protocol_version,
-    rpc::encoding::yas_binary,  // Requested
-    tag,
-    interface_id,
-    method_id,
-    input_buffer,
-    output_buffer);
-
-// Server supports only JSON
-// Response uses yas_json automatically
+root_service->set_default_encoding(rpc::encoding::yas_binary);
+auto error = CO_AWAIT proxy->my_method(input, output);
+// If the peer reports incompatible serialization, generated proxy code may
+// retry this call with rpc::encoding::yas_json.
 ```
 
 ### Manual Selection
 
 ```cpp
-// Force specific encoding
-auto error = CO_AWAIT proxy_->send(
-    protocol_version,
-    rpc::encoding::yas_json,  // Explicit choice
-    tag,
-    interface_id,
-    method_id,
-    input_buffer,
-    output_buffer);
+root_service->set_default_encoding(rpc::encoding::yas_json);
 ```
 
 ## 4. IDL Type Mapping
@@ -105,7 +106,8 @@ auto error = CO_AWAIT proxy_->send(
 | `std::list<T>` | Length + elements |
 | `std::map<K,V>` | Length + (key, value) pairs |
 | `std::array<T,N>` | Fixed number of elements |
-| `std::optional<T>` | Present flag + value |
+| `rpc::optional<T>` | Present flag + value in binary; omitted field when absent in YAS JSON objects |
+| `rpc::variant<Ts...>` | Alternative index + value in binary; `{ "caseN": value }` in YAS JSON |
 
 ### Custom Structs
 
@@ -123,7 +125,9 @@ struct person
 
 ## 5. JSON Schema Generation
 
-Canopy automatically generates JSON schemas for all interfaces:
+Canopy generates per-function JSON schema metadata for generated interfaces.
+The JSON schema tests validate generated metadata with Canopy's native
+`json::v1::object` schema validator.
 
 ### Generated Schema
 
@@ -172,43 +176,14 @@ for (const auto& func : functions)
 
 ## 6. Custom Serializers
 
-### Implementing a Custom Serializer
+There is no public runtime registry such as
+`rpc::register_custom_serializer(...)`.
 
-```cpp
-namespace rpc
-{
-
-template<>
-struct serialiser<my_custom_type, custom_encoding>
-{
-    static std::vector<uint8_t> serialise(const my_custom_type& obj)
-    {
-        // Custom serialization logic
-        std::vector<uint8_t> result;
-        // ... serialize to result
-        return result;
-    }
-
-    static error_code deserialise(const std::vector<uint8_t>& data,
-                                  my_custom_type& obj)
-    {
-        // Custom deserialization logic
-        // ... deserialize from data
-        return error::OK();
-    }
-};
-
-} // namespace rpc
-```
-
-### Registering Custom Serializers
-
-```cpp
-// In your serialization initialization
-rpc::register_custom_serializer<my_custom_type, custom_encoding>(
-    &serialiser<my_custom_type, custom_encoding>::serialise,
-    &serialiser<my_custom_type, custom_encoding>::deserialise);
-```
+Supported encodings are wired through `rpc::encoding`,
+`rpc::serialise(...)` / `rpc::deserialise(...)`, and generated
+`proxy_serialiser`, `stub_deserialiser`, `stub_serialiser`, and
+`proxy_deserialiser` specializations. Adding a new encoding is a generator and
+runtime integration task, not an application-level registration hook.
 
 ## 7. Performance Considerations
 
@@ -243,22 +218,16 @@ yas_json:             1.0 ms (slowest)
 ```cpp
 auto error = rpc::deserialise(enc, data, obj);
 
-switch (error)
+if (!error.empty())
 {
-    case rpc::error::OK():
-        // Success
-        break;
-    case rpc::error::PROXY_DESERIALISATION_ERROR():
-        // Failed to deserialize proxy
-        break;
-    case rpc::error::STUB_DESERIALISATION_ERROR():
-        // Failed to deserialize stub
-        break;
-    case rpc::error::INCOMPATIBLE_SERIALISATION():
-        // Unsupported encoding format
-        break;
+    // The returned string describes malformed data, unsupported encoding,
+    // or a backend/type mismatch.
 }
 ```
+
+Generated proxy and stub paths convert serializer failures into RPC error codes
+such as `PROXY_DESERIALISATION_ERROR()`, `STUB_DESERIALISATION_ERROR()`, or
+`INCOMPATIBLE_SERIALISATION()` at the call boundary.
 
 ## 9. Best Practices
 
@@ -271,5 +240,5 @@ switch (error)
 ## 10. Next Steps
 
 - [Protocol Buffers](protocol-buffers.md) - Cross-language serialization
-- [Error Handling](../08-error-handling.md) - Error code reference
-- [API Reference](../12-api-reference.md) - Complete API
+- [Error Handling](../06-error-handling.md) - Error code reference
+- [API Reference](../09-api-reference.md) - Complete API

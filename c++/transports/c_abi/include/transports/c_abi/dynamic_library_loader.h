@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <c_abi/dynamic_library/canopy_dynamic_library.h>
+#include <c_abi/dynamic_library/dynamic_library.h>
 
 #include <string>
 

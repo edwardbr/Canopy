@@ -4,11 +4,17 @@
 ]]
 cmake_minimum_required(VERSION 3.24)
 
-# Add server
+add_subdirectory(rpc_objects)
+
+# WebSocket demo: dual-mode in plain-HTTP configurations; HTTPS still requires coroutine mode until streaming::secure
+# becomes dual-mode.
+if(CANOPY_BUILD_WEBSOCKET)
+  add_subdirectory(websocket)
+endif()
+# stream_composition still composes coroutine-only impls (SPSC, TLS).
 if(CANOPY_BUILD_COROUTINE)
-  if(CANOPY_BUILD_WEBSOCKET)
-    add_subdirectory(websocket)
-  endif()
   add_subdirectory(stream_composition)
 endif()
+add_subdirectory(config_demo)
 add_subdirectory(comprehensive)
+add_subdirectory(llm_mcp)

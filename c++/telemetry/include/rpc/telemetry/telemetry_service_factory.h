@@ -10,13 +10,10 @@
 
 #include <rpc/telemetry/i_telemetry_service.h>
 
-#ifndef FOR_SGX
-#  include <filesystem>
-#endif
+#include <filesystem>
 
 namespace rpc::telemetry
 {
-#ifndef FOR_SGX
     /**
      * Creates an animation telemetry sink that writes an HTML report for a single test.
      */
@@ -93,5 +90,4 @@ namespace rpc::telemetry
      * Clears the per-test child sinks owned by a multiplexer.
      */
     bool reset_telemetry_for_test(const std::shared_ptr<i_telemetry_service>& service);
-#endif
 }

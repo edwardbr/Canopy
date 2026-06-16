@@ -96,6 +96,19 @@ namespace rpc::local
         CO_RETURN CO_AWAIT parent->inbound_try_cast(std::move(params));
     }
 
+    CORO_TASK(get_schema_result)
+    parent_transport::outbound_get_schema(get_schema_params params)
+    {
+        auto parent = parent_.get_nullable();
+        if (!parent)
+        {
+            RPC_ERROR("parent_transport::outbound_get_schema: parent is NULL!");
+            CO_RETURN get_schema_result{rpc::error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN CO_AWAIT parent->inbound_get_schema(std::move(params));
+    }
+
     CORO_TASK(standard_result)
     parent_transport::outbound_add_ref(add_ref_params params)
     {
@@ -173,6 +186,13 @@ namespace rpc::local
     // Transport from parent zone to child zone
     // Used by parent to communicate with child
 
+    std::shared_ptr<parent_transport> child_transport::make_child_parent_transport(
+        std::string name,
+        std::shared_ptr<child_transport> parent)
+    {
+        return std::make_shared<parent_transport>(std::move(name), std::move(parent));
+    }
+
     void child_transport::on_child_disconnected()
     {
         // Break circular reference when child zone disconnects
@@ -226,6 +246,18 @@ namespace rpc::local
         }
 
         CO_RETURN CO_AWAIT child->inbound_try_cast(std::move(params));
+    }
+
+    CORO_TASK(get_schema_result)
+    child_transport::outbound_get_schema(get_schema_params params)
+    {
+        auto child = child_.get_nullable();
+        if (!child)
+        {
+            CO_RETURN get_schema_result{rpc::error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN CO_AWAIT child->inbound_get_schema(std::move(params));
     }
 
     CORO_TASK(standard_result)

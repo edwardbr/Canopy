@@ -3,27 +3,41 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <string>
 #include <sys/types.h>
 #include <vector>
 
+#ifdef CANOPY_BUILD_COROUTINE
+#  include <rpc/internal/coro_runtime/mutex.h>
+#endif
 #include <streaming/stream.h>
+#include <websocket_stream/websocket_stream_config.h>
 
 struct wslay_event_context;
 struct wslay_event_on_msg_recv_arg;
 
 namespace streaming::websocket
 {
-    // Single-executor WebSocket stream.  send() and receive() must not be called
-    // concurrently — each belongs to one coroutine at a time.
+    // WebSocket stream over any streaming::stream. wslay's context is not
+    // thread-safe, so this wrapper serializes access to wslay-owned state while
+    // leaving underlying stream I/O outside the lock.
     class stream : public ::streaming::stream
     {
     public:
         explicit stream(std::shared_ptr<::streaming::stream> underlying);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            ::rpc::websocket_stream::endpoint_role role);
+        stream(
+            std::shared_ptr<::streaming::stream> underlying,
+            ::rpc::websocket_stream::stream_settings settings,
+            ::rpc::websocket_stream::endpoint_role default_role = ::rpc::websocket_stream::endpoint_role::server);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -34,25 +48,38 @@ namespace streaming::websocket
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override;
+            -> CORO_TASK(::streaming::receive_result) override;
 
-        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
         bool is_closed() const override;
-        auto set_closed() -> coro::task<void> override;
+        auto set_closed() -> CORO_TASK(void) override;
         auto get_peer_info() const -> peer_info override;
 
     private:
         static constexpr size_t io_chunk_size = 8192;
 
         auto serve_decoded(rpc::mutable_byte_span buffer) -> std::pair<
-            coro::net::io_status,
+            rpc::io_status,
+            rpc::mutable_byte_span>;
+        auto serve_decoded_locked(rpc::mutable_byte_span buffer) -> std::pair<
+            rpc::io_status,
             rpc::mutable_byte_span>;
 
         // Drive wslay's outgoing queue until it has nothing left to send.
-        auto drive_send() -> coro::task<bool>;
-        auto flush_outgoing_raw() -> coro::task<bool>;
+        auto drive_send() -> CORO_TASK(bool);
+        auto drive_send_locked() -> CORO_TASK(bool);
+        auto flush_outgoing_raw(std::vector<uint8_t> raw) -> CORO_TASK(bool);
+        auto maybe_queue_keep_alive_locked(std::chrono::steady_clock::time_point now) -> bool;
+        auto next_receive_timeout_locked(
+            std::chrono::steady_clock::time_point deadline,
+            bool single_attempt,
+            std::chrono::steady_clock::time_point now) const -> std::chrono::milliseconds;
+        void handle_keep_alive_locked(const wslay_event_on_msg_recv_arg* arg);
+        bool permessage_deflate_enabled() const;
+        bool queue_binary_message_locked(rpc::byte_span buffer);
+        bool queue_received_message_locked(std::vector<uint8_t> message);
+        bool validate_incoming_wire_locked(rpc::byte_span data);
+        bool validate_current_frame_metadata_locked();
 
         static auto send_callback(
             wslay_event_context* ctx,
@@ -66,19 +93,49 @@ namespace streaming::websocket
             size_t len,
             int flags,
             void* user_data) -> ssize_t;
+        static auto genmask_callback(
+            wslay_event_context* ctx,
+            uint8_t* buf,
+            size_t len,
+            void* user_data) -> int;
         static void on_msg_recv_callback(
             wslay_event_context* ctx,
             const wslay_event_on_msg_recv_arg* arg,
             void* user_data);
 
-        std::shared_ptr<::streaming::stream> underlying_;
+        mutable std::mutex mtx_;
+#ifdef CANOPY_BUILD_COROUTINE
+        rpc::coro::mutex send_mtx_;
+#else
+        std::mutex send_mtx_;
+#endif
+        const std::shared_ptr<::streaming::stream> underlying_;
         wslay_event_context* wslay_ctx_{nullptr};
+        const ::rpc::websocket_stream::stream_settings settings_;
+        const ::rpc::websocket_stream::endpoint_role role_{::rpc::websocket_stream::endpoint_role::server};
         std::string raw_recv_buffer_;
         size_t raw_recv_size_{0};
         size_t raw_recv_pos_{0};
         std::queue<std::vector<uint8_t>> decoded_messages_;
         size_t current_msg_offset_{0};
         std::vector<uint8_t> outgoing_raw_; // staging buffer populated by send_callback
+        std::vector<uint8_t> pending_ping_payload_;
+        uint64_t next_ping_id_{1};
+        std::chrono::steady_clock::time_point next_ping_time_;
+        std::chrono::steady_clock::time_point ping_deadline_;
+        uint64_t validator_payload_remaining_{0};
+        uint64_t validator_extended_length_{0};
+        uint64_t validator_frame_payload_length_{0};
+        uint64_t validator_fragmented_message_bytes_{0};
+        uint8_t validator_state_{0};
+        uint8_t validator_opcode_{0};
+        uint8_t validator_length_code_{0};
+        uint8_t validator_extended_remaining_{0};
+        uint8_t validator_mask_remaining_{0};
+        bool validator_fin_{true};
+        bool validator_rsv1_{false};
+        bool validator_fragmented_message_active_{false};
+        bool ping_outstanding_{false};
         bool closed_{false};
     };
 } // namespace streaming::websocket

@@ -23,11 +23,6 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
   PRIVATE ${CANOPY_INCLUDES})
 
-# Add enclave dependencies if needed
-if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header transport_sgx)
-endif()
-
 # Link with required libraries
 target_link_libraries(
   test_fixtures
@@ -42,13 +37,12 @@ target_link_libraries(
          spdlog::spdlog
          GTest::gtest
          GTest::gmock
+         ${CMAKE_DL_LIBS}
          ${CANOPY_LIBRARIES}
-         ${CANOPY_FMT_LIB}
-         ${ENCLAVE_DEPENDENCIES})
+         ${CANOPY_FMT_LIB})
 
 # Add compile options and link options
 target_compile_options(test_fixtures PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-target_link_directories(test_fixtures PUBLIC ${SGX_LIBRARY_PATH})
 target_link_options(test_fixtures PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 # Set properties

@@ -1,1 +1,0 @@
-/var/home/edward/projects/Canopy/AGENTS.md

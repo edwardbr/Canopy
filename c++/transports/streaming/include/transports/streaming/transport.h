@@ -6,15 +6,11 @@
 
 #include <rpc/rpc.h>
 #include <chrono>
-#include <coroutine>
 #include <functional>
 #include <mutex>
 #include <queue>
 #include <type_traits>
 #include <unordered_map>
-#include <coro/event.hpp>
-#include <coro/task.hpp>
-#include <coro/net/io_status.hpp>
 #include <streaming/stream_transport.h>
 #include <streaming/stream.h>
 
@@ -61,91 +57,43 @@ namespace rpc::stream_transport
                 int error_code = rpc::error::OK();
             };
 
-            // One listener is created for each outbound streaming RPC call and is
-            // published in pending_transmits_ before the encoded message is sent.
-            // The receive loop, timeout sweep, and disconnect cleanup can all
-            // complete the listener while the caller is between await_ready() and
-            // await_suspend(). The mutex protects that handoff: without the
-            // recheck in await_suspend(), a completion that arrives in that window
-            // could see no continuation to resume and the caller would sleep
-            // forever.
+            // One listener is created for each outbound streaming RPC call and
+            // is published in pending_transmits_ before the encoded message is
+            // sent. The receive loop, timeout sweep, and disconnect cleanup can
+            // each call complete() concurrently; only the first wins.
             //
-            // A lock-free version should be expressed as a small atomic state
-            // machine, not as a lone atomic<bool>. The states would be:
-            // initial -> waiting(handle) -> complete(result), with a CAS in
-            // await_suspend() and complete(). The result storage would need
-            // release/acquire publication before resuming the continuation.
-            // That is feasible, but this mutex-backed form keeps the correctness
-            // rule local and obvious while the result includes movable payload
-            // state.
-            std::mutex mutex;
-            const std::shared_ptr<coro::scheduler> scheduler;
-            std::coroutine_handle<> continuation;
-            bool done = false;
+            // done_ acts as the single-shot CAS. The completion fields are
+            // written by the winning complete() before completion_.set(), and
+            // any awaiter of completion_.wait() observes them through the
+            // event's release/acquire publication (cv on blocking, libcoro's
+            // internal atomic on coroutine builds). This replaces the older
+            // mutex + coroutine_handle + scheduler->resume(handle) machinery
+            // — see call_peer for the post-wait scheduler hop that preserves
+            // the previous "resume on scheduler thread pool, not on receive
+            // loop" semantics.
+            rpc::event completion_{false};
+            std::atomic<bool> done_{false};
+
             envelope_prefix prefix;
             envelope_payload payload;
             int error_code = rpc::error::OK();
             std::chrono::steady_clock::time_point start_time{};
 
-            explicit result_listener(std::shared_ptr<coro::scheduler> input_scheduler)
-                : scheduler(std::move(input_scheduler))
-            {
-            }
+            result_listener() = default;
 
             void complete(
                 int input_error_code,
                 envelope_prefix input_prefix = {},
                 envelope_payload input_payload = {})
             {
-                std::coroutine_handle<> resume;
-                {
-                    std::lock_guard lock(mutex);
-                    if (done)
-                        return;
+                bool expected = false;
+                if (!done_.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+                    return;
 
-                    error_code = input_error_code;
-                    prefix = std::move(input_prefix);
-                    payload = std::move(input_payload);
-                    done = true;
-                    resume = continuation;
-                }
-
-                if (resume)
-                {
-                    if (!scheduler || !scheduler->resume(resume))
-                        resume.resume();
-                }
-            }
-        };
-
-        struct result_listener_awaitable
-        {
-            std::shared_ptr<result_listener> listener;
-
-            bool await_ready() const
-            {
-                std::lock_guard lock(listener->mutex);
-                return listener->done;
-            }
-
-            bool await_suspend(std::coroutine_handle<> handle)
-            {
-                std::lock_guard lock(listener->mutex);
-                if (listener->done)
-                    return false;
-
-                listener->continuation = handle;
-                return true;
-            }
-
-            result_listener::result await_resume() const
-            {
-                std::lock_guard lock(listener->mutex);
-                return result_listener::result{
-                    .prefix = listener->prefix,
-                    .payload = std::move(listener->payload),
-                    .error_code = listener->error_code,
-                };
+                error_code = input_error_code;
+                prefix = std::move(input_prefix);
+                payload = std::move(input_payload);
+                completion_.set();
             }
         };
 
@@ -181,7 +129,7 @@ namespace rpc::stream_transport
         std::queue<queued_send_message> normal_send_queue_;
         std::queue<queued_send_message> high_priority_send_queue_;
         std::mutex send_queue_mtx_;
-        coro::event send_queue_ready_{false};
+        rpc::event send_queue_ready_{false};
 
         connection_handler connection_handler_;
         std::vector<custom_message_handler> custom_message_handlers_;
@@ -192,7 +140,6 @@ namespace rpc::stream_transport
 
         std::atomic<bool> peer_requested_disconnection_ = false;
         std::atomic<bool> pumps_started_ = false;
-        std::atomic<bool> io_loops_started_ = false;
 
         // Two-phase close protocol state
         std::atomic<bool> send_cleanup_done_ = false;
@@ -201,10 +148,10 @@ namespace rpc::stream_transport
         std::chrono::steady_clock::time_point disconnecting_since_{};
 
         // Outbound call timeout: calls pending longer than this are failed with CALL_TIMEOUT
-        std::chrono::milliseconds call_timeout_;
+        const std::chrono::milliseconds call_timeout_;
         // How often the sweep loop checks for timed-out calls
-        std::chrono::milliseconds call_timeout_sweep_;
-        std::chrono::milliseconds shutdown_timeout_;
+        const std::chrono::milliseconds call_timeout_sweep_;
+        const std::chrono::milliseconds shutdown_timeout_;
 
         struct activity_tracker
         {
@@ -236,12 +183,22 @@ namespace rpc::stream_transport
             envelope_prefix prefix,
             envelope_payload payload);
         CORO_TASK(void)
+        stub_handle_get_schema(
+            std::shared_ptr<activity_tracker> tracker,
+            envelope_prefix prefix,
+            envelope_payload payload);
+        CORO_TASK(void)
         stub_handle_add_ref(
             std::shared_ptr<activity_tracker> tracker,
             envelope_prefix prefix,
             envelope_payload payload);
         CORO_TASK(void)
         stub_handle_release(
+            std::shared_ptr<activity_tracker> tracker,
+            envelope_prefix prefix,
+            envelope_payload payload);
+        CORO_TASK(void)
+        stub_handle_handshake(
             std::shared_ptr<activity_tracker> tracker,
             envelope_prefix prefix,
             envelope_payload payload);
@@ -292,16 +249,16 @@ namespace rpc::stream_transport
                 RPC_ERROR("send_payload: invalid message direction");
                 return;
             }
-            using payload_type = std::remove_cvref_t<SendPayload>;
+            using payload_type = rpc::compat::remove_cvref_t<SendPayload>;
 
-            envelope_payload payload_envelope = {.payload_fingerprint = rpc::id<payload_type>::get(protocol_version),
-                .payload = rpc::to_yas_binary(sendPayload)};
+            envelope_payload payload_envelope = {FLD(payload_fingerprint) rpc::id<payload_type>::get(protocol_version),
+                FLD(payload) rpc::to_yas_binary(sendPayload)};
             auto payload = rpc::to_yas_binary(payload_envelope);
 
-            auto prefix = envelope_prefix{.version = protocol_version,
-                .direction = direction,
-                .sequence_number = sequence_number,
-                .payload_size = payload.size()};
+            auto prefix = envelope_prefix{FLD(version) protocol_version,
+                FLD(direction) direction,
+                FLD(sequence_number) sequence_number,
+                FLD(payload_size) payload.size()};
 
             RPC_TRACE(
                 "send_payload {}\nprefix = {}\npayload = {}",
@@ -314,10 +271,10 @@ namespace rpc::stream_transport
                 auto& queue = priority == send_priority::high ? high_priority_send_queue_ : normal_send_queue_;
                 queue.push(
                     queued_send_message{
-                        .sequence_number = sequence_number,
-                        .direction = direction,
-                        .prefix_data = rpc::to_yas_binary(prefix),
-                        .payload_data = std::move(payload),
+                        FLD(sequence_number) sequence_number,
+                        FLD(direction) direction,
+                        FLD(prefix_data) rpc::to_yas_binary(prefix),
+                        FLD(payload_data) std::move(payload),
                     });
             }
 
@@ -340,10 +297,7 @@ namespace rpc::stream_transport
 
             auto sequence_number = ++sequence_number_;
 
-            std::shared_ptr<coro::scheduler> scheduler;
-            if (auto svc = get_service(); svc && svc->get_scheduler())
-                scheduler = svc->get_scheduler();
-            auto res_payload = std::make_shared<result_listener>(std::move(scheduler));
+            auto res_payload = std::make_shared<result_listener>();
 
             if (call_timeout_.count() > 0 && call_timeout_sweep_.count() > 0)
                 res_payload->start_time = std::chrono::steady_clock::now();
@@ -368,11 +322,24 @@ namespace rpc::stream_transport
                     CO_RETURN peer_call_result<ReceivePayload>{rpc::error::TRANSPORT_ERROR(), {}};
                 }
             }
-
             send_payload(
                 protocol_version, message_direction::send, std::forward<SendPayload>(sendPayload), sequence_number);
 
-            auto result = CO_AWAIT result_listener_awaitable{res_payload};
+            CO_AWAIT res_payload->completion_.wait();
+
+            // Preserve the resume-on-scheduler-pool semantics that the old
+            // custom awaiter achieved via scheduler->resume(handle): hop back
+            // to the scheduler so the receive loop (which called complete()
+            // and would otherwise resume this coroutine inline) is not stalled
+            // by the caller's post-completion work.
+            if (auto svc = get_service(); svc && svc->get_executor())
+                CO_AWAIT svc->get_executor()->schedule();
+
+            result_listener::result result{
+                FLD(prefix) res_payload->prefix,
+                FLD(payload) std::move(res_payload->payload),
+                FLD(error_code) res_payload->error_code,
+            };
             remove_pending_result();
 
             RPC_TRACE(
@@ -464,6 +431,7 @@ namespace rpc::stream_transport
         void on_destination_count_zero() override { begin_clean_disconnect(); }
 
         void set_status(rpc::transport_status new_status) override;
+        virtual void on_disconnecting() { }
 
         virtual void send_payload_post_send(
             uint64_t protocol_version,
@@ -505,10 +473,20 @@ namespace rpc::stream_transport
             message_direction direction,
             try_cast_receive&& payload,
             uint64_t sequence_number);
+        virtual void send_payload_get_schema_receive(
+            uint64_t protocol_version,
+            message_direction direction,
+            get_schema_receive&& payload,
+            uint64_t sequence_number);
         virtual void send_payload_addref_receive(
             uint64_t protocol_version,
             message_direction direction,
             addref_receive&& payload,
+            uint64_t sequence_number);
+        virtual void send_payload_handshake_receive(
+            uint64_t protocol_version,
+            message_direction direction,
+            handshake_receive&& payload,
             uint64_t sequence_number);
         virtual void send_payload_init_client_initial_channel_response(
             uint64_t protocol_version,
@@ -523,7 +501,6 @@ namespace rpc::stream_transport
 
     public:
         ~transport() override = default;
-        [[nodiscard]] bool io_loops_started() const { return io_loops_started_.load(std::memory_order_acquire); }
 
         void add_custom_message_handler(custom_message_handler handler)
         {
@@ -595,14 +572,18 @@ namespace rpc::stream_transport
         run_custom_connect(
             rpc::remote_object inbound_remote_object,
             rpc::interface_ordinal inbound_interface_id,
-            rpc::interface_ordinal outbound_interface_id)
+            rpc::interface_ordinal outbound_interface_id,
+            rpc::encoding encoding_type)
         {
             RPC_DEBUG("custom connect handler zone: {}", get_zone_id().get_subnet());
 
             rpc::connection_settings input_descr;
             input_descr.inbound_interface_id = inbound_interface_id;
             input_descr.outbound_interface_id = outbound_interface_id;
+            input_descr.encoding_type = encoding_type;
             input_descr.remote_object_id = inbound_remote_object;
+            if (input_descr.encoding_type == rpc::encoding::not_set)
+                CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
 
             set_adjacent_zone_id(inbound_remote_object.as_zone());
 
@@ -629,8 +610,8 @@ namespace rpc::stream_transport
                 protocol_version,
                 message_direction::receive,
                 ResponsePayload{
-                    .caller_zone_id = caller_zone_id,
-                    .outbound_remote_object = outbound_remote_object,
+                    FLD(caller_zone_id) caller_zone_id,
+                    FLD(outbound_remote_object) outbound_remote_object,
                 },
                 sequence_number);
         }
@@ -645,14 +626,16 @@ namespace rpc::stream_transport
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
+        CORO_TASK(handshake_result) outbound_handshake(handshake_params params) override;
         CORO_TASK(void) outbound_object_released(object_released_params params) override;
         CORO_TASK(void) outbound_transport_down(transport_down_params params) override;
         CORO_TASK(void) outbound_post_report(rpc::telemetry_event event) override;
         CORO_TASK(new_zone_id_result) outbound_get_new_zone_id(get_new_zone_id_params params) override;
 
-        friend std::shared_ptr<transport> make_server(
+        friend std::shared_ptr<transport> create(
             std::string name,
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
@@ -660,7 +643,7 @@ namespace rpc::stream_transport
             stream_transport_options options);
     };
 
-    std::shared_ptr<transport> make_server(
+    std::shared_ptr<transport> create(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -673,7 +656,7 @@ namespace rpc::stream_transport
     template<
         class Remote,
         class Local>
-    std::shared_ptr<transport> make_server(
+    std::shared_ptr<transport> create(
         std::string name,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
@@ -682,8 +665,8 @@ namespace rpc::stream_transport
             std::shared_ptr<rpc::service>)> factory,
         stream_transport_options options = {})
     {
-        auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name.c_str(), std::move(factory));
-        return make_server(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
+        auto handler = rpc::make_new_zone_connection_handler<Remote, Local>(name, std::move(factory));
+        return create(std::move(name), std::move(service), std::move(stream), std::move(handler), options);
     }
 
     // Returns a transport_factory that creates a streaming server transport wrapping
@@ -697,7 +680,7 @@ namespace rpc::stream_transport
                    std::string name,
                    std::shared_ptr<rpc::service> svc,
                    rpc::connection_handler handler) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        { CO_RETURN make_server(std::move(name), std::move(svc), stream, std::move(handler), options); };
+        { CO_RETURN create(std::move(name), std::move(svc), stream, std::move(handler), options); };
     }
 
     inline std::shared_ptr<transport> make_client(
@@ -706,7 +689,7 @@ namespace rpc::stream_transport
         std::shared_ptr<streaming::stream> stream,
         stream_transport_options options = {})
     {
-        return make_server(std::move(name), std::move(service), std::move(stream), nullptr, options);
+        return create(std::move(name), std::move(service), std::move(stream), nullptr, options);
     }
 
     // Produces a connection_callback for use with streaming::listener.
@@ -731,7 +714,7 @@ namespace rpc::stream_transport
                    std::shared_ptr<rpc::service> svc,
                    std::shared_ptr<streaming::stream> stm) -> CORO_TASK(void)
         {
-            auto transport = make_server<Remote, Local>(name, svc, std::move(stm), fn, options);
+            auto transport = create<Remote, Local>(name, svc, std::move(stm), fn, options);
             RPC_DEBUG("New transport connection {}", rpc::to_string(transport->get_adjacent_zone_id()));
             CO_RETURN;
         };

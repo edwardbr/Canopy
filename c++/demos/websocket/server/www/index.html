@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebSocket Test Client</title>
+    <title>Engineering Test Client</title>
     <style>
         * {
             margin: 0;
@@ -26,7 +26,7 @@
             background: white;
             border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 800px;
+            max-width: 920px;
             width: 100%;
             overflow: hidden;
         }
@@ -209,12 +209,14 @@
 
         .action-buttons {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
 
         .mode-selector {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             margin-bottom: 20px;
             padding: 15px;
@@ -237,6 +239,19 @@
             display: flex;
             align-items: center;
             cursor: pointer;
+        }
+
+        .echo-result {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            color: #374151;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 48px;
+            overflow-wrap: anywhere;
+            padding: 12px;
         }
 
         .calculator-panel {
@@ -295,6 +310,97 @@
             justify-content: center;
         }
 
+        .calculator-shell {
+            background: #111827;
+            border-color: #111827;
+            max-width: 390px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 18px;
+        }
+
+        .calculator-display {
+            background: #020617;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            margin-bottom: 14px;
+            min-height: 96px;
+            padding: 12px;
+            text-align: right;
+        }
+
+        .calculator-expression {
+            color: #9ca3af;
+            font-size: 14px;
+            min-height: 20px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .calculator-value {
+            color: #f9fafb;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 42px;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.2;
+            min-height: 52px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .calculator-keys {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .calc-key {
+            aspect-ratio: 1 / 1;
+            background: #374151;
+            border: 0;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: 700;
+            min-width: 0;
+            transition: background 0.15s, transform 0.15s;
+        }
+
+        .calc-key:hover:not(:disabled) {
+            background: #4b5563;
+        }
+
+        .calc-key:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .calc-key:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
+        .calc-key.utility {
+            background: #6b7280;
+        }
+
+        .calc-key.operator,
+        .calc-key.equals {
+            background: #2563eb;
+        }
+
+        .calc-key.operator:hover:not(:disabled),
+        .calc-key.equals:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+
+        .calc-key.zero {
+            aspect-ratio: auto;
+            grid-column: span 2;
+        }
+
         .chat-panel {
             background: #f9fafb;
             border: 2px solid #e5e7eb;
@@ -338,9 +444,12 @@
         }
 
         @keyframes pulse {
-            0%, 100% {
+
+            0%,
+            100% {
                 border-color: #10b981;
             }
+
             50% {
                 border-color: #34d399;
             }
@@ -375,13 +484,55 @@
         .hidden {
             display: none;
         }
+
+        @media (max-width: 700px) {
+            body {
+                align-items: flex-start;
+                padding: 10px;
+            }
+
+            .container {
+                border-radius: 8px;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .controls,
+            .chat-input-container {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .messages,
+            .chat-history {
+                height: 280px;
+            }
+
+            .calculator-shell {
+                max-width: none;
+                padding: 14px;
+            }
+
+            .calculator-value {
+                font-size: 36px;
+            }
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
         <div class="header">
-            <h1>WebSocket Test Client</h1>
+            <h1>Engineering Test Client</h1>
             <div class="status disconnected" id="status">Disconnected</div>
         </div>
 
@@ -401,31 +552,50 @@
                     <input type="radio" name="mode" id="chatMode" value="chat">
                     <label for="chatMode">Chat</label>
                 </div>
+                <div class="mode-option">
+                    <input type="radio" name="mode" id="videoMode" value="video">
+                    <label for="videoMode">Video</label>
+                </div>
             </div>
 
             <!-- Echo Mode Controls -->
             <div id="echoPanel">
                 <div class="controls">
-                    <input type="text" id="messageInput" placeholder="Type a message..." disabled>
-                    <button class="btn btn-primary" id="sendBtn" disabled>Send</button>
+                    <input type="text" id="messageInput" placeholder="HTTP echo payload">
+                    <button class="btn btn-primary" id="sendBtn">Send</button>
                 </div>
+                <div class="echo-result" id="echoResult">No HTTP echo response yet</div>
             </div>
 
             <!-- Calculator Mode Controls -->
             <div id="calculatorPanel" class="calculator-panel hidden">
-                <div class="calculator-inputs">
-                    <input type="number" id="firstValue" placeholder="First number" step="any" disabled>
-                    <select id="operation" disabled>
-                        <option value="1">Add (+)</option>
-                        <option value="2">Subtract (-)</option>
-                        <option value="3">Multiply (×)</option>
-                        <option value="4">Divide (÷)</option>
-                    </select>
-                    <input type="number" id="secondValue" placeholder="Second number" step="any" disabled>
+                <div class="calculator-shell">
+                    <div class="calculator-display">
+                        <div class="calculator-expression" id="calculatorExpression"></div>
+                        <div class="calculator-value" id="calculatorValue">0</div>
+                    </div>
+                    <div class="calculator-keys" id="calculatorKeys">
+                        <button class="calc-key utility" data-calc="clear">C</button>
+                        <button class="calc-key utility" data-calc="sign">+/-</button>
+                        <button class="calc-key utility" data-calc="backspace">⌫</button>
+                        <button class="calc-key operator" data-calc-op="divide">÷</button>
+                        <button class="calc-key" data-calc-digit="7">7</button>
+                        <button class="calc-key" data-calc-digit="8">8</button>
+                        <button class="calc-key" data-calc-digit="9">9</button>
+                        <button class="calc-key operator" data-calc-op="multiply">×</button>
+                        <button class="calc-key" data-calc-digit="4">4</button>
+                        <button class="calc-key" data-calc-digit="5">5</button>
+                        <button class="calc-key" data-calc-digit="6">6</button>
+                        <button class="calc-key operator" data-calc-op="subtract">−</button>
+                        <button class="calc-key" data-calc-digit="1">1</button>
+                        <button class="calc-key" data-calc-digit="2">2</button>
+                        <button class="calc-key" data-calc-digit="3">3</button>
+                        <button class="calc-key operator" data-calc-op="add">+</button>
+                        <button class="calc-key zero" data-calc-digit="0">0</button>
+                        <button class="calc-key" data-calc="decimal">.</button>
+                        <button class="calc-key equals" id="calculateBtn" data-calc="equals" disabled>=</button>
+                    </div>
                 </div>
-                <button class="btn btn-primary" id="calculateBtn" disabled
-                    style="width: 100%; margin-bottom: 15px;">Calculate</button>
-                <div class="result-display" id="resultDisplay">Result will appear here</div>
             </div>
 
             <!-- Chat Mode Controls -->
@@ -434,6 +604,52 @@
                 <div class="chat-input-container">
                     <textarea id="chatInput" placeholder="Type your message..." disabled rows="2"></textarea>
                     <button class="btn btn-primary" id="sendChatBtn" disabled>Send</button>
+                </div>
+            </div>
+
+            <!-- Video Mode Controls -->
+            <div id="videoPanel" class="calculator-panel hidden">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+                    <div>
+                        <div style="font-weight:bold;margin-bottom:5px;">Local camera</div>
+                        <video id="videoLocal" autoplay playsinline muted
+                            style="width:100%;background:#000;border-radius:6px;"></video>
+                    </div>
+                    <div>
+                        <div style="font-weight:bold;margin-bottom:5px;">Processed output</div>
+                        <canvas id="videoRemote" width="640" height="480"
+                            style="width:100%;background:#111;border-radius:6px;"></canvas>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <button class="btn btn-success" id="videoStartBtn" disabled>Start camera</button>
+                    <button class="btn btn-danger" id="videoStopBtn" disabled>Stop</button>
+                    <label class="mode-option" style="margin-left:15px;">
+                        <input type="checkbox" id="videoEffectGenie" disabled> Crown
+                    </label>
+                    <label class="mode-option">
+                        <input type="checkbox" id="videoEffectInvert" disabled> Invert
+                    </label>
+                    <div id="videoStats" style="margin-left:auto;color:#6b7280;font-size:14px;">
+                        sent 0 / received 0 / dropped 0
+                    </div>
+                </div>
+                <div style="display:flex;gap:18px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                    <label>Resolution
+                        <select id="videoResolution" disabled>
+                            <option value="160x120">160×120</option>
+                            <option value="320x240" selected>320×240</option>
+                            <option value="640x480">640×480</option>
+                        </select>
+                    </label>
+                    <label>Brightness
+                        <input type="range" id="videoBrightness" min="-128" max="127" value="0" disabled>
+                        <span id="videoBrightnessVal">0</span>
+                    </label>
+                    <label>Quality
+                        <input type="range" id="videoQuality" min="0" max="100" value="40" disabled>
+                        <span id="videoQualityVal">40</span>
+                    </label>
                 </div>
             </div>
 
@@ -501,7 +717,7 @@
     <script src="generated/websocket_demo_proto.js"></script>
     <script>__loadProtoNext();</script>
     <!-- Canopy generic transport and generated IDL proxy/stub -->
-    <script src="generated/canopy_websocket_transport.js"></script>
+    <script src="generated/untrusted_web_transport.js"></script>
     <script src="generated/websocket_demo.js"></script>
     <script src="generated/websocket_demo_config.js"></script>
     <script src="client.js"></script>

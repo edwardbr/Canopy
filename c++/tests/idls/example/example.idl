@@ -34,19 +34,6 @@ namespace yyy
                                                                                          & val); // can be null
         [description = "Gives an interface object to the service (can be null)"]
         error_code give_interface([in] const rpc::shared_ptr<xxx::i_baz> val); // can be null
-        [description = "Creates an enclave using host value parameter (can be null)"]
-        error_code call_create_enclave_val(
-            rpc::shared_ptr<i_host> host); // can be null
-        [description = "Creates an enclave using host reference parameter (can be null)"]
-        error_code call_create_enclave(
-            const rpc::shared_ptr<i_host>& host); // can be null
-
-        [description = "Creates an enclave on the host and discards the result"]
-        error_code call_host_create_enclave_and_throw_away(
-            bool run_standard_tests);
-        [description = "Creates an enclave on the host and returns the instance"]
-        error_code call_host_create_enclave([out] rpc::shared_ptr<i_example> & target, bool run_standard_tests);
-
         [description = "Creates a local zone on the host and returns the instance via a different subordinate"]
         error_code call_host_create_local_zone([out] rpc::shared_ptr<i_example> & target, bool run_standard_tests);
 
@@ -105,10 +92,6 @@ namespace yyy
 
     [status = production] interface i_host
     {
-        [description
-            = "Creates a new enclave instance"]
-        error_code create_enclave([out] rpc::shared_ptr<i_example> & target);
-
         [description = "Creates a new lcoal zone"]
         error_code create_local_zone([out] rpc::shared_ptr<i_example> & target);
 

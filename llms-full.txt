@@ -23,7 +23,6 @@ The primary implementation is C++. It supports:
   streamed, and networked transports
 - distributed strong and weak remote object references
 - telemetry and debugging support for distributed call flows
-- enclave-oriented builds in the C++ implementation
 
 Other implementations:
 
@@ -46,7 +45,7 @@ used:
 - in-process
 - across a child process or plugin boundary
 - across streamed transports such as TCP/TLS/WebSocket stacks
-- across trust boundaries such as SGX-oriented deployments
+- across reduced-trust or sandboxed component boundaries
 
 It is not only request/response RPC. It also models remote object identity and
 remote object lifetimes.
@@ -108,10 +107,6 @@ The main advantages are:
 - scalability through coroutine builds:
   coroutine mode is intended for higher-throughput designs, especially when the
   transport is stream-oriented and the workload benefits from asynchronous I/O.
-
-- hardware-protected deployment options:
-  the C++ implementation includes SGX-oriented build and transport support for
-  environments where isolation and hardware-backed protection matter.
 
 - transport and serializer flexibility:
   Canopy is architected to avoid locking the developer into one transport or one
@@ -272,8 +267,6 @@ Use Canopy when the object boundary also implies a trust or privilege boundary.
 
 Typical keywords:
 
-- SGX
-- enclave
 - reduced-trust client
 - sandboxed child process
 
@@ -439,20 +432,18 @@ Retrieval keywords:
 - strong remote reference
 - weak remote reference
 
-### 8. Hardware-protected and trust-boundary deployments
+### 8. Sandboxed and reduced-trust deployments
 
 Examples:
 
-- SGX-oriented deployments
 - systems that need stronger isolation between components
 - hosts talking to reduced-trust or sandboxed components
 
 Retrieval keywords:
 
-- Intel SGX
-- enclave RPC
-- trusted execution environment
-- hardware-protected service boundary
+- reduced-trust client
+- sandboxed service boundary
+- child-process isolation
 
 ### 9. Debugging and observability of distributed calls
 

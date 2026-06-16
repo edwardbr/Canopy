@@ -1,0 +1,41 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+
+namespace rpc
+{
+    namespace shared_scheduler_dll
+    {
+        // Settings for the coroutine native dynamic-library transport where
+        // the loaded shared library runs on the host service scheduler.
+        //
+        // This is a native RPC transport, not an SPSC/IPC transport: calls
+        // cross the host/library boundary through coroutine ABI callbacks in
+        // the same process. The dynamic library does not own a separate
+        // scheduler in this transport variant.
+        struct transport_settings
+        {
+            [description="Name of the host-side dynamic-library transport. If service_proxy_name is omitted, this value is also used as the service proxy name."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the loaded-library service proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads after the dynamic-library transport link is live. Omit or use not_set to keep the service default."]
+            rpc::optional<rpc::encoding> encoding;
+
+            [description="Path to the shared library loaded into the host process. The library must export the host-scheduled coroutine dynamic-library ABI entry point."]
+            std::string dynamic_library_path;
+
+            [description="Module-global JSON passed to the loaded module. When omitted, the module receives an empty object."]
+            rpc::optional<json::v1::object> module_settings;
+
+            [description="Named application startup blobs passed only to this loaded module instance. This is module-local configuration; it must not include applications belonging to another module or the host executable."]
+            std::map<std::string, json::v1::object> startup_applications = {};
+        };
+    }
+}

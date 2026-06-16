@@ -13,17 +13,6 @@
 // Determine which logging backend to use
 #  if defined(CANOPY_USE_LOGGING)
 
-// Use standard RPC logging
-#    ifdef FOR_SGX
-#      include <sgx_error.h>
-extern "C"
-{
-    sgx_status_t rpc_log(
-        int level,
-        const char* str,
-        size_t sz);
-}
-#    else
 extern "C"
 {
     void rpc_log(
@@ -31,7 +20,6 @@ extern "C"
         const char* str,
         size_t sz);
 }
-#    endif
 #    define RPC_LOG_BACKEND(level, message) rpc_log(level, (message).c_str(), (message).length())
 #  else
 // No logging - backend is a no-op

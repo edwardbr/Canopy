@@ -1,0 +1,66 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace canopy
+{
+    namespace network_config
+    {
+        enum ip_address_family : uint8_t
+        {
+            ipv4 = 0,
+            ipv6 = 1,
+        };
+
+        // A named virtual address used to construct zone_addresses for RPC.
+        // The name links tcp_endpoints to this logical identity.
+        struct named_virtual_address
+        {
+            std::string name;
+            rpc::zone_address_args args;
+
+#cpp_quote(R"__(
+            [[nodiscard]] std::string to_string() const;
+)__")
+        };
+
+        // A physical TCP endpoint: an IP address, its family, a port, and the
+        // name of the virtual address it maps to.
+        struct tcp_endpoint
+        {
+            std::string name;
+            std::array<uint8_t, 16> addr = {};
+            ip_address_family family = ip_address_family::ipv4;
+            uint16_t port = 0;
+
+#cpp_quote(R"__(
+            [[nodiscard]] std::string to_string() const;
+)__")
+        };
+
+        struct network_config
+        {
+            std::vector<named_virtual_address> virtual_addresses;
+            std::vector<tcp_endpoint> listen_endpoints;
+            std::vector<tcp_endpoint> connect_endpoints;
+
+#cpp_quote(R"__(
+            [[nodiscard]] const tcp_endpoint* first_listen() const noexcept
+            {
+                return listen_endpoints.empty() ? nullptr : &listen_endpoints.front();
+            }
+
+            [[nodiscard]] const tcp_endpoint* first_connect() const noexcept
+            {
+                return connect_endpoints.empty() ? nullptr : &connect_endpoints.front();
+            }
+
+            [[nodiscard]] const named_virtual_address* find_virtual(const std::string& name) const noexcept;
+            void log_values() const;
+)__")
+        };
+    }
+}

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <mutex>
 #include <memory>
+#include <utility>
 
 // RPC headers
 #include <rpc/rpc.h>
@@ -23,12 +24,71 @@ namespace rpc
                                  : pass_through_key{FLD(zone1) zone2, FLD(zone2) zone1};
         }
 
+        template<typename Params> bool payload_encoding_required(const Params& params)
+        {
+            return params.payload.has_value();
+        }
+
+        bool payload_encoding_required(const handshake_params& params)
+        {
+            return params.type_id != 0 || !params.payload.empty();
+        }
+
+        template<typename Params> encoding get_payload_encoding(const Params& params)
+        {
+            return params.payload ? params.payload->get_encoding() : encoding::not_set;
+        }
+
+        encoding get_payload_encoding(const handshake_params& params)
+        {
+            return params.payload_encoding;
+        }
+
+        template<typename Params>
+        void set_payload_encoding(
+            Params& params,
+            encoding selected_encoding)
+        {
+            RPC_ASSERT(params.payload);
+            params.payload->set_encoding(selected_encoding);
+        }
+
+        void set_payload_encoding(
+            handshake_params& params,
+            encoding selected_encoding)
+        {
+            params.payload_encoding = selected_encoding;
+        }
+
+    }
+
+    template<typename Params>
+    bool transport::resolve_payload_encoding_from_service(
+        Params& params,
+        std::string_view operation)
+    {
+        (void)operation;
+
+        if (get_payload_encoding(params) != encoding::not_set)
+            return true;
+        if (!payload_encoding_required(params))
+            return true;
+
+        auto svc = service_.lock();
+        if (!svc)
+        {
+            RPC_ERROR("{} requires a local service to choose the default payload encoding", operation);
+            return false;
+        }
+
+        set_payload_encoding(params, svc->get_default_encoding());
+        return true;
     }
 
     transport::transport(
         std::string name,
         std::shared_ptr<service> service)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(service->get_zone_id())
         , service_(service)
     {
@@ -37,7 +97,7 @@ namespace rpc
     transport::transport(
         std::string name,
         zone zone_id_)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(zone_id_)
     {
     }
@@ -57,6 +117,15 @@ namespace rpc
     {
         RPC_ASSERT(service);
         service_ = service;
+    }
+
+    std::shared_ptr<child_service> transport::make_child_service(
+        std::string name,
+        zone zone_id,
+        destination_zone parent_zone_id,
+        const rpc::executor_ptr& executor)
+    {
+        return std::make_shared<child_service>(std::move(name), zone_id, parent_zone_id, executor);
     }
 
     void transport::set_adjacent_zone_id(zone new_adjacent_zone_id)
@@ -97,6 +166,18 @@ namespace rpc
         std::shared_ptr<rpc::object_stub> stub,
         connection_settings input_descr)
     {
+        if (input_descr.encoding_type == rpc::encoding::not_set)
+        {
+            RPC_ERROR("transport::connect called without an explicit connection encoding");
+            CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        if (start_called_.exchange(true, std::memory_order_acq_rel))
+        {
+            RPC_ERROR("transport::connect called more than once");
+            CO_RETURN rpc::connect_result{rpc::error::INVALID_DATA(), {}};
+        }
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         if (input_descr.get_object_id().is_set())
         {
@@ -131,6 +212,12 @@ namespace rpc
 
     CORO_TASK(int) transport::accept()
     {
+        if (start_called_.exchange(true, std::memory_order_acq_rel))
+        {
+            RPC_ERROR("transport::accept called after the transport was already started");
+            CO_RETURN rpc::error::INVALID_DATA();
+        }
+
         int ret = CO_AWAIT inner_accept();
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -716,27 +803,49 @@ namespace rpc
         return status_.load(std::memory_order_acquire);
     }
 
-    void transport::set_status(transport_status new_status)
+    transport::status_transition_result transport::try_advance_status(transport_status new_status)
     {
-        [[maybe_unused]] auto old_status = status_.load(std::memory_order_acquire);
-        if (old_status == new_status)
+        status_transition_result result;
+        auto old_status = status_.load(std::memory_order_acquire);
+        while (true)
         {
-            return; // Already at target status, idempotent
-        }
-        if (old_status > new_status)
-        {
-            RPC_ASSERT(false); // Regressive transition is always a bug
-            return;
-        }
-        status_.store(new_status, std::memory_order_release);
+            result.old_status = old_status;
+            if (old_status == new_status)
+                return result;
+
+            if (old_status > new_status)
+            {
+                result.rejected_regression = true;
+                // Shutdown can legitimately race: one task may still request
+                // DISCONNECTING after another task has already completed the
+                // transition to DISCONNECTED. Treat that stale request as a
+                // no-op, but keep asserting on every other regressive state
+                // transition.
+                if (!(old_status == transport_status::DISCONNECTED && new_status == transport_status::DISCONNECTING))
+                    RPC_ASSERT(false);
+                return result;
+            }
+
+            if (status_.compare_exchange_weak(old_status, new_status, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                result.changed = true;
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (adjacent_zone_id_.get_subnet() != 0 && old_status != new_status)
-        {
-            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_transport_status_change({name_, zone_id_, adjacent_zone_id_, old_status, new_status});
-        }
+                if (adjacent_zone_id_.get_subnet() != 0)
+                {
+                    if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+                        telemetry_service->on_transport_status_change(
+                            {name_, zone_id_, adjacent_zone_id_, result.old_status, new_status});
+                }
 #endif
+                return result;
+            }
+        }
+    }
+
+    void transport::set_status(transport_status new_status)
+    {
+        try_advance_status(new_status);
     }
 
     std::shared_ptr<pass_through> transport::inner_get_passthrough(
@@ -988,6 +1097,48 @@ namespace rpc
         CO_RETURN CO_AWAIT dest->try_cast(std::move(params));
     }
 
+    CORO_TASK(get_schema_result)
+    transport::inbound_get_schema(get_schema_params params)
+    {
+        // Reject new RPC calls when shutting down.
+        if (get_status() >= transport_status::DISCONNECTING)
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
+        std::shared_ptr<i_marshaller> dest;
+        if (destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        {
+            dest = service_.lock();
+        }
+        else
+        {
+            dest = get_passthrough(destination_zone_id, params.caller_zone_id);
+            if (!dest)
+            {
+                CO_RETURN get_schema_result{error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+            }
+        }
+        if (!dest)
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        CO_RETURN CO_AWAIT dest->get_schema(std::move(params));
+    }
+
     CORO_TASK(standard_result)
     transport::inbound_add_ref(add_ref_params params)
     {
@@ -1076,7 +1227,11 @@ namespace rpc
                 {
                     dest_transport = shared_from_this();
                 }
-                svc->add_transport(params.remote_object_id.as_zone(), dest_transport);
+                // Another coroutine may have registered an equivalent route after
+                // our get_transport() lookup above. Always continue with the
+                // service's canonical transport so passthrough ownership and
+                // reference counts converge on one route.
+                dest_transport = svc->add_transport(params.remote_object_id.as_zone(), dest_transport);
             }
 
             // otherwise we are going to use or create a pass-through
@@ -1112,7 +1267,10 @@ namespace rpc
                 {
                     caller_transport = shared_from_this();
                 }
-                svc->add_transport(params.caller_zone_id, caller_transport);
+                // See the destination-side note above: passthroughs must be built
+                // against the canonical route that won any duplicate registration
+                // race.
+                caller_transport = svc->add_transport(params.caller_zone_id, caller_transport);
             }
 
             if (dest_transport == caller_transport)
@@ -1292,6 +1450,30 @@ namespace rpc
         }
     }
 
+    CORO_TASK(handshake_result)
+    transport::inbound_handshake(handshake_params params)
+    {
+        if (get_status() >= transport_status::DISCONNECTING)
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
+        std::shared_ptr<i_marshaller> dest;
+        if (params.destination_zone_id.get_address().same_zone(zone_id_.get_address()))
+        {
+            dest = service_.lock();
+        }
+        else
+        {
+            dest = get_passthrough(params.destination_zone_id, params.caller_zone_id);
+            if (!dest)
+                CO_RETURN handshake_result{error::ZONE_NOT_FOUND(), 0, {}, {}};
+        }
+
+        if (!dest)
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
+        CO_RETURN CO_AWAIT dest->handshake(std::move(params));
+    }
+
     CORO_TASK(send_result) transport::send(send_params params)
     {
         [[maybe_unused]] auto remote_object_id = params.remote_object_id;
@@ -1336,6 +1518,9 @@ namespace rpc
 
     CORO_TASK(standard_result) transport::try_cast(try_cast_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::try_cast"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
         auto interface_id = params.interface_id;
@@ -1360,8 +1545,36 @@ namespace rpc
         CO_RETURN result;
     }
 
+    CORO_TASK(get_schema_result) transport::get_schema(get_schema_params params)
+    {
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
+        CO_RETURN CO_AWAIT outbound_get_schema(std::move(params));
+    }
+
+    CORO_TASK(get_schema_result) transport::outbound_get_schema(get_schema_params params)
+    {
+        // Default: transports that do not route schema queries report not
+        // implemented. The local transport overrides this to forward to the peer.
+        std::ignore = params;
+        CO_RETURN get_schema_result{error::NOT_IMPLEMENTED(), rpc::encoding::not_set, {}, {}};
+    }
+
     CORO_TASK(standard_result) transport::add_ref(add_ref_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::add_ref"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
@@ -1396,6 +1609,9 @@ namespace rpc
 
     CORO_TASK(standard_result) transport::release(release_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::release"))
+            CO_RETURN standard_result{error::TRANSPORT_ERROR(), {}};
+
         auto remote_object_id = params.remote_object_id;
         auto caller_zone_id = params.caller_zone_id;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
@@ -1424,6 +1640,9 @@ namespace rpc
 
     CORO_TASK(void) transport::object_released(object_released_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::object_released"))
+            CO_RETURN;
+
         auto caller_zone_id = params.caller_zone_id;
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
         auto remote_object_id = params.remote_object_id;
@@ -1441,6 +1660,9 @@ namespace rpc
 
     CORO_TASK(void) transport::transport_down(transport_down_params params)
     {
+        if (!resolve_payload_encoding_from_service(params, "transport::transport_down"))
+            CO_RETURN;
+
 #ifdef CANOPY_USE_TELEMETRY
         auto destination_zone_id = params.destination_zone_id;
         auto caller_zone_id = params.caller_zone_id;
@@ -1451,6 +1673,22 @@ namespace rpc
         }
 #endif
         CO_AWAIT outbound_transport_down(std::move(params));
+    }
+
+    CORO_TASK(handshake_result) transport::handshake(handshake_params params)
+    {
+        if (!resolve_payload_encoding_from_service(params, "transport::handshake"))
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+
+        auto result = CO_AWAIT outbound_handshake(std::move(params));
+        result.error_code = rpc::error::sanitise_public_control_status(result.error_code, "transport handshake");
+        if (result.error_code != rpc::error::OK())
+        {
+            result.type_id = 0;
+            result.payload.clear();
+            result.out_back_channel.clear();
+        }
+        CO_RETURN result;
     }
 
     CORO_TASK(void) transport::post_report(rpc::telemetry_event event)
@@ -1467,7 +1705,14 @@ namespace rpc
 
     CORO_TASK(new_zone_id_result) transport::get_new_zone_id(get_new_zone_id_params params)
     {
-        CO_RETURN CO_AWAIT outbound_get_new_zone_id(std::move(params));
+        auto result = CO_AWAIT outbound_get_new_zone_id(std::move(params));
+        result.error_code = rpc::error::sanitise_public_control_status(result.error_code, "transport get_new_zone_id");
+        if (result.error_code != rpc::error::OK())
+        {
+            result.zone_id = {};
+            result.out_back_channel.clear();
+        }
+        CO_RETURN result;
     }
 
     CORO_TASK(void) transport::outbound_post_report(rpc::telemetry_event event)
@@ -1486,6 +1731,12 @@ namespace rpc
         if (!svc)
             CO_RETURN new_zone_id_result{rpc::error::ZONE_NOT_FOUND(), {}, {}};
         CO_RETURN CO_AWAIT svc->get_new_zone_id(std::move(params));
+    }
+
+    CORO_TASK(handshake_result) transport::outbound_handshake(handshake_params params)
+    {
+        std::ignore = params;
+        CO_RETURN handshake_result{rpc::error::NOT_IMPLEMENTED(), 0, {}, {}};
     }
 
 } // namespace rpc

@@ -47,7 +47,7 @@ int main(
     int argc,
     char* argv[])
 {
-    args::ArgumentParser parser("RPC++ Test Suite - Comprehensive RPC testing framework");
+    args::ArgumentParser parser("Canopy Test Suite - Comprehensive RPC testing framework");
 
     // Basic test control flags
     args::Flag enable_multithreaded_flag(

@@ -76,13 +76,11 @@ When it is probably not the right tool:
   - [Rust](documents/status/rust.md)
   - [JavaScript](documents/status/javascript.md)
 
----
-
 ## Why Canopy?
 
 Distributed C++ systems are expensive to build because every boundary tends to
 accumulate bespoke protocol code. Two components talking across a process
-boundary, a network connection, a plugin boundary, or a security enclave often
+boundary, a network connection, a plugin boundary, or a sandboxed component often
 means hand-written serialization, connection management, callback plumbing, and
 error handling. Canopy aims to replace much of that with generated interfaces
 and reusable runtime structure, with the project goal often described as
@@ -132,13 +130,13 @@ Current caveat:
 <div align="center">
 <pre>
   ┌──────────────────────────────────────┐
-  direct  DLL  SPSC   TCP   TLS   SGX  IPC
+  direct  DLL  SPSC   TCP   TLS   IPC
   └──────────────────────────────────────┘
        same generated interface
 </pre>
 </div>
 
-**Works across every boundary you care about.** The primary C++ implementation runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, child-process IPC transports, and SGX secure enclaves. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
+**Works across every boundary you care about.** The primary C++ implementation runs over in-process direct calls, in-process DLL boundaries, shared-memory SPSC queues, TCP sockets, TLS-encrypted streams, and child-process IPC transports. Switching transport is a matter of changing which stream or transport you construct — your interface code does not change.
 
 ---
 
@@ -185,7 +183,7 @@ blocking            co_await
 </pre>
 </div>
 
-**Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, enclaves, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.  With TUN implementation planned it is hoped that each RPC object has the option of having its own exposed IP address.
+**Distributed by design.** Each machine or process hosts its own root zone. Child zones branch from it for plugins, child processes, or any other isolation boundary. Multiple nodes connect as peers over the network. Objects living at any depth in any node's zone tree can call objects at any depth in any other node's tree — the routing is automatic.  With TUN implementation planned it is hoped that each RPC object has the option of having its own exposed IP address.
 
 ---
 
@@ -199,7 +197,7 @@ blocking            co_await
 </pre>
 </div>
 
-**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, and Protocol Buffers-compatible wire formats for teams that need language-neutral schemas. Canopy supports both the full Google C++ protobuf runtime and a Nanopb-backed protobuf-compatible path for constrained-runtime deployments that cannot carry the full protobuf runtime. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
+**No Serialization format lockin.** Canopy can be extended to use any reasonable serialisation format. Binary YAS format for C++ high performance throughput, compressed binary for bandwidth-constrained links, JSON for human-readable debugging and cross-language interop, and Protocol Buffers-compatible wire formats for teams that need language-neutral schemas. Canopy supports both the full Google C++ protobuf runtime and a Nanopb-backed protobuf-compatible path for runtime-light deployments. The format can be negotiated per-connection or overridden per-call. Today, the experimental Rust implementation is Protocol Buffers only.
 
 ---
 
@@ -266,13 +264,12 @@ blocking            co_await
 ## Key Features
 
 - **Type-Safe**: Full C++ type system integration with compile-time verification
-- **Transport Agnostic**: Local, DLL, IPC, TCP, SPSC, SGX Enclave, and custom transports
+- **Transport Agnostic**: Local, DLL, IPC, TCP, SPSC, and custom transports
 - **Composable Streams**: TCP, TLS, SPSC, WebSocket layers in any combination
 - **Format Agnostic**: YAS binary, compressed binary, JSON, full Protocol Buffers, Nanopb protobuf-compatible encoding, more can be added
 - **Bi-Modal Execution**: Same code runs in both blocking and coroutine modes
 - **Experimental Rust Runtime**: Interoperable blocking Rust implementation for Protocol Buffers over local and dynamic-library transports
 - **Reduced-Trust JavaScript Client**: Generated JavaScript/WebSocket client support without claiming full runtime parity
-- **SGX Enclave Support**: Secure computation in Intel SGX enclaves
 - **Comprehensive Telemetry**: Sequence diagrams, console output, HTML animations
 - **Coroutine Library Agnostic**: libcoro, libunifex, cppcoro, Asio (see [08-coroutine-libraries.md](documents/08-coroutine-libraries.md))
 - **Address, UB and thread Sanitizer Support**: As part of clang
@@ -336,7 +333,8 @@ Key entry points:
 - **CMake**: 3.24 or higher
 - **Build System**: Ninja (recommended)
 - **Node.js**: 18+ (for llhttp code generation)
-- **OpenSSL**: Development headers (libssl-dev on Linux, OpenSSL SDK on Windows)
+- **OpenSSL**: Development headers, OpenSSL 1.1.1+ (`libssl-dev` on Linux, OpenSSL SDK on Windows)
+- **nasm**: 2.14+ (only for the websocket video demo; libvpx's x86 assembly. Fedora: `sudo dnf install nasm`)
 - **clang-tidy** (optional): LLVM 16+ for static analysis; LLVM 21+ recommended for full check coverage including `modernize-use-designated-initializers`
 
 ### Build
@@ -395,8 +393,8 @@ This keeps your custom presets local while still inheriting from project presets
 CANOPY_BUILD_COROUTINE=ON    # Enable async/await support (requires C++20)
 
 # Features
-CANOPY_BUILD_ENCLAVE=ON          # SGX enclave support
 CANOPY_BUILD_TEST=ON             # Test suite
+CANOPY_BUILD_RUST=OFF            # Rust workspace build, disabled by default
 CANOPY_BUILD_DEMOS=ON            # Demo applications
 CANOPY_BUILD_PROTOCOL_BUFFERS=ON # Full Google C++ protobuf runtime support
 CANOPY_BUILD_NANOPB=ON           # Nanopb protobuf-compatible runtime support
@@ -522,9 +520,8 @@ For a complete working example see `demos/stream_composition/src/tcp_spsc_tls_de
 | **DLL (`rpc::libcoro_dynamic_library`)** | In-process DLL-loaded child zone in coroutine builds | `CANOPY_BUILD_COROUTINE=ON` |
 | **IPC (`rpc::ipc_transport`)** | Child-process transport hosting a direct `stream_transport` service | `CANOPY_BUILD_COROUTINE=ON` |
 | **IPC + DLL (`rpc::ipc_transport` + `rpc::libcoro_spsc_dynamic_dll`)** | Child-process transport hosting a DLL-backed zone over SPSC streams | `CANOPY_BUILD_COROUTINE=ON` |
-| **TCP** | Network communication between machines | Coroutines |
+| **TCP** | Network communication between machines | Coroutine scheduler or blocking executor |
 | **SPSC** | Single-producer single-consumer queues | Coroutines |
-| **SGX Enclave** | Secure enclave communication | SGX SDK |
 | **Custom** | User-defined transport implementations | Custom implementation |
 
 See [transport documentation](documents/transports/) for details, especially [Dynamic Library and IPC Child Transports](documents/transports/dynamic_library.md) and [Hierarchical Transport Pattern](documents/transports/hierarchical.md).
@@ -558,7 +555,7 @@ Git submodules manage external dependencies they will auto load when required:
 - **YAS**: Serialization framework
 - **libcoro**: Coroutine support (when `CANOPY_BUILD_COROUTINE=ON`)
 - **protobuf**: Protocol Buffers compiler and optional full C++ runtime
-- **nanopb**: Small Protocol Buffers-compatible runtime used by constrained-runtime builds
+- **nanopb**: Small Protocol Buffers-compatible runtime used by runtime-light builds
 - **idlparser**: IDL parser
 
 ---
@@ -574,11 +571,11 @@ canopy/
 │   └── *.md                # Port plan, progress, completed work, retrospectives
 ├── c++/                    # C++ source code
 │   ├── rpc/                # Core RPC library
-│   ├── transports/         # Transport implementations (local, tcp, spsc, sgx)
+│   ├── transports/         # Transport implementations (local, tcp, spsc)
 │   ├── tests/              # Test suite
 │   ├── demos/              # Example applications
 │   ├── telemetry/          # Telemetry and logging
-│   ├── streaming/          # Coroutine streaming stack
+│   ├── streaming/          # Streaming stack; TCP/WebSocket/OpenSSL TLS are dual-mode
 │   ├── subcomponents/      # Network config, SPSC queue, HTTP server, etc.
 │   ├── benchmarking/       # Benchmark targets
 │   └── submodules/         # C++ third-party dependencies
@@ -589,7 +586,6 @@ canopy/
 │   ├── Canopy.cmake        # Main build configuration
 │   ├── Linux.cmake         # Linux-specific settings
 │   ├── Windows.cmake       # Windows-specific settings
-│   ├── SGX.cmake           # SGX enclave support
 │   └── CanopyGenerate.cmake # IDL code generation
 ├── documents/              # Comprehensive documentation
 ├── submodules/             # Core dependencies (idlparser, protobuf)

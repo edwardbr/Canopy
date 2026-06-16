@@ -11,7 +11,7 @@ This directory contains tests and examples for the JSON schema generation capabi
 
 ### Test Programs
 - **`simple_json_schema_metadata_test.cpp`** - Self-contained test with no external dependencies
-- **`json_schema_metadata_test.cpp`** - Advanced test using nlohmann/json (optional dependency)
+- **`json_schema_metadata_test.cpp`** - Advanced schema metadata test using Canopy's native JSON DOM and validator
 
 ### Build Configuration
 - **`CMakeLists.txt`** - Build configuration for JSON schema tests
@@ -25,11 +25,10 @@ The JSON schema tests are integrated with the main CMake build system. Use the e
 cd /path/to/rpc
 
 # Configure with your preferred preset
-cmake --preset Debug  # or Release, SGX_Debug, etc.
+cmake --preset Debug  # or Release
 
 # Build the JSON schema tests
-cmake --build build --target simple_json_schema_metadata_test
-# Optional: cmake --build build --target json_schema_metadata_test (if nlohmann/json available)
+cmake --build build --target json_schema_metadata_test
 
 # Run the tests
 ./build/tests/json_schema_test/simple_json_schema_metadata_test
@@ -124,8 +123,8 @@ error_code add(int a, int b, [out] int& c);
 [description="Creates a new foo object instance"] 
 error_code create_foo([out] rpc::shared_ptr<xxx::i_foo>& target);
 
-[description="Creates an enclave on the host and discards the result"] 
-error_code call_host_create_enclave_and_throw_away(bool run_standard_tests);
+[description="Looks up an app by name without returning the instance"]
+error_code call_host_look_up_app_not_return(const std::string& name, bool run_standard_tests);
 ```
 
 When you generate code from this IDL using the RPC generator, it will automatically include MCP-compatible metadata in the generated function_info structures.

@@ -19,7 +19,7 @@
 
        CanopyGenerate(my_service "interface/my_service.idl" ...)
 
-       CanopyCreateDynamicLibrary(my_plugin
+       CanopyCreateBlockingDll(my_plugin
            SOURCES src/my_plugin.cpp
            LINK_LIBRARIES my_service_idl)
 

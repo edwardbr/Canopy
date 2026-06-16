@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include <c_abi/dynamic_library/canopy_dynamic_library.h>
+#include <c_abi/dynamic_library/dynamic_library.h>
 #include <protobuf_runtime_probe/basic_rpc_probe.h>
 #include <src/protobuf_runtime_probe/protobuf/schema/probe.pb.h>
 #include <rpc/rpc.h>

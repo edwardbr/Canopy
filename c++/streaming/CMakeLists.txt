@@ -6,41 +6,39 @@
 cmake_minimum_required(VERSION 3.24)
 
 add_subdirectory(core)
-add_subdirectory(tcp)
-add_subdirectory(tls)
-add_subdirectory(spsc_queue)
-add_subdirectory(spsc_wrapping)
-
+# tcp_blocking is generated in all builds but only creates an implementation target in non-coroutine builds.
+# tcp_coroutine is added from the top-level CMake after the low-level io_uring subcomponent is available.
+add_subdirectory(tcp_blocking)
 if(CANOPY_BUILD_WEBSOCKET)
   add_subdirectory(websocket)
 endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # io_uring and io_uring_tcp are INTERFACE / header-only targets; they impose no build cost and are excluded on
-  # non-Linux because io_uring is a Linux kernel API. They do not require CANOPY_BUILD_COROUTINE here because the
-  # coroutine guard is applied at the consumer level (transport targets and io_uring_stream_test below).
-  add_subdirectory(io_uring)
-  add_subdirectory(io_uring_tcp)
+if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+  add_subdirectory(openssl_tls)
 endif()
+if(CANOPY_BUILD_COMPRESSION)
+  add_subdirectory(compression)
+endif()
+
+if(CANOPY_BUILD_COROUTINE)
+  if(CANOPY_BUILD_MBEDTLS AND TARGET canopy_mbedtls_tls)
+    add_subdirectory(mbedtls)
+  endif()
+  add_subdirectory(spsc_queue)
+  add_subdirectory(spsc_buffered_stream)
+  add_subdirectory(attestation)
+endif()
+
+add_subdirectory(layer_factory)
 
 if(CANOPY_BUILD_TEST
    AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
    AND CANOPY_BUILD_COROUTINE)
-  add_executable(io_uring_stream_test tests/io_uring_stream_test.cpp)
-  target_include_directories(io_uring_stream_test PRIVATE ${CANOPY_INCLUDES})
-  target_compile_definitions(io_uring_stream_test PRIVATE ${CANOPY_DEFINES})
-  target_compile_options(io_uring_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-  target_link_options(io_uring_stream_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(io_uring_stream_test PRIVATE streaming streaming_io_uring GTest::gtest_main rpc_log)
-  add_test(NAME io_uring_stream_test COMMAND io_uring_stream_test)
-  message(STATUS "io_uring_stream_test configured")
-
   add_executable(streaming_regression_test tests/streaming_regression_test.cpp)
   target_include_directories(streaming_regression_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(streaming_regression_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(streaming_regression_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_wrapping GTest::gtest_main rpc_log)
+  target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_buffered_stream GTest::gtest_main rpc_log)
   add_test(NAME streaming_regression_test COMMAND streaming_regression_test)
   message(STATUS "streaming_regression_test configured")
 endif()

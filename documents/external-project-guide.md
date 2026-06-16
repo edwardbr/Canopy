@@ -38,8 +38,10 @@ projects/
 
 ## CMakePresets.json
 
-Your project needs its own presets. The only mandatory cache variable alongside
-`CMAKE_BUILD_TYPE` is the compiler pair. 
+Your project should define its own presets. At minimum, set `CMAKE_BUILD_TYPE`
+and the compiler pair. Set Canopy build options before `add_subdirectory()` so
+the embedded Canopy build does not enable tests, demos, benchmarks, or language
+workspaces that the consuming project does not need.
 
 ```json
 {
@@ -83,13 +85,16 @@ project(
   LANGUAGES C CXX)          # C is required — Canopy submodules need it
 
 # --- Canopy options (set BEFORE add_subdirectory) ---
-set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)  # TCP requires coroutines
+# Set ON for the coroutine TCP examples below. Set OFF, or omit this line, for
+# blocking builds that attach an rpc::blocking_executor to stream-backed services.
+set(CANOPY_BUILD_COROUTINE  ON  CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_TEST       OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
 
 # Optional serialization choices. Full protobuf is useful for host interop.
-# Nanopb is protobuf-compatible and is the preferred small-runtime path.
+# Nanopb is protobuf-compatible and is the preferred SGX/small-runtime path.
 set(CANOPY_BUILD_PROTOCOL_BUFFERS ON CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_NANOPB           ON CACHE BOOL "" FORCE)
 
@@ -112,8 +117,7 @@ target_link_options(server PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_libraries(
   server
   PRIVATE my_service_idl         # CanopyGenerate(my_service …) → my_service_idl
-          transport_streaming
-          streaming_tcp
+          connection_factory
           rpc
           canopy_network_config
           ${CANOPY_LIBRARIES})
@@ -139,7 +143,7 @@ Canopy has two protobuf-compatible C++ backends:
 - `CANOPY_BUILD_PROTOCOL_BUFFERS=ON` enables the full Google C++ protobuf runtime.
 - `CANOPY_BUILD_NANOPB=ON` enables the Nanopb-backed runtime.
 
-Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
+Both use generated `.proto` schemas and protobuf wire bytes. For normal host processes, full protobuf is appropriate when you need the Google generated C++ API or other full-runtime features. For SGX enclaves or other small-runtime deployments, prefer Nanopb so generated code does not link `protobuf::libprotobuf` into generated runtime targets.
 
 The two build options are independent.  `CanopyGenerate(... protocol_buffers
 ...)` requests protobuf-compatible schema/wire support for that IDL target.  If
@@ -150,7 +154,10 @@ from the same IDL target.
 When only one protobuf-compatible backend is enabled, Canopy maps the other
 encoding to it.  `rpc::encoding::protocol_buffers` uses Nanopb when full
 protobuf is disabled, and `rpc::encoding::nanopb` uses the full protobuf backend
-when Nanopb is disabled.
+when Nanopb is disabled.  In SGX enclave targets, full protobuf is stripped from
+the enclave compile definitions, so `protocol_buffers` requests are routed
+through Nanopb even if the host side of the same build still has full protobuf
+enabled.
 
 Nanopb still needs protobuf tooling at build time. That is separate from the runtime dependency of your generated targets.
 
@@ -223,6 +230,9 @@ namespace my_app
 - Output parameters are marked `[out]` and passed by reference.
 - Input parameters are marked `[in]` for non-trivial types; plain value types need no annotation.
 - Use `rpc::shared_ptr<i_other>` to pass interface references across zones.
+- Use `rpc::optional<T>` and `rpc::variant<Ts...>` for IDL sum types. The generator
+  rejects `std::optional` and `std::variant` so JSON schema, YAS, protobuf, and
+  Nanopb all use the same wire shape.
 
 Generated header to include in your source: `<subdir/name.h>` — e.g.
 `#include <my_service/my_service.h>`.
@@ -234,11 +244,12 @@ Do **not** include `_stub.h` or `_proxy.h` directly; `name.h` is the public head
 
 ```cpp
 #include <rpc/rpc.h>
-#include <streaming/listener.h>
-#include <streaming/tcp/acceptor.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
-#include <canopy/network_config/network_args.h>
+#include <connection_factory/connection_factory.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 #include <my_service/my_service.h>   // generated header
 
 // Required when telemetry is disabled — Canopy macros call this
@@ -266,6 +277,17 @@ public:
     }
 };
 
+template<class Settings>
+rpc::connection_factory::typed_settings make_typed_settings(std::string type, Settings settings)
+{
+    using json::v1::convert::to_json_object;
+
+    rpc::connection_factory::typed_settings result;
+    result.type = std::move(type);
+    result.settings = to_json_object(settings);
+    return result;
+}
+
 // Coroutine entry point for the server
 CORO_TASK(int) run_server(
     std::shared_ptr<coro::scheduler> scheduler,
@@ -276,42 +298,52 @@ CORO_TASK(int) run_server(
     if (!listen)
         CO_RETURN 1;
 
-    const auto domain = listen->family == canopy::network_config::ip_address_family::ipv6
-        ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
-    const coro::net::socket_address endpoint{
-        coro::net::ip_address::from_string(listen->to_string(), domain), listen->port};
-
     auto allocator = canopy::network_config::make_allocator(cfg);
-    auto server_zone = allocator.allocate_zone();
+    rpc::zone_address server_zone_addr;
+    auto zone_error = allocator.allocate_zone(server_zone_addr);
+    if (zone_error != rpc::error::OK())
+        CO_RETURN zone_error;
+    rpc::zone server_zone{server_zone_addr};
 
     auto on_shutdown = std::make_shared<rpc::event>();
     auto service = rpc::root_service::create(
         "my_server", server_zone, scheduler);
     service->set_shutdown_event(on_shutdown);
 
-    auto listener = std::make_shared<streaming::listener>(
-        "server_transport",
-        std::make_shared<streaming::tcp::acceptor>(endpoint),
-        rpc::stream_transport::make_connection_callback<my_app::i_my_service, my_app::i_my_service>(
-            [](const rpc::shared_ptr<my_app::i_my_service>&,
-               const std::shared_ptr<rpc::service>&)
-               -> CORO_TASK(rpc::service_connect_result<my_app::i_my_service>)
-            {
-                CO_RETURN rpc::service_connect_result<my_app::i_my_service>{
-                    rpc::error::OK(),
-                    rpc::shared_ptr<my_app::i_my_service>(new my_service_impl())};
-            }));
+    rpc::connection_factory::connection_settings options;
 
-    if (!listener->start_listening(service))
-        CO_RETURN 1;
+    rpc::connection_factory::service_settings service_settings;
+    service_settings.name = std::string("my_server");
+    options.service = make_typed_settings("service", service_settings);
 
-    service.reset();   // listener holds service alive from here
+    rpc::stream_transport::transport_settings transport_settings;
+    transport_settings.name = std::string("server_transport");
+    transport_settings.encoding = rpc::encoding::nanopb;
+    options.transport = make_typed_settings("stream_rpc", transport_settings);
 
-    co_await shutdown.wait();
+    rpc::stream_transport::listener_settings listener_settings;
+    listener_settings.name = std::string("server_listener");
+    options.listener = make_typed_settings("stream_rpc", listener_settings);
 
-    co_await listener->stop_listening();
-    listener.reset();
-    co_await on_shutdown->wait();
+    rpc::tcp_coroutine_stream::endpoint endpoint;
+    endpoint.host = listen->to_string();
+    endpoint.port = listen->port;
+    rpc::stream_layers::stream_layer_settings tcp_layer;
+    tcp_layer.type = "tcp_coroutine";
+    tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+    options.stream_layers.push_back(std::move(tcp_layer));
+
+    auto listener = CO_AWAIT rpc::connection_factory::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+        rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
+        options,
+        service);
+    if (listener.error_code != rpc::error::OK())
+        CO_RETURN listener.error_code;
+
+    CO_AWAIT shutdown.wait();
+
+    CO_AWAIT listener.handle->stop();
+    CO_AWAIT on_shutdown->wait();
     CO_RETURN 0;
 }
 
@@ -343,55 +375,79 @@ int main(int argc, char* argv[])
 
 ```cpp
 #include <rpc/rpc.h>
-#include <streaming/tcp/stream.h>
-#include <transports/streaming/transport.h>
-#include <canopy/network_config/network_args.h>
+#include <connection_factory/connection_factory.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
+#include <json/convert.h>
+#include <stream_transport/stream_transport_config.h>
+#include <tcp_coroutine_stream/tcp_coroutine_stream_config.h>
 #include <my_service/my_service.h>
 
 // rpc_log() required here too (see server example above)
+
+template<class Settings>
+rpc::connection_factory::typed_settings make_typed_settings(std::string type, Settings settings)
+{
+    using json::v1::convert::to_json_object;
+
+    rpc::connection_factory::typed_settings result;
+    result.type = std::move(type);
+    result.settings = to_json_object(settings);
+    return result;
+}
 
 CORO_TASK(int) run_client(
     std::shared_ptr<coro::scheduler> scheduler,
     const canopy::network_config::network_config& cfg)
 {
-    const auto* remote = cfg.first_connect();
-    if (!remote)
+    const auto* remote_cfg = cfg.first_connect();
+    if (!remote_cfg)
         CO_RETURN 1;
 
     auto allocator = canopy::network_config::make_allocator(cfg);
-    auto client_zone = allocator.allocate_zone();
+    rpc::zone_address client_zone_addr;
+    auto zone_error = allocator.allocate_zone(client_zone_addr);
+    if (zone_error != rpc::error::OK())
+        CO_RETURN zone_error;
+    rpc::zone client_zone{client_zone_addr};
 
     auto client_service = rpc::root_service::create(
         "my_client", client_zone, scheduler);
 
-    const auto domain = remote->family == canopy::network_config::ip_address_family::ipv6
-        ? coro::net::domain_t::ipv6 : coro::net::domain_t::ipv4;
+    rpc::connection_factory::connection_settings options;
 
-    coro::net::tcp::client tcp_client(scheduler,
-        coro::net::socket_address{
-            coro::net::ip_address::from_string(remote->to_string(), domain), remote->port});
+    rpc::connection_factory::service_settings service_settings;
+    service_settings.name = std::string("my_client");
+    options.service = make_typed_settings("service", service_settings);
 
-    auto status = CO_AWAIT tcp_client.connect(std::chrono::milliseconds(5000));
-    if (status != coro::net::connect_status::connected)
-        CO_RETURN 1;
+    rpc::stream_transport::transport_settings transport_settings;
+    transport_settings.name = std::string("client_transport");
+    transport_settings.service_proxy_name = std::string("my_server");
+    transport_settings.encoding = rpc::encoding::nanopb;
+    options.transport = make_typed_settings("stream_rpc", transport_settings);
 
-    auto tcp_stm = std::make_shared<streaming::tcp::stream>(std::move(tcp_client), scheduler);
-    auto transport = rpc::stream_transport::make_client(
-        "client_transport", client_service, std::move(tcp_stm));
+    rpc::tcp_coroutine_stream::endpoint endpoint;
+    endpoint.host = remote_cfg->to_string();
+    endpoint.port = remote_cfg->port;
+    rpc::stream_layers::stream_layer_settings tcp_layer;
+    tcp_layer.type = "tcp_coroutine";
+    tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+    options.stream_layers.push_back(std::move(tcp_layer));
 
-    auto result = CO_AWAIT client_service->connect_to_zone<
-        my_app::i_my_service, my_app::i_my_service>(
-            "my_server", transport, rpc::shared_ptr<my_app::i_my_service>());
+    auto result = CO_AWAIT rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+        rpc::shared_ptr<my_app::i_my_service>(),
+        options,
+        client_service);
 
     if (result.error_code != rpc::error::OK())
         CO_RETURN 1;
 
-    auto remote = result.output_interface;
+    auto remote_service = result.output_interface;
 
     std::string output;
-    CO_AWAIT remote->my_method("hello", output);
+    CO_AWAIT remote_service->my_method("hello", output);
 
-    remote.reset();
+    remote_service.reset();
     CO_RETURN 0;
 }
 ```
@@ -405,15 +461,151 @@ Both server and client executables need at minimum:
 ```cmake
 target_link_libraries(my_exe PRIVATE
     my_service_idl
-    transport_streaming
-    streaming_tcp
+    connection_factory
     rpc
     canopy_network_config
     ${CANOPY_LIBRARIES})
 ```
 
-For non-TCP (local/in-process) builds replace `transport_streaming streaming_tcp`
-with `transport_local`.
+For local/in-process-only builds, link `transport_local` instead of
+`connection_factory`.
+
+The configured factory API uses `rpc::connection_factory::connection_settings`.
+Each `typed_settings` envelope names the implementation (`stream_rpc`,
+`tcp_coroutine`, `tcp_blocking`, `spsc_queue`, etc.) and carries that
+implementation's generated settings shape. Build those settings from generated
+IDL types in C++ code and reserve raw JSON for config file or CLI boundaries.
+
+Use `materialise_connection_settings()` at configuration boundaries: config
+files, config blobs, tests, and command-line overlays. That JSON is validated
+against the generated `rpc::connection_factory::connection_settings` schema.
+Implementation-specific settings remain opaque to the connection factory until
+the named stream, layer, or transport materialises them through its own
+generated IDL settings type.
+
+`json/config_loader.h` provides the usual file/config boundary. Its merge order
+is:
+
+```
+JSON schema defaults < component defaults < config-file values < CLI overrides
+```
+
+```cpp
+#include <json/config_loader.h>
+#include <connection_factory/connection_factory.h>
+#include <connection_factory_config/connection_factory_config_schema.h>
+
+auto schema = json::v1::parse(
+    rpc::connection_factory::connection_settings::get_schema(rpc::encoding::yas_json));
+
+json::v1::object component_defaults{json::v1::map{
+    {"transport", json::v1::map{
+        {"type", "stream_rpc"},
+        {"settings", json::v1::map{{"encoding", "nanopb"}}}}},
+}};
+
+json::v1::object cli_overrides{json::v1::map{
+    {"stream_layers", json::v1::array{
+        json::v1::map{
+            {"type", "tcp_coroutine"},
+            {"settings", json::v1::map{{"port", uint16_t{8080}}}}}}},
+}};
+
+auto json_options =
+    json::v1::load_typed_config_file<rpc::connection_factory::connection_settings>(
+        schema, "server.json", component_defaults, cli_overrides);
+```
+
+## Connection Factory Context
+
+Most applications should use the default context. Create
+`rpc::connection_factory::context` only when the configured factory needs
+runtime dependencies or application-defined stream components.
+
+Dependencies are type-keyed and can be named:
+
+```cpp
+rpc::connection_factory::context factory_context;
+factory_context.set_dependency(my_tls_context, "public_api");
+factory_context.set_dependency(my_other_tls_context, "internal_api");
+```
+
+Custom stream registrations are typed. The builder receives the generated IDL
+settings type, not a JSON object; invalid settings are rejected before the
+builder is invoked. This example assumes `my_app::passthrough_settings` is a
+generated IDL struct with a `runtime_name` string field.
+
+```cpp
+factory_context.register_stream_layer<my_app::passthrough_settings>(
+    "my_passthrough",
+    [](std::shared_ptr<streaming::stream> stream,
+       my_app::passthrough_settings settings,
+       rpc::connection_factory::layer_direction direction,
+       const rpc::connection_factory::context& context)
+        -> CORO_TASK(rpc::connection_factory::stream_result)
+    {
+        auto dependency = context.get_dependency<my_app::runtime_state>(settings.runtime_name);
+        if (!dependency)
+            CO_RETURN rpc::connection_factory::stream_result{rpc::error::INVALID_DATA(), {}};
+
+        CO_RETURN rpc::connection_factory::stream_result{rpc::error::OK(), std::move(stream)};
+    });
+```
+
+Pass the context to the configured operation that needs it:
+
+```cpp
+auto result = CO_AWAIT rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(),
+    options,
+    client_service,
+    factory_context);
+```
+
+## Blocking TCP Variant
+
+For a blocking external project, keep `CANOPY_BUILD_COROUTINE=OFF` and use C++17.
+Plain in-process RPC does not need a thread pool, but stream-backed TCP, TLS, and
+WebSocket transports do. Construct the owning service with an
+`rpc::blocking_executor` and use the same configured connection factory API:
+
+```cpp
+auto exec = std::make_shared<rpc::blocking_executor>();
+auto service = rpc::root_service::create("my_server", server_zone, exec);
+
+rpc::connection_factory::connection_settings options;
+rpc::tcp_blocking_stream::endpoint endpoint;
+endpoint.host = std::string("127.0.0.1");
+endpoint.port = uint16_t{8080};
+rpc::stream_layers::stream_layer_settings tcp_layer;
+tcp_layer.type = "tcp_blocking";
+tcp_layer.settings = json::v1::convert::to_json_object(endpoint);
+options.stream_layers.push_back(std::move(tcp_layer));
+
+auto listener = rpc::connection_factory::accept_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(new my_service_impl()),
+    options,
+    service);
+if (listener.error_code != rpc::error::OK())
+    return 1;
+
+// On shutdown:
+listener.handle->stop();
+exec->shutdown();
+```
+
+Blocking client code uses the same factory:
+
+```cpp
+auto result = rpc::connection_factory::connect_rpc<my_app::i_my_service, my_app::i_my_service>(
+    rpc::shared_ptr<my_app::i_my_service>(),
+    options,
+    client_service);
+```
+
+The blocking TCP socket takes ownership of the descriptor, switches it to
+non-blocking mode internally, and uses `poll()`/POSIX `recv`/`send` behind the
+same `streaming::stream` interface used by coroutine builds.
 
 ---
 
@@ -467,11 +659,12 @@ visible to `my_exe`. No additional `add_dependencies()` calls are needed.
 
 ---
 
-## Working Example
+## Working Example Structure
 
-A complete working example lives at `/var/home/edward/projects/test_app/`.
-It implements a `server` and `client` communicating over TCP using the
-`greeting_app::i_greeter` interface. The five essential files are:
+A complete external application should mirror the structure shown in this
+guide: a root build file, presets, an IDL subdirectory, one IDL file, and the
+server/client sources. For a TCP greeter-style application, the essential files
+are:
 
 - `CMakeLists.txt` — root build
 - `CMakePresets.json` — Coroutine and Release_Coroutine presets

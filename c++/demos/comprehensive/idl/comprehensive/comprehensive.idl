@@ -1,42 +1,54 @@
 /*
  *   Comprehensive Demo IDL
- *   Demonstrates all major RPC++ features
+ *   Demonstrates all major Canopy features
  */
+
+#import "rpc/rpc_types.idl"
+#import "calculator/calculator.idl"
 
 namespace comprehensive
 {
     namespace v1
     {
-        // Simple calculator interface for basic RPC demos
-        interface i_calculator
+        // Application-level status values for the comprehensive demos and the
+        // benchmark application interfaces that reuse this IDL. Negative values
+        // remain rpc::error transport/runtime failures; these positive values
+        // describe demo or benchmark semantics.
+        error comprehensive_error
         {
-            [description="Add two integers"] 
-            int add(int a, int b, [out] int& sum);
+            [description = "A supplied argument is invalid for this demo operation."]
+            INVALID_ARGUMENT,
 
-            [description="Subtract two integers"]
-            int subtract(int a, int b, [out] int& difference);
+            [description = "The requested object does not exist in the demo application state."]
+            OBJECT_NOT_FOUND,
 
-            [description="Multiply two integers"]
-            int multiply(int a, int b, [out] int& product);
+            [description = "The demo service object is no longer available."]
+            SERVICE_UNAVAILABLE,
 
-            [description="Divide two integers"]
-            int divide(int a, int b, [out] int& quotient);
+            [description = "The requested operation is not implemented in this build."]
+            NOT_IMPLEMENTED,
+
+            [description = "The benchmark payload or response failed application validation."]
+            INVALID_BENCHMARK_RESULT,
+
+            [description = "A benchmark server is already running for this object."]
+            SERVER_ALREADY_RUNNING
         };
 
         // Interface with complex types for serialization demos
         interface i_data_processor
         {
             [description="Process a vector of integers"]
-            int process_vector([in] const std::vector<int>& input, [out] std::vector<int>& output);
+            comprehensive_error process_vector([in] const std::vector<int>& input, [out] std::vector<int>& output);
 
             [description="Process key-value pairs"]
-            int process_map([in] const std::map<std::string, int>& input, [out] std::map<std::string, int>& output);
+            comprehensive_error process_map([in] const std::map<std::string, int>& input, [out] std::map<std::string, int>& output);
 
             [description="Process a complex structure - simplified for demo"]
-            int process_struct([in] const std::string& input, [out] std::string& output);
+            comprehensive_error process_struct([in] const std::string& input, [out] std::string& output);
 
             [description="Echo back binary data"]
-            int echo_binary([in] const std::vector<uint8_t>& data, [out] std::vector<uint8_t>& response);
+            comprehensive_error echo_binary([in] const std::vector<uint8_t>& data, [out] std::vector<uint8_t>& response);
         };
 
         // Callback interface for optimistic pointer demos
@@ -44,10 +56,10 @@ namespace comprehensive
         interface i_callback_receiver
         {
             [description="Receive a progress callback from child"]
-            int on_progress(int percentage);
+            comprehensive_error on_progress(int percentage);
 
             [description="Receive a data update from child"]
-            int on_data_update([in] const std::string& data);
+            comprehensive_error on_data_update([in] const std::string& data);
         };
 
         // Worker interface - created by parent, calls back to parent
@@ -55,58 +67,58 @@ namespace comprehensive
         interface i_worker
         {
             [description="Set the callback receiver (parent) for this worker"]
-            int set_callback_receiver([in] rpc::shared_ptr<i_callback_receiver> receiver);
+            comprehensive_error set_callback_receiver([in] rpc::shared_ptr<i_callback_receiver> receiver);
 
             [description="Start work and send progress updates"]
-            int start_work(int iterations);
+            comprehensive_error start_work(int iterations);
 
             [description="Send data to parent"]
-            int send_data([in] const std::string& data);
+            comprehensive_error send_data([in] const std::string& data);
         };
 
         // Shared pointer demo - object factory
         interface i_object_factory
         {
             [description="Create a new shared object"] 
-            int create_object([out] uint64_t& object_id, [out] rpc::shared_ptr<i_managed_object>& obj);
+            comprehensive_error create_object([out] uint64_t& object_id, [out] rpc::shared_ptr<i_managed_object>& obj);
 
             [description="Get existing object by ID"]
-            int get_object(uint64_t object_id, [out] rpc::shared_ptr<i_managed_object>& obj);
+            comprehensive_error get_object(uint64_t object_id, [out] rpc::shared_ptr<i_managed_object>& obj);
 
             [description="Release an object (tests reference counting)"]
-            int release_object(uint64_t object_id);
+            comprehensive_error release_object(uint64_t object_id);
         };
 
         // Managed object for shared pointer demos
         interface i_managed_object
         {
             [description="Get object ID"]
-            int get_object_id([out] uint64_t& id);
+            comprehensive_error get_object_id([out] uint64_t& id);
 
             [description="Get reference count (informational)"]
-            int get_ref_count([out] int& count);
+            comprehensive_error get_ref_count([out] int& count);
 
             [description="Perform an operation on the object"]
-            int perform_operation([in] const std::string& operation, [out] std::string& output);
+            comprehensive_error perform_operation([in] const std::string& operation, [out] std::string& output);
 
             [description="Ping the object (liveness check)"]
-            int ping();
+            comprehensive_error ping();
         };
 
         // Service interface for transport demos
         interface i_demo_service
         {
             [description="Get the zone ID of this service"]
-            int get_zone_id([out] uint64_t& zone_id);
+            comprehensive_error get_zone_id([out] uint64_t& zone_id);
 
             [description="Get the service name"]
-            int get_name([out] std::string& name);
+            comprehensive_error get_name([out] std::string& name);
 
             [description="Create a child service in a new zone"]
-            int create_child_zone([out] rpc::shared_ptr<i_demo_service>& child_service);
+            comprehensive_error create_child_zone([out] rpc::shared_ptr<i_demo_service>& child_service);
 
             [description="Call echo through a child service"]
-            int echo_through_child([in] const std::string& message, [out] std::string& response);
+            comprehensive_error echo_through_child([in] const std::string& message, [out] std::string& response);
         };
     }
 }

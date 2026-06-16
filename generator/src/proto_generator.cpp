@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <utility>
+#include <vector>
 
 #include "coreclasses.h"
 #include "helpers.h"
@@ -83,6 +85,35 @@ namespace proto_generator
         return false;
     }
 
+    std::vector<std::string> split_template_args(const std::string& args)
+    {
+        std::vector<std::string> result;
+        int bracket_count = 0;
+        size_t start = 0;
+
+        for (size_t i = 0; i < args.length(); ++i)
+        {
+            const char c = args[i];
+            if (c == '<')
+                bracket_count++;
+            else if (c == '>')
+                bracket_count--;
+            else if (c == ',' && bracket_count == 0)
+            {
+                auto arg = trim_copy(args.substr(start, i - start));
+                if (!arg.empty())
+                    result.push_back(std::move(arg));
+                start = i + 1;
+            }
+        }
+
+        auto arg = trim_copy(args.substr(start));
+        if (!arg.empty())
+            result.push_back(std::move(arg));
+
+        return result;
+    }
+
     bool is_map_type(
         const std::string& type,
         std::string& prefix)
@@ -120,6 +151,61 @@ namespace proto_generator
             return true;
         }
         return false;
+    }
+
+    bool is_json_dom_type(const std::string& type_name)
+    {
+        auto normalized = normalise_cpp_type(type_name);
+        if (normalized.rfind("::", 0) == 0)
+            normalized.erase(0, 2);
+
+        return normalized == "json::v1::object" || normalized == "json::object" || normalized == "json::v1::map"
+               || normalized == "json::map" || normalized == "json::v1::array" || normalized == "json::array"
+               || normalized == "json::v1::number" || normalized == "json::number";
+    }
+
+    bool is_optional_type(
+        const std::string& type,
+        std::string& inner_type)
+    {
+        const auto normalized = normalise_cpp_type(type);
+        const bool is_rpc_optional = normalized.find("rpc::optional<") == 0 || normalized.find("::rpc::optional<") == 0;
+        if (!is_rpc_optional)
+            return false;
+
+        const auto template_start = normalized.find('<');
+        std::string content;
+        if (extract_template_content(normalized, template_start, content) == std::string::npos)
+            return false;
+
+        inner_type = trim_copy(content);
+        return !inner_type.empty();
+    }
+
+    std::string optional_inner_type(const std::string& type)
+    {
+        std::string inner_type;
+        is_optional_type(type, inner_type);
+        return inner_type;
+    }
+
+    bool is_variant_type(
+        const std::string& type,
+        std::vector<std::string>& alternative_types)
+    {
+        alternative_types.clear();
+        const auto normalized = normalise_cpp_type(type);
+        const bool is_rpc_variant = normalized.find("rpc::variant<") == 0 || normalized.find("::rpc::variant<") == 0;
+        if (!is_rpc_variant)
+            return false;
+
+        const auto template_start = normalized.find('<');
+        std::string content;
+        if (extract_template_content(normalized, template_start, content) == std::string::npos)
+            return false;
+
+        alternative_types = split_template_args(content);
+        return !alternative_types.empty();
     }
 
     std::string cpp_scalar_to_proto_type(const std::string& type)
@@ -254,6 +340,9 @@ namespace proto_generator
 
         if (is_pointer)
             return "uint64";
+
+        if (is_json_dom_type(type))
+            return "bytes";
 
         if (type == "std::vector<uint8_t>" || type == "std::vector<unsigned char>" || type == "std::vector<char>"
             || type == "std::vector<signed char>")

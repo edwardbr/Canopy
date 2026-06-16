@@ -46,9 +46,11 @@ include(CanopyGenerate)
 add_subdirectory(generator)
 add_subdirectory("${CANOPY_INTERFACE_SOURCE_DIR}" interfaces)
 add_subdirectory("${CANOPY_CPP_SOURCE_DIR}" c++)
-add_subdirectory(integration_tests)
+if(CANOPY_BUILD_TEST)
+  add_subdirectory(integration_tests)
+endif()
 
-option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" ON)
+option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)
 if(CANOPY_BUILD_RUST)
   find_program(CARGO_EXECUTABLE cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
   if(NOT CARGO_EXECUTABLE)
@@ -84,13 +86,15 @@ if(CANOPY_BUILD_RUST)
       list(APPEND CANOPY_RUST_TEST_ENV CANOPY_CXX_PROBE_DLL_PATH=$<TARGET_FILE:canopy_probe_c_abi_dll>)
     endif()
 
-    # Run Rust tests via CTest.
-    add_test(
-      NAME rust_tests
-      COMMAND
-        ${CMAKE_COMMAND} -E env ${CANOPY_RUST_TEST_ENV} ${CARGO_EXECUTABLE} test -p canopy-rpc -p
-        canopy-transport-dynamic-library -p canopy-transport-dynamic-library-test-child -p canopy-protobuf-runtime-probe
-        --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
-      WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR})
+    if(CANOPY_BUILD_TEST)
+      # Run Rust tests via CTest.
+      add_test(
+        NAME rust_tests
+        COMMAND
+          ${CMAKE_COMMAND} -E env ${CANOPY_RUST_TEST_ENV} ${CARGO_EXECUTABLE} test -p canopy-rpc -p
+          canopy-transport-dynamic-library -p canopy-transport-dynamic-library-test-child -p
+          canopy-protobuf-runtime-probe --manifest-path ${CANOPY_RUST_SOURCE_DIR}/Cargo.toml
+        WORKING_DIRECTORY ${CANOPY_RUST_SOURCE_DIR})
+    endif()
   endif()
 endif()

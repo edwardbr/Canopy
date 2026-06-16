@@ -1,3 +1,5 @@
 window.CanopyWebsocketDemoConfig = {
     encoding: @CANOPY_WEBSOCKET_DEMO_ENCODING_JS@,
+    calculatorOnly: @CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_JS@,
+    wsUrl: "",
 };

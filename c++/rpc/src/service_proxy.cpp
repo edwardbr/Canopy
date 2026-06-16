@@ -12,18 +12,19 @@
 #include <cstdio>
 #include <limits>
 #include <algorithm>
+#include <utility>
 
 namespace rpc
 {
     service_proxy::service_proxy(
-        const std::string& name,
+        std::string name,
         const zone zone_id,
         destination_zone destination_zone_id,
         std::shared_ptr<service> service,
         const std::shared_ptr<transport>& transport,
         uint64_t version,
         encoding enc)
-        : name_(name)
+        : name_(std::move(name))
         , zone_id_(zone_id)
         , destination_zone_id_(destination_zone_id)
         , service_(service)
@@ -34,13 +35,13 @@ namespace rpc
     }
 
     std::shared_ptr<service_proxy> service_proxy::create(
-        const std::string& name,
+        std::string name,
         std::shared_ptr<service> service,
         const std::shared_ptr<transport>& transport,
         destination_zone destination_zone_id)
     {
         auto ret = std::shared_ptr<service_proxy>(new service_proxy(
-            name,
+            std::move(name),
             service->get_zone_id(),
             destination_zone_id,
             service,
@@ -52,7 +53,7 @@ namespace rpc
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
             telemetry_service->on_service_proxy_creation(
-                {service->get_name(), name, service->get_zone_id(), destination_zone_id, service->get_zone_id()});
+                {service->get_name(), ret->get_name(), service->get_zone_id(), destination_zone_id, service->get_zone_id()});
         }
 #endif
         return ret;
@@ -91,7 +92,7 @@ namespace rpc
 
         RPC_ASSERT(proxies_.empty());
         if (service)
-            service->remove_zone_proxy(destination_zone_id_);
+            service->remove_zone_proxy_if_matches(destination_zone_id_, this);
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)
@@ -108,7 +109,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data,
+        std::vector<char> in_data,
         uint64_t request_id)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
@@ -160,7 +161,7 @@ namespace rpc
         params.remote_object_id = std::move(*dest_with_obj_send);
         params.interface_id = interface_id;
         params.method_id = method_id;
-        params.in_data.assign(in_data.begin(), in_data.end());
+        params.in_data = std::move(in_data);
         params.request_id = request_id;
         CO_RETURN CO_AWAIT service->outbound_send(std::move(params), transport);
     }
@@ -172,7 +173,7 @@ namespace rpc
         rpc::object object_id,
         rpc::interface_ordinal interface_id,
         rpc::method method_id,
-        rpc::byte_span in_data)
+        std::vector<char> in_data)
     {
         const auto min_version = std::max<std::uint64_t>(rpc::LOWEST_SUPPORTED_VERSION, 1);
         const auto max_version = rpc::HIGHEST_SUPPORTED_VERSION;
@@ -223,7 +224,7 @@ namespace rpc
         params.remote_object_id = std::move(*dest_with_obj_post);
         params.interface_id = interface_id;
         params.method_id = method_id;
-        params.in_data.assign(in_data.begin(), in_data.end());
+        params.in_data = std::move(in_data);
         CO_AWAIT service->outbound_post(std::move(params), transport);
 
         CO_RETURN rpc::error::OK();
@@ -291,6 +292,63 @@ namespace rpc
         }
         RPC_ERROR("Incompatible service version in try_cast");
         CO_RETURN last_error;
+    }
+
+    [[nodiscard]] CORO_TASK(get_schema_result) service_proxy::sp_get_schema(
+        destination_zone destination_zone_id,
+        object object_id,
+        rpc::optional<interface_ordinal> interface_id,
+        rpc::encoding schema_encoding,
+        rpc::schema_flavor flavor,
+        bool include_deprecated)
+    {
+        auto original_version = version_.load();
+        auto version = original_version;
+        const auto min_version = rpc::LOWEST_SUPPORTED_VERSION ? rpc::LOWEST_SUPPORTED_VERSION : 1;
+        int last_error = rpc::error::INVALID_VERSION();
+
+        auto transport = transport_.get_nullable();
+        if (!transport)
+            CO_RETURN get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        auto service = get_operating_zone_service();
+        RPC_ASSERT(service);
+        if (!service)
+            CO_RETURN get_schema_result{rpc::error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+
+        while (version >= min_version)
+        {
+            auto dest_with_obj = destination_zone_id.with_object(object_id);
+            if (!dest_with_obj)
+                CO_RETURN get_schema_result{rpc::error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+
+            rpc::get_schema_query query;
+            query.remote_object_id = *dest_with_obj;
+            query.interface_id = interface_id;
+            query.encoding_type = schema_encoding;
+            query.flavor = flavor;
+            query.include_deprecated = include_deprecated;
+
+            get_schema_params params;
+            params.protocol_version = version;
+            params.caller_zone_id = get_zone_id();
+            params.destination_zone_id = destination_zone_id;
+            params.query = std::move(query);
+
+            auto result = CO_AWAIT service->outbound_get_schema(std::move(params), transport);
+            auto ret = result.error_code;
+            if (ret != rpc::error::INVALID_VERSION() && ret != rpc::error::INCOMPATIBLE_SERVICE())
+            {
+                if (original_version != version)
+                    version_.compare_exchange_strong(original_version, version);
+                CO_RETURN result;
+            }
+            last_error = ret;
+            if (version == min_version)
+                break;
+            version--;
+        }
+        RPC_ERROR("Incompatible service version in get_schema");
+        CO_RETURN get_schema_result{last_error, rpc::encoding::not_set, {}, {}};
     }
 
     [[nodiscard]] CORO_TASK(int) service_proxy::sp_add_ref(

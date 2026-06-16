@@ -24,7 +24,6 @@ protected:
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;     // NOLINT(misc-non-private-member-variables-in-classes)
     rpc::shared_ptr<yyy::i_example> i_example_ptr_; // NOLINT(misc-non-private-member-variables-in-classes)
 
-    const bool has_enclave_ = true;              // NOLINT(misc-non-private-member-variables-in-classes)
     bool use_host_in_child_ = UseHostInChild;    // NOLINT(misc-non-private-member-variables-in-classes)
     bool run_standard_tests_ = RunStandardTests; // NOLINT(misc-non-private-member-variables-in-classes)
     bool error_has_occurred_ = false;            // NOLINT(misc-non-private-member-variables-in-classes)
@@ -108,8 +107,7 @@ public:
     bool has_service() { return true; }
 
     [[nodiscard]] std::shared_ptr<rpc::root_service> get_root_service() const { return root_service_; }
-    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
-    [[nodiscard]] bool is_sgx_setup() const { return false; }
+    [[nodiscard]] bool supports_process_local_reference_tests() const { return false; }
     [[nodiscard]] rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
     void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
     [[nodiscard]] rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }

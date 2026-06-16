@@ -6,6 +6,35 @@
 
 namespace rpc
 {
+    namespace
+    {
+        release_options release_options_from_add_ref(add_ref_options options)
+        {
+            return !!(options & add_ref_options::optimistic) ? release_options::optimistic : release_options::normal;
+        }
+
+        bool can_synthesise_compensating_release(const add_ref_params& params)
+        {
+            // Plain add_ref has enough public information for the pass-through
+            // to construct the matching release. Once an extension payload is
+            // present, especially an encrypted/protected RPC payload, the
+            // pass-through cannot know how to produce the corresponding release
+            // blob and must not downgrade the compensation to plaintext.
+            return !params.payload.has_value();
+        }
+
+        release_params make_compensating_release_params(const add_ref_params& params)
+        {
+            release_params release;
+            release.protocol_version = params.protocol_version;
+            release.remote_object_id = params.remote_object_id;
+            release.caller_zone_id = params.caller_zone_id;
+            release.options = release_options_from_add_ref(params.build_out_param_channel);
+            release.in_back_channel = params.in_back_channel;
+            release.payload.reset();
+            return release;
+        }
+    }
 
     pass_through::pass_through(
         std::shared_ptr<transport> forward,
@@ -161,6 +190,54 @@ namespace rpc
         }
 
         auto result = CO_AWAIT target_transport->try_cast(std::move(params));
+
+        end_call();
+
+        if (error::is_critical(result.error_code))
+        {
+            trigger_self_destruction();
+        }
+
+        CO_RETURN result;
+    }
+
+    CORO_TASK(get_schema_result)
+    pass_through::get_schema(get_schema_params params)
+    {
+        if (!begin_call())
+        {
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+        auto keep_alive = shared_from_this();
+
+        auto destination_zone_id = params.destination_zone_id;
+        if (!destination_zone_id.is_set())
+        {
+            if (auto query = params.query_if_plain())
+                destination_zone_id = query->remote_object_id.as_zone();
+        }
+        if (!destination_zone_id.is_set())
+        {
+            end_call();
+            CO_RETURN get_schema_result{error::INVALID_DATA(), rpc::encoding::not_set, {}, {}};
+        }
+        params.destination_zone_id = destination_zone_id;
+
+        auto target_transport = get_directional_transport(destination_zone_id);
+        if (!target_transport)
+        {
+            end_call();
+            CO_RETURN get_schema_result{error::ZONE_NOT_FOUND(), rpc::encoding::not_set, {}, {}};
+        }
+
+        if (target_transport->get_status() != transport_status::CONNECTED)
+        {
+            end_call();
+            trigger_self_destruction();
+            CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
+        }
+
+        auto result = CO_AWAIT target_transport->get_schema(std::move(params));
 
         end_call();
 
@@ -347,6 +424,7 @@ namespace rpc
 
         // We build the result by merging out_back_channels from both calls
         standard_result final_result{error::OK(), {}};
+        bool destination_leg_committed = false;
 
         if (build_dest_channel)
         {
@@ -358,6 +436,7 @@ namespace rpc
             dest_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_caller_route;
             dest_params.in_back_channel = params.in_back_channel;
             dest_params.request_id = params.request_id;
+            dest_params.payload = params.payload;
 
             auto dest_result = CO_AWAIT destination_transport->add_ref(std::move(dest_params));
 
@@ -368,6 +447,7 @@ namespace rpc
                 trigger_self_destruction();
                 CO_RETURN dest_result;
             }
+            destination_leg_committed = true;
             final_result.out_back_channel = std::move(dest_result.out_back_channel);
         }
 
@@ -381,11 +461,38 @@ namespace rpc
             caller_params.build_out_param_channel = build_out_param_channel & ~add_ref_options::build_destination_route;
             caller_params.in_back_channel = params.in_back_channel;
             caller_params.request_id = params.request_id;
+            caller_params.payload = params.payload;
 
             auto caller_result = CO_AWAIT caller_transport->add_ref(std::move(caller_params));
 
             if (caller_result.error_code != error::OK())
             {
+                if (destination_leg_committed && can_synthesise_compensating_release(params))
+                {
+                    // The object-owner side has already accepted the reference. Undo it
+                    // before returning failure so an add_ref that forks into two legs
+                    // behaves atomically from the caller's point of view.
+                    auto release_result
+                        = CO_AWAIT destination_transport->release(make_compensating_release_params(params));
+                    if (release_result.error_code != error::OK())
+                    {
+                        RPC_ERROR(
+                            "pass_through::add_ref failed to compensate committed destination leg; "
+                            "add_ref_error={} release_error={} remote_object={} caller={}",
+                            caller_result.error_code,
+                            release_result.error_code,
+                            std::to_string(remote_object_id),
+                            caller_zone_id.get_subnet());
+                    }
+                }
+                else if (destination_leg_committed)
+                {
+                    RPC_ERROR(
+                        "pass_through::add_ref cannot compensate committed destination leg with an opaque payload; "
+                        "remote_object={} caller={}",
+                        std::to_string(remote_object_id),
+                        caller_zone_id.get_subnet());
+                }
                 rollback_passthrough_ref();
                 end_call();
                 trigger_self_destruction();
@@ -572,6 +679,36 @@ namespace rpc
         // Atomically mark shutdown. do_cleanup() will run either immediately (no
         // active calls) or when the last in-flight call's end_call() fires.
         trigger_self_destruction();
+    }
+
+    CORO_TASK(handshake_result)
+    pass_through::handshake(handshake_params params)
+    {
+        if (!begin_call())
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+        auto keep_alive = shared_from_this();
+
+        auto target_transport = get_directional_transport(params.destination_zone_id);
+        if (!target_transport)
+        {
+            end_call();
+            CO_RETURN handshake_result{error::ZONE_NOT_FOUND(), 0, {}, {}};
+        }
+
+        if (target_transport->get_status() != transport_status::CONNECTED)
+        {
+            end_call();
+            trigger_self_destruction();
+            CO_RETURN handshake_result{error::TRANSPORT_ERROR(), 0, {}, {}};
+        }
+
+        auto result = CO_AWAIT target_transport->handshake(std::move(params));
+        end_call();
+
+        if (error::is_critical(result.error_code))
+            trigger_self_destruction();
+
+        CO_RETURN result;
     }
 
     CORO_TASK(void)

@@ -4,35 +4,36 @@
 ]]
 cmake_minimum_required(VERSION 3.24)
 
-if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDANCIES marshal_test_edl rpc_telemetry_edl_header)
-  set(SGX_TRANSPORT_TEST_LIB transport_sgx_test)
-endif()
-
 if(CANOPY_BUILD_COROUTINE)
   set(STREAMING_TRANSPORT_LIB transport_streaming)
-  set(STREAMING_TRANSPORT_TEST_LIB transport_streaming_test)
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_dll_scheduled_dll_suite.cpp)
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB transport_libcoro_dll_scheduled_dynamic_library)
-  set(LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_dll_scheduled_dynamic_library_test)
-  set(LIBCORO_DLL_SCHEDULED_TEST_TARGET canopy_libcoro_dll_scheduled_example_dll)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES type_test_libcoro_host_scheduled_dll_suite.cpp)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB transport_libcoro_host_scheduled_dynamic_library)
-  set(LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB transport_libcoro_host_scheduled_dynamic_library_test)
-  set(LIBCORO_HOST_SCHEDULED_TEST_TARGET canopy_libcoro_host_scheduled_example_dll)
-  set(LIBCORO_IPC_DLL_TRANSPORT_SOURCES type_test_libcoro_ipc_dll_suite.cpp)
-  set(LIBCORO_IPC_DLL_TRANSPORT_LIB transport_libcoro_spsc_dll_host)
-  set(LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB transport_libcoro_spsc_dll_host_test)
-  set(LIBCORO_IPC_DLL_TEST_TARGET canopy_libcoro_spsc_example_dll)
-  set(LIBCORO_IPC_DLL_LOADER_TARGET canopy_ipc_child_host_process)
-  set(IPC_TRANSPORT_TEST_LIB transport_ipc_transport_test)
+  set(STREAMING_TRANSPORT_TEST_LIB connection_factory_test)
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    set(STREAMING_SECURE_STREAM_LIB streaming_mbedtls)
+  else()
+    set(STREAMING_SECURE_STREAM_LIB streaming_openssl_tls)
+  endif()
+  set(UNSHARED_SCHEDULER_TRANSPORT_SOURCES type_test_unshared_scheduler_dll_suite.cpp)
+  set(UNSHARED_SCHEDULER_TRANSPORT_LIB transport_unshared_scheduler_dll)
+  set(UNSHARED_SCHEDULER_TRANSPORT_TEST_LIB transport_unshared_scheduler_dll_test)
+  set(UNSHARED_SCHEDULER_TEST_TARGET canopy_unshared_scheduler_example_dll)
+  set(SHARED_SCHEDULER_TRANSPORT_SOURCES type_test_shared_scheduler_dll_suite.cpp)
+  set(SHARED_SCHEDULER_TRANSPORT_LIB transport_shared_scheduler_dll)
+  set(SHARED_SCHEDULER_TRANSPORT_TEST_LIB transport_shared_scheduler_dll_test)
+  set(SHARED_SCHEDULER_TEST_TARGET canopy_shared_scheduler_example_dll)
+  set(IPC_SPSC_TRANSPORT_SOURCES type_test_ipc_spsc_suite.cpp)
+  set(IPC_SPSC_DLL_HOST_TRANSPORT_LIB transport_ipc_spsc_dll_host)
+  set(IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB transport_ipc_spsc_dll_host_test)
+  set(IPC_SPSC_DLL_TEST_TARGET canopy_ipc_spsc_example_dll)
+  set(IPC_SPSC_DLL_LOADER_TARGET canopy_ipc_spsc_sidecar_process)
+  set(IPC_SPSC_PEER_PROCESS_TARGET canopy_ipc_spsc_peer_process)
+  set(IPC_TRANSPORT_TEST_LIB transport_ipc_spsc_test)
 endif()
 
 if(NOT CANOPY_BUILD_COROUTINE)
-  set(DLL_TRANSPORT_SOURCES type_test_dll_suite.cpp)
-  set(DLL_TRANSPORT_LIB transport_dynamic_library)
-  set(DLL_TRANSPORT_TEST_LIB transport_dynamic_library_test)
-  set(DLL_TEST_TARGET canopy_example_dll)
+  set(DLL_TRANSPORT_SOURCES type_test_blocking_dll_suite.cpp)
+  set(DLL_TRANSPORT_LIB transport_blocking_dll)
+  set(DLL_TRANSPORT_TEST_LIB transport_blocking_dll_test)
+  set(DLL_TEST_TARGET canopy_example_blocking_dll)
   set(C_ABI_DLL_TRANSPORT_SOURCES type_test_c_abi_dll_suite.cpp)
   set(C_ABI_DLL_TRANSPORT_LIB transport_c_abi)
   set(C_ABI_DLL_TRANSPORT_TEST_LIB transport_c_abi_test)
@@ -47,29 +48,33 @@ if(C_ABI_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_C_ABI_DLL_PATH="$<TARGET_FILE:${C_ABI_DLL_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_DLL_SCHEDULED_TEST_TARGET)
+if(UNSHARED_SCHEDULER_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_DLL_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_DLL_SCHEDULED_TEST_TARGET}>")
+       CANOPY_TEST_UNSHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:${UNSHARED_SCHEDULER_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_HOST_SCHEDULED_TEST_TARGET)
+if(SHARED_SCHEDULER_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_HOST_SCHEDULED_DLL_PATH="$<TARGET_FILE:${LIBCORO_HOST_SCHEDULED_TEST_TARGET}>")
+       CANOPY_TEST_SHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:${SHARED_SCHEDULER_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_IPC_DLL_TEST_TARGET)
+if(IPC_SPSC_DLL_TEST_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_LIBCORO_SPSC_DLL_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_TEST_TARGET}>")
+       CANOPY_TEST_IPC_SPSC_DLL_PATH="$<TARGET_FILE:${IPC_SPSC_DLL_TEST_TARGET}>")
 endif()
 
-if(LIBCORO_IPC_DLL_LOADER_TARGET)
+if(IPC_SPSC_DLL_LOADER_TARGET)
   list(APPEND RPC_TEST_COMPILE_DEFINITIONS
-       CANOPY_TEST_IPC_CHILD_HOST_PROCESS_PATH="$<TARGET_FILE:${LIBCORO_IPC_DLL_LOADER_TARGET}>")
+       CANOPY_TEST_IPC_SPSC_SIDECAR_PROCESS_PATH="$<TARGET_FILE:${IPC_SPSC_DLL_LOADER_TARGET}>")
+endif()
+
+if(IPC_SPSC_PEER_PROCESS_TARGET)
+  list(APPEND RPC_TEST_COMPILE_DEFINITIONS
+       CANOPY_TEST_IPC_SPSC_PEER_PROCESS_PATH="$<TARGET_FILE:${IPC_SPSC_PEER_PROCESS_TARGET}>")
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  # list(APPEND RPC_TEST_COMPILE_DEFINITIONS CANOPY_TEST_IPC_CHILD_PROCESS_PATH =
-  # "$<TARGET_FILE:canopy_ipc_child_process>")
+  list(APPEND COROUTINE_TESTS attested_streaming_transport_poc_suite.cpp)
 endif()
 
 add_executable(
@@ -81,13 +86,20 @@ add_executable(
   post_functionality_test_suite.cpp
   atomic_smart_ptr_tests.cpp
   optimistic_ptr_tests.cpp
+  connection_factory_local_child_test.cpp
   streaming_transport_regression_suite.cpp
+  transport_registry_tests.cpp
+  schema_introspection_tests.cpp
   ${DLL_TRANSPORT_SOURCES}
   ${C_ABI_DLL_TRANSPORT_SOURCES}
-  ${LIBCORO_DLL_SCHEDULED_TRANSPORT_SOURCES}
-  ${LIBCORO_HOST_SCHEDULED_TRANSPORT_SOURCES}
-  ${LIBCORO_IPC_DLL_TRANSPORT_SOURCES}
+  ${UNSHARED_SCHEDULER_TRANSPORT_SOURCES}
+  ${SHARED_SCHEDULER_TRANSPORT_SOURCES}
+  ${IPC_SPSC_TRANSPORT_SOURCES}
   ${COROUTINE_TESTS})
+
+if(CANOPY_BUILD_COROUTINE AND NOT CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
+  target_sources(rpc_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/security/attestation/src/backends/fake/fake_backend.cpp)
+endif()
 
 target_compile_definitions(rpc_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
 
@@ -108,6 +120,7 @@ target_link_libraries(
          -Wl,--no-whole-archive
          yas_common
          rpc::rpc
+         connection_factory
          transport_direct_test
          transport_local
          transport_local_test
@@ -115,14 +128,13 @@ target_link_libraries(
          ${DLL_TRANSPORT_TEST_LIB}
          ${C_ABI_DLL_TRANSPORT_LIB}
          ${C_ABI_DLL_TRANSPORT_TEST_LIB}
-         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_LIB}
-         ${LIBCORO_DLL_SCHEDULED_TRANSPORT_TEST_LIB}
-         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_LIB}
-         ${LIBCORO_HOST_SCHEDULED_TRANSPORT_TEST_LIB}
-         ${LIBCORO_IPC_DLL_TRANSPORT_LIB}
-         ${LIBCORO_IPC_DLL_TRANSPORT_TEST_LIB}
+         ${UNSHARED_SCHEDULER_TRANSPORT_LIB}
+         ${UNSHARED_SCHEDULER_TRANSPORT_TEST_LIB}
+         ${SHARED_SCHEDULER_TRANSPORT_LIB}
+         ${SHARED_SCHEDULER_TRANSPORT_TEST_LIB}
+         ${IPC_SPSC_DLL_HOST_TRANSPORT_LIB}
+         ${IPC_SPSC_DLL_HOST_TRANSPORT_TEST_LIB}
          ${IPC_TRANSPORT_TEST_LIB}
-         ${SGX_TRANSPORT_TEST_LIB}
          ${STREAMING_TRANSPORT_LIB}
          ${STREAMING_TRANSPORT_TEST_LIB}
          yas_common
@@ -132,29 +144,41 @@ target_link_libraries(
          GTest::gmock_main
          spdlog::spdlog
          ${CANOPY_FMT_LIB}
-         ${ENCLAVE_DEPENDANCIES}
          ${CANOPY_LIBRARIES}
          rpc_log)
 
 if(CANOPY_BUILD_COROUTINE)
   target_link_libraries(
     rpc_test
-    PUBLIC transport_ipc_transport
+    PUBLIC transport_ipc_spsc
+           route_attestation_protocol_idl
            streaming
-           streaming_tcp
+           streaming_attestation
            streaming_spsc_queue
-           streaming_spsc_wrapping
-           streaming_tls
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
-           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>)
+           streaming_spsc_buffered_stream
+           canopy::security_attestation
+           ${STREAMING_SECURE_STREAM_LIB}
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
+           $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:transport_untrusted_web>)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_WEBSOCKET)
+    if(TARGET canopy_http_server)
+      target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_HTTP_SERVER)
+      target_link_libraries(rpc_test PUBLIC canopy_http_server)
+      if(CANOPY_BUILD_HTTP_COMPRESSION AND TARGET canopy_zlib)
+        target_compile_definitions(rpc_test PRIVATE CANOPY_HTTP_HAS_GZIP)
+      endif()
+    endif()
+  endif()
+  if(TARGET streaming_compression)
+    target_compile_definitions(rpc_test PRIVATE CANOPY_BUILD_COMPRESSION)
+    target_link_libraries(rpc_test PUBLIC streaming_compression compression_stream_config_idl streaming_layer_factory)
   endif()
 endif()
 
 target_compile_options(rpc_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(rpc_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(rpc_test PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET rpc_test PROPERTY COMPILE_PDB_NAME rpc_test)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -167,20 +191,21 @@ if(NOT CANOPY_BUILD_COROUTINE)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
-  add_dependencies(rpc_test ${LIBCORO_DLL_SCHEDULED_TEST_TARGET})
-  add_dependencies(rpc_test ${LIBCORO_HOST_SCHEDULED_TEST_TARGET})
-  add_dependencies(rpc_test ${LIBCORO_IPC_DLL_TEST_TARGET} ${LIBCORO_IPC_DLL_LOADER_TARGET})
+  add_dependencies(rpc_test ${UNSHARED_SCHEDULER_TEST_TARGET})
+  add_dependencies(rpc_test ${SHARED_SCHEDULER_TEST_TARGET})
+  add_dependencies(rpc_test ${IPC_SPSC_DLL_TEST_TARGET} ${IPC_SPSC_DLL_LOADER_TARGET} ${IPC_SPSC_PEER_PROCESS_TARGET})
 endif()
 
 include(CTest)
-# Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
+#Skip gtest_discover_tests when using AddressSanitizer due to protobuf container - overflow false positives
 if(NOT CANOPY_DEBUG_ADDRESS)
   gtest_discover_tests(rpc_test)
 endif()
 
 if(CANOPY_BUILD_COROUTINE)
   add_executable(timeout_test timeout_tests.cpp)
-  target_compile_definitions(timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS})
+  target_compile_definitions(timeout_test PRIVATE ${CANOPY_DEFINES} ${RPC_TEST_COMPILE_DEFINITIONS}
+                                                  CANOPY_TIMEOUT_TEST_CERT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/certs")
   target_include_directories(
     timeout_test
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
@@ -200,11 +225,10 @@ if(CANOPY_BUILD_COROUTINE)
            ${STREAMING_TRANSPORT_LIB}
            ${STREAMING_TRANSPORT_TEST_LIB}
            streaming
-           streaming_tcp
            streaming_spsc_queue
-           streaming_spsc_wrapping
-           streaming_tls
-           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_io_uring>
+           streaming_spsc_buffered_stream
+           ${STREAMING_SECURE_STREAM_LIB}
+           $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Linux>:streaming_tcp_coroutine>
            $<$<BOOL:${CANOPY_BUILD_WEBSOCKET}>:streaming_websocket>
            args::args
            fmt::fmt-header-only
@@ -216,7 +240,6 @@ if(CANOPY_BUILD_COROUTINE)
            rpc_log)
   if(CANOPY_BUILD_WEBSOCKET)
     target_compile_definitions(timeout_test PRIVATE CANOPY_BUILD_WEBSOCKET)
-    target_link_libraries(timeout_test PRIVATE wslay)
   endif()
   target_compile_options(timeout_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(timeout_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})

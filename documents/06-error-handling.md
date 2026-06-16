@@ -105,7 +105,7 @@ rpc::error::OK()  // Configured via set_OK_val(), default = 0
 | `CALL_CANCELLED` | ±22 | Remote call cancelled |
 | `CALL_TIMEOUT` | ±24 | Outbound call timed out waiting for a response |
 | `NOT_IMPLEMENTED` | ±25 | Interface path exists but is not implemented |
-| `FRAUDULANT_REQUEST` | ±26 | Request-scoped out-param handoff used an invalid request id |
+| `FRAUDULANT_REQUEST` | ±26 | Request violates protocol/security sequencing and may be malicious |
 | `RESOURCE_CLOSED` | ±27 | Local resource was closed or is no longer accepting work |
 | `OPERATION_CANCELLED` | ±28 | Local asynchronous operation was cancelled before completion |
 | `RESOURCE_EXHAUSTED` | ±29 | Local capacity was exhausted after retry/backpressure handling |
@@ -128,25 +128,26 @@ else
 }
 ```
 
-### Switch on Error
+### Branch on Error
 
 ```cpp
 auto error = CO_AWAIT calculator_->divide(a, b, result);
 
-switch (error)
+if (error == rpc::error::OK())
 {
-    case rpc::error::OK():
-        std::cout << "Result: " << result << "\n";
-        break;
-    case rpc::error::INVALID_DATA():
-        std::cerr << "Invalid input\n";
-        break;
-    case rpc::error::OBJECT_GONE():
-        std::cerr << "Optimistic target was released\n";
-        break;
-    default:
-        std::cerr << "Unknown error: " << static_cast<int>(error) << "\n";
-        break;
+    std::cout << "Result: " << result << "\n";
+}
+else if (error == rpc::error::INVALID_DATA())
+{
+    std::cerr << "Invalid input\n";
+}
+else if (error == rpc::error::OBJECT_GONE())
+{
+    std::cerr << "Optimistic target was released\n";
+}
+else
+{
+    std::cerr << "Unknown error: " << static_cast<int>(error) << "\n";
 }
 ```
 
@@ -279,13 +280,9 @@ RPC_ASSERT(error == rpc::error::OK());
         std::abort();
 ```
 
-**With thread-local logging** (dumps logs before abort):
-```cpp
-#define RPC_ASSERT(x) \
-    if (!(x))         \
-        rpc::thread_local_dump_on_assert("RPC_ASSERT failed: " #x, __FILE__, __LINE__); \
-        std::abort();
-```
+For assertion investigations, configure with
+`-DCANOPY_HANG_ON_FAILED_ASSERT=ON` so the failed assertion path calls
+`rpc::hang()` before aborting.
 
 ## 6. Transport Status Handling
 
@@ -336,6 +333,12 @@ if (error == rpc::error::OBJECT_NOT_FOUND())
 ```
 
 ## 8. Version Mismatch
+
+Use `INVALID_VERSION` for unsupported RPC versions, generated IDL
+fingerprints, or message schemas. An unknown fingerprint alone is not fraud;
+the peer may simply be newer. Reserve `FRAUDULANT_REQUEST` for impossible
+sequencing, authenticated tamper, replay, downgrade attempts, or invalid
+request-scoped capability handoff.
 
 ```cpp
 auto error = CO_AWAIT proxy_->call(method_id, input, output);

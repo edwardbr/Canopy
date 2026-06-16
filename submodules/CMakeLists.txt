@@ -11,13 +11,14 @@ add_subdirectory(idlparser)
 
 if(CANOPY_BUILD_NANOPB)
   set(CANOPY_NANOPB_RUNTIME_SOURCES
-      ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_common.c ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_decode.c
-      ${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/pb_encode.c)
+      ${CANOPY_CPP_SOURCE_DIR}/submodules/nanopb/pb_common.c ${CANOPY_CPP_SOURCE_DIR}/submodules/nanopb/pb_decode.c
+      ${CANOPY_CPP_SOURCE_DIR}/submodules/nanopb/pb_encode.c)
 
   add_library(canopy_nanopb_runtime STATIC ${CANOPY_NANOPB_RUNTIME_SOURCES})
   target_include_directories(canopy_nanopb_runtime SYSTEM
-                             PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/c++/submodules/nanopb>")
+                             PUBLIC "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/submodules/nanopb>")
   set_property(TARGET canopy_nanopb_runtime PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 endif()
 
 set(CANOPY_NEED_BUNDLED_PROTOC OFF)

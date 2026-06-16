@@ -12,17 +12,15 @@ namespace websocket_demo
     {
         class websocket_service : public rpc::root_service
         {
-            rpc::weak_ptr<i_calculator> demo_;
-
         public:
             websocket_service(
                 std::string name,
                 rpc::zone zone_id,
-                std::shared_ptr<coro::scheduler> scheduler);
+                rpc::executor_ptr executor);
             websocket_service(
                 std::string name,
                 const rpc::service_config& config,
-                std::shared_ptr<coro::scheduler> scheduler);
+                rpc::executor_ptr executor);
 
             ~websocket_service() override CANOPY_DEFAULT_DESTRUCTOR;
 

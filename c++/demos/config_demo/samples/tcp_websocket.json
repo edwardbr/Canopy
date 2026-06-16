@@ -1,0 +1,130 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "execution": {
+    "iterations": 1,
+    "client_connection": "client",
+    "server_connection": "server"
+  },
+  "connections": [
+    {
+      "name": "server",
+      "role": "acceptor",
+      "zone_subnet": 1,
+      "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_server",
+            "executor": {
+              "thread_count": 4
+            }
+          }
+        },
+        "listener": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_listener"
+          }
+        },
+        "transport": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_server_transport",
+            "service_proxy_name": "config_demo_client",
+            "encoding": "yas_binary",
+            "call_timeout": 30000,
+            "call_timeout_sweep": 1,
+            "shutdown_timeout": 5000
+          }
+        },
+        "stream_layers": [
+          {
+            "type": "tcp_coroutine",
+            "settings": {
+              "host": "127.0.0.1",
+              "port": 26070,
+              "ipv6": false,
+              "connect_timeout": 5000,
+              "first_port": 26070,
+              "last_port": 26071,
+              "stream": {
+                "max_transfer_size": 0,
+                "timeout_strategy": "linked_timeout"
+              }
+            }
+          },
+          {
+            "type": "websocket",
+            "settings": {
+              "keep_alive": {
+                "enabled": false,
+                "interval_ms": 30000,
+                "timeout_ms": 10000
+              },
+              "max_message_bytes": 1048576,
+              "max_frame_payload_bytes": 1048576,
+              "max_decoded_messages": 16
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "client",
+      "role": "connector",
+      "zone_subnet": 100,
+      "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_client",
+            "executor": {
+              "thread_count": 4
+            }
+          }
+        },
+        "transport": {
+          "type": "stream_rpc",
+          "settings": {
+            "name": "config_demo_client_transport",
+            "service_proxy_name": "config_demo_server",
+            "encoding": "yas_binary",
+            "call_timeout": 30000,
+            "call_timeout_sweep": 1,
+            "shutdown_timeout": 5000
+          }
+        },
+        "stream_layers": [
+          {
+            "type": "tcp_coroutine",
+            "settings": {
+              "host": "127.0.0.1",
+              "port": 26070,
+              "ipv6": false,
+              "connect_timeout": 5000,
+              "first_port": 26070,
+              "last_port": 26071,
+              "stream": {
+                "max_transfer_size": 0,
+                "timeout_strategy": "linked_timeout"
+              }
+            }
+          },
+          {
+            "type": "websocket",
+            "settings": {
+              "keep_alive": {
+                "enabled": false,
+                "interval_ms": 30000,
+                "timeout_ms": 10000
+              },
+              "max_message_bytes": 1048576,
+              "max_frame_payload_bytes": 1048576,
+              "max_decoded_messages": 16
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

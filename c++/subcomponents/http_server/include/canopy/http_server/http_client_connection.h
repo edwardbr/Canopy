@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -11,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-#include <coro/coro.hpp>
+#include <http_server/http_server_config.h>
 #include <llhttp.h>
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
@@ -37,13 +40,14 @@ namespace canopy::http_server
     };
 
     using request_handler = std::function<std::optional<response>(const request&)>;
+    using coroutine_request_handler = std::function<CORO_TASK(std::optional<response>)(const request&)>;
     using websocket_handler
-        = std::function<coro::task<std::shared_ptr<rpc::transport>>(const request&, std::shared_ptr<streaming::stream>)>;
+        = std::function<CORO_TASK(std::shared_ptr<rpc::transport>)(const request&, std::shared_ptr<streaming::stream>)>;
     using rest_request_selector = std::function<bool(const request&)>;
 
     struct handler_set
     {
-        request_handler webpage_handler;
+        coroutine_request_handler webpage_handler;
         request_handler rest_handler;
         websocket_handler websocket_upgrade_handler;
         rest_request_selector is_rest_request;
@@ -54,16 +58,19 @@ namespace canopy::http_server
     public:
         explicit client_connection(
             std::shared_ptr<streaming::stream> stream,
-            handler_set handlers);
+            handler_set handlers,
+            client_connection_limits limits = {});
 
-        auto handle() -> coro::task<std::shared_ptr<rpc::transport>>;
+        auto handle() -> CORO_TASK(std::shared_ptr<rpc::transport>);
 
     private:
         struct parser_request_context
         {
             request parsed_request;
+            const client_connection_limits* limits{nullptr};
             std::string current_header_field;
             std::string current_header_value;
+            size_t header_count{0};
             bool reading_header_value{false};
             bool headers_complete{false};
             bool message_complete{false};
@@ -92,17 +99,25 @@ namespace canopy::http_server
             size_t length);
         static int on_message_complete(llhttp_t* parser);
 
-        static void flush_header(parser_request_context& ctx);
+        static auto limits_for(const parser_request_context& ctx) -> const client_connection_limits&;
+        static bool flush_header(parser_request_context& ctx);
         static auto build_http_response(
             const response& response,
             bool keep_alive) -> std::string;
-        static auto build_websocket_handshake_response(const std::string& accept_key) -> std::string;
+        static auto build_http_response(
+            const request& request,
+            const response& response,
+            bool keep_alive) -> std::string;
+        static auto build_websocket_handshake_response(
+            const std::string& accept_key,
+            const std::optional<std::string>& negotiated_extensions) -> std::string;
 
-        [[nodiscard]] auto dispatch_request(const request& request) const -> std::optional<response>;
-        auto handle_websocket_upgrade(const request& request) -> coro::task<std::shared_ptr<rpc::transport>>;
+        [[nodiscard]] auto dispatch_request(const request& request) const -> CORO_TASK(std::optional<response>);
+        auto handle_websocket_upgrade(const request& request) -> CORO_TASK(std::shared_ptr<rpc::transport>);
 
         std::shared_ptr<streaming::stream> stream_;
         handler_set handlers_;
+        const client_connection_limits limits_;
     };
 
     auto status_text(int status_code) -> std::string;

@@ -11,7 +11,7 @@ namespace comprehensive::v1
     class benchmark_data_processor_impl : public rpc::base<benchmark_data_processor_impl, i_data_processor>
     {
     public:
-        CORO_TASK(int)
+        CORO_TASK(comprehensive_error)
         process_vector(
             const std::vector<int>& input,
             std::vector<int>& output) override
@@ -22,7 +22,7 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(comprehensive_error)
         process_map(
             const std::map<
                 std::string,
@@ -37,7 +37,7 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(comprehensive_error)
         process_struct(
             const std::string& input,
             std::string& output) override
@@ -46,7 +46,7 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
 
-        CORO_TASK(int)
+        CORO_TASK(comprehensive_error)
         echo_binary(
             const std::vector<uint8_t>& data,
             std::vector<uint8_t>& response) override

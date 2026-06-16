@@ -61,7 +61,7 @@ namespace rpc
         encoding enc_;
 
         service_proxy(
-            const std::string& name,
+            std::string name,
             zone zone_id,
             destination_zone destination_zone_id,
             std::shared_ptr<service> service,
@@ -71,14 +71,14 @@ namespace rpc
 
     public:
         static std::shared_ptr<service_proxy> create(
-            const std::string& name,
+            std::string name,
             std::shared_ptr<service> service,
             const std::shared_ptr<transport>& transport,
             destination_zone destination_zone_id);
 
         virtual ~service_proxy();
 
-        std::string get_name() const { return name_; }
+        const std::string& get_name() const { return name_; }
 
         uint64_t get_remote_rpc_version() const { return version_.load(); }
         void update_remote_rpc_version(uint64_t version);
@@ -96,7 +96,7 @@ namespace rpc
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data,
+            std::vector<char> in_data,
             uint64_t request_id = 0);
 
         [[nodiscard]] CORO_TASK(int) post_from_this_zone(
@@ -106,12 +106,20 @@ namespace rpc
             rpc::object object_id,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data);
+            std::vector<char> in_data);
 
         [[nodiscard]] CORO_TASK(int) sp_try_cast(
             destination_zone destination_zone_id,
             object object_id,
             std::function<interface_ordinal(uint64_t)> id_getter);
+
+        [[nodiscard]] CORO_TASK(get_schema_result) sp_get_schema(
+            destination_zone destination_zone_id,
+            object object_id,
+            rpc::optional<interface_ordinal> interface_id,
+            rpc::encoding schema_encoding,
+            rpc::schema_flavor flavor,
+            bool include_deprecated);
 
         [[nodiscard]] CORO_TASK(int) sp_add_ref(
             object object_id,

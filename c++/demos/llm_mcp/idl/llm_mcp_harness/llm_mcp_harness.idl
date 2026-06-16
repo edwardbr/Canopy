@@ -1,0 +1,20 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "calculator/calculator.idl"
+#import "text_tools/text_tools.idl"
+
+namespace llm_mcp_harness
+{
+    namespace v1
+    {
+        error harness_error
+        {
+            [description = "The harness failed before calling the shared RPC objects."]
+            HARNESS_FAILURE
+        };
+    }
+}

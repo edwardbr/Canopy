@@ -35,14 +35,18 @@ These pieces are intentionally separate:
 - `libcoro_spsc_dynamic_dll` runs the DLL runtime behind an SPSC stream
 - `ipc_transport` owns a child process and the shared-memory queue pair used to
   talk to it
-- `ipc_child_host_process` is not a transport; it is a small executable that
-  maps the shared queue pair and forwards it into `libcoro_spsc_dynamic_dll`
-- `ipc_child_process` is also not a transport; it maps the shared queue pair and
-  hosts a `rpc::stream_transport` directly inside the child process
+- `canopy_ipc_child_host_process` is not a transport; it is a small executable
+  that maps the shared queue pair and forwards it into
+  `libcoro_spsc_dynamic_dll`
+- direct child-process bootstrap support exists in the source tree, but the
+  `canopy_ipc_child_process` executable is currently disabled in CMake pending
+  rework
 
 `rpc::ipc_transport` is not necessarily a hierarchical transport. It is a
-process-owning `rpc::stream_transport::transport` that can be combined with
-either a direct child-process runtime or a DLL-hosting child-process runtime.
+process-owning `rpc::stream_transport::transport` that can be combined with the
+DLL-hosting child-process runtime. The `direct_service` process kind is still
+represented in the API, but the matching in-tree executable is not currently
+built.
 
 This page should therefore be read as C++ transport/runtime guidance for the
 current tree, not as a statement that every Canopy implementation provides the
@@ -73,13 +77,13 @@ process, but the child implementation is loaded from a shared object at runtime.
 Use these together when you want process isolation as well as a DLL boundary:
 
 - `rpc::ipc_transport` in the host process
-- `ipc_child_host_process` as the spawned executable
+- `canopy_ipc_child_host_process` as the spawned executable
 - `rpc::libcoro_spsc_dynamic_dll` inside the child process
 
 The ownership flow is:
 
 1. `ipc_transport` creates a shared-memory SPSC queue pair
-2. `ipc_transport` spawns `ipc_child_host_process`
+2. `ipc_transport` spawns `canopy_ipc_child_host_process`
 3. the child process maps the queue pair and loads the DLL
 4. `libcoro_spsc_dynamic_dll` hosts the child zone behind a
    `rpc::stream_transport`
@@ -88,13 +92,15 @@ The ownership flow is:
 
 ### Out-of-process direct child service
 
-Use these together when you want process isolation without a DLL:
+The API still has a `direct_service` child process kind for process isolation
+without a DLL:
 
 - `rpc::ipc_transport` in the host process
-- `ipc_child_process` as the spawned executable
+- `canopy_ipc_child_process` as the spawned executable
 
-In this mode the child process maps the queue pair and hosts a
-`rpc::stream_transport` directly in the process executable.
+However, the in-tree `canopy_ipc_child_process` target is currently disabled in
+`c++/transports/ipc_transport/ipc_child_process/CMakeLists.txt`. Treat this mode
+as unavailable until that target is reworked and re-enabled.
 
 ## Variants At A Glance
 
@@ -104,15 +110,15 @@ In this mode the child process maps the queue pair and hosts a
 | Blocking language-neutral DLL | `rpc::c_abi` | `CANOPY_BUILD_COROUTINE=OFF` | `transport_c_abi` | `transport_c_abi_dll` inside the loaded DLL |
 | Host-scheduled coroutine DLL | `rpc::libcoro_host_scheduled_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_host_scheduled_dynamic_library` | `transport_libcoro_host_scheduled_dynamic_library_dll` inside the loaded DLL |
 | DLL-scheduled coroutine DLL | `rpc::libcoro_dll_scheduled_dynamic_library` | `CANOPY_BUILD_COROUTINE=ON` | `transport_libcoro_dll_scheduled_dynamic_library` | `transport_libcoro_dll_scheduled_dynamic_library_dll` inside the loaded DLL |
-| Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dll_host` inside the loaded DLL |
-| Process-owned SPSC transport | `rpc::ipc_transport` | `CANOPY_BUILD_COROUTINE=ON` | `transport_ipc_transport` | `ipc_child_host_process` or `ipc_child_process` |
+| Coroutine SPSC DLL | `rpc::libcoro_spsc_dynamic_dll` | `CANOPY_BUILD_COROUTINE=ON` | usually reached via `rpc::ipc_transport` | `transport_libcoro_spsc_dll_runtime` inside the loaded DLL |
+| Process-owned SPSC transport | `rpc::ipc_transport` | `CANOPY_BUILD_COROUTINE=ON` | `transport_ipc_transport` | `canopy_ipc_child_host_process`; direct child executable currently disabled |
 
 ## Entry Points At A Glance
 
 | Variant | Export owned by child | User-implemented entry point |
 |--------|------------------------|-------------------------------|
 | Blocking DLL | `canopy_dll_*` | `canopy_dll_init` |
-| Blocking language-neutral DLL | `canopy_dll_*` using `c_abi/dynamic_library/canopy_dynamic_library.h` types | `canopy_dll_init` |
+| Blocking language-neutral DLL | `canopy_dll_*` using `c_abi/dynamic_library/dynamic_library.h` types | `canopy_dll_init` |
 | Host-scheduled coroutine DLL | `canopy_libcoro_host_scheduled_dll_create` plus direct coroutine function pointers | `canopy_libcoro_host_scheduled_dll_init` |
 | DLL-scheduled coroutine DLL | `canopy_libcoro_dll_scheduled_dll_start` plus begin/complete callbacks | `canopy_libcoro_dll_scheduled_dll_init` |
 | Coroutine SPSC DLL | `canopy_libcoro_spsc_dll_start` | `canopy_libcoro_spsc_dll_init` |
@@ -402,7 +408,7 @@ stored during `canopy_dll_init`.
 `rpc::c_abi` is the non-coroutine dynamic-library transport for language-neutral
 shared-object boundaries.  It uses the same high-level parent/child-zone shape as
 `rpc::dynamic_library`, but the ABI structs and function pointer types are
-defined in `c_abi/dynamic_library/canopy_dynamic_library.h` instead of passing
+defined in `c_abi/dynamic_library/dynamic_library.h` instead of passing
 C++ RPC structs directly across the boundary.
 
 Use this transport when the child may be implemented by C, Rust, or another
@@ -593,7 +599,7 @@ target_compile_options(myplugin PRIVATE
 
 The coroutine variant also uses normal unload semantics.  On Linux it opens the
 DLL with `RTLD_NOW | RTLD_LOCAL`, not `RTLD_NODELETE`.  The design goal is that a
-shared object can shut down cleanly, release its service graph, run
+shared object or enclave can shut down cleanly, release its service graph, run
 module-level cleanup such as protobuf shutdown, and then be unloaded.
 
 As implemented in `transports/libcoro_dll_scheduled_dynamic_library/src/transport.cpp`:
@@ -678,10 +684,12 @@ executables in `transports/ipc_transport/`.
 It is intentionally separate from the DLL runtime. The child process may do one
 of two things:
 
-- run `ipc_child_host_process`, which maps the queue pair and forwards it into a
-  `libcoro_spsc_dynamic_dll` DLL
-- run `ipc_child_process`, which maps the queue pair and hosts a
-  `rpc::stream_transport` directly in the child process
+- run `canopy_ipc_child_host_process`, which maps the queue pair and forwards it
+  into a `libcoro_spsc_dynamic_dll` DLL
+- run a direct child process that maps the queue pair and hosts a
+  `rpc::stream_transport` directly; the in-tree
+  `canopy_ipc_child_process` executable for this mode is currently disabled and
+  still hardcodes the example test interfaces in its source
 
 ### Why This Split Matters
 
@@ -692,9 +700,9 @@ building blocks:
   `c_abi` / `libcoro_host_scheduled_dynamic_library` /
   `libcoro_dll_scheduled_dynamic_library`
 - process isolation plus DLL hosting: `ipc_transport` +
-  `ipc_child_host_process` + `libcoro_spsc_dynamic_dll`
+  `canopy_ipc_child_host_process` + `libcoro_spsc_dynamic_dll`
 - process isolation plus direct child service hosting: `ipc_transport` +
-  `ipc_child_process`
+  `canopy_ipc_child_process` once that executable is reworked and re-enabled
 
 That keeps each component responsible for one boundary:
 
@@ -709,17 +717,17 @@ On Linux, `rpc::ipc_transport::options::kill_child_on_parent_death` uses
 pipe ensures this contract is armed before the parent returns from transport
 construction.
 
-Clean child-process shutdown should go through ordinary C++ teardown.  The
-`ipc_child_host_process` success path returns normally after the SPSC/DLL runtime
-has stopped; immediate process termination is reserved for setup failures or
-test harness failure paths where normal unwinding is not possible.
+Clean child-process shutdown should go through ordinary C++ teardown. The
+`canopy_ipc_child_host_process` success path returns normally after the SPSC/DLL
+runtime has stopped; immediate process termination is reserved for setup
+failures or test harness failure paths where normal unwinding is not possible.
 
 ## See Also
 
 - `transports/dynamic_library/include/transports/dynamic_library/dll_abi.h` — C ABI types
 - `transports/dynamic_library/include/transports/dynamic_library/transport.h` — `child_transport`
 - `transports/dynamic_library/include/transports/dynamic_library/dll_transport.h` — `parent_transport`, `init_child_zone`, `dll_context`
-- `c_abi/dynamic_library/canopy_dynamic_library.h` — language-neutral dynamic-library ABI
+- `c_abi/dynamic_library/dynamic_library.h` — language-neutral dynamic-library ABI
 - `transports/c_abi/include/transports/c_abi/transport.h` — C ABI `child_transport`
 - `transports/c_abi/include/transports/c_abi/dynamic_library_loader.h` — C ABI loader and required entry-point table
 - `transports/libcoro_host_scheduled_dynamic_library/include/transports/libcoro_host_scheduled_dynamic_library/dll_abi.h` — host-scheduled coroutine DLL ABI types

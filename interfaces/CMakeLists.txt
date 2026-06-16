@@ -15,9 +15,58 @@ CanopyGenerate(
   yas_compressed_binary
   yas_json
   protocol_buffers
+  canonical_crypto
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR}
   additional_headers stdint.h no_include_rpc_headers ON)
+
+CanopyGenerate(
+  json
+  json/json.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  nanopb
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+target_include_directories(json_idl PUBLIC "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+foreach(json_generated_target json_protobuf_generated json_nanopb_generated)
+  if(TARGET ${json_generated_target})
+    target_include_directories(${json_generated_target}
+                               PRIVATE "$<BUILD_INTERFACE:${CANOPY_CPP_SOURCE_DIR}/subcomponents/json/include>")
+  endif()
+endforeach()
+
+CanopyGenerate(
+  route_attestation_protocol
+  attestation/route_attestation_protocol.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  protocol_buffers
+  canonical_crypto
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
+
+CanopyGenerate(
+  protected_rpc_protocol
+  attestation/protected_rpc_protocol.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  canonical_crypto
+  dependencies rpc_types_idl
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  install_dir ${GENERATED_INSTALL_DIR})
 
 CanopyGenerate(
   noop
@@ -52,20 +101,32 @@ CanopyGenerate(
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR} no_include_rpc_headers ON)
 
-if(CANOPY_BUILD_COROUTINE)
-  CanopyGenerate(
-    streaming_transport
-    streaming/stream_transport.idl
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_BINARY_DIR}/generated
-    ""
-    yas_binary
-    yas_compressed_binary
-    yas_json
-    include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-    dependencies rpc_types_idl
-    install_dir ${GENERATED_INSTALL_DIR})
+CanopyGenerate(
+  streaming_transport
+  streaming/stream_transport.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_compressed_binary
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  dependencies rpc_types_idl
+  install_dir ${GENERATED_INSTALL_DIR})
 
+CanopyGenerate(
+  stream_layers
+  streaming/stream_layers.idl
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_binary
+  yas_json
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+  dependencies rpc_types_idl json_idl
+  install_dir ${GENERATED_INSTALL_DIR})
+
+if(CANOPY_BUILD_WEBSOCKET)
   CanopyGenerate(
     websocket_protocol
     websocket/websocket_protocol.idl

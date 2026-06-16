@@ -200,16 +200,17 @@ Each hierarchical transport implements this pattern:
 ```cpp
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child_name",
-    parent_service,
-    rpc::zone{new_zone_id});
+    parent_service);
 
 child_transport->set_child_entry_point<i_example_parent, i_example_child>(
     [](const rpc::shared_ptr<i_example_parent>& parent_interface,
-       rpc::shared_ptr<i_example_child>& child_interface,
-       const std::shared_ptr<rpc::child_service>& child_service) -> CORO_TASK(int) {
+       std::shared_ptr<rpc::child_service> child_service)
+        -> CORO_TASK(rpc::service_connect_result<i_example_child>) {
         // Initialize child zone
-        child_interface = rpc::make_shared<example_child_impl>(child_service, parent_interface);
-        CO_RETURN rpc::error::OK();
+        auto child_interface = rpc::make_shared<example_child_impl>(child_service, parent_interface);
+        CO_RETURN rpc::service_connect_result<i_example_child>{
+            rpc::error::OK(),
+            std::move(child_interface)};
     });
 
 rpc::shared_ptr<i_example_parent> parent_ptr;

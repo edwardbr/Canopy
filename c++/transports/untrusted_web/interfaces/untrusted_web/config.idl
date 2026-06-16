@@ -1,0 +1,53 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace untrusted_web
+    {
+        // Settings for the browser-facing RPC bridge.
+        //
+        // This transport accepts traffic from web clients that must be treated
+        // as hostile until application authentication and authorisation say
+        // otherwise. These limits are transport resource limits, not business
+        // policy. For example, inactivity_timeout_ms can release server
+        // resources for stalled sockets, while account/session expiry belongs
+        // in the web application layer.
+        //
+        // Unlike native Canopy transports, this bridge intentionally exposes
+        // only one object reference in each direction: the browser-provided
+        // object from the handshake and the server object returned by the
+        // handshake response. Browser-supplied per-request back_channel data
+        // must not be used to create arbitrary extra object references.
+        struct transport_settings
+        {
+            [description="Maximum encoded Canopy envelope bytes accepted from a web client. Larger WebSocket messages are rejected by closing the transport."]
+            uint64_t max_envelope_bytes = 262144;
+
+            [description="Maximum encoded inner RPC payload bytes accepted inside a request envelope. This protects the RPC deserialisers from oversized browser-originated payloads."]
+            uint64_t max_request_payload_bytes = 262144;
+
+            [description="Maximum encoded handshake envelope bytes accepted before the client is bound to an RPC zone."]
+            uint64_t max_handshake_bytes = 65536;
+
+            [description="Milliseconds allowed for the initial Canopy handshake. Zero disables handshake timeout enforcement."]
+            uint64_t handshake_timeout_ms = 10000;
+
+            [description="Milliseconds of no Canopy RPC envelopes before the transport closes the connection. Zero disables transport-level inactivity closure; application session expiry still belongs above the transport."]
+            uint64_t inactivity_timeout_ms = 0;
+
+            [description="Milliseconds used for receive polling while enforcing timeouts. Smaller values detect inactivity sooner but wake the executor more often."]
+            uint64_t receive_poll_timeout_ms = 250;
+
+            [description="Number of malformed envelopes or requests tolerated before the connection is closed. Keep this low for public web clients."]
+            uint32_t max_decode_failures = 1;
+
+            [description="Close the connection immediately on protocol violations such as unexpected envelope types or oversized payloads."]
+            bool close_on_protocol_error = true;
+        };
+    }
+}

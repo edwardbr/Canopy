@@ -21,7 +21,6 @@ template<bool UseHostInChild> class in_memory_setup
     rpc::weak_ptr<yyy::i_host> local_host_ptr_;
     rpc::shared_ptr<yyy::i_example> i_example_ptr_;
 
-    const bool has_enclave_ = false;
     bool use_host_in_child_ = UseHostInChild;
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -33,7 +32,7 @@ public:
     virtual ~in_memory_setup() = default;
 
     [[nodiscard]] std::shared_ptr<rpc::service> get_root_service() const { return nullptr; }
-    [[nodiscard]] bool get_has_enclave() const { return has_enclave_; }
+    [[nodiscard]] bool supports_process_local_reference_tests() const { return true; }
     [[nodiscard]] rpc::shared_ptr<yyy::i_example> get_example() const { return i_example_ptr_; }
     void set_example(const rpc::shared_ptr<yyy::i_example>& example) { i_example_ptr_ = example; }
     [[nodiscard]] rpc::shared_ptr<yyy::i_host> get_host() const { return i_host_ptr_; }

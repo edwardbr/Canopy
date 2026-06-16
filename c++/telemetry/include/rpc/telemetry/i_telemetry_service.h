@@ -15,9 +15,7 @@
 #include <rpc/logging.h>
 #include <rpc/telemetry_types.h>
 
-#ifndef FOR_SGX
-#  include <filesystem>
-#endif
+#include <filesystem>
 
 // copied from spdlog
 #define I_TELEMETRY_LEVEL_DEBUG 0
@@ -124,7 +122,7 @@ namespace rpc::telemetry
         virtual void message(const rpc::log_record& event) const = 0;
     };
 
-    // Global telemetry service - defined in host or enclave telemetry runtime code.
+    // Global telemetry service.
     extern std::shared_ptr<i_telemetry_service> telemetry_service_; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 
     inline std::shared_ptr<i_telemetry_service> get_telemetry_service()

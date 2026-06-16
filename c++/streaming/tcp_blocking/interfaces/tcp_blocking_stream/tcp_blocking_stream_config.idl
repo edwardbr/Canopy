@@ -1,0 +1,30 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace tcp_blocking_stream
+    {
+        // Settings for the TCP base stream backed by the socket/libcoro
+        // implementation. This concrete stream appears as a
+        // tcp_blocking stream_layers item in connection factory JSON.
+        struct endpoint
+        {
+            [description="Remote host to connect to, or local bind address to listen on. Defaults to IPv4 loopback."]
+            std::string host = "127.0.0.1";
+
+            [description="TCP port to connect or listen on. A listener may use 0 only when the underlying acceptor supports ephemeral ports."]
+            uint16_t port = 0;
+
+            [description="Use IPv6 socket/address handling when true; use IPv4 when false."]
+            bool ipv6 = false;
+
+            [description="Connect timeout in milliseconds used by TCP client factories."]
+            uint64_t connect_timeout = 5000;
+        };
+    }
+}

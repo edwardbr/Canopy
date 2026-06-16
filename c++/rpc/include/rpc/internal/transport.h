@@ -12,7 +12,7 @@
  * - Bidirectional communication (inbound and outbound methods)
  * - Reference counting across zone boundaries
  * - Passthrough routing to non-adjacent zones
- * - Connection lifecycle (CONNECTING → CONNECTED → DISCONNECTED)
+ * - Connection lifecycle (CONNECTING → CONNECTED → DISCONNECTING → DISCONNECTED)
  *
  * Transport Ownership Model:
  * - Service proxies own transports (strong member_ptr reference)
@@ -28,11 +28,14 @@
 
 #include <atomic>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 
 // Forward declaration to avoid circular dependency
 namespace rpc
 {
+    class child_service;
     class service;
 }
 
@@ -158,8 +161,21 @@ namespace rpc
         std::atomic<int64_t> destination_count_ = 0;
 
         std::atomic<transport_status> status_{transport_status::CONNECTING};
+        std::atomic<bool> start_called_{false};
+
+        template<typename Params>
+        bool resolve_payload_encoding_from_service(
+            Params& params,
+            std::string_view operation);
 
     protected:
+        struct status_transition_result
+        {
+            transport_status old_status{transport_status::CONNECTING};
+            bool changed{false};
+            bool rejected_regression{false};
+        };
+
         // Constructor for derived transport classes
         transport(
             std::string name,
@@ -209,13 +225,21 @@ namespace rpc
          */
         virtual void on_destination_count_zero() { }
 
+        status_transition_result try_advance_status(transport_status new_status);
+
     public:
         ~transport() override;
 
-        std::string get_name() const { return name_; }
+        const std::string& get_name() const { return name_; }
 
         std::shared_ptr<service> get_service() const { return service_.lock(); }
         void set_service(std::shared_ptr<service> service);
+
+        virtual std::shared_ptr<child_service> make_child_service(
+            std::string name,
+            zone zone_id,
+            destination_zone parent_zone_id,
+            const rpc::executor_ptr& executor);
 
         // Destination management for zone pairs
         // For local service, use add_passthrough(local_zone, local_zone, service)
@@ -343,7 +367,13 @@ namespace rpc
          *
          * Delegates to inner_connect() which derived classes implement.
          *
-         * Thread-Safety: Implementation-specific (varies by derived class)
+         * Lifecycle: one-shot. A transport instance may be started by either
+         * connect() or accept(), but not both, and the start operation cannot
+         * be retried. Derived inner_connect() implementations may therefore
+         * treat their startup configuration as construction-time state.
+         *
+         * Thread-Safety: concurrent duplicate starts are rejected before
+         * entering the derived transport.
          */
         CORO_TASK(connect_result)
         connect(
@@ -356,7 +386,12 @@ namespace rpc
          *
          * Delegates to inner_accept() which derived classes implement.
          *
-         * Thread-Safety: Implementation-specific (varies by derived class)
+         * Lifecycle: one-shot. A transport instance may be started by either
+         * accept() or connect(), but not both, and the start operation cannot
+         * be retried.
+         *
+         * Thread-Safety: concurrent duplicate starts are rejected before
+         * entering the derived transport.
          */
         CORO_TASK(int) accept();
 
@@ -384,6 +419,8 @@ namespace rpc
 
         CORO_TASK(standard_result) inbound_try_cast(try_cast_params params);
 
+        CORO_TASK(get_schema_result) inbound_get_schema(get_schema_params params);
+
         CORO_TASK(standard_result) inbound_add_ref(add_ref_params params);
 
         CORO_TASK(standard_result) inbound_release(release_params params);
@@ -391,6 +428,8 @@ namespace rpc
         CORO_TASK(void) inbound_object_released(object_released_params params);
 
         CORO_TASK(void) inbound_transport_down(transport_down_params params);
+
+        CORO_TASK(handshake_result) inbound_handshake(handshake_params params);
 
         CORO_TASK(void) inbound_post_report(rpc::telemetry_event event);
 
@@ -416,10 +455,12 @@ namespace rpc
         CORO_TASK(send_result) send(send_params params) final;
         CORO_TASK(void) post(post_params params) final;
         CORO_TASK(standard_result) try_cast(try_cast_params params) final;
+        CORO_TASK(get_schema_result) get_schema(get_schema_params params) final;
         CORO_TASK(standard_result) add_ref(add_ref_params params) final;
         CORO_TASK(standard_result) release(release_params params) final;
         CORO_TASK(void) object_released(object_released_params params) final;
         CORO_TASK(void) transport_down(transport_down_params params) final;
+        CORO_TASK(handshake_result) handshake(handshake_params params) final;
         CORO_TASK(void) post_report(rpc::telemetry_event event) final;
 
         // Requests a new zone ID from the root zone.
@@ -447,12 +488,15 @@ namespace rpc
          * - SPSC: Queue initialization
          * - Local: Direct function call to child zone creation
          *
-         * Thread-Safety: Implementation-specific
+         * Called at most once by transport::connect().
          */
         virtual CORO_TASK(connect_result) inner_connect(
             std::shared_ptr<rpc::object_stub> stub,
             connection_settings input_descr) = 0;
 
+        /**
+         * Called at most once by transport::accept().
+         */
         virtual CORO_TASK(int) inner_accept() = 0;
 
         /**
@@ -469,10 +513,14 @@ namespace rpc
         virtual CORO_TASK(send_result) outbound_send(send_params params) = 0;
         virtual CORO_TASK(void) outbound_post(post_params params) = 0;
         virtual CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) = 0;
+        // Non-pure (default not-implemented) so transports that do not yet route
+        // schema queries are unaffected; the local transport overrides it.
+        virtual CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params);
         virtual CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) = 0;
         virtual CORO_TASK(standard_result) outbound_release(release_params params) = 0;
         virtual CORO_TASK(void) outbound_object_released(object_released_params params) = 0;
         virtual CORO_TASK(void) outbound_transport_down(transport_down_params params) = 0;
+        virtual CORO_TASK(handshake_result) outbound_handshake(handshake_params params);
     };
 
 } // namespace rpc

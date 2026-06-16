@@ -7,7 +7,7 @@
 #ifndef CANOPY_BUILD_COROUTINE
 
 #  include <rpc/rpc.h>
-#  include <c_abi/dynamic_library/canopy_dynamic_library.h>
+#  include <c_abi/dynamic_library/dynamic_library.h>
 #  include <transports/c_abi/dynamic_library_loader.h>
 
 #  include <string>
@@ -15,7 +15,7 @@
 namespace rpc::c_abi
 {
     // Parent-side transport for children that expose the shared c_abi dynamic
-    // library boundary. This mirrors rpc::dynamic_library::child_transport
+    // library boundary. This mirrors rpc::blocking_dll::child_transport
     // closely, but all cross-language communication flows through the neutral
     // canopy_dll_* entry points and explicit type translation.
     class child_transport : public rpc::transport
@@ -23,7 +23,7 @@ namespace rpc::c_abi
         dynamic_library_loader loader_;
         canopy_child_context child_ctx_ = nullptr;
         canopy_allocator_vtable allocator_{};
-        std::string library_path_;
+        const std::string library_path_;
 
         static canopy_byte_buffer cb_alloc(
             void* allocator_ctx,

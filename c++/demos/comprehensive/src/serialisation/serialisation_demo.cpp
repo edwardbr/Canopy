@@ -7,7 +7,7 @@
  *   Serialization Demo
  *   Demonstrates all supported serialization formats
  *
- *   Concept: RPC++ supports multiple serialization formats:
+ *   Concept: Canopy supports multiple serialization formats:
  *   - yas_binary: High-performance binary format (default)
  *   - yas_compressed_binary: Binary with compression
  *   - yas_json: Human-readable JSON
@@ -243,7 +243,7 @@ namespace comprehensive
 
 int main()
 {
-    RPC_INFO("RPC++ Comprehensive Demo - Serialization");
+    RPC_INFO("Canopy Comprehensive Demo - Serialization");
     RPC_INFO("========================================");
 
 #ifdef CANOPY_BUILD_COROUTINE

@@ -1,0 +1,46 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace stream_transport
+    {
+        // Settings for the Canopy RPC transport that runs over a stream.
+        // TCP, SPSC, io_uring, TLS, and WebSocket settings live in their
+        // own stream IDLs; this struct only configures the RPC transport
+        // object attached after the byte-stream layer stack exists.
+        struct transport_settings
+        {
+            [description="Name of the RPC transport object owned by the service. If service_proxy_name is omitted, this value is also used as the service proxy name."]
+            rpc::optional<std::string> name;
+
+            [description="Name passed to service->connect_to_zone for the service proxy. When omitted, the factory copies name; when both are omitted, it uses the factory default."]
+            rpc::optional<std::string> service_proxy_name;
+
+            [description="Encoding used for generated RPC payloads on this connection. Omit or use not_set to keep the service default."]
+            rpc::optional<rpc::encoding> encoding;
+
+            [description="Per-call timeout in milliseconds for the stream RPC transport. Omit to keep the transport default."]
+            rpc::optional<uint64_t> call_timeout;
+
+            [description="Timeout sweep interval in milliseconds for pending stream RPC calls. Omit to keep the transport default."]
+            rpc::optional<uint64_t> call_timeout_sweep;
+
+            [description="Graceful shutdown timeout in milliseconds for the stream RPC transport. Omit to keep the transport default."]
+            rpc::optional<uint64_t> shutdown_timeout;
+        };
+
+        // Settings for stream RPC listeners created by accept_rpc.
+        // Listener settings are separate from transport settings because a
+        // listener can own many per-connection transport objects.
+        struct listener_settings
+        {
+            [description="Name of the stream listener object. Omit to use the factory default."]
+            rpc::optional<std::string> name;
+        };
+    }
+}

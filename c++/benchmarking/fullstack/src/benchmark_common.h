@@ -30,7 +30,8 @@ namespace comprehensive::v1
     inline constexpr size_t ipc_warmup_calls = reduced_debug_benchmark_matrix ? 1 : 30;
     inline constexpr size_t spsc_warmup_calls = reduced_debug_benchmark_matrix ? 1 : 20;
     inline constexpr size_t tcp_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
-    inline constexpr size_t io_uring_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
+    inline constexpr size_t tcp_coroutine_warmup_calls = reduced_debug_benchmark_matrix ? 2 : 100;
+    inline constexpr size_t io_uring_warmup_calls = tcp_coroutine_warmup_calls;
 
     struct benchmark_stats
     {
@@ -61,17 +62,18 @@ namespace comprehensive::v1
         const char* encoding,
         size_t blob_size,
         const benchmark_stats& stats);
-    CORO_TASK(int)
+    CORO_TASK(comprehensive_error)
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
         std::vector<int64_t>& durations_ns,
         size_t warmup_count = 0);
 
+    uint16_t allocate_loopback_port();
+
 #ifdef CANOPY_BUILD_COROUTINE
     std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count = 2);
     void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler);
-    uint16_t allocate_loopback_port();
 #endif
 
 #ifdef CANOPY_BUILD_COROUTINE
@@ -81,12 +83,12 @@ namespace comprehensive::v1
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_libcoro_dll_scheduled_dynamic_library_benchmark(
+    run_unshared_scheduler_dll_benchmark(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_libcoro_host_scheduled_dynamic_library_benchmark(
+    run_shared_scheduler_dll_benchmark(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::encoding enc,
         size_t blob_size);
@@ -103,24 +105,38 @@ namespace comprehensive::v1
     benchmark_result run_spsc_benchmark(
         rpc::encoding enc,
         size_t blob_size);
-    benchmark_result run_tcp_benchmark(
+    benchmark_result run_tcp_coroutine_benchmark(
         rpc::encoding enc,
         size_t blob_size,
-        uint16_t port);
-    benchmark_result run_io_uring_benchmark(
-        rpc::encoding enc,
-        size_t blob_size,
-        uint16_t port);
+        uint16_t port,
+        bool use_proactor = true,
+        uint32_t host_buffer_size = 4096);
 #else
     CORO_TASK(benchmark_result)
     run_local_benchmark(
         rpc::encoding enc,
         size_t blob_size);
     CORO_TASK(benchmark_result)
-    run_dynamic_library_benchmark(
+    run_blocking_dll_benchmark(
         rpc::encoding enc,
         size_t blob_size);
 #endif
+    benchmark_result run_tcp_blocking_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_tls_tcp_blocking_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_websocket_tcp_blocking_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
+    benchmark_result run_tls_websocket_tcp_blocking_benchmark(
+        rpc::encoding enc,
+        size_t blob_size,
+        uint16_t port);
 
     void print_header();
     void print_footer();

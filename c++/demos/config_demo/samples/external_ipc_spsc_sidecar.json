@@ -1,0 +1,43 @@
+{
+  "$schema": "../schemas/config_demo_config.schema.json",
+  "execution": {
+    "iterations": 1,
+    "client_connection": "client",
+    "server_connection": ""
+  },
+  "connections": [
+    {
+      "name": "client",
+      "role": "connector",
+      "zone_subnet": 302,
+      "connection": {
+        "service": {
+          "type": "service",
+          "settings": {
+            "name": "config_demo_ipc_parent",
+            "executor": {
+              "thread_count": 2
+            }
+          }
+        },
+        "transport": {
+          "type": "ipc_spsc",
+          "settings": {
+            "name": "config_demo_ipc_spsc_transport",
+            "service_proxy_name": "config_demo_ipc_calculator",
+            "encoding": "yas_binary",
+            "use_sidecar": true,
+            "peer_to_peer_shared_memory_file": "",
+            "create_peer_to_peer_shared_memory_file": false,
+            "unlink_peer_to_peer_shared_memory_file_on_close": false,
+            "sidecar_executable_path": "",
+            "dynamic_library_path": "/path/to/libconfig_demo_calculator_ipc_payload.so",
+            "child_subnet_offset": 1,
+            "scheduler_thread_count": 1,
+            "kill_child_on_parent_death": true
+          }
+        }
+      }
+    }
+  ]
+}

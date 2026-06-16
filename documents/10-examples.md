@@ -26,70 +26,39 @@ implementation.
 
 For basic calculator examples covering IDL definition, implementation, and simple usage, see [Getting Started](02-getting-started.md). The examples below focus on advanced patterns and cross-zone communication scenarios.
 
-## 1. Cross-Zone Communication
+## 1. Local Child-Zone Communication
 
-### Server Implementation
-
-```cpp
-#include "calculator_impl.h"
-
-class server_app
-{
-    std::shared_ptr<rpc::root_service> service_;
-    rpc::shared_ptr<calculator::v1::i_calculator> calculator_;
-
-public:
-    void start()
-    {
-        service_ = rpc::root_service::create(
-            "server", rpc::zone{1});
-
-        calculator_ = calculator::create_calculator();
-
-        std::cout << "Server started on zone "
-                  << service_->get_zone_id().get_subnet() << "\n";
-    }
-
-    rpc::shared_ptr<calculator::v1::i_calculator> get_calculator()
-    {
-        return calculator_;
-    }
-
-    std::shared_ptr<rpc::root_service> get_service()
-    {
-        return service_;
-    }
-};
-```
-
-### Client Implementation
+The local child transport creates a child zone from a parent service. For peer
+processes or hosts, use one of the streaming transports instead.
 
 ```cpp
 #include "calculator_impl.h"
 
-class client_app
+class parent_app
 {
     std::shared_ptr<rpc::root_service> service_;
-    rpc::shared_ptr<calculator::v1::i_calculator> remote_calculator_;
+    rpc::shared_ptr<calculator::v1::i_calculator> child_calculator_;
 
 public:
-    CORO_TASK(void) connect_to(server_app& server)
+    CORO_TASK(error_code) start()
     {
         service_ = rpc::root_service::create(
-            "client", rpc::zone{2});
+            "parent", rpc::DEFAULT_PREFIX);
 
-        auto transport = std::make_shared<rpc::local::child_transport>(
-            "server",
-            server.get_service(),
-            service_->get_zone_id());
+        auto child_transport = std::make_shared<rpc::local::child_transport>(
+            "calculator_child", service_);
 
-        transport->set_child_entry_point<calculator::v1::i_calculator, calculator::v1::i_calculator>(
-            [&](const rpc::shared_ptr<calculator::v1::i_calculator>&,
-                rpc::shared_ptr<calculator::v1::i_calculator>& calc,
-                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(int)
+        child_transport->set_child_entry_point<
+            calculator::v1::i_calculator,
+            calculator::v1::i_calculator>(
+            [](rpc::shared_ptr<calculator::v1::i_calculator> parent_calculator,
+               std::shared_ptr<rpc::child_service> child_service)
+                -> CORO_TASK(rpc::service_connect_result<calculator::v1::i_calculator>)
             {
-                calc = server.get_calculator();
-                CO_RETURN rpc::error::OK();
+                (void)parent_calculator;
+                (void)child_service;
+                CO_RETURN rpc::service_connect_result<calculator::v1::i_calculator>{
+                    rpc::error::OK(), calculator::create_calculator()};
             });
 
         rpc::shared_ptr<calculator::v1::i_calculator> input_calculator;
@@ -97,25 +66,28 @@ public:
             = CO_AWAIT service_->connect_to_zone<
                 calculator::v1::i_calculator,
                 calculator::v1::i_calculator>(
-                    "server",
-                    transport,
+                    "calculator_child",
+                    child_transport,
                     input_calculator);
 
         if (connect_result.error_code != rpc::error::OK())
-            CO_RETURN;
+            CO_RETURN connect_result.error_code;
 
-        remote_calculator_ = connect_result.output_interface;
+        child_calculator_ = connect_result.output_interface;
 
-        std::cout << "Connected to server\n";
-        CO_RETURN;
+        std::cout << "Connected to child zone\n";
+        CO_RETURN rpc::error::OK();
     }
 
-    CORO_TASK(void) use_calculator()
+    CORO_TASK(error_code) use_calculator()
     {
         int result;
-        auto error = CO_AWAIT remote_calculator_->add(100, 200, result);
+        auto error = CO_AWAIT child_calculator_->add(100, 200, result);
+        if (error != rpc::error::OK())
+            CO_RETURN error;
+
         std::cout << "100 + 200 = " << result << "\n";
-        CO_RETURN;
+        CO_RETURN rpc::error::OK();
     }
 };
 ```
@@ -146,7 +118,7 @@ public:
             });
 
         service_ = rpc::root_service::create(
-            "coro_server", rpc::zone{1}, scheduler_);
+            "coro_server", rpc::DEFAULT_PREFIX, scheduler_);
 
         calculator_ = calculator::create_calculator();
 
@@ -248,23 +220,25 @@ public:
 
 void handle_error(rpc::error_code error)
 {
-    switch (error)
+    if (error == rpc::error::OK())
     {
-        case rpc::error::OK():
-            std::cout << "Success\n";
-            break;
-        case rpc::error::INVALID_DATA():
-            std::cout << "Invalid data\n";
-            break;
-        case rpc::error::OBJECT_GONE():
-            std::cout << "Object was destroyed\n";
-            break;
-        case rpc::error::TRANSPORT_ERROR():
-            std::cout << "Transport error\n";
-            break;
-        default:
-            std::cout << "Error: " << static_cast<int>(error) << "\n";
-            break;
+        std::cout << "Success\n";
+    }
+    else if (error == rpc::error::INVALID_DATA())
+    {
+        std::cout << "Invalid data\n";
+    }
+    else if (error == rpc::error::OBJECT_GONE())
+    {
+        std::cout << "Object was destroyed\n";
+    }
+    else if (error == rpc::error::TRANSPORT_ERROR())
+    {
+        std::cout << "Transport error\n";
+    }
+    else
+    {
+        std::cout << "Error: " << static_cast<int>(error) << "\n";
     }
 }
 ```

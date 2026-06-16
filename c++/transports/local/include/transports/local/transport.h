@@ -49,6 +49,7 @@ namespace rpc::local
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
 
@@ -90,6 +91,11 @@ namespace rpc::local
             child_entry_point_factory_fn;
 
         child_entry_point_factory_fn child_entry_point_factory_fn_;
+
+    protected:
+        [[nodiscard]] virtual std::shared_ptr<parent_transport> make_child_parent_transport(
+            std::string name,
+            std::shared_ptr<child_transport> parent);
 
     public:
         child_transport(
@@ -168,6 +174,7 @@ namespace rpc::local
         CORO_TASK(send_result) outbound_send(send_params params) override;
         CORO_TASK(void) outbound_post(post_params params) override;
         CORO_TASK(standard_result) outbound_try_cast(try_cast_params params) override;
+        CORO_TASK(get_schema_result) outbound_get_schema(get_schema_params params) override;
         CORO_TASK(standard_result) outbound_add_ref(add_ref_params params) override;
         CORO_TASK(standard_result) outbound_release(release_params params) override;
 
@@ -190,18 +197,12 @@ namespace rpc::local
                       rpc::connection_settings input_descr,
                       std::shared_ptr<child_transport> parent) mutable -> CORO_TASK(child_entry_point_result)
             {
-                child_entry_point_result result{rpc::error::OK(), {}, std::make_shared<parent_transport>("child", parent)};
+                child_entry_point_result result{rpc::error::OK(), {}, parent->make_child_parent_transport("child", parent)};
+                auto parent_service = parent->get_service();
+                auto parent_executor = parent_service ? parent_service->get_executor() : rpc::executor_ptr{};
 
                 auto create_result = CO_AWAIT rpc::child_service::create_child_zone<in_param_type, out_param_type>(
-                    "child",
-                    result.child,
-                    input_descr,
-                    std::move(child_entry_point_fn)
-#ifdef CANOPY_BUILD_COROUTINE
-                        ,
-                    parent->get_service()->get_scheduler()
-#endif
-                );
+                    "child", result.child, input_descr, std::move(child_entry_point_fn), std::move(parent_executor));
                 result.error_code = create_result.error_code;
                 result.output_descriptor = create_result.descriptor;
                 if (result.error_code != rpc::error::OK())

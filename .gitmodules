@@ -22,20 +22,13 @@
 [submodule "c++/submodules/libcoro"]
 	path = c++/submodules/libcoro
 	url = https://github.com/edwardbr/libcoro.git
+	branch = client_and_server_with_shared_ptr_support
 	update = none
 	shallow = true
 [submodule "c++/submodules/c-ares"]
 	path = c++/submodules/c-ares
 	url = https://github.com/c-ares/c-ares.git
 	update = none
-	shallow = true
-[submodule "c++/submodules/json"]
-	path = c++/submodules/json
-	url = https://github.com/nlohmann/json.git
-	shallow = true
-[submodule "c++/submodules/json-schema-validator"]
-	path = c++/submodules/json-schema-validator
-	url = https://github.com/pboettch/json-schema-validator.git
 	shallow = true
 [submodule "submodules/protobuf"]
 	path = submodules/protobuf
@@ -58,10 +51,26 @@
 	url = https://github.com/ggml-org/llama.cpp.git
 	update = none
 	shallow = true
-[submodule "submodules/confidential-computing.sgx"]
-	path = submodules/confidential-computing.sgx
-	url = https://github.com/intel/confidential-computing.sgx.git
-	branch = sgx_2.26
 [submodule "c++/submodules/nanopb"]
 	path = c++/submodules/nanopb
 	url = https://github.com/nanopb/nanopb.git
+[submodule "c++/submodules/mbedtls"]
+	path = c++/submodules/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git
+	update = none
+	shallow = true
+[submodule "c++/submodules/libvpx"]
+	path = c++/submodules/libvpx
+	url = https://github.com/webmproject/libvpx.git
+	shallow = true
+	update = none
+[submodule "c++/submodules/zstd"]
+	path = c++/submodules/zstd
+	url = https://github.com/facebook/zstd.git
+	shallow = true
+	update = none
+[submodule "c++/submodules/zlib"]
+	path = c++/submodules/zlib
+	url = https://github.com/madler/zlib.git
+	update = none
+	shallow = true

@@ -34,6 +34,18 @@ namespace rpc
         // query if an object implements an interface
         virtual CORO_TASK(standard_result) try_cast(try_cast_params params) = 0;
 
+        // describe the interfaces an object exposes, with per-method JSON schemas,
+        // for runtime/agent discovery. Non-pure with a not-implemented default so
+        // a marshaller that predates this method (or does not route schema
+        // queries) degrades cleanly rather than forcing every implementor to
+        // change. Wire-level presence/ABI gating is deferred for the demo and
+        // required before a production merge.
+        virtual CORO_TASK(get_schema_result) get_schema(get_schema_params params)
+        {
+            std::ignore = params;
+            CO_RETURN get_schema_result{rpc::error::NOT_IMPLEMENTED(), rpc::encoding::not_set, {}, {}};
+        }
+
         // add ownership of an object to a caller if shared or to just prop up the transport chain if optimistic
         virtual CORO_TASK(standard_result) add_ref(add_ref_params params) = 0;
 
@@ -45,6 +57,9 @@ namespace rpc
 
         // notify callers that a transport is down unidirectional call
         virtual CORO_TASK(void) transport_down(transport_down_params params) = 0;
+
+        // route-level handshake used to establish security context with a target zone before object calls
+        virtual CORO_TASK(handshake_result) handshake(handshake_params params) = 0;
 
         // post log, telemetry, or diagnostic report events towards the root zone as a one-way message
         virtual CORO_TASK(void) post_report(rpc::telemetry_event event) = 0;

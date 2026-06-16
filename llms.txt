@@ -13,7 +13,7 @@ bindings. The primary implementation is C++. It supports:
 - networked and streamed transports
 - distributed object references via `rpc::shared_ptr` and `rpc::optimistic_ptr`
 - blocking and coroutine builds from the same C++ codebase
-- optional enclave-oriented and telemetry-enabled builds
+- telemetry-enabled builds
 
 Current implementation status:
 
@@ -28,7 +28,7 @@ Current implementation status:
 C++, RPC, IDL, code generation, proxy, stub, distributed objects, remote
 references, `rpc::shared_ptr`, `rpc::optimistic_ptr`, blocking I/O, coroutines,
 `co_await`, TCP, TLS, WebSocket, local transport, dynamic-library transport,
-hierarchical transport, streaming, io_uring, SGX, enclave, Protocol Buffers,
+hierarchical transport, streaming, io_uring, Protocol Buffers,
 YAS, JSON, telemetry, sequence diagrams, Rust, JavaScript, MCP, reflection,
 cross-process communication, one-way RPC, fire-and-forget, realtime feeds,
 video streaming, audio streaming, token streaming
@@ -43,7 +43,7 @@ video streaming, audio streaming, token streaming
   token delivery using one-way `[post]` calls
 - coroutine-first C++ systems that still need a blocking build mode
 - systems that need distributed object lifetimes rather than plain request/response
-- enclave or trust-boundary scenarios
+- sandboxed or reduced-trust component scenarios
 - telemetry-heavy debugging of distributed call flows
 - experimental mixed-language setups where C++ remains the reference runtime and
   Rust or JavaScript are interoperability layers
@@ -65,8 +65,6 @@ video streaming, audio streaming, token streaming
   implementation structure
 - enables higher-throughput designs in coroutine builds, especially for streamed
   and networked transports
-- supports hardware-protected boundaries in the C++ implementation via Intel
-  SGX-oriented builds
 - is transport-agnostic and serializer-agnostic at the architecture level,
   allowing the same interface model to be used over different boundaries and
   wire formats

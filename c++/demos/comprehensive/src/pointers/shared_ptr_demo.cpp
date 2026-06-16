@@ -229,7 +229,7 @@ namespace comprehensive
 
 int main()
 {
-    RPC_INFO("RPC++ Comprehensive Demo - Shared Pointer");
+    RPC_INFO("Canopy Comprehensive Demo - Shared Pointer");
     RPC_INFO("=========================================");
     RPC_INFO("Demonstrates rpc::shared_ptr lifecycle and reference counting");
     RPC_INFO("");

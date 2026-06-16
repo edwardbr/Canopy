@@ -147,6 +147,16 @@ namespace rpc::mock_test
             CO_RETURN standard_result{forced_error_code_.load(std::memory_order_acquire), {}};
         }
 
+        add_ref_handler handler;
+        {
+            std::scoped_lock lock(add_ref_handler_mtx_);
+            handler = add_ref_handler_;
+        }
+        if (handler)
+        {
+            CO_RETURN CO_AWAIT handler(std::move(params));
+        }
+
         CO_RETURN standard_result{rpc::error::OK(), {}};
     }
 
@@ -160,6 +170,16 @@ namespace rpc::mock_test
         if (force_failure_.load(std::memory_order_acquire))
         {
             CO_RETURN standard_result{forced_error_code_.load(std::memory_order_acquire), {}};
+        }
+
+        release_handler handler;
+        {
+            std::scoped_lock lock(release_handler_mtx_);
+            handler = release_handler_;
+        }
+        if (handler)
+        {
+            CO_RETURN CO_AWAIT handler(std::move(params));
         }
 
         CO_RETURN standard_result{rpc::error::OK(), {}};

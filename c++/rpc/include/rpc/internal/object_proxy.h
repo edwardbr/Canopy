@@ -83,7 +83,7 @@ namespace rpc
             uint64_t tag,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data,
+            std::vector<char> in_data,
             uint64_t request_id = 0);
 
         CORO_TASK(int)
@@ -93,7 +93,7 @@ namespace rpc
             uint64_t tag,
             rpc::interface_ordinal interface_id,
             rpc::method method_id,
-            rpc::byte_span in_data);
+            std::vector<char> in_data);
 
         size_t get_proxy_count()
         {

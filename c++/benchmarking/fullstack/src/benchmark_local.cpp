@@ -9,7 +9,7 @@
 #include <transports/local/transport.h>
 
 #ifndef CANOPY_BUILD_COROUTINE
-#  include <transports/dynamic_library/transport.h>
+#  include <transports/blocking_dll/transport.h>
 #endif
 
 namespace comprehensive::v1
@@ -68,23 +68,23 @@ namespace comprehensive::v1
 
 #ifndef CANOPY_BUILD_COROUTINE
     CORO_TASK(benchmark_result)
-    run_dynamic_library_benchmark(
+    run_blocking_dll_benchmark(
         rpc::encoding enc,
         size_t blob_size)
     {
         benchmark_result result{};
 
-        auto root_service = rpc::root_service::create("benchmark_dynamic_library", rpc::DEFAULT_PREFIX);
+        auto root_service = rpc::root_service::create("benchmark_blocking_dll", rpc::DEFAULT_PREFIX);
         root_service->set_default_encoding(enc);
 
-        auto child_transport = std::make_shared<rpc::dynamic_library::child_transport>(
-            "benchmark_dynamic_library", root_service, CANOPY_BENCHMARK_DLL_PATH);
+        auto child_transport = std::make_shared<rpc::blocking_dll::child_transport>(
+            "benchmark_blocking_dll", root_service, CANOPY_BENCHMARK_BLOCKING_DLL_PATH);
 
         rpc::shared_ptr<i_data_processor> remote_processor;
         rpc::shared_ptr<i_data_processor> not_used;
 
         const auto connect_result = CO_AWAIT root_service->connect_to_zone<i_data_processor, i_data_processor>(
-            "benchmark_dynamic_library", child_transport, not_used);
+            "benchmark_blocking_dll", child_transport, not_used);
         remote_processor = connect_result.output_interface;
         result.error = connect_result.error_code;
         if (result.error != rpc::error::OK())

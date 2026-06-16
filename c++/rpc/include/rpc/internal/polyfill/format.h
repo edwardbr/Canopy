@@ -11,7 +11,7 @@
 #include <utility>
 
 #if defined(__has_include)
-#  if __has_include(<format>) && !defined(FOR_SGX) && ((defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) || __cplusplus >= 202002L)
+#  if __has_include(<format>) && ((defined(_MSVC_LANG) && _MSVC_LANG >= 202002L) || __cplusplus >= 202002L)
 #    include <format>
 #    if defined(__cpp_lib_format) && __cpp_lib_format >= 201907L
 #      define RPC_HAS_STD_FORMAT 1

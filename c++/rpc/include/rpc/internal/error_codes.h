@@ -21,7 +21,7 @@
  * int err = CO_AWAIT proxy->some_method();
  * if (err != rpc::error::OK()) {
  *     // Handle error
- *     const char* msg = rpc::error::to_string(err);
+ *     std::string_view msg = rpc::error::to_string(err);
  * }
  * @endcode
  *
@@ -30,14 +30,16 @@
 
 #pragma once
 
+#include <string_view>
+
 namespace rpc
 {
     namespace error
     {
         int OK();
         int MIN();
-        int OUT_OF_MEMORY(); // service has no more memory
-        int NEED_MORE_MEMORY(); // a call needs more memory for its out parameters, specifically for synchronous out parameters from enclave calls
+        int OUT_OF_MEMORY();               // service has no more memory
+        int NEED_MORE_MEMORY();            // a call needs more memory for synchronous out parameters
         int SECURITY_ERROR();              // a security specific issue
         int INVALID_DATA();                // invalid data
         int TRANSPORT_ERROR();             // an error with the custom transport has occurred
@@ -61,7 +63,7 @@ namespace rpc
         int OBJECT_GONE();                   // optimistic pointer target was released by the owning service
         int CALL_TIMEOUT(); // an outbound RPC call received no response within the transport timeout window
         int NOT_IMPLEMENTED(); // operation exists in the interface surface but is not implemented on this platform/path yet
-        int FRAUDULANT_REQUEST();  // request-scoped out-param handoff was used with an invalid request id
+        int FRAUDULANT_REQUEST();  // request violates protocol/security sequencing and may be malicious
         int RESOURCE_CLOSED();     // local resource was closed or is no longer accepting work
         int OPERATION_CANCELLED(); // local asynchronous operation was cancelled before completion
         int RESOURCE_EXHAUSTED();  // local resource capacity was exhausted after retry/backpressure handling
@@ -69,12 +71,16 @@ namespace rpc
         int NATIVE_IO_ERROR(); // native I/O operation failed; inspect operation-specific native result when available
         int MAX();             // the biggest value
 
-        bool is_error(int err);    // any error listed above that is >= MIN() && <= MAX
-        bool is_critical(int err); // any error listed above other than OBJECT_GONE and INVALID_CAST
+        bool is_error(int err);                 // any error listed above that is >= MIN() && <= MAX
+        bool is_critical(int err);              // any error listed above other than OBJECT_GONE and INVALID_CAST
+        bool is_public_control_status(int err); // OK or a built-in RPC error, never an application-domain result
+        int sanitise_public_control_status(
+            int err,
+            std::string_view operation);
 
         void set_OK_val(int val);
         void set_offset_val(int val);
         void set_offset_val_is_negative(bool val);
-        const char* to_string(int);
+        std::string_view to_string(int);
     };
 }

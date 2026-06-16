@@ -4,7 +4,7 @@
 ]]
 
 if(NOT CANOPY_BUILD_COROUTINE)
-  add_library(canopy_example_c_abi_dll SHARED src/canopy_dll_init.cpp)
+  add_library(canopy_example_c_abi_dll SHARED src/dll_init.cpp)
 
   target_compile_definitions(canopy_example_c_abi_dll PRIVATE ${CANOPY_DEFINES} CANOPY_C_ABI_DLL_BUILDING)
 

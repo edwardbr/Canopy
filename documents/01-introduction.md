@@ -40,8 +40,9 @@ Implementation note:
   (blocking, Protocol Buffers, local, dynamic-library)
 - the JavaScript implementation is currently a reduced-trust generated client
   layer rather than a full runtime equivalent
-- Nanopb is the protobuf-compatible C++ path for small-runtime builds where
-  the full Google protobuf runtime is too heavy or unsuitable to link
+- Nanopb is the protobuf-compatible C++ path intended for SGX enclaves and
+  other small-runtime builds where the full Google protobuf runtime is too
+  heavy or unsuitable to link
 
 ## How To Think About Canopy
 
@@ -121,7 +122,8 @@ primary C++ implementation, multiple transports are available:
 | Transport | Use Case | Requirements |
 |-----------|----------|--------------|
 | [Local](transports/local.md) | In-process parent/child zones | None |
-| [TCP](transports/tcp.md) | Network communication | CANOPY_BUILD_COROUTINE=ON |
+| [TCP](transports/tcp.md) | Network communication | Coroutine scheduler or blocking executor |
+| [io_uring](transports/io_uring.md) | Linux loopback stream factories | CANOPY_BUILD_COROUTINE=ON |
 | [SPSC and IPC](transports/spsc_and_ipc.md) | Lock-free single producer/consumer IPC and process-hosted streaming | CANOPY_BUILD_COROUTINE=ON |
 | [SGX](transports/sgx.md) | Secure enclave communication | CANOPY_BUILD_ENCLAVE=ON |
 | [Custom](transports/custom.md) | User-defined transports | Varies |
@@ -186,7 +188,7 @@ canopy/
 │   ├── tests/                # Test suite
 │   ├── demos/                # Demo applications
 │   ├── telemetry/            # Telemetry services
-│   ├── streaming/            # Coroutine streaming stack
+│   ├── streaming/            # Streaming stack; TCP/WebSocket/OpenSSL TLS are dual-mode
 │   └── subcomponents/        # Network config, SPSC queue, etc.
 ├── rust/                     # Experimental Rust implementation and migration docs
 ├── generator/                # IDL code generator

@@ -34,7 +34,6 @@ The most important interface to mirror closely is [`marshaller.h`](/var/home/edw
 
 - YAS support
 - Full transport parity
-- SGX support
 - Streaming stack parity
 - Perfect API resemblance to C++
 

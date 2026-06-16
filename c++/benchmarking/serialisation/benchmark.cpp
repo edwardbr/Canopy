@@ -11,6 +11,7 @@
  *     - yas_compressed_binary
  *     - yas_json
  *     - protocol_buffers (when CANOPY_BUILD_PROTOCOL_BUFFERS=ON)
+ *     - canonical_crypto (when CANOPY_BUILD_CANONICAL_CRYPTO=ON)
  *
  *   Types exercised (matching serialiser_test.cpp):
  *     Scalars : int8, uint8, int16, uint16, int32, uint32, int64, uint64,
@@ -193,6 +194,9 @@ namespace serialisation_benchmark
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         {rpc::encoding::nanopb, "nanopb"},
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        {rpc::encoding::canonical_crypto, "canonical_crypto"},
 #endif
     };
 
@@ -523,13 +527,43 @@ namespace serialisation_benchmark
             }
         }
 #endif
+
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        {
+            const auto canonical_serialise
+                = [](const T& object, std::vector<char>& buffer) { object.canonical_crypto_serialise(buffer); };
+            const auto canonical_deserialise
+                = [](const std::vector<char>& buffer, T& object) { object.canonical_crypto_deserialise(buffer); };
+            try
+            {
+                std::vector<char> buf;
+                canonical_serialise(value, buf);
+                print_row(
+                    type_name,
+                    "canonical direct rt",
+                    buf.size(),
+                    measure_direct_roundtrip(value, canonical_serialise, canonical_deserialise));
+                print_row(
+                    type_name, "canonical ser only", buf.size(), measure_direct_serialise(value, canonical_serialise));
+                print_row(
+                    type_name,
+                    "canonical de only",
+                    buf.size(),
+                    measure_direct_deserialise(value, canonical_serialise, canonical_deserialise));
+            }
+            catch (const std::exception&)
+            {
+                print_unsupported_row(type_name, "canonical direct", "unsupported");
+            }
+        }
+#endif
     }
 
     void run_permutations()
     {
         fmt::print("Serialisation Benchmark Permutations — {} calls, middle 80% (drop first/last 10%)\n", call_count);
         fmt::print("Default rows use rpc::serialise/rpc::deserialise and consume the decoded object.\n");
-        fmt::print("Direct rows call generated protobuf/nanopb methods with a reusable std::vector<char> buffer.\n");
+        fmt::print("Direct rows call generated protobuf/nanopb/canonical_crypto methods with a reusable std::vector<char> buffer.\n");
 
         run_permutation_type("int32_holder (typical)", scalar_test::int32_holder{123456789});
         run_permutation_type("string_holder (13 chars)", scalar_test::string_holder{"hello, world!"});
@@ -699,7 +733,7 @@ int main(
     int argc,
     char** argv)
 {
-    std::cout << "RPC++ Serialisation Benchmark\n";
+    std::cout << "Canopy Serialisation Benchmark\n";
     std::cout << "=============================\n\n";
 
     if (argc > 1 && std::string(argv[1]) == "--permutations")

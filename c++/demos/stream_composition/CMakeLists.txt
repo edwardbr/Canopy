@@ -11,16 +11,33 @@ project(
 
 add_subdirectory(idl)
 
-if(CANOPY_BUILD_COROUTINE)
-  find_package(OpenSSL REQUIRED)
+if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
+  if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
+    set(STREAM_COMPOSITION_SECURE_STREAM_TARGET streaming_mbedtls)
+  elseif(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
+    set(STREAM_COMPOSITION_SECURE_STREAM_TARGET streaming_openssl_tls)
+  else()
+    message(
+      FATAL_ERROR "Unsupported CANOPY_SECURE_STREAM_BACKEND for stream_composition: ${CANOPY_SECURE_STREAM_BACKEND}")
+  endif()
 
-  # Directory where the demo writes its self-signed test certificates.
+  if(NOT TARGET ${STREAM_COMPOSITION_SECURE_STREAM_TARGET})
+    message(
+      FATAL_ERROR
+        "stream_composition requires ${STREAM_COMPOSITION_SECURE_STREAM_TARGET}; check CANOPY_SECURE_STREAM_BACKEND")
+  endif()
+
+  # The demo copies local fixture credentials into the binary tree at startup. Keeping fixtures local avoids
+  # dependencies on the websocket demo or host-test data, while still letting the selected secure-stream backend own TLS
+  # behaviour.
   set(DEMO_CERT_DIR "${CMAKE_CURRENT_BINARY_DIR}/certs")
+  set(DEMO_CERT_FIXTURE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/certs")
   file(MAKE_DIRECTORY "${DEMO_CERT_DIR}")
 
   add_executable(tcp_spsc_tls_demo src/tcp_spsc_tls_demo.cpp)
 
-  target_compile_definitions(tcp_spsc_tls_demo PRIVATE ${CANOPY_DEFINES} DEMO_CERT_DIR="${DEMO_CERT_DIR}")
+  target_compile_definitions(tcp_spsc_tls_demo PRIVATE ${CANOPY_DEFINES} DEMO_CERT_DIR="${DEMO_CERT_DIR}"
+                                                       DEMO_CERT_FIXTURE_DIR="${DEMO_CERT_FIXTURE_DIR}")
 
   target_include_directories(
     tcp_spsc_tls_demo
@@ -31,14 +48,13 @@ if(CANOPY_BUILD_COROUTINE)
     tcp_spsc_tls_demo
     PUBLIC echo_idl
            streaming
-           streaming_tcp
-           streaming_tls
-           streaming_spsc_wrapping
+           streaming_tcp_coroutine
+           ${STREAM_COMPOSITION_SECURE_STREAM_TARGET}
+           streaming_spsc_buffered_stream
            transport_streaming
+           connection_factory
            rpc
-           canopy_network_config
-           OpenSSL::Crypto
-           OpenSSL::SSL
+           network_config
            ${CANOPY_LIBRARIES}
            rpc_log)
 
@@ -51,8 +67,8 @@ if(CANOPY_BUILD_COROUTINE)
   endif()
 
   message(STATUS "stream_composition demo configured")
-  message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC → TLS composition, requires coroutines)")
+  message(STATUS "  - tcp_spsc_tls_demo (TCP → SPSC buffered stream → TLS composition, requires coroutines)")
   message(STATUS "  - Cert dir: ${DEMO_CERT_DIR}")
 else()
-  message(STATUS "stream_composition demo skipped (requires CANOPY_BUILD_COROUTINE)")
+  message(STATUS "stream_composition demo skipped (requires CANOPY_BUILD_COROUTINE and streaming_tcp_coroutine)")
 endif()

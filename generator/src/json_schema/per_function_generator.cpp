@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 
+#include "json_schema/generator.h"
 #include "json_schema/per_function_generator.h"
 #include "json_schema/writer.h"
 #include "type_utils.h"
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <string>
 
 namespace json_schema
 {
@@ -126,8 +128,8 @@ namespace json_schema
         {
             return "array";
         }
-        // Optional/variant types (treat as objects for now)
-        else if (clean_type.find("std::optional") != std::string::npos || clean_type.find("std::variant") != std::string::npos
+        // RPC optional/variant types (treat as objects for now)
+        else if (clean_type.find("rpc::optional") != std::string::npos || clean_type.find("rpc::variant") != std::string::npos
                  || clean_type.find("std::any") != std::string::npos)
         {
             return "object";
@@ -204,6 +206,88 @@ namespace json_schema
         }
 
         return args;
+    }
+
+    static std::string normalize_schema_type(std::string type_name)
+    {
+        if (type_name.find("const") != std::string::npos)
+            type_name = type_name.substr(type_name.find("const") + 5);
+
+        size_t first = type_name.find_first_not_of(" \t&");
+        if (first == std::string::npos)
+            return {};
+
+        size_t last = type_name.find_last_not_of(" \t&");
+        type_name = type_name.substr(first, last - first + 1);
+
+        if (type_name.rfind("::", 0) == 0)
+            type_name.erase(0, 2);
+
+        return type_name;
+    }
+
+    static std::string template_container_name(const std::string& type_name)
+    {
+        const auto normalized = normalize_schema_type(type_name);
+        const auto template_start = normalized.find('<');
+        if (template_start == std::string::npos)
+            return {};
+
+        auto container = normalized.substr(0, template_start);
+        generator::trim_string(container);
+        return container;
+    }
+
+    static bool is_json_dom_schema_any_type(const std::string& type_name)
+    {
+        const auto normalized = normalize_schema_type(type_name);
+        return normalized == "json::v1::object" || normalized == "json::object";
+    }
+
+    static bool is_optional_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        const auto container_name = template_container_name(type_name);
+        if (container_name != "rpc::optional")
+            return false;
+
+        auto args = parse_template_arguments(normalize_schema_type(type_name));
+        if (args.size() != 1)
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_optional_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        const auto container_name = template_container_name(type_name);
+        if (container_name != "rpc::optional")
+            return false;
+
+        auto args = parse_template_arguments(normalize_schema_type(type_name));
+        if (args.size() != 1)
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_variant_schema_type(
+        const std::string& type_name,
+        std::vector<std::string>& alternative_types)
+    {
+        auto container_name = template_container_name(type_name);
+        if (container_name.rfind("::", 0) == 0)
+            container_name.erase(0, 2);
+        if (container_name != "rpc::variant")
+            return false;
+
+        alternative_types = parse_template_arguments(normalize_schema_type(type_name));
+        return !alternative_types.empty();
     }
 
     // Helper function to get template parameter names from template definition
@@ -345,6 +429,77 @@ namespace json_schema
         }
 
         return result;
+    }
+
+    void generate_type_schema_recursive(
+        const std::string& type_name,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types);
+
+    void generate_rpc_optional_type_schema(
+        const std::string& inner_type,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types)
+    {
+        if (is_json_dom_schema_any_type(inner_type))
+            return;
+
+        writer.write_key("oneOf");
+        writer.open_array();
+        writer.open_object();
+        generate_type_schema_recursive(inner_type, root, writer, visited_types);
+        writer.close_object();
+        writer.open_object();
+        writer.write_string_property("type", "null");
+        writer.close_object();
+        writer.close_array();
+    }
+
+    void generate_rpc_variant_type_schema(
+        const std::vector<std::string>& alternative_types,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types)
+    {
+        const auto taggable = collect_taggable_idl_types(root);
+        std::vector<std::string> tags;
+        if (!variant_alternatives_have_unique_tags(alternative_types, taggable, tags))
+        {
+            // Fail-closed: emit a schema that rejects every value rather than
+            // a permissive empty schema. The converter generator also skips
+            // structs that reach this branch, so the runtime never sees one.
+            writer.write_string_property(
+                "description",
+                "rpc::variant with non-taggable alternatives; no runtime support");
+            writer.write_key("not");
+            writer.open_object();
+            writer.close_object();
+            return;
+        }
+
+        writer.write_key("oneOf");
+        writer.open_array();
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            writer.open_object();
+            writer.write_string_property("type", "object");
+            writer.write_key("properties");
+            writer.open_object();
+            writer.write_key(tags[index]);
+            writer.open_object();
+            generate_type_schema_recursive(alternative_types[index], root, writer, visited_types);
+            writer.close_object();
+            writer.close_object();
+            writer.write_key("required");
+            writer.open_array();
+            writer.write_array_string_element(tags[index]);
+            writer.close_array();
+            writer.write_raw_property("additionalProperties", "false");
+            writer.close_object();
+        }
+        writer.close_array();
     }
 
     // Generate detailed schema for complex types (structs/classes)
@@ -511,8 +666,23 @@ namespace json_schema
                         // Handle templated types more intelligently
                         if (!raw_type_name.empty())
                         {
+                            std::string optional_inner_type;
+                            std::vector<std::string> variant_alternative_types;
+
+                            if (is_json_dom_schema_any_type(raw_type_name))
+                            {
+                                // json::v1::object is arbitrary JSON, so do not constrain its type.
+                            }
+                            else if (is_rpc_optional_schema_type(raw_type_name, optional_inner_type))
+                            {
+                                generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
+                            }
+                            else if (is_rpc_variant_schema_type(raw_type_name, variant_alternative_types))
+                            {
+                                generate_rpc_variant_type_schema(variant_alternative_types, root, writer, visited_types);
+                            }
                             // Check for std::vector<T>
-                            if (raw_type_name.find("std::vector<") != std::string::npos)
+                            else if (raw_type_name.find("std::vector<") != std::string::npos)
                             {
                                 writer.write_string_property("type", "array");
 
@@ -607,7 +777,12 @@ namespace json_schema
                         }
 
                         writer.close_object();
-                        required_fields.push_back(member_name);
+
+                        std::string optional_inner_type;
+                        if (!is_optional_schema_type(raw_type_name, optional_inner_type))
+                        {
+                            required_fields.push_back(member_name);
+                        }
                     }
                 }
 
@@ -645,6 +820,25 @@ namespace json_schema
         json_writer& writer,
         std::set<std::string>& visited_types)
     {
+        if (is_json_dom_schema_any_type(type_name))
+        {
+            return;
+        }
+
+        std::string optional_inner_type;
+        if (is_rpc_optional_schema_type(type_name, optional_inner_type))
+        {
+            generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
+            return;
+        }
+
+        std::vector<std::string> variant_alternative_types;
+        if (is_rpc_variant_schema_type(type_name, variant_alternative_types))
+        {
+            generate_rpc_variant_type_schema(variant_alternative_types, root, writer, visited_types);
+            return;
+        }
+
         std::string basic_type = map_basic_type_to_json(type_name);
 
         if (basic_type == "object")
@@ -705,6 +899,7 @@ namespace json_schema
         std::set<std::string> visited_types; // Track visited types to prevent infinite recursion
 
         writer.open_object();
+        writer.write_string_property("$schema", "http://json-schema.org/draft-07/schema#");
         writer.write_string_property("type", "object");
         writer.write_string_property("description", "Input parameters for " + function.get_name() + " method");
 
@@ -750,7 +945,11 @@ namespace json_schema
                     generate_type_schema_recursive(param_type, root, writer, visited_types);
 
                     writer.close_object();
-                    required_fields.push_back(param_name);
+                    std::string optional_inner_type;
+                    if (!is_optional_schema_type(param_type, optional_inner_type))
+                    {
+                        required_fields.push_back(param_name);
+                    }
                 }
             }
 
@@ -788,6 +987,7 @@ namespace json_schema
         std::set<std::string> visited_types; // Track visited types to prevent infinite recursion
 
         writer.open_object();
+        writer.write_string_property("$schema", "http://json-schema.org/draft-07/schema#");
         writer.write_string_property("type", "object");
         writer.write_string_property("description", "Output parameters for " + function.get_name() + " method");
 
@@ -829,7 +1029,11 @@ namespace json_schema
                     generate_type_schema_recursive(param_type, root, writer, visited_types);
 
                     writer.close_object();
-                    required_fields.push_back(param_name);
+                    std::string optional_inner_type;
+                    if (!is_optional_schema_type(param_type, optional_inner_type))
+                    {
+                        required_fields.push_back(param_name);
+                    }
                 }
             }
 
@@ -892,6 +1096,34 @@ namespace json_schema
         std::string ignored_modifiers;
         generator::strip_reference_modifiers(idl_type_name_cleaned, ignored_modifiers);
         idl_type_name_cleaned = generator::unconst(idl_type_name_cleaned);
+
+        std::string optional_inner_type;
+        if (is_rpc_optional_schema_type(idl_type_name_cleaned, optional_inner_type))
+        {
+            writer.open_object();
+            const auto description = attribs.get_value("description");
+            if (!description.empty())
+                writer.write_string_property("description", description);
+            if (attribs.has_value("deprecated"))
+                writer.write_raw_property("deprecated", "true");
+            generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
+            writer.close_object();
+            return;
+        }
+
+        std::vector<std::string> variant_alternative_types;
+        if (is_rpc_variant_schema_type(idl_type_name_cleaned, variant_alternative_types))
+        {
+            writer.open_object();
+            const auto description = attribs.get_value("description");
+            if (!description.empty())
+                writer.write_string_property("description", description);
+            if (attribs.has_value("deprecated"))
+                writer.write_raw_property("deprecated", "true");
+            generate_rpc_variant_type_schema(variant_alternative_types, root, writer, visited_types);
+            writer.close_object();
+            return;
+        }
 
         // Check for template types (containers)
         std::vector<std::string> template_args = parse_template_arguments(idl_type_name_cleaned);

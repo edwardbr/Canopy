@@ -3,11 +3,13 @@
  *   All rights reserved.
  */
 
+#import "json/json.idl"
+
 typedef int error_code;
 
 namespace xxx
 {
-    [status=production,description=R"__(Creates an example instance in a subordinate zone
+    [status=demo,description=R"__(Creates an example instance in a subordinate zone
         abd we can do funky shit like this)__"]
     struct something_complicated
     {
@@ -17,11 +19,32 @@ namespace xxx
         std::string string_val;
     };
 
-    [status=production]
+    [status=demo]
     struct something_more_complicated
     {
         std::vector<something_complicated> vector_val;
         std::map<std::string, something_complicated> map_val;
+    };
+
+    [status=demo]
+    struct optional_variant_json_holder
+    {
+        rpc::optional<int32_t> optional_int;
+        rpc::variant<int32_t, std::string> variant_value;
+        json::v1::object json_value;
+        rpc::optional<json::v1::object> optional_json_value;
+        rpc::optional<int32_t> rpc_optional_int;
+        rpc::optional<json::v1::object> rpc_optional_json_value;
+    };
+
+    [status=demo]
+    struct rpc_optional_holder
+    {
+        int32_t required_int;
+        std::string required_string;
+        rpc::optional<int32_t> optional_int;
+        rpc::optional<std::string> optional_string;
+        rpc::optional<json::v1::object> optional_json_value;
     };
 
     enum pointer_serialisation_state
@@ -30,21 +53,21 @@ namespace xxx
         pointer_serialisation_ready = 1,
     };
 
-    [status=production]
+    [status=demo]
     struct pointer_serialisation_fixture
     {
         pointer_serialisation_state* state = 0;
         error_code* error = 0;
     };
 
-    [status=production]
+    [status=demo]
     template<typename T>
     struct typed_payload
     {
         std::array<uint8_t, sizeof(T)> payload;
     };
 
-    [status=production]
+    [status=demo]
     interface i_foo
     {
         static std::string foo = "hello";
@@ -85,6 +108,26 @@ namespace xxx
 
         error_code do_multi_val(int val1, int val2);
         error_code do_multi_complicated_val(const something_more_complicated val1, const something_more_complicated val2);
+        error_code exchange_json_object([in] const json::v1::object& in_val, [out] json::v1::object& out_val);
+        error_code give_optional_variant_json_holder([in] const optional_variant_json_holder& val);
+        error_code receive_optional_variant_json_holder([out] optional_variant_json_holder& val);
+        error_code exchange_optional_variant_json(
+            [in] rpc::optional<int32_t> optional_int,
+            [in] rpc::variant<int32_t, std::string> variant_value,
+            [in] json::v1::object json_value,
+            [in] rpc::optional<json::v1::object> optional_json_value,
+            [out] rpc::optional<int32_t>& optional_int_out,
+            [out] rpc::variant<int32_t, std::string>& variant_value_out,
+            [out] json::v1::object& json_value_out,
+            [out] rpc::optional<json::v1::object>& optional_json_value_out);
+        error_code exchange_rpc_optional_holder(
+            [in] const rpc_optional_holder& in_val,
+            [out] rpc_optional_holder& out_val);
+        error_code exchange_rpc_optional_values(
+            [in] rpc::optional<int32_t> optional_int,
+            [in] rpc::optional<json::v1::object> optional_json_value,
+            [out] rpc::optional<int32_t>& optional_int_out,
+            [out] rpc::optional<json::v1::object>& optional_json_value_out);
 
         error_code receive_interface([out]rpc::shared_ptr<i_foo>& val);//can be null
         error_code give_interface([in]rpc::shared_ptr<i_baz> val);//can be null
@@ -103,13 +146,13 @@ namespace xxx
         error_code clear_recorded_messages();
     };
 
-    [status=production]
+    [status=demo]
     interface i_bar
     {
         error_code do_something_else(int val);
     };
 
-    [status=production]
+    [status=demo]
     interface i_baz
     {
         error_code callback(int val);
@@ -119,7 +162,7 @@ namespace xxx
     // some template tests with attributes
 
     // bog standard
-    [status=production]
+    [status=demo]
     template<class T>
     struct test_template
     {
@@ -128,7 +171,7 @@ namespace xxx
     };
 
     // don't include the template parameters when generating the constexpr value
-    [status=production,buggy_template_param_in_id=false]
+    [status=demo,buggy_template_param_in_id=false]
     template<class T>
     struct test_template_without_params_in_id
     {
@@ -136,7 +179,7 @@ namespace xxx
     };
 
     // maintain a bug for backward compatibility, use an empty seed for template types seed will be 7410425521722818471ull or 0x66D71EBFF8C6FFA7
-    [status=production,buggy_empty_template_struct_id=true]
+    [status=demo,buggy_empty_template_struct_id=true]
     template<class T>
     struct test_template_use_legacy_empty_template_struct_id
     {
@@ -144,7 +187,7 @@ namespace xxx
     };
 
     // use both dodgy flags
-    [status=production,buggy_template_param_in_id=false,buggy_empty_template_struct_id=true]
+    [status=demo,buggy_template_param_in_id=false,buggy_empty_template_struct_id=true]
     template<class T>
     struct test_template_use_old
     {
@@ -152,7 +195,7 @@ namespace xxx
     };
 
     // interfaces use existing logic for now
-    [status=production]
+    [status=demo]
     interface i_interface_with_templates
     {
         error_code one(test_template<int> val);
@@ -161,7 +204,7 @@ namespace xxx
         error_code four(test_template_use_old<int> val);
     };
 
-    [status=production]
+    [status=demo]
     struct type_determinant
     {
         static constexpr int x = 3;

@@ -17,7 +17,8 @@ target_link_libraries(
   rpc::mock_test_transport
   common_tests
   test_fixtures
-  transport_mock_test_test)
+  transport_mock_test_test
+  rpc_log)
 
 # Add include directories for RPC headers
 target_include_directories(

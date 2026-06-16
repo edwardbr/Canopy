@@ -3,11 +3,14 @@
 
 #include <rpc/rpc.h>
 
-#include "secret_llama/secret_llama.h"
-#include "llama_server_engine.h"
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  include "secret_llama/secret_llama.h"
+#  include "llama_server_engine.h"
+#endif
 
 #include "demo_zone.h"
 
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
 namespace secret_llama
 {
     inline namespace v1_0
@@ -16,16 +19,24 @@ namespace secret_llama
         error_types create_llama_cpp(std::shared_ptr<secret_llama::v1_0::llm_engine>& engine);
     }
 }
+#endif
 
 namespace websocket_demo
 {
     namespace v1
     {
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         rpc::shared_ptr<i_calculator> create_websocket_demo_instance(
             const std::shared_ptr<secret_llama::v1_0::llm_engine>& engine,
             const std::shared_ptr<secret_llama::v1_0::loaded_model>& loaded_model,
             std::shared_ptr<rpc::service> service_);
+#elif defined(CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO)
+        rpc::shared_ptr<i_calculator> create_websocket_demo_instance(const std::shared_ptr<rpc::service>& service);
+#else
+        rpc::shared_ptr<i_calculator> create_websocket_demo_instance();
+#endif
 
+#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
         static std::shared_ptr<secret_llama::v1_0::llm_engine> get_llama_cpp()
         {
             // yuck running out of time
@@ -78,74 +89,77 @@ namespace websocket_demo
             }
             return loaded_model_;
         }
+#endif
 
         websocket_service::websocket_service(
             std::string name,
             rpc::zone zone_id,
-            std::shared_ptr<coro::scheduler> scheduler)
+            rpc::executor_ptr executor)
             : rpc::root_service(
                   name.data(),
                   zone_id,
-                  scheduler)
+                  executor)
         {
         }
 
         websocket_service::websocket_service(
             std::string name,
             const rpc::service_config& config,
-            std::shared_ptr<coro::scheduler> scheduler)
+            rpc::executor_ptr executor)
             : rpc::root_service(
                   name.data(),
                   config,
-                  scheduler)
+                  executor)
         {
         }
 
         rpc::shared_ptr<i_calculator> websocket_service::get_demo_instance()
         {
-            if (!demo_.lock())
-            {
-#ifdef _DEBUG
-                llama_log_set(
-                    [](enum ggml_log_level level, const char* text, void* /* user_data */)
+#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
+#  ifdef CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO
+            return create_websocket_demo_instance(shared_from_this());
+#  else
+            return create_websocket_demo_instance();
+#  endif
+#else
+#  ifdef _DEBUG
+            llama_log_set(
+                [](enum ggml_log_level level, const char* text, void* /* user_data */)
+                {
+                    std::string sanitized_text = text != nullptr ? text : "";
+                    for (auto& ch : sanitized_text)
                     {
-                        std::string sanitized_text = text != nullptr ? text : "";
-                        for (auto& ch : sanitized_text)
+                        if (ch == '\n')
                         {
-                            if (ch == '\n')
-                            {
-                                ch = ' ';
-                            }
+                            ch = ' ';
                         }
+                    }
 
-                        switch (level)
-                        {
-                        case GGML_LOG_LEVEL_CONT: // continue previous log not sure what to put it under as logger is stateless
-                        case GGML_LOG_LEVEL_DEBUG:
-                            RPC_DEBUG("{}", sanitized_text);
-                            break;
-                        case GGML_LOG_LEVEL_INFO:
-                            RPC_INFO("{}", text);
-                            break;
-                        case GGML_LOG_LEVEL_WARN:
-                            RPC_WARNING("{}", text);
-                            break;
-                        case GGML_LOG_LEVEL_ERROR:
-                            RPC_ERROR("{}", text);
-                            break;
-                        case GGML_LOG_LEVEL_NONE:
-                        default:
-                            break;
-                        }
-                    },
-                    nullptr);
+                    switch (level)
+                    {
+                    case GGML_LOG_LEVEL_CONT: // continue previous log not sure what to put it under as logger is stateless
+                    case GGML_LOG_LEVEL_DEBUG:
+                        RPC_DEBUG("{}", sanitized_text);
+                        break;
+                    case GGML_LOG_LEVEL_INFO:
+                        RPC_INFO("{}", text);
+                        break;
+                    case GGML_LOG_LEVEL_WARN:
+                        RPC_WARNING("{}", text);
+                        break;
+                    case GGML_LOG_LEVEL_ERROR:
+                        RPC_ERROR("{}", text);
+                        break;
+                    case GGML_LOG_LEVEL_NONE:
+                    default:
+                        break;
+                    }
+                },
+                nullptr);
+#  endif
+
+            return create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
 #endif
-
-                auto demo = create_websocket_demo_instance(get_llama_cpp(), get_loaded_model(), shared_from_this());
-                demo_ = demo;
-                return demo;
-            }
-            return nullptr;
         }
 
     }

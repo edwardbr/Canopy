@@ -56,9 +56,15 @@ namespace rpc::mock_test
         // Optional response handlers for custom behavior
 
         typedef std::function<CORO_TASK(send_result)(send_params)> send_handler;
+        typedef std::function<CORO_TASK(standard_result)(add_ref_params)> add_ref_handler;
+        typedef std::function<CORO_TASK(standard_result)(release_params)> release_handler;
 
         send_handler send_handler_;
         std::mutex send_handler_mtx_;
+        add_ref_handler add_ref_handler_;
+        std::mutex add_ref_handler_mtx_;
+        release_handler release_handler_;
+        std::mutex release_handler_mtx_;
 
         void record_call(
             call_record::call_type type,
@@ -104,6 +110,30 @@ namespace rpc::mock_test
         {
             std::scoped_lock lock(send_handler_mtx_);
             send_handler_ = nullptr;
+        }
+
+        template<typename Handler> void set_add_ref_handler(Handler&& handler)
+        {
+            std::scoped_lock lock(add_ref_handler_mtx_);
+            add_ref_handler_ = std::forward<Handler>(handler);
+        }
+
+        void clear_add_ref_handler()
+        {
+            std::scoped_lock lock(add_ref_handler_mtx_);
+            add_ref_handler_ = nullptr;
+        }
+
+        template<typename Handler> void set_release_handler(Handler&& handler)
+        {
+            std::scoped_lock lock(release_handler_mtx_);
+            release_handler_ = std::forward<Handler>(handler);
+        }
+
+        void clear_release_handler()
+        {
+            std::scoped_lock lock(release_handler_mtx_);
+            release_handler_ = nullptr;
         }
 
         // outbound i_marshaller implementations

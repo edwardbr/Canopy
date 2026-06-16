@@ -7,8 +7,13 @@
 
 #include <cstdint>
 #include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <variant>
 #include <example/example.h>
 
+#include <json/json_dom.h>
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
@@ -28,12 +33,12 @@ namespace marshalled_tests
     }
 
     inline void emit_impl_creation_telemetry(
-        const char* name,
+        std::string_view name,
         std::uintptr_t address)
     {
         if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
         {
-            telemetry_service->on_impl_creation({name, address, current_service_zone()});
+            telemetry_service->on_impl_creation({std::string(name), address, current_service_zone()});
         }
     }
 
@@ -58,7 +63,7 @@ namespace marshalled_tests
     CORO_TASK(bool)
     standard_tests(
         xxx::i_foo& foo,
-        bool enclave);
+        bool supports_process_local_reference_tests);
 
     class baz : public rpc::base<baz, xxx::i_baz, xxx::i_bar>
     {
@@ -295,6 +300,95 @@ namespace marshalled_tests
             CO_RETURN rpc::error::OK();
         }
 
+        CORO_TASK(error_code)
+        exchange_json_object(
+            const json::v1::object& in_val,
+            json::v1::object& out_val) override
+        {
+            out_val = json::v1::map{
+                {"echo", in_val},
+                {"handled", true},
+                {"details", json::v1::array{"json", 3}},
+            };
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) give_optional_variant_json_holder(const xxx::optional_variant_json_holder& val) override
+        {
+            std::ignore = val;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code) receive_optional_variant_json_holder(xxx::optional_variant_json_holder& val) override
+        {
+            val.optional_int = 33;
+            val.variant_value = std::string("received-variant");
+            val.json_value = json::v1::object(
+                json::v1::map{
+                    {"name", "received"},
+                    {"values", json::v1::array{1, true, nullptr}},
+                });
+            val.optional_json_value = json::v1::object(
+                json::v1::map{
+                    {"enabled", true},
+                    {"label", "received-optional-json"},
+                });
+            val.rpc_optional_int = 44;
+            val.rpc_optional_json_value = json::v1::object(
+                json::v1::map{
+                    {"enabled", true},
+                    {"label", "received-rpc-optional-json"},
+                });
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_optional_variant_json(
+            rpc::optional<int32_t> optional_int,
+            rpc::variant<
+                int32_t,
+                std::string> variant_value,
+            json::v1::object json_value,
+            rpc::optional<json::v1::object> optional_json_value,
+            rpc::optional<int32_t>& optional_int_out,
+            rpc::variant<
+                int32_t,
+                std::string>& variant_value_out,
+            json::v1::object& json_value_out,
+            rpc::optional<json::v1::object>& optional_json_value_out) override
+        {
+            optional_int_out = optional_int;
+            variant_value_out = std::move(variant_value);
+            json_value_out = json::v1::object(
+                json::v1::map{
+                    {"echo", std::move(json_value)},
+                    {"handled", true},
+                });
+            optional_json_value_out = std::move(optional_json_value);
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_rpc_optional_holder(
+            const xxx::rpc_optional_holder& in_val,
+            xxx::rpc_optional_holder& out_val) override
+        {
+            out_val = in_val;
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(error_code)
+        exchange_rpc_optional_values(
+            rpc::optional<int32_t> optional_int,
+            rpc::optional<json::v1::object> optional_json_value,
+            rpc::optional<int32_t>& optional_int_out,
+            rpc::optional<json::v1::object>& optional_json_value_out) override
+        {
+            optional_int_out = std::move(optional_int);
+            optional_json_value_out = std::move(optional_json_value);
+            CO_RETURN rpc::error::OK();
+        }
+
         CORO_TASK(error_code) receive_interface(rpc::shared_ptr<i_foo>& val) override
         {
             val = rpc::shared_ptr<xxx::i_foo>(new foo());
@@ -315,7 +409,6 @@ namespace marshalled_tests
                 CO_RETURN rpc::error::OK();
             CO_AWAIT val->callback(22);
             auto val1 = CO_AWAIT rpc::dynamic_pointer_cast<xxx::i_baz>(val);
-            // #sgx dynamic cast in an enclave this fails
             auto val2 = CO_AWAIT rpc::dynamic_pointer_cast<xxx::i_bar>(val);
             // note val2 may be null if the cast fails this is dependant on if we are using the class foo or class baz
 
@@ -537,78 +630,6 @@ namespace marshalled_tests
             int& c) override
         {
             c = a + b;
-            CO_RETURN rpc::error::OK();
-        }
-
-        CORO_TASK(error_code) call_create_enclave(const rpc::shared_ptr<yyy::i_host>& host) override
-        {
-            CO_RETURN CO_AWAIT call_create_enclave_val(host);
-        }
-        CORO_TASK(error_code) call_create_enclave_val(rpc::shared_ptr<yyy::i_host> host) override
-        {
-            if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
-            rpc::shared_ptr<yyy::i_example> target;
-            auto err = CO_AWAIT host->create_enclave(target);
-            if (err != rpc::error::OK())
-                CO_RETURN err;
-            if (!target)
-                CO_RETURN rpc::error::INVALID_DATA();
-            //            target = nullptr;
-            int outval = 0;
-            auto ret = CO_AWAIT target->add(1, 2, outval);
-            if (ret != rpc::error::OK())
-                CO_RETURN ret;
-            if (outval != 3)
-                CO_RETURN rpc::error::INVALID_DATA();
-            CO_RETURN rpc::error::OK();
-        }
-
-        CORO_TASK(error_code) call_host_create_enclave_and_throw_away(bool run_standard_tests) override
-        {
-            auto host = host_.get_nullable();
-            if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
-            rpc::shared_ptr<i_example> target;
-            auto err = CO_AWAIT host->create_enclave(target);
-            if (err != rpc::error::OK())
-                CO_RETURN err;
-            if (!target)
-                CO_RETURN rpc::error::INVALID_DATA();
-            if (run_standard_tests)
-            {
-                int sum = 0;
-                err = CO_AWAIT target->add(1, 2, sum);
-                if (err != rpc::error::OK())
-                    CO_RETURN err;
-                if (sum != 3)
-                    CO_RETURN rpc::error::INVALID_DATA();
-            }
-            CO_RETURN rpc::error::OK();
-        }
-
-        CORO_TASK(error_code)
-        call_host_create_enclave(
-            rpc::shared_ptr<i_example>& target,
-            bool run_standard_tests) override
-        {
-            auto host = host_.get_nullable();
-            if (!host)
-                CO_RETURN rpc::error::INVALID_DATA();
-            auto err = CO_AWAIT host->create_enclave(target);
-            if (err != rpc::error::OK())
-                CO_RETURN err;
-            if (!target)
-                CO_RETURN rpc::error::INVALID_DATA();
-            if (run_standard_tests)
-            {
-                int sum = 0;
-                err = CO_AWAIT target->add(1, 2, sum);
-                if (err != rpc::error::OK())
-                    CO_RETURN err;
-                if (sum != 3)
-                    CO_RETURN rpc::error::INVALID_DATA();
-            }
             CO_RETURN rpc::error::OK();
         }
 

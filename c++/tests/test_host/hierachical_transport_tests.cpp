@@ -14,7 +14,6 @@
 #include <rpc/rpc.h>
 #ifdef CANOPY_USE_TELEMETRY
 #  include <rpc/telemetry/i_telemetry_service.h>
-#  include <rpc/telemetry/telemetry_service_factory.h>
 #endif
 
 // Other headers
@@ -47,9 +46,6 @@
 #include "test_host.h"
 #include <transport/tests/direct/setup.h>
 #include <transport/tests/local/setup.h>
-#ifdef CANOPY_BUILD_ENCLAVE
-#  include <transport/tests/sgx/setup.h>
-#endif
 #include "crash_handler.h"
 #include "type_test_fixture.h"
 
@@ -95,71 +91,11 @@ using hierachical_transport_tests_implementations = ::testing::Types<
     inproc_setup<true, false, false>,
     inproc_setup<true, false, true>,
     inproc_setup<true, true, false>,
-    inproc_setup<true, true, true>
-
-#ifdef CANOPY_BUILD_ENCLAVE
-    ,
-    sgx_setup<true, false, false>,
-    sgx_setup<true, false, true>,
-    sgx_setup<true, true, false>,
-    sgx_setup<true, true, true>
-#endif
-    >;
+    inproc_setup<true, true, true>>;
 
 TYPED_TEST_SUITE(
     hierachical_transport_tests,
     hierachical_transport_tests_implementations);
-
-#ifdef CANOPY_BUILD_ENCLAVE
-template<class T> CORO_TASK(bool) coro_call_host_create_enclave_and_throw_away(T& lib)
-{
-    bool run_standard_tests = false;
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->call_host_create_enclave_and_throw_away(run_standard_tests), rpc::error::OK());
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    call_host_create_enclave_and_throw_away)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave_and_throw_away<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_call_host_create_enclave(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    call_host_create_enclave)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_call_host_create_enclave_and_run(T& lib)
-{
-    bool run_standard_tests = true;
-    rpc::shared_ptr<yyy::i_example> target;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    call_host_create_enclave_and_run)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_call_host_create_enclave_and_run<TypeParam>(lib); });
-}
-#endif
 
 template<class T> CORO_TASK(bool) coro_call_host_create_local_zone(T& lib)
 {
@@ -246,127 +182,6 @@ TYPED_TEST(
 {
     run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_local_app_unload_app<TypeParam>(lib); });
 }
-
-#ifdef CANOPY_BUILD_ENCLAVE
-template<class T> CORO_TASK(bool) coro_call_host_look_up_app_unload_app(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_unload_app("target"), rpc::error::OK());
-    target = nullptr;
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    call_host_look_up_app_unload_app)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_app_unload_app<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_call_host_look_up_app_not_return(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->call_host_look_up_app_not_return("target", run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_unload_app("target"), rpc::error::OK());
-    target = nullptr;
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    call_host_look_up_app_not_return)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_call_host_look_up_app_not_return<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_create_store_fetch_delete(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-    rpc::shared_ptr<yyy::i_example> target2;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->call_host_look_up_app("target", target2, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_unload_app("target"), rpc::error::OK());
-    CORO_ASSERT_EQ(target, target2);
-    target = nullptr;
-    target2 = nullptr;
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    create_store_fetch_delete)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_create_store_fetch_delete<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_create_store_not_return_delete(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->call_host_look_up_app_not_return_and_delete("target", run_standard_tests),
-        rpc::error::OK());
-    target = nullptr;
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    create_store_not_return_delete)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_create_store_not_return_delete<TypeParam>(lib); });
-}
-
-template<class T> CORO_TASK(bool) coro_create_store_delete(T& lib)
-{
-    bool run_standard_tests = false;
-    rpc::shared_ptr<yyy::i_example> target;
-    rpc::shared_ptr<yyy::i_example> target2;
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_create_enclave(target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_NE(target, nullptr);
-
-    CORO_ASSERT_EQ(CO_AWAIT lib.get_example()->call_host_set_app("target", target, run_standard_tests), rpc::error::OK());
-    CORO_ASSERT_EQ(
-        CO_AWAIT lib.get_example()->call_host_look_up_app_and_delete("target", target2, run_standard_tests),
-        rpc::error::OK());
-    CORO_ASSERT_EQ(target, target2);
-    target = nullptr;
-    target2 = nullptr;
-    CO_RETURN true;
-}
-
-TYPED_TEST(
-    hierachical_transport_tests,
-    create_store_delete)
-{
-    run_coro_test(*this, [](auto& lib) { return coro_create_store_delete<TypeParam>(lib); });
-}
-#endif
 
 template<class T> CORO_TASK(bool) coro_create_subordinate_zone(T& lib)
 {

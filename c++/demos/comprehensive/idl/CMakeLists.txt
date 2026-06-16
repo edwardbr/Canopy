@@ -17,7 +17,10 @@ CanopyGenerate(
   yas_json
   protocol_buffers
   mock comprehensive/comprehensive_mock.h
+  dependencies rpc_types_idl calculator_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
+                ${CANOPY_CPP_SOURCE_DIR}/demos/rpc_objects/calculator/idl
+                ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
 # Suppress generator bug warning (misleading indentation in generated code)

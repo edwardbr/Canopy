@@ -7,7 +7,7 @@ Rust conventions pushed the implementation in the wrong direction.
 It should be read before writing a new language-translation guide.
 
 It is not a replacement for the original plan in
-[`original-translation-instructions.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/original-translation-instructions.md).
+[`original-translation-instructions.md`](../../../documents/language-ports/rust/original-translation-instructions.md).
 That original plan remains useful because it shows what was known at the start.
 
 ## Why This Document Exists

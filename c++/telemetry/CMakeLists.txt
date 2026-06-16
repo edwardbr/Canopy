@@ -10,8 +10,8 @@ if(CANOPY_USE_TELEMETRY)
   target_include_directories(rpc_telemetry_interface INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
 
   add_library(rpc::rpc_telemetry_interface ALIAS rpc_telemetry_interface)
-endif()
 
+endif()
 if(${CANOPY_USE_TELEMETRY})
 
   message("rpc_telemetry")
@@ -28,7 +28,6 @@ if(${CANOPY_USE_TELEMETRY})
   target_compile_options(rpc_telemetry PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC}
                                                $<$<CXX_COMPILER_ID:GNU>:-Wno-dangling-reference>)
   target_link_options(rpc_telemetry PRIVATE ${CANOPY_LINK_OPTIONS})
-  target_link_directories(rpc_telemetry PUBLIC ${SGX_LIBRARY_PATH})
   target_compile_definitions(rpc_telemetry PRIVATE ${CANOPY_DEFINES})
   target_link_libraries(
     rpc_telemetry

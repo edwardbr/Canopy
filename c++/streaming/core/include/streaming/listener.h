@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 
-#include <coro/coro.hpp>
 #include <rpc/rpc.h>
 
 #include <streaming/stream.h>
@@ -26,14 +25,14 @@ namespace streaming
     // Usage:
     //   auto listener = std::make_shared<streaming::listener>(
     //       "my_connection",
-    //       std::make_shared<streaming::tcp::acceptor>(endpoint),
+    //       std::make_shared<streaming::blocking::tcp::acceptor>(endpoint),
     //       rpc::stream_transport::make_connection_callback<i_remote, i_local>(
     //           [](const rpc::shared_ptr<i_remote>& remote,
-    //               rpc::shared_ptr<i_local>& local,
-    //               const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(int)
+    //               std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<i_local>)
     //           {
-    //               local = rpc::shared_ptr<i_local>(new my_local_impl(svc));
-    //               CO_RETURN rpc::error::OK();
+    //               CO_RETURN rpc::service_connect_result<i_local>{
+    //                   rpc::error::OK(),
+    //                   rpc::shared_ptr<i_local>(new my_local_impl(svc))};
     //           }));
     //   CO_AWAIT listener->start_listening_async(service);
 
@@ -77,7 +76,7 @@ namespace streaming
             ready_evt_.reset();
             stop_evt_.reset();
             service_ = service;
-            if (!acceptor_->init(service->get_scheduler()))
+            if (!acceptor_->init(service->get_executor()))
             {
                 service_.reset();
                 running_.store(false, std::memory_order_release);
@@ -85,8 +84,14 @@ namespace streaming
                 return false;
             }
 
-            if (!service->spawn(run(service)))
+            if (!service->SPAWN(run(service)))
             {
+                // acceptor_->init() already opened the listen fd (TCP) or
+                // its equivalent. If we don't tell the acceptor to stop,
+                // the fd stays bound until the acceptor is destroyed —
+                // surprising callers who get a "port in use" error on the
+                // next start_listening() attempt.
+                acceptor_->stop();
                 service_.reset();
                 running_.store(false, std::memory_order_release);
                 stop_evt_.set();
@@ -122,7 +127,7 @@ namespace streaming
     private:
         CORO_TASK(void) run(std::shared_ptr<rpc::service> service)
         {
-            CO_AWAIT service->get_scheduler()->schedule();
+            CO_AWAIT service->get_executor()->schedule();
             ready_evt_.set();
 
             while (true)
@@ -135,7 +140,13 @@ namespace streaming
                     CO_AWAIT(*maybe)->set_closed();
                     break;
                 }
-                service->spawn(handle_connection(service, *maybe));
+                if (!service->SPAWN(handle_connection(service, *maybe)))
+                {
+                    stopping_.store(true, std::memory_order_release);
+                    acceptor_->stop();
+                    CO_AWAIT(*maybe)->set_closed();
+                    break;
+                }
             }
 
             running_.store(false, std::memory_order_release);

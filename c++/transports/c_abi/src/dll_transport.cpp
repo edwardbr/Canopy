@@ -43,6 +43,23 @@ namespace rpc::c_abi
             return canopy_remote_object{borrow_zone_address(remote_object.get_address())};
         }
 
+        uint64_t payload_type_id(const rpc::optional<rpc::typed_payload>& payload)
+        {
+            return payload ? payload->get_type_id() : 0;
+        }
+
+        uint64_t payload_encoding(const rpc::optional<rpc::typed_payload>& payload)
+        {
+            return payload ? static_cast<uint64_t>(payload->get_encoding())
+                           : static_cast<uint64_t>(rpc::encoding::not_set);
+        }
+
+        const std::vector<char>& payload_bytes(const rpc::optional<rpc::typed_payload>& payload)
+        {
+            static const std::vector<char> empty;
+            return payload ? payload->get_payload() : empty;
+        }
+
         struct borrowed_back_channel
         {
             std::vector<canopy_back_channel_entry> entries;
@@ -127,7 +144,10 @@ namespace rpc::c_abi
                       caller_zone,
                       remote_object,
                       params.interface_id.get_val(),
-                      back_channel.span}
+                      back_channel.span,
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -151,7 +171,10 @@ namespace rpc::c_abi
                       requesting_zone,
                       static_cast<uint8_t>(params.build_out_param_channel),
                       back_channel.span,
-                      params.request_id}
+                      params.request_id,
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -171,7 +194,10 @@ namespace rpc::c_abi
                       remote_object,
                       caller_zone,
                       static_cast<uint8_t>(params.options),
-                      back_channel.span}
+                      back_channel.span,
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -190,7 +216,10 @@ namespace rpc::c_abi
                 , raw{params.protocol_version,
                       remote_object,
                       caller_zone,
-                      back_channel.span}
+                      back_channel.span,
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -209,7 +238,10 @@ namespace rpc::c_abi
                 , raw{params.protocol_version,
                       destination_zone,
                       caller_zone,
-                      back_channel.span}
+                      back_channel.span,
+                      payload_type_id(params.payload),
+                      payload_encoding(params.payload),
+                      borrow_bytes(payload_bytes(params.payload))}
             {
             }
         };
@@ -235,13 +267,28 @@ namespace rpc::c_abi
             return std::vector<uint8_t>(bytes.data, bytes.data + bytes.size);
         }
 
-        std::vector<char> copy_chars(const canopy_byte_buffer& bytes)
+        std::vector<char> copy_chars(const canopy_const_byte_buffer& bytes)
         {
             if (!bytes.data || bytes.size == 0)
                 return {};
 
             auto start = reinterpret_cast<const char*>(bytes.data);
             return std::vector<char>(start, start + bytes.size);
+        }
+
+        std::vector<char> copy_chars(const canopy_byte_buffer& bytes)
+        {
+            return copy_chars(canopy_const_byte_buffer{bytes.data, bytes.size});
+        }
+
+        rpc::optional<rpc::typed_payload> decode_payload(
+            uint64_t type_id,
+            uint64_t encoding,
+            const canopy_const_byte_buffer& payload)
+        {
+            if (type_id == 0 && payload.size == 0)
+                return std::nullopt;
+            return rpc::typed_payload(type_id, static_cast<rpc::encoding>(encoding), copy_chars(payload));
         }
 
         rpc::expected<
@@ -307,7 +354,7 @@ namespace rpc::c_abi
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
                 rpc::method(params.method_id),
-                copy_chars(canopy_byte_buffer{const_cast<uint8_t*>(params.in_data.data), params.in_data.size}),
+                copy_chars(params.in_data),
                 std::move(*back_channel),
                 params.request_id};
         }
@@ -330,7 +377,7 @@ namespace rpc::c_abi
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
                 rpc::method(params.method_id),
-                copy_chars(canopy_byte_buffer{const_cast<uint8_t*>(params.in_data.data), params.in_data.size}),
+                copy_chars(params.in_data),
                 std::move(*back_channel)};
         }
 
@@ -349,7 +396,8 @@ namespace rpc::c_abi
                 *caller_zone,
                 *remote_object,
                 rpc::interface_ordinal(params.interface_id),
-                std::move(*back_channel)};
+                std::move(*back_channel),
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -370,7 +418,8 @@ namespace rpc::c_abi
                 *requesting_zone,
                 static_cast<rpc::add_ref_options>(params.build_out_param_channel),
                 std::move(*back_channel),
-                params.request_id};
+                params.request_id,
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -388,7 +437,8 @@ namespace rpc::c_abi
                 *remote_object,
                 *caller_zone,
                 static_cast<rpc::release_options>(params.options),
-                std::move(*back_channel)};
+                std::move(*back_channel),
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -402,8 +452,11 @@ namespace rpc::c_abi
             if (!remote_object || !caller_zone || !back_channel)
                 return rpc::unexpected<std::string>("invalid object_released params");
 
-            return rpc::object_released_params{
-                params.protocol_version, *remote_object, *caller_zone, std::move(*back_channel)};
+            return rpc::object_released_params{params.protocol_version,
+                *remote_object,
+                *caller_zone,
+                std::move(*back_channel),
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -417,8 +470,11 @@ namespace rpc::c_abi
             if (!destination_zone || !caller_zone || !back_channel)
                 return rpc::unexpected<std::string>("invalid transport_down params");
 
-            return rpc::transport_down_params{
-                params.protocol_version, *destination_zone, *caller_zone, std::move(*back_channel)};
+            return rpc::transport_down_params{params.protocol_version,
+                *destination_zone,
+                *caller_zone,
+                std::move(*back_channel),
+                decode_payload(params.payload_type_id, params.payload_encoding, params.payload)};
         }
 
         rpc::expected<
@@ -707,6 +763,7 @@ namespace rpc::c_abi
 
             return rpc::connection_settings{rpc::interface_ordinal(input_descr.inbound_interface_id),
                 rpc::interface_ordinal(input_descr.outbound_interface_id),
+                static_cast<rpc::encoding>(input_descr.encoding_type),
                 *remote_object};
         }
 

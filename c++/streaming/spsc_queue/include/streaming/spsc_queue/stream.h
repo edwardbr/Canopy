@@ -42,21 +42,20 @@ namespace streaming::spsc_queue
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})
-            -> coro::task<std::pair<
-                coro::net::io_status,
-                rpc::mutable_byte_span>> override;
+            -> CORO_TASK(::streaming::receive_result) override;
 
-        auto send(rpc::byte_span buffer) -> coro::task<coro::net::io_status> override;
+        auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
         [[nodiscard]] bool is_closed() const override;
-        auto set_closed() -> coro::task<void> override;
+        void close_now() noexcept;
+        auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] auto get_peer_info() const -> peer_info override;
 
     private:
-        queue_type* send_queue_;
-        queue_type* recv_queue_;
-        std::shared_ptr<queue_type> send_queue_owner_;
-        std::shared_ptr<queue_type> recv_queue_owner_;
-        std::weak_ptr<rpc::coro::scheduler> scheduler_;
+        queue_type* const send_queue_;
+        queue_type* const recv_queue_;
+        const std::shared_ptr<queue_type> send_queue_owner_{};
+        const std::shared_ptr<queue_type> recv_queue_owner_{};
+        const std::weak_ptr<rpc::coro::scheduler> scheduler_;
         std::vector<uint8_t> leftover_;
         size_t leftover_offset_{0};
         std::atomic<bool> closed_{false};

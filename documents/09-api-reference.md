@@ -40,15 +40,37 @@ address `0` is reserved for the zone's service object.
 ### `rpc::root_service` Constructors
 
 ```cpp
+struct rpc::service_config
+{
+    rpc::zone initial_zone{rpc::DEFAULT_PREFIX};
+};
+
 // Blocking mode
-rpc::root_service(const char* name, rpc::zone zone_id);
+static std::shared_ptr<rpc::root_service> rpc::root_service::create(
+    const char* name,
+    rpc::zone zone_id);
+
+static std::shared_ptr<rpc::root_service> rpc::root_service::create(
+    const char* name,
+    const rpc::service_config& config);
 
 // Coroutine mode
-rpc::root_service(const char* name, rpc::zone zone_id,
-                  std::shared_ptr<coro::scheduler> scheduler);
+static std::shared_ptr<rpc::root_service> rpc::root_service::create(
+    const char* name,
+    rpc::zone zone_id,
+    const std::shared_ptr<coro::scheduler>& scheduler);
+
+static std::shared_ptr<rpc::root_service> rpc::root_service::create(
+    const char* name,
+    const rpc::service_config& config,
+    const std::shared_ptr<coro::scheduler>& scheduler);
 ```
 
 ### `rpc::child_service` Constructor
+
+User code normally creates child zones through
+`rpc::child_service::create_child_zone(...)` or a hierarchical transport helper.
+The concrete constructor exists for transport implementations.
 
 ```cpp
 // Blocking mode
@@ -68,7 +90,9 @@ rpc::child_service(const char* name,
 ```cpp
 CORO_TASK(rpc::new_zone_id_result) get_new_zone_id(rpc::get_new_zone_id_params params);
 rpc::object generate_new_object_id();
-rpc::object get_object_id(const rpc::casting_interface* ptr);
+rpc::object get_object_id(const rpc::shared_ptr<rpc::casting_interface>& ptr) const;
+rpc::encoding get_default_encoding() const;
+void set_default_encoding(rpc::encoding enc);
 ```
 
 ### Zone Connection
@@ -142,7 +166,6 @@ rpc::shared_ptr<T> ptr = other_ptr;
 
 ```cpp
 T* get() const;           // Raw pointer (may be null)
-T* get_nullable() const;  // Raw pointer (never throws)
 T& operator*() const;     // Dereference
 T* operator->() const;    // Arrow operator
 explicit operator bool() const;  // Check if valid
@@ -151,7 +174,7 @@ explicit operator bool() const;  // Check if valid
 ### Reference Counting
 
 ```cpp
-int32_t use_count() const;  // Current reference count
+long use_count() const;     // Current shared reference count
 bool unique() const;        // True if only reference
 void reset();               // Release reference
 ```
@@ -159,13 +182,8 @@ void reset();               // Release reference
 ### Conversion
 
 ```cpp
-// Dynamic cast to derived type
-template<typename U>
-rpc::shared_ptr<U> dynamic_pointer_cast();
-
-// Static cast
-template<typename U>
-rpc::shared_ptr<U> static_pointer_cast();
+auto derived = CO_AWAIT rpc::dynamic_pointer_cast<Derived>(base);
+auto base = rpc::static_pointer_cast<Base>(derived);
 ```
 
 ## 3. rpc::weak_ptr
@@ -190,9 +208,7 @@ bool expired() const;       // Check if object is destroyed
 
 ```cpp
 rpc::shared_ptr<T> shared = rpc::make_shared<T>();
-rpc::optimistic_ptr<T> opt;
-
-error_code error = rpc::make_optimistic(shared, opt);
+auto [error, opt] = CO_AWAIT rpc::make_optimistic(shared);
 ```
 
 ### Access
@@ -200,7 +216,10 @@ error_code error = rpc::make_optimistic(shared, opt);
 ```cpp
 callable_accessor<T> get_callable() const;  // Pins local / captures remote
 callable_accessor<T> operator->() const;    // Same as get_callable()
-T* raw_get() const;                         // Raw dispatch pointer (may be null)
+T* raw_get() const;                         // Direct pointer, may be null
+T* get_unsafe_only_for_testing() const;     // Unsafe direct pointer for tests/comparison
+bool expired() const;
+bool is_null() const;
 explicit operator bool() const;
 ```
 
@@ -225,99 +244,72 @@ rpc::local
 rpc::dynamic_library                         // blocking builds
 rpc::libcoro_host_scheduled_dynamic_library  // coroutine builds, host scheduler
 rpc::libcoro_dll_scheduled_dynamic_library   // coroutine builds, DLL scheduler
-rpc::sgx                     // a signed dynamic library 
+rpc::sgx                                     // SGX-style hierarchical enclave transport
 
 // Child-process transport and DLL-backed child-process composition
-rpc::ipc_transport           // coroutine builds
-rpc::libcoro_spsc_dynamic_dll
+rpc::ipc_transport                   // coroutine builds, process host helper
+rpc::libcoro_spsc_dynamic_dll        // loaded DLL runtime over SPSC queues
 
 // Peer and stream-based transports
 rpc::stream_transport
+rpc::connection_factory // Configured stream/RPC construction over TCP, SPSC, local, SGX, DLL, etc.
+rpc::tcp_blocking       // Blocking TCP stream helpers
+rpc::tcp_coroutine      // Coroutine TCP stream helpers
+rpc::spsc_queue         // SPSC queue-pair stream helpers
 ```
 
-For the DLL and IPC variants, see `documents/transports/dynamic_library.md`.
+For DLL and IPC details, see `documents/transports/dynamic_library.md`. The
+direct `canopy_ipc_child_process` executable is currently disabled; the current
+process-hosted DLL path uses `canopy_ipc_child_host_process`.
+
+The high-level configured factory uses
+`rpc::connection_factory::connection_settings` from
+`connection_factory_config.idl`. JSON remains a process-boundary format for
+config files and command-line overlays; convert it once with
+`materialise_connection_settings`, then let the selected stream, layer, or
+transport implementation materialise its own generated settings type.
 
 ### Status
 
 ```cpp
 transport_status get_status() const;
-bool is_connected() const;
+void set_status(rpc::transport_status new_status);
+rpc::zone get_zone_id() const;
+rpc::zone get_adjacent_zone_id() const;
 ```
 
 ### Connection
 
 ```cpp
-CORO_TASK(int) connect();  // Establish connection
+CORO_TASK(rpc::connect_result) connect(
+    std::shared_ptr<rpc::object_stub> stub,
+    rpc::connection_settings input_descr);
+
+CORO_TASK(int) accept();
 ```
 
 ### Messaging
 
 ```cpp
-// Request-response (object_id in remote_object)
-CORO_TASK(int) send(
-    uint64_t protocol_version,
-    rpc::encoding enc,
-    uint64_t transaction_id,
-    rpc::caller_zone caller_zone_id,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::interface_ordinal interface_id,
-    rpc::method method_id,
-    const rpc::span& data,
-    rpc::span& response);
-
-// Fire-and-forget
-CORO_TASK(void) post(
-    uint64_t protocol_version,
-    rpc::encoding enc,
-    uint64_t transaction_id,
-    rpc::caller_zone caller_zone_id,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::interface_ordinal interface_id,
-    rpc::method method_id,
-    const rpc::span& data);
-
-// Interface query
-CORO_TASK(int) try_cast(
-    uint64_t transaction_id,
-    rpc::caller_zone caller_zone_id,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::interface_ordinal interface_id,
-    void** object);
+CORO_TASK(rpc::send_result) send(rpc::send_params params);
+CORO_TASK(void) post(rpc::post_params params);
+CORO_TASK(rpc::standard_result) try_cast(rpc::try_cast_params params);
+CORO_TASK(rpc::handshake_result) handshake(rpc::handshake_params params);
 ```
 
 ### Reference Counting
 
 ```cpp
-// Add reference (object_id in remote_object)
-CORO_TASK(int) add_ref(
-    uint64_t protocol_version,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::caller_zone caller_zone_id,
-    rpc::requesting_zone requesting_zone_id,
-    rpc::add_ref_options options);
-
-// Release reference
-CORO_TASK(int) release(
-    uint64_t protocol_version,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::caller_zone caller_zone_id,
-    rpc::release_options options);
+CORO_TASK(rpc::standard_result) add_ref(rpc::add_ref_params params);
+CORO_TASK(rpc::standard_result) release(rpc::release_params params);
 ```
 
 ### Lifecycle
 
 ```cpp
-// Object released (object_id in remote_object)
-CORO_TASK(void) object_released(
-    uint64_t protocol_version,
-    rpc::remote_object remote_object_id,  // includes zone and object_id
-    rpc::caller_zone caller_zone_id);
-
-// Transport disconnected (zone-only, no object_id)
-CORO_TASK(void) transport_down(
-    uint64_t protocol_version,
-    rpc::destination_zone destination_zone_id,  // zone-only
-    rpc::caller_zone caller_zone_id);
+CORO_TASK(void) object_released(rpc::object_released_params params);
+CORO_TASK(void) transport_down(rpc::transport_down_params params);
+CORO_TASK(rpc::new_zone_id_result) get_new_zone_id(rpc::get_new_zone_id_params params);
 ```
 
 ## 6. Error Codes
@@ -340,10 +332,16 @@ rpc::error::INVALID_VERSION()
 rpc::error::INCOMPATIBLE_SERIALISATION()
 ```
 
+`INVALID_VERSION` covers unsupported RPC versions, generated IDL fingerprints,
+and message schemas. `FRAUDULANT_REQUEST` is reserved for security/protocol
+violations such as authenticated tamper, replay, downgrade attempts, impossible
+sequencing, or invalid request-scoped capability handoff; do not use it for an
+unknown fingerprint by itself.
+
 ### Error Helper
 
 ```cpp
-const char* to_string(int error_code);
+const char* rpc::error::to_string(int error_code);
 ```
 
 ## 7. Zone Types
@@ -354,30 +352,35 @@ const char* to_string(int error_code);
 
 struct zone_address
 {
-    // Accessors
-    uint64_t get_routing_prefix() const;
-    void set_routing_prefix(uint64_t val);
-    uint64_t get_subnet() const;        // Returns the subnet value as a uint64_t
-    void set_subnet(uint64_t val);
-    uint64_t get_object_id() const;     // Returns the local/object value as a uint64_t, 0 for the service object
-    void set_object_id(uint64_t val);
+    static rpc::expected<zone_address, std::string> create(const zone_address_args& args);
+    static rpc::expected<zone_address, std::string> from_blob(std::vector<uint8_t> raw_blob);
+
+    const std::vector<uint8_t>& get_blob() const;
+    uint8_t get_version() const;
+    rpc::address_type get_address_type() const;
+    uint16_t get_port() const;
+    std::vector<uint8_t> get_routing_prefix() const;
+    uint64_t get_subnet() const;
+    uint64_t get_object_id() const;  // 0 for the service object
+
+    rpc::expected<void, std::string> set_subnet(uint64_t val);
+    rpc::expected<void, std::string> set_object_id(uint64_t val);
 
     // Comparison
     bool same_zone(const zone_address& other) const;  // Compare zone portion only
     bool is_set() const;
 
     // Conversion
-    std::string to_string() const;  // CIDR-like notation
-
-    // Blob conversion helpers preserve the versioned capability layout from
-    // rpc_types.idl
+    zone_address zone_only() const;
+    rpc::expected<zone_address, std::string> with_object(uint64_t obj) const;
 };
 
-struct zone { zone_address addr; };  // routing_prefix + subnet, object_id=0
-struct remote_object { zone_address addr; };  // Includes object_id for i_marshaller methods
-struct destination_zone { zone_address addr; };  // Zone-only (object_id=0)
-struct caller_zone { zone_address addr; };
-struct requesting_zone { zone_address addr; };
+struct zone;           // zone-only wrapper, object_id=0
+using destination_zone = zone;
+using caller_zone = zone;
+using requesting_zone = zone;
+
+struct remote_object;  // zone + object identity for marshaller methods
 struct object { uint64_t id; };
 struct interface_ordinal { uint64_t id; };
 struct method { uint64_t id; };
@@ -386,28 +389,27 @@ struct method { uint64_t id; };
 ### Conversions
 
 ```cpp
-// Get the full zone_address from any zone type
-const zone_address& addr = remote_object.get_address();
+const rpc::zone_address& addr = remote_object.get_address();
 
 // Access components
-uint64_t prefix = addr.get_routing_prefix();
+auto prefix = addr.get_routing_prefix();
 uint64_t subnet = addr.get_subnet();
 uint64_t obj_id = addr.get_object_id();  // local/object address
 
 // Zone type conversions
-destination_zone zone::as_destination() const;
-caller_zone zone::as_caller() const;
-requesting_zone zone::as_requesting_zone() const;
-zone remote_object::as_zone() const;  // Strip local/object address
-remote_object destination_zone::with_object(object obj) const;  // Add local/object address
+rpc::zone zone_only = remote_object.as_zone();
+auto object_result = zone_only.with_object(rpc::object{7});
+if (!object_result)
+{
+    return rpc::error::INVALID_DATA();
+}
+rpc::remote_object object_ref = *object_result;
 ```
 
-### Compatibility Note
+### Local Default Prefix
 
-```cpp
-// Constructor from uint64_t (sets subnet_id, routing_prefix=0, object_id=0)
-rpc::zone zone{42};  // Still works for local-only mode
-```
+Use `rpc::DEFAULT_PREFIX` as the local default zone prefix, then let a root
+service or allocator assign concrete child subnets.
 
 ## 8. Interface Macros
 
@@ -434,24 +436,30 @@ CORO_TASK(error_code) my_method(int input, [out] int& output)
 ### Functions
 
 ```cpp
-template<typename T, rpc::encoding Enc>
-std::vector<uint8_t> serialise(const T& obj);
+template<class OutputBlob = std::vector<std::uint8_t>, typename T>
+OutputBlob serialise(const T& obj, rpc::encoding enc);
 
-template<typename T, rpc::encoding Enc>
-error_code deserialise(const rpc::span& data, T& obj);
+template<typename T>
+std::string deserialise(rpc::encoding enc, const rpc::byte_span& data, T& obj);
 
-template<typename T, rpc::encoding Enc>
-size_t get_saved_size(const T& obj);
+template<typename T>
+uint64_t get_saved_size(const T& obj, rpc::encoding enc);
 ```
 
 ### Encodings
 
 ```cpp
+rpc::encoding::not_set;
 rpc::encoding::yas_binary;
 rpc::encoding::yas_compressed_binary;
 rpc::encoding::yas_json;
 rpc::encoding::protocol_buffers;
+rpc::encoding::nanopb;
+rpc::encoding::canonical_crypto;  // when CANOPY_BUILD_CANONICAL_CRYPTO=ON
 ```
+
+`rpc::effective_encoding(...)` maps between `protocol_buffers` and `nanopb`
+when only one protobuf-compatible backend is compiled.
 
 ## 10. Logging
 
@@ -480,8 +488,14 @@ RPC_ASSERT(condition);
 // Get function info including JSON schemas
 static std::vector<rpc::function_info> get_function_info();
 
+// Get JSON schema for the generated interface or struct. Currently available
+// for rpc::encoding::yas_json.
+static std::string get_schema();
+static std::string get_schema(rpc::encoding encoding);
+static constexpr const char* get_inner_schema();
+
 // Get interface ID for version
-static uint64_t get_id(uint64_t rpc_version);
+static rpc::interface_ordinal get_id(uint64_t rpc_version);
 ```
 
 ### Factory Functions
@@ -491,10 +505,9 @@ static uint64_t get_id(uint64_t rpc_version);
 static rpc::shared_ptr<interface_type> create(
     std::shared_ptr<rpc::object_proxy>&& object_proxy);
 
-// Create stub from implementation
-static std::shared_ptr<stub_type> create(
-    const rpc::shared_ptr<interface_type>& target,
-    std::weak_ptr<rpc::object_stub> target_stub);
+// Create a local optimistic-call proxy for local optimistic_ptr conversion
+static std::shared_ptr<rpc::local_proxy<interface_type>> create_local_proxy(
+    const rpc::weak_ptr<interface_type>& ptr);
 ```
 
 ## 12. Telemetry
@@ -508,9 +521,12 @@ std::shared_ptr<rpc::telemetry::i_telemetry_service> rpc::telemetry::get_telemet
 ### Service Creation
 
 ```cpp
-rpc::telemetry::create_console_telemetry_service(service, suite, test, dir);
-rpc::telemetry::create_sequence_diagram_telemetry_service(service, suite, test, dir);
-rpc::telemetry::create_animation_telemetry_service(service, suite, test, dir);
-rpc::telemetry::create_multiplexing_telemetry_service(service, children);
-rpc::telemetry::create_global_multiplexing_telemetry_service(children);
+std::shared_ptr<rpc::telemetry::i_telemetry_service> service;
+bool ok = rpc::telemetry::create_console_telemetry_service(service, suite, test, dir);
+ok = rpc::telemetry::create_sequence_diagram_telemetry_service(service, suite, test, dir);
+ok = rpc::telemetry::create_animation_telemetry_service(service, suite, test, dir);
+
+std::vector<std::shared_ptr<rpc::telemetry::i_telemetry_service>> children;
+ok = rpc::telemetry::create_multiplexing_telemetry_service(service, std::move(children));
+ok = rpc::telemetry::create_global_multiplexing_telemetry_service(std::move(children));
 ```

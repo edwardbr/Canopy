@@ -1,0 +1,44 @@
+#[[
+   Copyright (c) 2026 Edward Boggis-Rolfe
+   All rights reserved.
+]]
+
+set(source_dir "@CMAKE_CURRENT_SOURCE_DIR@/downstream_smoke")
+set(binary_dir "@CMAKE_CURRENT_BINARY_DIR@/downstream_smoke_build")
+
+file(REMOVE_RECURSE "${binary_dir}")
+
+execute_process(
+  COMMAND
+    "@CMAKE_COMMAND@" -S "${source_dir}" -B "${binary_dir}" -G "@CMAKE_GENERATOR@"
+    "-DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@" "-DCMAKE_C_COMPILER=@CMAKE_C_COMPILER@"
+    "-DCMAKE_CXX_COMPILER=@CMAKE_CXX_COMPILER@" "-DCANOPY_SOURCE_DIR=@CMAKE_SOURCE_DIR@"
+    "-DCANOPY_BUILD_COROUTINE=@CANOPY_BUILD_COROUTINE@"
+    "-DCANOPY_BUILD_WEBSOCKET=@CANOPY_BUILD_WEBSOCKET@"
+  RESULT_VARIABLE configure_result
+  OUTPUT_VARIABLE configure_output
+  ERROR_VARIABLE configure_error)
+
+if(configure_result)
+  message(FATAL_ERROR "Downstream smoke configure failed:\n${configure_output}\n${configure_error}")
+endif()
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@" --build "${binary_dir}" --target downstream_connection_factory_smoke
+  RESULT_VARIABLE build_result
+  OUTPUT_VARIABLE build_output
+  ERROR_VARIABLE build_error)
+
+if(build_result)
+  message(FATAL_ERROR "Downstream smoke build failed:\n${build_output}\n${build_error}")
+endif()
+
+execute_process(
+  COMMAND "${binary_dir}/downstream_connection_factory_smoke"
+  RESULT_VARIABLE run_result
+  OUTPUT_VARIABLE run_output
+  ERROR_VARIABLE run_error)
+
+if(run_result)
+  message(FATAL_ERROR "Downstream smoke executable failed:\n${run_output}\n${run_error}")
+endif()

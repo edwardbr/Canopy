@@ -20,44 +20,13 @@
 
 #include <rpc/rpc.h>
 
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/detect.h>
+#include <canopy/network_config/endpoint.h>
+#include <canopy/network_config/zone.h>
 
 namespace canopy::network_config
 {
-
-    // ---------------------------------------------------------------------------
-    // Conversion: binary ip_address → internal uint64_t for zone_address
-    // ---------------------------------------------------------------------------
-
-    uint64_t ip_address_to_uint64(
-        const ip_address& addr,
-        ip_address_family family)
-    {
-        bool all_zero = true;
-        for (auto b : addr)
-        {
-            if (b != 0)
-            {
-                all_zero = false;
-                break;
-            }
-        }
-        if (all_zero)
-            return 0;
-
-        if (family == ip_address_family::ipv4)
-        {
-            uint64_t ipv4 = (static_cast<uint64_t>(addr[0]) << 24) | (static_cast<uint64_t>(addr[1]) << 16)
-                            | (static_cast<uint64_t>(addr[2]) << 8) | static_cast<uint64_t>(addr[3]);
-            return (UINT64_C(0x2002) << 48) | (ipv4 << 16);
-        }
-
-        uint64_t result = 0;
-        for (int i = 0; i < 8; ++i)
-            result = (result << 8) | addr[i];
-        return result;
-    }
-
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------

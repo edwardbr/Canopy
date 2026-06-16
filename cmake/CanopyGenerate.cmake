@@ -23,7 +23,8 @@ function(
       yas_compressed_binary
       yas_json
       protocol_buffers
-      nanopb)
+      nanopb
+      canonical_crypto)
   set(singleValueArgs mock install_dir)
   set(multiValueArgs
       dependencies
@@ -45,10 +46,10 @@ function(
   # Define cache variables for global settings with defaults These allow users to override settings while providing
   # sensible defaults
   get_filename_component(_canopy_source_root "${_CANOPY_GENERATE_CMAKE_DIR}/.." ABSOLUTE)
-  if(NOT DEFINED CANOPY_BUILD_ENCLAVE)
-    set(CANOPY_BUILD_ENCLAVE
-        OFF
-        CACHE BOOL "Build enclave targets")
+  if(NOT DEFINED CANOPY_SCHEMA_ID_BASE)
+    set(CANOPY_SCHEMA_ID_BASE
+        "https://schemas.canopy.dev/"
+        CACHE STRING "Base URI prepended to generated JSON Schema $id paths")
   endif()
   if(NOT DEFINED CANOPY_DEFINES)
     set(CANOPY_DEFINES
@@ -65,49 +66,14 @@ function(
         ""
         CACHE STRING "Host compile options")
   endif()
-  if(NOT DEFINED SGX_LIBRARY_PATH)
-    set(SGX_LIBRARY_PATH
-        ""
-        CACHE STRING "SGX library path")
-  endif()
   if(NOT DEFINED CANOPY_FMT_LIB)
     set(CANOPY_FMT_LIB
         ""
         CACHE STRING "Host fmt library")
   endif()
-  if(NOT DEFINED CANOPY_ENCLAVE_DEFINES)
-    set(CANOPY_ENCLAVE_DEFINES
-        ""
-        CACHE STRING "Enclave compile definitions")
-  endif()
-  if(NOT DEFINED CANOPY_ENCLAVE_LIBCXX_INCLUDES)
-    set(CANOPY_ENCLAVE_LIBCXX_INCLUDES
-        ""
-        CACHE STRING "Enclave libcxx include directories")
-  endif()
-  if(NOT DEFINED CANOPY_ENCLAVE_COMPILE_OPTIONS)
-    set(CANOPY_ENCLAVE_COMPILE_OPTIONS
-        ""
-        CACHE STRING "Enclave compile options")
-  endif()
-  if(NOT DEFINED CANOPY_ENCLAVE_FMT_LIB)
-    set(CANOPY_ENCLAVE_FMT_LIB
-        ""
-        CACHE STRING "Enclave fmt library")
-  endif()
-  if(NOT DEFINED CANOPY_ENCLAVE_PROTOBUF_TARGET)
-    set(CANOPY_ENCLAVE_PROTOBUF_TARGET
-        ""
-        CACHE STRING "Enclave protobuf target")
-  endif()
-  if(NOT DEFINED CANOPY_SGX_PROTOC_EXECUTABLE)
-    set(CANOPY_SGX_PROTOC_EXECUTABLE
-        ""
-        CACHE FILEPATH "SGX-compatible protoc executable")
-  endif()
   if(NOT DEFINED CANOPY_NANOPB_GENERATOR)
     set(CANOPY_NANOPB_GENERATOR
-        "${CMAKE_SOURCE_DIR}/c++/submodules/nanopb/generator/nanopb_generator.py"
+        "${_canopy_source_root}/c++/submodules/nanopb/generator/nanopb_generator.py"
         CACHE FILEPATH "Nanopb generator executable")
   endif()
   if(NOT DEFINED CANOPY_PROTOBUF_PYTHON_SOURCE_DIR)
@@ -124,6 +90,11 @@ function(
     set(CANOPY_BUILD_NANOPB
         ON
         CACHE BOOL "Include Nanopb support")
+  endif()
+  if(NOT DEFINED CANOPY_BUILD_CANONICAL_CRYPTO)
+    set(CANOPY_BUILD_CANONICAL_CRYPTO
+        ON
+        CACHE BOOL "Include deterministic canonical_crypto serialization support")
   endif()
   if(NOT DEFINED CANOPY_NANOPB_PROTOC_EXECUTABLE)
     if(TARGET protoc)
@@ -146,12 +117,6 @@ function(
         ""
         CACHE STRING "Warning flags that are acceptable")
   endif()
-  if(NOT DEFINED CANOPY_WARN_OK_ENCLAVE)
-    set(CANOPY_WARN_OK_ENCLAVE
-        "${CANOPY_WARN_OK}"
-        CACHE STRING "Enclave warning flags that are acceptable")
-  endif()
-
   # Extract directory and base filename from IDL path BEFORE converting to absolute idl parameter is like
   # "example_shared/example_shared.idl" or "rpc/rpc_types.idl" or just "example.idl"
   get_filename_component(idl_dir ${idl} DIRECTORY)
@@ -191,6 +156,8 @@ function(
   set(stub_path ${sub_directory}/${base_filename}_stub.cpp)
   set(stub_header_path ${sub_directory}/${base_filename}_stub.h)
   set(full_header_path ${output_path}/include/${header_path})
+  set(json_schema_header_path ${sub_directory}/${base_filename}_schema.h)
+  set(full_json_schema_header_path ${output_path}/include/${json_schema_header_path})
   set(full_proxy_path ${output_path}/src/${proxy_path})
   set(full_stub_path ${output_path}/src/${stub_path})
   set(full_stub_header_path ${output_path}/include/${stub_header_path})
@@ -198,6 +165,7 @@ function(
   set(generate_yas FALSE)
   set(generate_protobuf FALSE)
   set(generate_nanopb FALSE)
+  set(generate_canonical_crypto FALSE)
 
   if(${params_yas_binary}
      OR ${params_yas_compressed_binary}
@@ -248,6 +216,22 @@ function(
     endif()
   endif()
 
+  if(${params_canonical_crypto})
+    if(CANOPY_BUILD_CANONICAL_CRYPTO)
+      set(generate_canonical_crypto TRUE)
+    elseif(
+      NOT generate_yas
+      AND NOT generate_protobuf
+      AND NOT generate_nanopb)
+      message(
+        FATAL_ERROR "canonical_crypto generation was requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF "
+                    "and no alternative generated serialization format was requested.")
+    else()
+      message(STATUS "canonical_crypto generation requested for '${name}', but CANOPY_BUILD_CANONICAL_CRYPTO is OFF. "
+                     "Continuing with the other requested serialization format(s).")
+    endif()
+  endif()
+
   if(generate_protobuf OR generate_nanopb)
     set(protobuf_path ${sub_directory}/protobuf/${base_filename}.proto)
     set(full_protobuf_path ${output_path}/src/${protobuf_path})
@@ -286,10 +270,12 @@ function(
     message("defines ${params_defines}")
     message("mock ${params_mock}")
     message("header_path ${header_path}")
+    message("json_schema_header_path ${json_schema_header_path}")
     message("proxy_path ${proxy_path}")
     message("stub_path ${stub_path}")
     message("stub_header_path ${stub_header_path}")
     message("full_header_path ${full_header_path}")
+    message("full_json_schema_header_path ${full_json_schema_header_path}")
     message("full_proxy_path ${full_proxy_path}")
     message("full_stub_path ${full_stub_path}")
     message("full_stub_header_path ${full_stub_header_path}")
@@ -299,6 +285,7 @@ function(
     message("full_protobuf_path ${full_protobuf_path}")
     message("protobuf_cpp_path ${protobuf_cpp_path}")
     message("full_protobuf_cpp_path ${full_protobuf_cpp_path}")
+    message("generate_canonical_crypto ${generate_canonical_crypto}")
     message("no_include_rpc_headers ${params_no_include_rpc_headers}")
   endif()
 
@@ -311,13 +298,15 @@ function(
   set(IDL_GENERATOR ${CANOPY_IDL_GENERATOR_EXECUTABLE})
 
   set(PATHS_PARAMS "")
+  set(IDL_SEARCH_PATHS "")
   set(ADDITIONAL_HEADERS "")
   set(RETHROW_STUB_EXCEPTION "")
   set(ADDITIONAL_STUB_HEADER "")
   set(GENERATED_DEPENDENCIES "")
+  set(IDL_FILE_DEPENDENCIES "")
 
   foreach(path ${params_include_paths})
-    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
+    list(APPEND IDL_SEARCH_PATHS "${path}")
   endforeach()
 
   foreach(define ${params_defines})
@@ -341,14 +330,26 @@ function(
       get_target_property(dep_base_dir ${dep}_generate base_dir)
 
       if(dep_base_dir)
-        set(PATHS_PARAMS ${PATHS_PARAMS} --path "${dep_base_dir}")
+        list(APPEND IDL_SEARCH_PATHS "${dep_base_dir}")
       endif()
 
       set(GENERATED_DEPENDENCIES ${GENERATED_DEPENDENCIES} ${dep}_generate)
+      get_target_property(dep_idl_search_paths ${dep}_generate idl_search_paths)
+      if(dep_idl_search_paths)
+        list(APPEND IDL_SEARCH_PATHS ${dep_idl_search_paths})
+      endif()
+      get_target_property(dep_idl_path ${dep}_generate idl_path)
+      if(dep_idl_path)
+        list(APPEND IDL_FILE_DEPENDENCIES "${dep_idl_path}")
+      endif()
+      get_target_property(dep_idl_file_dependencies ${dep}_generate idl_file_dependencies)
+      if(dep_idl_file_dependencies)
+        list(APPEND IDL_FILE_DEPENDENCIES ${dep_idl_file_dependencies})
+      endif()
     else()
       message("target ${dep}_generate does not exist so skipped")
     endif()
-    # when installed(used through a package) idl dependencies can be found through their*(or *_enclave) targets : we
+    # when installed(used through a package) idl dependencies can be found through their targets : we
     # know that < package_dir> / ${param_install_dir } / interfaces / include is in the target's include directories,
     # and that the idls themselves are in < package_dir> / ${param_install_dir }
     if(TARGET ${dep})
@@ -356,10 +357,20 @@ function(
       foreach(include_dir ${include_dirs})
         if(${include_dir} MATCHES "/interfaces/include$")
           string(REPLACE "/interfaces/include" "" idl_dir ${include_dir})
-          set(PATHS_PARAMS ${PATHS_PARAMS} --path ${idl_dir})
+          list(APPEND IDL_SEARCH_PATHS "${idl_dir}")
         endif()
       endforeach()
     endif()
+  endforeach()
+
+  list(REMOVE_DUPLICATES IDL_SEARCH_PATHS)
+  list(REMOVE_DUPLICATES IDL_FILE_DEPENDENCIES)
+  set(IDL_EXPORTED_SEARCH_PATHS "${base_dir}" ${IDL_SEARCH_PATHS})
+  list(REMOVE_DUPLICATES IDL_EXPORTED_SEARCH_PATHS)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${idl} ${IDL_FILE_DEPENDENCIES})
+
+  foreach(path ${IDL_SEARCH_PATHS})
+    set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
   endforeach()
 
   if(NOT ${namespace} STREQUAL "")
@@ -386,7 +397,12 @@ function(
   endif()
 
   # Build the list of output files based on enabled formats
-  set(GENERATOR_OUTPUTS ${full_header_path} ${full_proxy_path} ${full_stub_header_path} ${full_stub_path})
+  set(GENERATOR_OUTPUTS
+      ${full_header_path}
+      ${full_json_schema_header_path}
+      ${full_proxy_path}
+      ${full_stub_header_path}
+      ${full_stub_path})
 
   if(generate_yas)
     list(APPEND GENERATOR_OUTPUTS ${full_yas_path})
@@ -414,7 +430,15 @@ function(
   # Build generator command with conditional serialization flags
   set(SERIALIZATION_FLAGS "")
   if(generate_yas)
-    set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas)
+    if(${params_yas_binary})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_binary)
+    endif()
+    if(${params_yas_compressed_binary})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_compressed_binary)
+    endif()
+    if(${params_yas_json})
+      set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --yas_json)
+    endif()
   endif()
 
   if(generate_protobuf)
@@ -422,6 +446,9 @@ function(
   endif()
   if(generate_nanopb)
     set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --nanopb)
+  endif()
+  if(generate_canonical_crypto)
+    set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --canonical_crypto)
   endif()
 
   # Determine generator dependency for custom command If generator target exists(building from source), depend on the
@@ -436,43 +463,63 @@ function(
     OUTPUT ${GENERATOR_OUTPUTS}
     COMMAND
 	    ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name}
-    ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+    --schema_id_base ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
     ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY})")
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY})")
 
   add_custom_command(
     OUTPUT ${GENERATOR_OUTPUTS}
     COMMAND
-      ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} ${SERIALIZATION_FLAGS}
-      ${PATHS_PARAMS} ${ADDITIONAL_HEADERS} ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
+      ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} --schema_id_base
+      ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+      ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
       ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${GENERATED_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
     COMMENT "Running generator ${idl}")
 
   if(${CANOPY_VERBOSE_GENERATOR})
     message(
       "
 	    ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name}
-    ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
+    --schema_id_base ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
 	    ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
   ")
   endif()
 
   add_custom_target(${name}_idl_generate DEPENDS ${GENERATOR_OUTPUTS})
 
-  # Ensure generator executable is built before generating IDL
-  add_dependencies(${name}_idl_generate generator)
+  # Ensure generator executable is built before generating IDL when Canopy is
+  # being built from source. Installed-package consumers may provide only
+  # CANOPY_IDL_GENERATOR_EXECUTABLE.
+  if(TARGET generator)
+    add_dependencies(${name}_idl_generate generator)
+  endif()
 
-  set_target_properties(${name}_idl_generate PROPERTIES base_dir ${base_dir})
+  set_target_properties(
+    ${name}_idl_generate
+    PROPERTIES
+               base_dir "${base_dir}"
+               idl_path "${idl}"
+               idl_file_dependencies "${IDL_FILE_DEPENDENCIES}"
+               idl_search_paths "${IDL_EXPORTED_SEARCH_PATHS}")
 
   # Only compile.proto files if protobuf - compatible formats are enabled
   if(generate_protobuf OR generate_nanopb)
     if("${CANOPY_NANOPB_PROTOC_EXECUTABLE}" STREQUAL "" AND TARGET protoc)
       set(CANOPY_NANOPB_PROTOC_EXECUTABLE "$<TARGET_FILE:protoc>")
+    endif()
+    if(generate_protobuf AND NOT TARGET protoc)
+      message(FATAL_ERROR "Protocol Buffers generation for '${name}' requires the bundled protoc target.")
+    endif()
+    if(generate_nanopb AND "${CANOPY_NANOPB_PROTOC_EXECUTABLE}" STREQUAL "")
+      message(
+        FATAL_ERROR
+          "Nanopb generation for '${name}' requires protoc. Set CANOPY_NANOPB_PROTOC_EXECUTABLE or enable CANOPY_BUILD_PROTOCOL_BUFFERS to build the bundled protoc tool."
+      )
     endif()
 
     set(proto_dir ${output_path}/src/${sub_directory}/protobuf)
@@ -494,13 +541,19 @@ function(
     endif()
     foreach(dep ${params_dependencies})
       if(TARGET ${dep}_generate)
-        get_target_property(dep_nanopb_src_root ${dep}_generate nanopb_src_root)
-        if(dep_nanopb_src_root)
-          list(APPEND nanopb_include_roots "${dep_nanopb_src_root}")
+        get_target_property(dep_nanopb_include_roots ${dep}_generate nanopb_include_roots)
+        if(dep_nanopb_include_roots)
+          list(APPEND nanopb_include_roots ${dep_nanopb_include_roots})
+        else()
+          get_target_property(dep_nanopb_src_root ${dep}_generate nanopb_src_root)
+          if(dep_nanopb_src_root)
+            list(APPEND nanopb_include_roots "${dep_nanopb_src_root}")
+          endif()
         endif()
       endif()
     endforeach()
     list(REMOVE_DUPLICATES nanopb_include_roots)
+    set_target_properties(${name}_idl_generate PROPERTIES nanopb_include_roots "${nanopb_include_roots}")
     set(nanopb_stamp_file ${proto_dir}/.nanopb_compiled)
     set(nanopb_sources_cmake ${proto_dir}/generated_nanopb_sources.cmake)
     set(nanopb_compile_dependencies ${PROTO_MANIFEST} ${_CANOPY_GENERATE_CMAKE_DIR}/compile_nanopb_protos.cmake)
@@ -687,7 +740,12 @@ function(
   endif()
 
   # Build library sources based on enabled formats
-  set(IDL_SOURCES ${full_header_path} ${full_stub_header_path} ${full_stub_path} ${full_proxy_path})
+  set(IDL_SOURCES
+      ${full_header_path}
+      ${full_json_schema_header_path}
+      ${full_stub_header_path}
+      ${full_stub_path}
+      ${full_proxy_path})
 
   if(generate_yas)
     list(APPEND IDL_SOURCES ${full_yas_path})
@@ -696,6 +754,7 @@ function(
   if(generate_protobuf)
     list(APPEND IDL_SOURCES ${full_protobuf_cpp_path} ${PROTO_PB_SOURCES})
   endif()
+
   # Create the host IDL library
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
@@ -705,7 +764,6 @@ function(
   target_include_directories(${name}_idl SYSTEM PRIVATE "${output_path}" "${output_path}/include")
   target_include_directories(${name}_idl PRIVATE ${CANOPY_INCLUDES} ${params_include_paths})
   target_compile_options(${name}_idl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
-  target_link_directories(${name}_idl PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET ${name}_idl PROPERTY COMPILE_PDB_NAME ${name}_idl)
 
   if(CANOPY_ENABLE_CLANG_TIDY)
@@ -759,6 +817,12 @@ function(
     endif()
 
     target_link_libraries(${name}_idl PUBLIC ${dep})
+    if(TARGET ${name}_protobuf_generated)
+      target_link_libraries(${name}_protobuf_generated PRIVATE ${dep})
+    endif()
+    if(TARGET ${name}_nanopb_generated)
+      target_link_libraries(${name}_nanopb_generated PRIVATE ${dep})
+    endif()
   endforeach()
 
   foreach(dep ${params_link_libraries})
@@ -768,64 +832,6 @@ function(
       message("target ${dep} does not exist so skipped")
     endif()
   endforeach()
-
-  if(CANOPY_BUILD_ENCLAVE)
-    # Create the enclave IDL library
-    add_library(${name}_idl_enclave STATIC ${IDL_SOURCES})
-    target_compile_definitions(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-    target_include_directories(${name}_idl_enclave SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>"
-                                                                 "$<BUILD_INTERFACE:${output_path}/include>")
-    target_include_directories(${name}_idl_enclave SYSTEM PRIVATE "${output_path}" "${output_path}/include")
-    target_include_directories(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES} ${params_include_paths})
-
-    target_compile_options(${name}_idl_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
-    target_link_directories(${name}_idl_enclave PRIVATE ${SGX_LIBRARY_PATH})
-    set_property(TARGET ${name}_idl_enclave PROPERTY COMPILE_PDB_NAME ${name}_idl_enclave)
-
-    if(CANOPY_ENABLE_CLANG_TIDY)
-      set_target_properties(${name}_idl_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
-    endif()
-
-    target_link_libraries(${name}_idl_enclave PUBLIC rpc::rpc_enclave ${CANOPY_ENCLAVE_FMT_LIB})
-
-    # Link YAS if any YAS format is enabled
-    if(generate_yas)
-      target_link_libraries(${name}_idl_enclave PUBLIC yas_common)
-    endif()
-
-    # Link protobuf library if building protobuf support
-    if(generate_protobuf)
-      if(TARGET protobuf::libprotobuf)
-        target_link_libraries(${name}_idl_enclave PUBLIC protobuf::libprotobuf)
-        target_include_directories(${name}_idl_enclave SYSTEM PRIVATE ${proto_dir} ${output_path}/src)
-        # Link the protobuf generated object library if it exists
-        if(TARGET ${name}_protobuf_generated)
-          target_link_libraries(${name}_idl_enclave PRIVATE ${name}_protobuf_generated)
-        endif()
-      endif()
-      add_dependencies(${name}_idl_enclave ${name}_idl_generate ${name}_proto_compile)
-    else()
-      add_dependencies(${name}_idl_enclave ${name}_idl_generate)
-    endif()
-
-    foreach(dep ${params_dependencies})
-      if(TARGET ${dep}_generate)
-        add_dependencies(${name}_idl_enclave ${dep}_generate)
-      else()
-        message("target ${dep}_generate does not exist so skipped")
-      endif()
-
-      target_link_libraries(${name}_idl_enclave PUBLIC ${dep}_enclave)
-    endforeach()
-
-    foreach(dep ${params_link_libraries})
-      if(TARGET ${dep}_enclave)
-        target_link_libraries(${name}_idl_enclave PRIVATE ${dep}_enclave)
-      else()
-        message("target ${dep}_enclave does not exist so skipped")
-      endif()
-    endforeach()
-  endif()
 
   foreach(dep ${params_dependencies})
     if(${CANOPY_VERBOSE_GENERATOR})

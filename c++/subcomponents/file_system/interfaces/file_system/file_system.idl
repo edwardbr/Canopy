@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) 2026 Edward Boggis-Rolfe
+ * All rights reserved.
+ */
+
+// Direct file system interface
+
+namespace rpc
+{
+    namespace file_system
+    {
+        [inline] namespace v1
+        {
+            enum file_type
+            {
+                file,
+                directory
+            }
+
+            struct file_info
+            {
+                std::string name;
+                file_type type;
+            };
+
+            interface i_manager
+            {
+                int list_files(std::string directory, [out] std::vector<file_info>& files);
+                int read_file(std::string file_name, [out] std::vector<uint8_t>& data);
+                int write_file(std::string file_name, const std::vector<uint8_t>& data);
+            };
+
+        }
+    }
+}

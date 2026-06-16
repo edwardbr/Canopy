@@ -4,11 +4,11 @@ This file keeps the completed Rust-port work in implementation order.
 
 The goal is to preserve a replayable migration history so the same sequence can
 be translated to other language backends without carrying that history in
-[`progress.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/progress.md).
+[`progress.md`](../../../documents/language-ports/rust/progress.md).
 
 - Wrote the top-level Rust current-state and planning notes in
-  [`current-state.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/current-state.md).
-- Wrote the first-pass `rust/rpc` scope in [`rpc/README.md`](/var/home/edward/projects/Canopy/rust/rpc/README.md).
+  [`current-state.md`](../../../documents/language-ports/rust/current-state.md).
+- Wrote the first-pass `rust/rpc` scope in [`rpc/README.md`](../../../rust/rpc/README.md).
 - Captured key constraints:
   - protobuf-only initially
   - fingerprints remain generator-owned
@@ -20,13 +20,13 @@ be translated to other language backends without carrying that history in
   - `cargo`
   - `clippy`
   - `rustfmt`
-- Added Rust build/generated ignore rules to [`.gitignore`](/var/home/edward/projects/Canopy/.gitignore).
+- Added Rust build/generated ignore rules to [`.gitignore`](../../../.gitignore).
 - Created the initial Cargo workspace:
-  - [`Cargo.toml`](/var/home/edward/projects/Canopy/rust/Cargo.toml)
-  - [`rpc/Cargo.toml`](/var/home/edward/projects/Canopy/rust/rpc/Cargo.toml)
-  - [`rpc/src/lib.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/lib.rs)
-  - [`transports/README.md`](/var/home/edward/projects/Canopy/rust/transports/README.md)
-  - [`tests/README.md`](/var/home/edward/projects/Canopy/rust/tests/README.md)
+  - [`Cargo.toml`](../../../rust/Cargo.toml)
+  - [`rpc/Cargo.toml`](../../../rust/rpc/Cargo.toml)
+  - [`rpc/src/lib.rs`](../../../rust/rpc/src/lib.rs)
+  - [`transports/README.md`](../../../rust/transports/README.md)
+  - [`tests/README.md`](../../../rust/tests/README.md)
 - Verified the initial Rust workspace with `cargo check`.
 - Added the first handwritten runtime implementation chunk:
   - Rust error code module with numeric/stateful parity to the C++ runtime
@@ -42,10 +42,10 @@ be translated to other language backends without carrying that history in
   - parameter/result bundles matching `marshaller_params.h`
   - blocking Rust `IMarshaller` trait mirroring `marshaller.h`
   - `RetryBuffer`, `ConnectResult`, and empty back-channel helper
-- Added the shared ABI home at [`../c_abi/README.md`](/var/home/edward/projects/Canopy/c_abi/README.md).
+- Added the shared ABI home at [`../c_abi/README.md`](../../../c_abi/README.md).
 - Added the first neutral dynamic-library ABI draft under:
-  - [`../c_abi/dynamic_library/README.md`](/var/home/edward/projects/Canopy/c_abi/dynamic_library/README.md)
-  - [`../c_abi/dynamic_library/canopy_dynamic_library.h`](/var/home/edward/projects/Canopy/c_abi/dynamic_library/canopy_dynamic_library.h)
+  - [`../c_abi/dynamic_library/README.md`](../../../c_abi/dynamic_library/README.md)
+  - [`../c_abi/dynamic_library/dynamic_library.h`](../../../c_abi/dynamic_library/dynamic_library.h)
 - Added the first substantial address/object identity port in `rpc_types`:
   - packed `ZoneAddress` creation and capability parsing
   - address getters, subnet/object setters, `zone_only`, `with_object`, and `same_zone`
@@ -56,8 +56,8 @@ be translated to other language backends without carrying that history in
   - internal string-format helpers for core wrapper types
   - runtime protocol version constants and `get_version()`
 - Added the first Rust-side C ABI bridge crate:
-  - [`transports/dynamic_library/Cargo.toml`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/Cargo.toml)
-  - [`transports/dynamic_library/src/lib.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/lib.rs)
+  - [`transports/dynamic_library/Cargo.toml`](../../../rust/transports/dynamic_library/Cargo.toml)
+  - [`transports/dynamic_library/src/lib.rs`](../../../rust/transports/dynamic_library/src/lib.rs)
   - raw `repr(C)` structs mirroring the shared dynamic-library ABI
   - borrowed request adapters for the first marshalling parameter types
   - copying helpers for result structs coming back from the ABI boundary
@@ -78,20 +78,20 @@ be translated to other language backends without carrying that history in
   - `ChildTransportAdapter` decoding ABI requests into `canopy-rpc` runtime calls
   - tests covering both child-side decode/dispatch and parent-callback invocation
 - Split the Rust dynamic-library bridge into:
-  - [`transports/dynamic_library/src/ffi.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/ffi.rs)
+  - [`transports/dynamic_library/src/ffi.rs`](../../../rust/transports/dynamic_library/src/ffi.rs)
     containing the raw ABI structs, pointer decoding helpers, and callback calls
-  - [`transports/dynamic_library/src/adapter.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/adapter.rs)
+  - [`transports/dynamic_library/src/adapter.rs`](../../../rust/transports/dynamic_library/src/adapter.rs)
     containing the safe child/parent transport adapters with no `unsafe`
-  - [`transports/dynamic_library/src/lib.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/lib.rs)
+  - [`transports/dynamic_library/src/lib.rs`](../../../rust/transports/dynamic_library/src/lib.rs)
     re-exporting the split modules
 - Added the first safe Rust equivalent of the DLL-side context/helper layer:
-  - [`transports/dynamic_library/src/context.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/context.rs)
+  - [`transports/dynamic_library/src/context.rs`](../../../rust/transports/dynamic_library/src/context.rs)
   - `DllContext`
   - `InitChildZoneResult`
   - `init_child_zone(...)`
   - idempotent destroy-state tracking and focused tests
 - Added a generic child-side entrypoint façade mirroring `canopy_dll_*`:
-  - [`transports/dynamic_library/src/entrypoints.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/entrypoints.rs)
+  - [`transports/dynamic_library/src/entrypoints.rs`](../../../rust/transports/dynamic_library/src/entrypoints.rs)
   - boxed `child_ctx` handle flow
   - `dll_init`, `dll_destroy`, `dll_send`, `dll_post`, `dll_try_cast`,
     `dll_add_ref`, `dll_release`, `dll_object_released`,
@@ -100,13 +100,13 @@ be translated to other language backends without carrying that history in
   - an end-to-end `dll_init` + `dll_send` round-trip test
 - Added a handwritten Rust child DLL crate exporting real `canopy_dll_*`
   symbols:
-  - [`transports/dynamic_library_test_child/Cargo.toml`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library_test_child/Cargo.toml)
-  - [`transports/dynamic_library_test_child/src/lib.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library_test_child/src/lib.rs)
+  - [`transports/dynamic_library_test_child/Cargo.toml`](../../../rust/transports/dynamic_library_test_child/Cargo.toml)
+  - [`transports/dynamic_library_test_child/src/lib.rs`](../../../rust/transports/dynamic_library_test_child/src/lib.rs)
   - `cdylib` + `rlib` outputs
   - exported `extern "C"` entrypoints built on the generic façade
   - a passing handwritten init/send/destroy round-trip test through the real exports
 - Added the first C++ parent <-> Rust child interop harness:
-  - new C++ transport home at [`../c++/transports/c_abi`](/var/home/edward/projects/Canopy/c++/transports/c_abi)
+  - new C++ transport home at [`../c++/transports/c_abi`](../../../c++/transports/c_abi)
   - a low-level loader plus parent-side `child_transport` scaffold over the shared `c_abi`
   - a passing C++ test that loads the Rust test child DLL and performs init/send/destroy
   - expanded ABI smoke coverage for `try_cast`, `release`, and `get_new_zone_id`
@@ -125,9 +125,9 @@ be translated to other language backends without carrying that history in
   - verified that a C++ parent can load a C++ child DLL and pass the full `c_abi`
     typed suite in `rpc_test`
 - Added the first safe Rust parent-side dynamic-library loader:
-  - [`transports/dynamic_library/src/platform_ffi.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/platform_ffi.rs)
+  - [`transports/dynamic_library/src/platform_ffi.rs`](../../../rust/transports/dynamic_library/src/platform_ffi.rs)
     for raw `dlopen` / `dlsym` / `dlclose`
-  - [`transports/dynamic_library/src/loader.rs`](/var/home/edward/projects/Canopy/rust/transports/dynamic_library/src/loader.rs)
+  - [`transports/dynamic_library/src/loader.rs`](../../../rust/transports/dynamic_library/src/loader.rs)
     for safe `DynamicLibrary` / `LoadedChild` wrappers
   - added Rust-side function-pointer aliases for exported `canopy_dll_*`
   - added tests proving a Rust parent can load the handwritten Rust child DLL,
@@ -147,8 +147,8 @@ be translated to other language backends without carrying that history in
   - verified that adding/removing `#rust_quote(...)` does not change interface IDs
   - verified the Rust generator on `interfaces/rpc/rpc_types.idl`
 - Added the first Rust protobuf generator path:
-  - [`generator/include/rust_protobuf_generator.h`](/var/home/edward/projects/Canopy/generator/include/rust_protobuf_generator.h)
-  - [`generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp)
+  - [`generator/include/rust_protobuf_generator.h`](../../../generator/include/rust_protobuf_generator.h)
+  - [`generator/src/rust_protobuf_generator.cpp`](../../../generator/src/rust_protobuf_generator.cpp)
   - wired into `generator` when `--protobuf --rust` are both enabled
   - emits Rust metadata pointing at the canonical generated `.proto` tree rather than
     generating committed Rust protobuf code
@@ -183,7 +183,7 @@ be translated to other language backends without carrying that history in
   - re-exported these through `canopy-rpc`
   - verified with `cargo test -p canopy-rpc --lib`
 - Added the first real handwritten Rust `service` core in
-  [`rpc/src/internal/service.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/service.rs):
+  [`rpc/src/internal/service.rs`](../../../rust/rpc/src/internal/service.rs):
   - `Service`
   - `ServiceConfig`
   - `RemoteObjectResult`
@@ -232,22 +232,22 @@ be translated to other language backends without carrying that history in
     binder wrappers such as `bind_<param>_incoming(...)` and
     `bind_<param>_outgoing(...)`
 - Added a shared protobuf type-interpretation layer in:
-  - [`../generator/include/proto_generator.h`](/var/home/edward/projects/Canopy/generator/include/proto_generator.h)
-  - [`../generator/src/proto_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/proto_generator.cpp)
-  - both [`../generator/src/protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/protobuf_generator.cpp)
-    and [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp)
+  - [`../generator/include/proto_generator.h`](../../../generator/include/proto_generator.h)
+  - [`../generator/src/proto_generator.cpp`](../../../generator/src/proto_generator.cpp)
+  - both [`../generator/src/protobuf_generator.cpp`](../../../generator/src/protobuf_generator.cpp)
+    and [`../generator/src/rust_protobuf_generator.cpp`](../../../generator/src/rust_protobuf_generator.cpp)
     now delegate their duplicated C++-to-protobuf type mapping through this shared layer
   - verified with `cmake --build build_debug --target generator`
 - Re-enabled the real in-tree Rust protobuf runtime behind a feature-gated seam:
-  - [`rpc/Cargo.toml`](/var/home/edward/projects/Canopy/rust/rpc/Cargo.toml)
+  - [`rpc/Cargo.toml`](../../../rust/rpc/Cargo.toml)
     now has `protobuf-runtime`
-  - [`rpc/src/serialization/protobuf/facade.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/facade.rs)
+  - [`rpc/src/serialization/protobuf/facade.rs`](../../../rust/rpc/src/serialization/protobuf/facade.rs)
     now implements `ProtobufWireMessage` for real `protobuf::Message + Parse + Serialize` types
   - verified with `cargo check -p canopy-rpc --features protobuf-runtime`
 - Added a small probe crate for real Rust protobuf codegen/runtime bring-up:
-  - [`tests/protobuf_runtime_probe/Cargo.toml`](/var/home/edward/projects/Canopy/rust/tests/protobuf_runtime_probe/Cargo.toml)
-  - [`tests/protobuf_runtime_probe/build.rs`](/var/home/edward/projects/Canopy/rust/tests/protobuf_runtime_probe/build.rs)
-  - [`tests/protobuf_runtime_probe/src/lib.rs`](/var/home/edward/projects/Canopy/rust/tests/protobuf_runtime_probe/src/lib.rs)
+  - [`tests/protobuf_runtime_probe/Cargo.toml`](../../../rust/tests/protobuf_runtime_probe/Cargo.toml)
+  - [`tests/protobuf_runtime_probe/build.rs`](../../../rust/tests/protobuf_runtime_probe/build.rs)
+  - [`tests/protobuf_runtime_probe/src/lib.rs`](../../../rust/tests/protobuf_runtime_probe/src/lib.rs)
   - it successfully generates Rust from Canopy's canonical `build_debug/generated/src/rpc/protobuf/schema/rpc.proto`
   - real generated Rust protobuf messages now build, link, serialize, and parse successfully in the probe crate
   - shared interface params now route through `canopy_rpc::bind_incoming_shared`
@@ -274,7 +274,7 @@ be translated to other language backends without carrying that history in
     Rust protobuf types by round-tripping `zone_address` and nested
     `remote_object`
   - verified with `cargo test -p canopy-protobuf-runtime-probe --lib`
-- Fixed a generated-Rust dispatch bug in [`../generator/src/rust_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_generator.cpp):
+- Fixed a generated-Rust dispatch bug in [`../generator/src/rust_generator.cpp`](../../../generator/src/rust_generator.cpp):
   - `__rpc_dispatch_generated(...)` no longer emits undeclared interface generic names like `TARGETIface0`
   - scalar-only generated methods still route through the generated dispatch path
   - interface-bearing generated methods now fail cleanly with `INVALID_DATA()` at the top-level raw dispatch seam until erased wire-level interface dispatch is implemented
@@ -298,7 +298,7 @@ be translated to other language backends without carrying that history in
   - the Rust -> Rust and Rust -> C++ probe tests now call through generated
     `IMath::ProxySkeleton` instead of handwritten `MathProxy`/`DllMathProxy`
     trait method implementations
-- Reworked [`rpc/src/internal/object_proxy.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/object_proxy.rs) toward the C++ remote-cast architecture:
+- Reworked [`rpc/src/internal/object_proxy.rs`](../../../rust/rpc/src/internal/object_proxy.rs) toward the C++ remote-cast architecture:
   - one shared `ObjectProxy` now owns the remote object identity
   - added `RemoteInterfaceView<T>` so multiple interface-specific views can hang off the same object proxy
   - added cached per-interface view lookup and insertion on `ObjectProxy`
@@ -426,24 +426,24 @@ be translated to other language backends without carrying that history in
   - removed protobuf lookup/types from the generic
     `internal/bindings_fwd.rs` path entirely
   - added a dedicated Rust serialization subtree:
-    - [`rpc/src/serialization/mod.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/mod.rs)
-    - [`rpc/src/serialization/protobuf/mod.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/mod.rs)
-    - [`rpc/src/serialization/protobuf/metadata.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/metadata.rs)
-    - [`rpc/src/serialization/protobuf/facade.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/facade.rs)
+    - [`rpc/src/serialization/mod.rs`](../../../rust/rpc/src/serialization/mod.rs)
+    - [`rpc/src/serialization/protobuf/mod.rs`](../../../rust/rpc/src/serialization/protobuf/mod.rs)
+    - [`rpc/src/serialization/protobuf/metadata.rs`](../../../rust/rpc/src/serialization/protobuf/metadata.rs)
+    - [`rpc/src/serialization/protobuf/facade.rs`](../../../rust/rpc/src/serialization/protobuf/facade.rs)
   - protobuf metadata is now carried by
     `canopy_rpc::serialization::protobuf::GeneratedProtobufBindingMetadata`
     rather than by the generic `GeneratedInterfaceBindingMetadata`
   - added a dedicated protobuf helper facade analogous in role to
-    [`../c++/rpc/include/rpc/serialization/protobuf/protobuf.h`](/var/home/edward/projects/Canopy/c++/rpc/include/rpc/serialization/protobuf/protobuf.h):
+    [`../c++/rpc/include/rpc/serialization/protobuf/protobuf.h`](../../../c++/rpc/include/rpc/serialization/protobuf/protobuf.h):
     - byte-field helpers
     - signed-byte helpers
     - repeated-integer-vector helpers
     - a format-specific `GeneratedProtobufCodec<Message>` trait for future
       generated request/response conversion
   - protobuf-specific Rust generation now lives in
-    [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp),
+    [`../generator/src/rust_protobuf_generator.cpp`](../../../generator/src/rust_protobuf_generator.cpp),
     not in
-    [`../generator/src/rust_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_generator.cpp)
+    [`../generator/src/rust_generator.cpp`](../../../generator/src/rust_generator.cpp)
   - generated `*_protobuf.rs` companion output now emits:
     - `PROTOBUF_PARAMS`
     - `PROTOBUF_REQUEST_MESSAGE`
@@ -499,7 +499,7 @@ be translated to other language backends without carrying that history in
   with schema-driven conversion driven directly from the canonical generated
   protobuf message types:
   - added centralized conversion infrastructure in
-    [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp):
+    [`../generator/src/rust_protobuf_generator.cpp`](../../../generator/src/rust_protobuf_generator.cpp):
     - `field_conversion_context` struct encapsulates the conversion environment
       (scope, lib, root module name, helper prefix)
     - `generate_field_from_proto()` and `generate_field_to_proto()` helper
@@ -521,11 +521,11 @@ be translated to other language backends without carrying that history in
 - Extended interface-pointer support in the Rust protobuf generator to preserve
   the C++ IDL distinction between `rpc::shared_ptr<T>` and `rpc::optimistic_ptr<T>`:
   - added `is_optimistic` field to `rust_interface_generic` struct in
-    [`../generator/src/rust_protobuf_generator.cpp`](/var/home/edward/projects/Canopy/generator/src/rust_protobuf_generator.cpp)
+    [`../generator/src/rust_protobuf_generator.cpp`](../../../generator/src/rust_protobuf_generator.cpp)
   - threaded `is_optimistic` through `analyse_interface_generics()` so each
     interface-bearing parameter carries its pointer kind
   - added `InterfacePointerKind` enum to
-    [`rpc/src/serialization/protobuf/metadata.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/metadata.rs)
+    [`rpc/src/serialization/protobuf/metadata.rs`](../../../rust/rpc/src/serialization/protobuf/metadata.rs)
     with `Shared` and `Optimistic` variants
   - added `pointer_kind: Option<InterfacePointerKind>` field to
     `GeneratedProtobufParamDescriptor` so protobuf parameter metadata now
@@ -721,7 +721,7 @@ be translated to other language backends without carrying that history in
   - Rust does not reserve `__` the way C++ does, so the internal-only intent is
     now reinforced with `#[doc(hidden)]`
   - this keeps the future application-facing surface focused on generated
-    interfaces plus a `make_local(...)`-style wrapper rather than low-level RPC
+    interfaces plus a `local_factory(...)`-style wrapper rather than low-level RPC
     plumbing
 - Added the first generated `make_rpc_object(...)` application-facing wrapper:
   - generated interface modules now emit `RpcObjectAdapter`
@@ -861,7 +861,7 @@ be translated to other language backends without carrying that history in
 - Added the first passing end-to-end Rust probe for a basic IDL-defined RPC
   call over generated protobuf request/response messages:
   - added a tiny dedicated probe IDL under
-    [`tests/protobuf_runtime_probe/basic_rpc_probe.idl`](/var/home/edward/projects/Canopy/rust/tests/protobuf_runtime_probe/basic_rpc_probe.idl)
+    [`tests/protobuf_runtime_probe/basic_rpc_probe.idl`](../../../rust/tests/protobuf_runtime_probe/basic_rpc_probe.idl)
     with one scalar method
   - the probe build now runs the Canopy generator at build time for both
     `rpc_types.idl` and that tiny probe IDL, then invokes the in-tree Rust
@@ -877,7 +877,7 @@ be translated to other language backends without carrying that history in
 - Kept transport concerns in the handwritten runtime rather than generator
   output:
   - added handwritten protobuf proxy-call helpers in
-    [`rpc/src/serialization/protobuf/facade.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/serialization/protobuf/facade.rs)
+    [`rpc/src/serialization/protobuf/facade.rs`](../../../rust/rpc/src/serialization/protobuf/facade.rs)
     so generated proxy methods delegate transport send/receive flow instead of
     embedding marshaller logic directly
   - renamed the generated proxy seam away from transport terminology:
@@ -1510,8 +1510,8 @@ be translated to other language backends without carrying that history in
   lookup and binding follow the C++ `__rpc_query_interface(interface_id)`
   pattern more closely.
 - The RPC-aware pointer wrappers now live in
-  [`remote_pointer.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/remote_pointer.rs),
-  with [`bindings.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/bindings.rs)
+  [`remote_pointer.rs`](../../../rust/rpc/src/internal/remote_pointer.rs),
+  with [`bindings.rs`](../../../rust/rpc/src/internal/bindings.rs)
   reduced to binding helpers layered on top.
 - `LocalProxy`, `CreateLocalProxy`, and `CreateRemoteProxy` are no longer
   re-exported from the normal `canopy_rpc` crate root; app-facing code uses
@@ -1528,9 +1528,9 @@ be translated to other language backends without carrying that history in
   happens through one hidden helper instead of being reimplemented in generated
   code.
 - `SharedPtr` and `OptimisticPtr` now carry the shared hidden
-  [`ObjectProxy`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/object_proxy.rs)
+  [`ObjectProxy`](../../../rust/rpc/src/internal/object_proxy.rs)
   directly as their remote control block in
-  [`remote_pointer.rs`](/var/home/edward/projects/Canopy/rust/rpc/src/internal/remote_pointer.rs),
+  [`remote_pointer.rs`](../../../rust/rpc/src/internal/remote_pointer.rs),
   so remote object identity and separate shared/optimistic remote refcount
   state sit on the pointer wrappers rather than the generated interface types.
 - Converting a remote `SharedPtr` into an `OptimisticPtr` now reuses that same
@@ -1580,7 +1580,7 @@ be translated to other language backends without carrying that history in
   compared from one deterministic instruction source rather than two separate
   RNG streams.
 - Added a cross-language deterministic parity test in
-  [`fuzz_test_main.cpp`](/var/home/edward/projects/Canopy/integration_tests/fuzz_test/fuzz_test_main.cpp)
+  [`fuzz_test_main.cpp`](../../../integration_tests/fuzz_test/fuzz_test_main.cpp)
   that runs the same seed against both child-zone implementations and compares
   resulting child-zone count, connection count, received-object count, and
   function-call totals.

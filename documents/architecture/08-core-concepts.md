@@ -96,28 +96,33 @@ Zone 1 (Root)
 ### Creating a Root Zone
 
 ```cpp
-#include <canopy/network_config/network_args.h>
+#include <canopy/network_config/cli_args.h>
+#include <canopy/network_config/zone.h>
 
 // ... in main()
 args::ArgumentParser parser("My App");
-canopy::network_config::add_network_args(parser);
+auto net = canopy::network_config::add_network_args(parser);
 parser.ParseCLI(argc, argv);
 
-auto cfg = canopy::network_config::get_network_config(parser);
+auto cfg = canopy::network_config::get_network_config(net);
 auto allocator = canopy::network_config::make_allocator(cfg);
 
-// Default behavior: If no --routing-prefix is provided, auto-detects best interface
-auto root_service = rpc::root_service::create(
-    "root_service",
-    allocator.allocate_zone(),
+// If no --va-prefix is provided, network_config auto-detects a routing prefix.
+rpc::zone_address root_addr;
+auto zone_error = allocator.allocate_zone(root_addr);
+if (zone_error != rpc::error::OK())
+    return zone_error;
+
 #ifdef CANOPY_BUILD_COROUTINE
-    scheduler   // Optional coroutine scheduler
+auto root_service = rpc::root_service::create("root_service", rpc::zone{root_addr}, scheduler);
+#else
+auto root_service = rpc::root_service::create("root_service", rpc::zone{root_addr});
 #endif
-);
 ```
 
-**Legacy compatibility**: `rpc::zone{42}` still works in local-only mode
-(`routing_prefix=0`).
+For local-only setups, start from `rpc::DEFAULT_PREFIX` and let
+`root_service` / `rpc::zone_id_allocator` allocate concrete zone IDs. Do not
+rely on constructing a `rpc::zone` directly from an integer.
 
 The routing prefix and subnet together identify the zone. The local/object
 address identifies a specific object inside that zone. Local address `0` is
@@ -136,18 +141,18 @@ Child zones are created through transport connections:
 // From parent zone
 auto child_transport = std::make_shared<rpc::local::child_transport>(
     "child_zone",
-    root_service_,
-    new_zone_id,
-    rpc::local::parent_transport::bind<yyy::i_host, yyy::i_example>(
-        new_zone_id,
-        [&](const rpc::shared_ptr<yyy::i_host>& host,
-            rpc::shared_ptr<yyy::i_example>& new_example,
-            const std::shared_ptr<rpc::child_service>& child_service_ptr) -> CORO_TASK(int)
-        {
-            // Initialize child zone
-            new_example = rpc::make_shared<example_impl>(child_service_ptr, host);
-            CO_RETURN rpc::error::OK();
-        }));
+    root_service_);
+
+child_transport->set_child_entry_point<yyy::i_host, yyy::i_example>(
+    [&](rpc::shared_ptr<yyy::i_host> host,
+        std::shared_ptr<rpc::child_service> child_service_ptr)
+        -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+    {
+        auto new_example = rpc::make_shared<example_impl>(child_service_ptr, host);
+        CO_RETURN rpc::service_connect_result<yyy::i_example>{
+            rpc::error::OK(),
+            std::move(new_example)};
+    });
 
 auto ret = CO_AWAIT root_service_->connect_to_zone<yyy::i_host, yyy::i_example>(
     "child_zone", child_transport, host_ptr);
@@ -174,7 +179,7 @@ methods use `remote_object` for object identity.
 const zone_address& addr = remote_object.get_address();
 
 // Access components
-uint64_t prefix = addr.get_routing_prefix();
+auto prefix = addr.get_routing_prefix();
 uint64_t subnet = addr.get_subnet();
 uint64_t obj_id = addr.get_object_id();
 
@@ -183,7 +188,12 @@ if (addr1.same_zone(addr2)) { ... }
 
 // Convert between types
 destination_zone dest = zone;  // routing_prefix + subnet, local/object address = 0
-remote_object obj = dest.with_object(object_id); // adds local/object address
+auto obj_result = dest.with_object(object_id); // adds local/object address
+if (!obj_result)
+{
+    return rpc::error::INVALID_DATA();
+}
+remote_object obj = *obj_result;
 ```
 
 ## 2. Services
@@ -210,34 +220,20 @@ rpc::service       (abstract service base)
 ### Creating a Root Service
 
 ```cpp
-class my_service : public rpc::root_service
-{
-public:
-    my_service(const char* name, rpc::zone zone_id)
-        : rpc::root_service(name, zone_id)
-    {
-        // Service initialization
-    }
-};
-
-// Creation
-auto service = std::make_shared<my_service>("my_service", rpc::zone{1});
+auto service = rpc::root_service::create("my_service", rpc::DEFAULT_PREFIX);
 ```
 
 ### Child Service
 
-For hierarchical topologies, use `child_service`:
+For hierarchical topologies, transports create `child_service` instances through
+`rpc::child_service::create_child_zone(...)`. Direct construction is normally a
+transport implementation detail:
 
 ```cpp
-class my_child_service : public rpc::child_service
-{
-public:
-    my_child_service(const char* name, rpc::zone zone_id,
-                     std::shared_ptr<rpc::transport> parent_transport)
-        : rpc::child_service(name, zone_id, std::move(parent_transport))
-    {
-    }
-};
+rpc::child_service(
+    const char* name,
+    rpc::zone zone_id,
+    rpc::destination_zone parent_zone_id);
 ```
 
 **Key Difference**: `child_service` maintains a strong reference to the parent transport, ensuring the parent zone lives as long as any child.
@@ -247,23 +243,24 @@ public:
 ```cpp
 // Zone and Object ID Management
 rpc::object generate_new_object_id();
-rpc::object get_object_id(const rpc::casting_interface* ptr);
+rpc::object get_object_id(const rpc::shared_ptr<rpc::casting_interface>& ptr) const;
 
 // Zone Connection
 template<typename InInterface, typename OutInterface>
 CORO_TASK(rpc::service_connect_result<OutInterface>)
 connect_to_zone(const char* name,
                 std::shared_ptr<rpc::transport> transport,
-                const rpc::shared_ptr<InInterface>& input_interface);
+                rpc::shared_ptr<InInterface> input_interface);
 
 // Remote Zone Attachment
-template<typename InterfaceType, typename... Args>
+template<typename ParentInterface, typename ChildInterface>
 CORO_TASK(rpc::remote_object_result)
 attach_remote_zone(const char* name,
                    std::shared_ptr<rpc::transport> transport,
-                   const rpc::interface_descriptor& input_descr,
-                   const rpc::interface_descriptor& output_descr,
-                   SetupCallback<InterfaceType, Args...> setup);
+                   rpc::connection_settings input_descr,
+                   std::function<CORO_TASK(rpc::service_connect_result<ChildInterface>)(
+                       rpc::shared_ptr<ParentInterface>,
+                       std::shared_ptr<rpc::service>)> setup);
 
 ```
 
@@ -314,10 +311,9 @@ if (ptr) {
 ptr.reset();
 
 // Get underlying object
-auto raw = ptr.get_nullable();
-if (raw) {
+auto raw = ptr.get();
+if (raw)
     raw->method();
-}
 ```
 
 ### rpc::weak_ptr<T>
@@ -351,9 +347,10 @@ lifetimes.
   object has its own lifetime (for example database connections, services, or
   callback targets)
 
-**Important**: `rpc::optimistic_ptr` cannot be created directly. It can only be obtained from:
+**Important**: `rpc::optimistic_ptr` cannot be created from a shared pointer by
+assignment. It is obtained from:
 1. Another `rpc::optimistic_ptr` (copy)
-2. `rpc::shared_ptr` via implicit conversion or `.to_optimistic()`
+2. `rpc::shared_ptr` or `rpc::weak_ptr` via `CO_AWAIT rpc::make_optimistic(...)`
 
 **Error Behavior**:
 | Pointer Type | Object Gone Error | Meaning |
@@ -365,7 +362,7 @@ lifetimes.
 `documents/architecture/cpp/optimistic-ptr-race-conditions.md`):
 
 ```cpp
-auto acc = opt_db->get_callable();  // pins local / captures remote
+auto acc = opt_db.get_callable();  // pins local / captures remote
 if (!acc)
     return;  // null or local-gone
 auto result = CO_AWAIT acc->query("SELECT ...");
@@ -382,73 +379,18 @@ that returns `OBJECT_GONE`.
 4. Objects managed by external lifetime managers
 
 ```cpp
-// Get optimistic_ptr from shared_ptr (implicit conversion)
 rpc::shared_ptr<idatabase> db_connection = get_database_connection();
-rpc::optimistic_ptr<idatabase> opt_db = db_connection;  // Implicit conversion
+auto [err, opt_db] = CO_AWAIT rpc::make_optimistic(db_connection);
+if (err != rpc::error::OK())
+    CO_RETURN err;
 
 // Use the optimistic pointer
 auto result = CO_AWAIT opt_db->query("SELECT * FROM users");
-
-// Use Case 2: Callback pattern - Object A creates Object B in another zone
-// Object A needs to receive callbacks from Object B without creating circular dependency
-//
-// Zone 1: Object A (creator)
-//   └── shared_ptr<ObjB> (owns Object B)
-//
-// Zone 2: Object B (created)
-//   └── optimistic_ptr<ObjA> (for callbacks, NOT ownership)
-
-class object_a : public i_object_a
-{
-    rpc::shared_ptr<object_b> child_b_;  // Ownership - keeps B alive
-
-public:
-    CORO_TASK(error_code) create_child()
-    {
-        // Create Object B in another zone
-        rpc::shared_ptr<object_b> new_b;
-        auto error = CO_AWAIT zone_service_->create_object(new_b);
-
-        // Give Object B an optimistic pointer to ourselves for callbacks
-        // This allows B to call A without creating a circular reference
-        CO_AWAIT rpc::make_optimistic(
-            rpc::shared_ptr<object_a>(this),
-            new_b->get_callback_handler());
-
-        child_b_ = new_b;  // Ownership reference
-        CO_RETURN error::OK();
-    }
-
-    // Callback from Object B
-    CORO_TASK(error_code) on_event(int event_data) override
-    {
-        // Handle event from child
-        CO_RETURN error::OK();
-    }
-};
-
-class object_b : public i_object_b
-{
-    rpc::optimistic_ptr<object_a> parent_a_;  // For callbacks only
-
-public:
-    void set_parent_callback(rpc::optimistic_ptr<object_a> parent)
-    {
-        parent_a_ = parent;  // No ownership cycle across zones
-    }
-
-    CORO_TASK(error_code) do_work()
-    {
-        // ... do work ...
-
-        // Notify parent of progress (using optimistic_ptr)
-        // If parent is gone, returns OBJECT_GONE - expected for remote weak lifetime
-        CO_AWAIT parent_a_->on_event(progress);
-
-        CO_RETURN error::OK();
-    }
-};
 ```
+
+For callback patterns, pass an optimistic pointer across the generated IDL
+method boundary just like any other interface parameter. If the callback target
+is gone, calls through the optimistic pointer return `OBJECT_GONE`.
 
 **Note**: Fire-and-forget is possible with both shared_ptr and optimistic_ptr. The key distinction is lifetime semantics, not call pattern.
 
@@ -514,10 +456,10 @@ Represents a remote object in the local zone.
 class object_proxy : public rpc::casting_interface
 {
     rpc::object object_id_;                          // Remote object ID
-    std::shared_ptr<service_proxy> service_proxy_;  // Remote service
-    std::shared_ptr<proxy_map> proxy_map_;          // Interface proxies
-    shared_count shared_count_;                     // Reference count
-    optimistic_count optimistic_count_;              // Optimistic count
+    stdex::member_ptr<service_proxy> service_proxy_; // Remote service proxy
+    std::unordered_map<interface_ordinal, rpc::weak_ptr<casting_interface>> proxy_map;
+    std::atomic<int> shared_count_{0};
+    std::atomic<int> optimistic_count_{0};
 };
 ```
 
@@ -605,17 +547,17 @@ public:
 
 ### Generated Interface Base
 
-The IDL generator creates a template base class:
+The IDL generator creates an abstract C++ interface derived from
+`rpc::casting_interface`:
 
 ```cpp
-template<typename Derived>
-class interface : public rpc::casting_interface
+class i_calculator : public rpc::casting_interface
 {
 public:
-    static constexpr uint64_t get_id(uint64_t rpc_version)
-    {
-        // SHA3-based fingerprint
-    }
+    static rpc::interface_ordinal get_id(uint64_t rpc_version);
+    static std::vector<rpc::function_info> get_function_info();
+
+    virtual CORO_TASK(error_code) add(int a, int b, int& result) = 0;
 };
 ```
 
@@ -624,16 +566,7 @@ public:
 Each interface has a version-independent ID based on its definition. The ID is derived from the interface's hash so that changes to method signatures produce a new ID, allowing the runtime to detect version mismatches at connection time:
 
 ```cpp
-// Generated stub carries the interface fingerprint
-template<>
-struct interface_descriptor<i_calculator>
-{
-    static constexpr uint64_t get_id(uint64_t rpc_version)
-    {
-        // SHA3-based fingerprint of the interface definition
-        return 0xA1B2C3D4E5F60718ULL;
-    }
-};
+auto interface_id = i_calculator::get_id(rpc::get_version());
 ```
 
 When `connect_to_zone` is called, the runtime exchanges these fingerprints with the remote zone. If the IDs do not match, the connection is rejected with a version error, preventing silent protocol mismatches across process or machine boundaries.

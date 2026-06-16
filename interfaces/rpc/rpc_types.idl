@@ -18,15 +18,35 @@ namespace rpc
 
     enum encoding : uint64_t
     {
+        not_set = 0,
         yas_binary = 1,
         yas_compressed_binary = 2,
         //yas_text = 4,     //not really needed
         yas_json = 8,       //we may have different json parsers that have a better implementation e.g. glaze
         protocol_buffers = 16,
         nanopb = 32,
-        // flat_buffers = 64,
-        // mpi = 64
+        // Deterministic field-order serialization for crypto transcripts, KDF inputs,
+        // signatures, and MACs. The backend is compiled only when
+        // CANOPY_BUILD_CANONICAL_CRYPTO is enabled.
+        canonical_crypto = 64,
+        // flat_buffers = 128,
+        // mpi = 256
     };
+
+#cpp_quote(R^__(
+    template<
+        class OutputBlob,
+        typename T>
+    OutputBlob serialise(
+        const T& obj,
+        encoding enc);
+
+    template<typename T>
+    std::string deserialise(
+        encoding enc,
+        const std::vector<char>& data,
+        T& obj);
+    )__^)
 
     enum transport_status : uint8_t
     {
@@ -128,12 +148,126 @@ namespace rpc
     }
     )__^)
 
+    // Selects the audience/shape of a schema returned by interface introspection
+    // (i_marshaller::get_schema). Mirrors the host-side json_schema::schema_flavor
+    // used by the generator: `config` is the full authoring schema, `mcp` the
+    // minimal tool schema. Defined ahead of the first struct because every
+    // generated struct/interface declares get_schema(encoding, schema_flavor).
+    enum schema_flavor : uint8_t
+    {
+        config = 0,
+        mcp = 1
+    };
+
+    // Common executor construction settings. Coroutine builds use
+    // thread_count; host blocking builds also use max_thread_count and
+    // enable_adaptive_threads.
+    struct executor_options
+    {
+        [description = "Initial executor worker count. Zero selects the build-specific default."] uint32_t thread_count
+            = 0;
+
+        [description = "Maximum worker count for adaptive host blocking executors. Zero selects a bounded host "
+                       "default."] uint32_t max_thread_count = 0;
+
+        [description
+            = "Allow host blocking executors to grow when queued work would otherwise starve behind busy workers."] bool enable_adaptive_threads
+            = true;
+    };
+
     // Back-channel entry for marshalling reference-counted objects across zones
-    [no_fingerprint]
-    struct back_channel_entry
+    [no_fingerprint] struct back_channel_entry
     {
         uint64_t type_id;
         std::vector<uint8_t> payload;
+    };
+
+    struct encrypted_payload
+    {
+        std::string session_id;
+        uint64_t session_epoch = 0;
+        uint64_t e2e_counter = 0;
+        std::vector<uint8_t> payload;
+        std::vector<uint8_t> authentication_tag;
+    };
+
+    // Optional RPC control-message blob.
+    //
+    // Plain add_ref/release/try_cast/object_released/transport_down messages do
+    // not need an auxiliary blob at all. When attestation or another extension
+    // adds one, type_id is the IDL fingerprint of the blob schema and
+    // payload_encoding is the concrete serialisation format used for payload.
+    struct typed_payload
+    {
+    private:
+        uint64_t type_id = 0;
+        encoding payload_encoding = encoding::not_set;
+        std::vector<char> payload;
+
+#cpp_quote(R^__(
+    public:
+        friend inline bool operator==(
+            const typed_payload& lhs,
+            const typed_payload& rhs);
+        friend inline bool operator!=(
+            const typed_payload& lhs,
+            const typed_payload& rhs);
+
+        typed_payload() = default;
+        typed_payload(
+            uint64_t type_id,
+            encoding payload_encoding,
+            std::vector<char> payload)
+            : type_id(type_id)
+            , payload_encoding(payload_encoding)
+            , payload(std::move(payload))
+        {
+        }
+
+        [[nodiscard]] bool is_set() const noexcept { return type_id != 0; }
+        [[nodiscard]] uint64_t get_type_id() const noexcept { return type_id; }
+        [[nodiscard]] encoding get_encoding() const noexcept { return payload_encoding; }
+        [[nodiscard]] const std::vector<char>& get_payload() const noexcept { return payload; }
+        [[nodiscard]] std::vector<char>& get_payload() noexcept { return payload; }
+
+        void set_encoding(encoding value) noexcept { payload_encoding = value; }
+        void set_payload(std::vector<char> value) { payload = std::move(value); }
+
+        template<typename T> void set_type(uint64_t protocol_version) { type_id = rpc::id<T>::get(protocol_version); }
+
+        template<typename T> [[nodiscard]] bool is_type(uint64_t protocol_version) const
+        {
+            return type_id == rpc::id<T>::get(protocol_version);
+        }
+
+        template<typename T>
+        void set_value(
+            const T& value,
+            uint64_t protocol_version,
+            encoding encoding_type)
+        {
+            type_id = rpc::id<T>::get(protocol_version);
+            payload_encoding = encoding_type;
+            payload = rpc::serialise<std::vector<char>>(value, encoding_type);
+        }
+
+        template<typename T>
+        [[nodiscard]] std::string get_value(
+            T& value,
+            uint64_t protocol_version) const
+        {
+            if (!is_type<T>(protocol_version))
+                return "typed payload fingerprint does not match the requested type";
+            return rpc::deserialise(payload_encoding, payload, value);
+        }
+
+        void clear()
+        {
+            type_id = 0;
+            payload_encoding = encoding::not_set;
+            payload.clear();
+        }
+)__^)
     };
 
     // Versioned bit-packed zone address blob.
@@ -715,6 +849,17 @@ namespace rpc
         return std::move(*r);
     }();
 
+    // Construct a zone using Canopy's default local routing layout and the
+    // supplied subnet. Use this instead of copying DEFAULT_PREFIX and mutating
+    // the subnet at each call site.
+    [[nodiscard]] inline zone create_local_zone(uint64_t subnet)
+    {
+        auto address = DEFAULT_PREFIX;
+        auto subnet_result = address.set_subnet(subnet);
+        (void)subnet_result;
+        return zone{address};
+    }
+
     // Single-line human-readable form of zone_address_args.
     // Format: local sn=X [obj=Y]
     //         ipv4:A.B.C.D[:port] sn=X [obj=Y]
@@ -734,6 +879,7 @@ namespace rpc
     {
         interface_ordinal inbound_interface_id;
         interface_ordinal outbound_interface_id;
+        encoding encoding_type = encoding::not_set;
         remote_object remote_object_id;
 
     public:
@@ -756,9 +902,41 @@ namespace rpc
         method id;
         uint64_t tag;
         bool marshalls_interfaces;
+        bool post = false;
+        bool deprecated = false;
         std::string description;
         std::string in_json_schema;
         std::string out_json_schema;
+    };
+
+    // Runtime description of one interface and its callable methods, returned by
+    // schema introspection (i_marshaller::get_schema). `interface_id` and each
+    // method's `function_info::id` are what a caller relays through send();
+    // `qualified_name` + `function_info::name` are the stable, human/agent-facing
+    // identity. `schema` is the whole-interface JSON schema in the requested
+    // flavor; `methods` carries per-method in/out JSON schemas.
+    struct interface_descriptor
+    {
+        interface_ordinal interface_id;
+        std::string qualified_name;
+        bool deprecated;
+        std::string schema;
+        std::vector<function_info> methods;
+    };
+
+    struct get_schema_query
+    {
+        encoding encoding_type = encoding::not_set;
+        schema_flavor flavor = schema_flavor::config;
+        remote_object remote_object_id;
+        rpc::optional<interface_ordinal> interface_id;
+        bool include_deprecated = false;
+    };
+
+    struct get_schema_response
+    {
+        encoding encoding_type = encoding::not_set;
+        std::vector<interface_descriptor> interfaces;
     };
 
     struct telemetry_event

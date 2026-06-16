@@ -13,7 +13,7 @@ libunifex provides a novel approach to async programming based on the "sender/re
 
 ## Adaptation for Canopy
 
-Adapting Canopy to use libunifex would require changes to `rpc/include/rpc/internal/coroutine_support.h`:
+Adapting Canopy to use libunifex would require changes to `c++/rpc/include/rpc/internal/coroutine_support.h`:
 
 ```cpp
 #ifdef CANOPY_BUILD_COROUTINE

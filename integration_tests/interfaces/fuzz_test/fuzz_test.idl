@@ -3,7 +3,7 @@
  * All rights reserved.
  */
 
-// Independent Fuzz Test IDL for RPC++ Zone Graph Testing
+// Independent Fuzz Test IDL for Canopy Zone Graph Testing
 // Tests rpc::shared_ptr passing between zones in complex topologies
 
 namespace fuzz_test

@@ -1,0 +1,1853 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#include <gtest/gtest.h>
+
+#include <security/attestation/aead.h>
+#include <security/attestation/backend_factory.h>
+#include <security/attestation/backends/fake/fake_backend.h>
+#include <security/attestation/backends/null/null_backend.h>
+#include <security/attestation/protected_rpc.h>
+#include <attestation/route_attestation_protocol.h>
+#include <rpc/internal/serialiser.h>
+#include <security/attestation/service.h>
+#include <security/attestation/zone_security_policy.h>
+
+#include <array>
+#include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace
+{
+    using canopy::security::attestation::aead_aes_256_gcm_tag_size;
+    using canopy::security::attestation::attestation_policy;
+    using canopy::security::attestation::attestation_service;
+    using canopy::security::attestation::attestation_service_options;
+    using canopy::security::attestation::attestation_verdict;
+    using canopy::security::attestation::backend_factory_overrides;
+    using canopy::security::attestation::cmw;
+    using canopy::security::attestation::configured_attestation_backend_kind;
+    using canopy::security::attestation::configured_attestation_backend_name;
+    using canopy::security::attestation::configured_backend_kind;
+    using canopy::security::attestation::decrypt_aes_256_gcm;
+    using canopy::security::attestation::encrypt_aes_256_gcm;
+    using canopy::security::attestation::encrypted_payload_type_id;
+    using canopy::security::attestation::establish_session_params;
+    using canopy::security::attestation::evaluate_missing_peer_evidence_policy;
+    using canopy::security::attestation::evaluate_reference_route_policy;
+    using canopy::security::attestation::evaluate_route_attestation_state;
+    using canopy::security::attestation::evidence_binding;
+    using canopy::security::attestation::fake_backend;
+    using canopy::security::attestation::fake_backend_id;
+    using canopy::security::attestation::fake_evidence_content_format;
+    using canopy::security::attestation::fake_evidence_media_type;
+    using canopy::security::attestation::identity;
+    using canopy::security::attestation::make_attestation_backend;
+    using canopy::security::attestation::make_attestation_nonce;
+    using canopy::security::attestation::make_configured_attestation_backend;
+    using canopy::security::attestation::make_configured_attestation_service_options;
+    using canopy::security::attestation::make_session_id;
+    using canopy::security::attestation::null_backend;
+    using canopy::security::attestation::null_backend_id;
+    using canopy::security::attestation::protect_add_ref_request;
+    using canopy::security::attestation::protect_get_schema_request;
+    using canopy::security::attestation::protect_get_schema_response;
+    using canopy::security::attestation::protect_object_released_request;
+    using canopy::security::attestation::protect_post_request;
+    using canopy::security::attestation::protect_release_request;
+    using canopy::security::attestation::protect_send_request;
+    using canopy::security::attestation::protect_send_response;
+    using canopy::security::attestation::protect_transport_down_request;
+    using canopy::security::attestation::protect_try_cast_request;
+    using canopy::security::attestation::protected_key_scope;
+    using canopy::security::attestation::protected_rpc_direction;
+    using canopy::security::attestation::reference_route_policy_input;
+    using canopy::security::attestation::route_attestation_action;
+    using canopy::security::attestation::route_attestation_state;
+    using canopy::security::attestation::route_attestation_status;
+    using canopy::security::attestation::security_context;
+    using canopy::security::attestation::security_level;
+    using canopy::security::attestation::unprotect_add_ref_request;
+    using canopy::security::attestation::unprotect_get_schema_request;
+    using canopy::security::attestation::unprotect_get_schema_response;
+    using canopy::security::attestation::unprotect_object_released_request;
+    using canopy::security::attestation::unprotect_post_request;
+    using canopy::security::attestation::unprotect_release_request;
+    using canopy::security::attestation::unprotect_send_request;
+    using canopy::security::attestation::unprotect_send_response;
+    using canopy::security::attestation::unprotect_transport_down_request;
+    using canopy::security::attestation::unprotect_try_cast_request;
+    using canopy::security::attestation::zone_security_policy;
+    using canopy::security::attestation::zone_security_policy_options;
+
+    auto make_service(
+        std::string security_domain_id,
+        std::string zone_id,
+        uint64_t max_counter_value = std::numeric_limits<uint64_t>::max()) -> std::shared_ptr<attestation_service>
+    {
+        attestation_service_options options;
+        options.local_identity = identity{std::move(security_domain_id), std::move(zone_id)};
+        options.backend = std::make_shared<fake_backend>();
+        options.policy = attestation_policy{};
+        options.policy.required_backend_id = fake_backend_id;
+        options.policy.minimum_security_level = security_level::development;
+        options.max_counter_value = max_counter_value;
+        return std::make_shared<attestation_service>(std::move(options));
+    }
+
+    auto establish(
+        const std::shared_ptr<attestation_service>& service,
+        identity peer,
+        uint64_t transcript_id = 99,
+        std::vector<uint8_t> shared_secret = {}) -> security_context
+    {
+        establish_session_params params;
+        params.peer_identity = std::move(peer);
+        params.transcript_id = transcript_id;
+        params.local_evidence_sent = true;
+        params.peer_attested = true;
+        params.verified_backend_id = fake_backend_id;
+        params.verified_level = security_level::development;
+        params.shared_secret = std::move(shared_secret);
+        return service->establish_session(params);
+    }
+
+    auto make_scope(
+        const security_context& context,
+        identity caller,
+        identity destination,
+        protected_rpc_direction direction = protected_rpc_direction::caller_to_destination) -> protected_key_scope
+    {
+        protected_key_scope scope;
+        scope.session_id = context.session_id;
+        scope.caller_identity = std::move(caller);
+        scope.destination_identity = std::move(destination);
+        scope.direction = direction;
+        return scope;
+    }
+
+    auto make_zone(uint64_t subnet) -> rpc::zone
+    {
+        auto addr = rpc::DEFAULT_PREFIX;
+        auto set_result = addr.set_subnet(subnet);
+        EXPECT_TRUE(set_result.has_value());
+        return rpc::zone(addr);
+    }
+
+    auto agreed_payload_encodings() -> std::vector<rpc::encoding>
+    {
+        std::vector<rpc::encoding> encodings{rpc::encoding::yas_binary};
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+        encodings.push_back(rpc::encoding::protocol_buffers);
+#endif
+#ifdef CANOPY_BUILD_NANOPB
+        encodings.push_back(rpc::encoding::nanopb);
+#endif
+        return encodings;
+    }
+
+    auto make_identity_payload(
+        rpc::encoding encoding,
+        std::string zone_id) -> std::vector<char>
+    {
+        rpc::attestation_identity payload;
+        payload.security_domain_id = "payload-domain";
+        payload.zone_id = std::move(zone_id);
+        return rpc::serialise<std::vector<char>>(payload, encoding);
+    }
+
+    void expect_identity_payload(
+        const std::vector<char>& payload,
+        rpc::encoding encoding,
+        const std::string& expected_zone_id)
+    {
+        rpc::attestation_identity decoded;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(payload), decoded).empty());
+        EXPECT_EQ(decoded.security_domain_id, "payload-domain");
+        EXPECT_EQ(decoded.zone_id, expected_zone_id);
+    }
+
+    void expect_identity_typed_payload(
+        const rpc::optional<rpc::typed_payload>& payload,
+        uint64_t type_id,
+        rpc::encoding encoding,
+        const std::string& expected_zone_id)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), type_id);
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        expect_identity_payload(payload->get_payload(), encoding, expected_zone_id);
+    }
+
+    auto make_raw_payload(
+        uint64_t type_id,
+        rpc::encoding encoding,
+        std::vector<char> payload) -> rpc::typed_payload
+    {
+        return rpc::typed_payload(type_id, encoding, std::move(payload));
+    }
+
+    void expect_payload(
+        const rpc::optional<rpc::typed_payload>& payload,
+        uint64_t type_id,
+        rpc::encoding encoding,
+        const std::vector<char>& bytes)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), type_id);
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        EXPECT_EQ(payload->get_payload(), bytes);
+    }
+
+    void expect_protected_payload(
+        const rpc::optional<rpc::typed_payload>& payload,
+        rpc::encoding encoding)
+    {
+        ASSERT_TRUE(payload.has_value());
+        EXPECT_EQ(payload->get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+        EXPECT_EQ(payload->get_encoding(), encoding);
+        EXPECT_FALSE(payload->get_payload().empty());
+    }
+
+    inline constexpr const char* test_hardware_backend_id = "test-hardware";
+
+    class test_hardware_backend final : public canopy::security::attestation::attestation_backend
+    {
+    public:
+        [[nodiscard]] auto backend_id() const -> std::string override { return test_hardware_backend_id; }
+
+        [[nodiscard]] auto level() const -> security_level override { return security_level::hardware; }
+
+        [[nodiscard]] auto produce_evidence(const evidence_binding& binding) const -> cmw override
+        {
+            (void)binding;
+            return {"application/canopy-test-hardware-evidence", "canopy.test.hardware.v1", {1, 2, 3}};
+        }
+
+        [[nodiscard]] auto verify_evidence(
+            const cmw& evidence,
+            const evidence_binding& expected_binding,
+            const attestation_policy& policy) const -> attestation_verdict override
+        {
+            attestation_verdict verdict;
+            if (evidence.media_type != "application/canopy-test-hardware-evidence"
+                || evidence.content_format != "canopy.test.hardware.v1")
+            {
+                verdict.reason = "test hardware evidence was malformed";
+                return verdict;
+            }
+            if (!policy.required_backend_id.empty() && policy.required_backend_id != test_hardware_backend_id)
+            {
+                verdict.reason = "policy requires a different backend";
+                return verdict;
+            }
+
+            verdict.accepted = true;
+            verdict.reason = "test hardware evidence accepted";
+            verdict.backend_id = test_hardware_backend_id;
+            verdict.level = security_level::hardware;
+            verdict.peer_identity = expected_binding.subject;
+            return verdict;
+        }
+    };
+} // namespace
+
+TEST(
+    AttestationService,
+    FakeBackendRejectsMalformedEvidenceSafely)
+{
+    fake_backend backend;
+    evidence_binding expected_binding;
+    expected_binding.subject = identity{"domain-a", "zone-a"};
+    expected_binding.transcript_id = 17;
+    expected_binding.nonce = {1, 2, 3, 4};
+
+    attestation_policy policy;
+    policy.required_backend_id = fake_backend_id;
+    policy.minimum_security_level = security_level::development;
+
+    auto valid = backend.produce_evidence(expected_binding);
+    EXPECT_TRUE(backend.verify_evidence(valid, expected_binding, policy).accepted);
+
+    auto wrong_nonce_binding = expected_binding;
+    wrong_nonce_binding.nonce.push_back(5);
+    EXPECT_FALSE(backend.verify_evidence(valid, wrong_nonce_binding, policy).accepted);
+
+    auto wrong_format = valid;
+    wrong_format.content_format = "canopy.fake.unknown";
+    EXPECT_FALSE(backend.verify_evidence(wrong_format, expected_binding, policy).accepted);
+
+    cmw truncated;
+    truncated.media_type = fake_evidence_media_type;
+    truncated.content_format = fake_evidence_content_format;
+    truncated.payload = {4, 0, 0, 0, 'f'};
+    EXPECT_FALSE(backend.verify_evidence(truncated, expected_binding, policy).accepted);
+
+    cmw oversized;
+    oversized.media_type = fake_evidence_media_type;
+    oversized.content_format = fake_evidence_content_format;
+    oversized.payload = {0xff, 0xff, 0xff, 0xff};
+    EXPECT_FALSE(backend.verify_evidence(oversized, expected_binding, policy).accepted);
+}
+
+TEST(
+    AttestationService,
+    NullBackendDoesNotCreateAttestedEvidence)
+{
+    attestation_service_options options;
+    options.local_identity = identity{"client-process", "client-zone"};
+    options.backend = std::make_shared<null_backend>();
+    options.policy = attestation_policy{};
+    options.policy.send_local_evidence = true;
+    options.policy.require_peer_evidence = false;
+    options.policy.allow_unattested_peer = true;
+    options.policy.minimum_security_level = security_level::none;
+    options.policy.required_backend_id = null_backend_id;
+
+    attestation_service service(std::move(options));
+    auto evidence = service.produce_evidence(11, {1, 2, 3, 4});
+    EXPECT_FALSE(evidence.accepted);
+    EXPECT_EQ(service.backend_id(), null_backend_id);
+    EXPECT_EQ(service.backend_level(), security_level::none);
+    EXPECT_FALSE(service.requires_peer_evidence());
+    EXPECT_TRUE(service.allows_unattested_peer());
+}
+
+TEST(
+    AttestationService,
+    BackendFactoryUsesConfiguredBackendDefaults)
+{
+    const auto configured_kind = configured_attestation_backend_kind();
+    auto options = make_configured_attestation_service_options(identity{"factory-domain", "factory-zone"});
+    ASSERT_TRUE(options.backend);
+    EXPECT_EQ(options.backend->backend_id(), configured_attestation_backend_name());
+    EXPECT_EQ(options.local_identity.security_domain_id, "factory-domain");
+    EXPECT_EQ(options.local_identity.zone_id, "factory-zone");
+
+    if (configured_kind == configured_backend_kind::null_backend)
+    {
+        EXPECT_FALSE(options.policy.send_local_evidence);
+        EXPECT_FALSE(options.policy.require_peer_evidence);
+        EXPECT_TRUE(options.policy.allow_unattested_peer);
+        EXPECT_FALSE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::none);
+        EXPECT_EQ(options.policy.required_backend_id, null_backend_id);
+    }
+    else if (configured_kind == configured_backend_kind::fake_backend)
+    {
+        EXPECT_TRUE(options.policy.send_local_evidence);
+        EXPECT_TRUE(options.policy.require_peer_evidence);
+        EXPECT_FALSE(options.policy.allow_unattested_peer);
+        EXPECT_TRUE(options.policy.allow_development_evidence);
+        EXPECT_EQ(options.policy.minimum_security_level, security_level::development);
+        EXPECT_EQ(options.policy.required_backend_id, fake_backend_id);
+    }
+}
+
+TEST(
+    AttestationService,
+    BackendFactoryCanUsePrebuiltBackendOverride)
+{
+    backend_factory_overrides overrides;
+    overrides.backend = std::make_shared<test_hardware_backend>();
+
+    auto backend = make_configured_attestation_backend(std::move(overrides));
+    ASSERT_TRUE(backend);
+    EXPECT_EQ(backend->backend_id(), test_hardware_backend_id);
+    EXPECT_EQ(backend->level(), security_level::hardware);
+
+    backend_factory_overrides service_overrides;
+    service_overrides.backend = std::make_shared<test_hardware_backend>();
+
+    auto service_options = make_configured_attestation_service_options(
+        identity{"factory-domain", "factory-zone"}, std::move(service_overrides));
+    ASSERT_TRUE(service_options.backend);
+    EXPECT_EQ(service_options.backend->backend_id(), test_hardware_backend_id);
+    EXPECT_TRUE(service_options.policy.send_local_evidence);
+    EXPECT_TRUE(service_options.policy.require_peer_evidence);
+    EXPECT_FALSE(service_options.policy.allow_unattested_peer);
+    EXPECT_FALSE(service_options.policy.allow_development_evidence);
+    EXPECT_EQ(service_options.policy.minimum_security_level, security_level::hardware);
+    EXPECT_EQ(service_options.policy.required_backend_id, test_hardware_backend_id);
+}
+
+TEST(
+    AttestationService,
+    SessionIdsAreScopedToDomainPairs)
+{
+    auto first = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"}, 99);
+    auto second = make_session_id(identity{"domain-a", "zone-a-2"}, identity{"domain-b", "zone-b-2"}, 99);
+    auto third = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-c", "zone-c"}, 99);
+    auto fourth = make_session_id(identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"}, 100);
+    auto framed_left = make_session_id(identity{"domain:a", "zone-a"}, identity{"domain-b", "zone-b"}, 99);
+    auto framed_right = make_session_id(identity{"domain", "zone-a"}, identity{"a:domain-b", "zone-b"}, 99);
+
+    EXPECT_EQ(first, second);
+    EXPECT_NE(first, third);
+    EXPECT_NE(first, fourth);
+    EXPECT_NE(framed_left, framed_right);
+}
+
+TEST(
+    AttestationService,
+    RouteAttestationStateDecisionMatrix)
+{
+    route_attestation_state state;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+
+    state.status = route_attestation_status::handshaking;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::wait_for_handshake);
+
+    state.status = route_attestation_status::failed;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::reject);
+
+    state.status = route_attestation_status::unattested_allowed;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::allow);
+
+    state.status = route_attestation_status::attested;
+    state.context.reset();
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+
+    auto service = make_service("domain-a", "zone-a");
+    auto context = establish(service, identity{"domain-b", "zone-b"});
+    ASSERT_TRUE(context.established);
+    state.context = context;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::allow);
+
+    state.context->established = false;
+    EXPECT_EQ(evaluate_route_attestation_state(state), route_attestation_action::start_handshake);
+}
+
+TEST(
+    AttestationService,
+    ReferenceRoutePolicySeparatesAddRefHandshakeFromExistingReferenceControl)
+{
+    reference_route_policy_input input;
+    input.attestation_required = false;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.attestation_required = true;
+    input.route_is_local = true;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.route_is_local = false;
+    input.may_start_handshake = true;
+    input.state.status = route_attestation_status::unknown;
+    auto add_ref_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(add_ref_decision.action, route_attestation_action::start_handshake);
+
+    input.state.status = route_attestation_status::handshaking;
+    auto concurrent_add_ref_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(concurrent_add_ref_decision.action, route_attestation_action::wait_for_handshake);
+
+    input.state.status = route_attestation_status::unknown;
+    input.may_start_handshake = false;
+    auto existing_control_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(existing_control_decision.action, route_attestation_action::reject);
+    EXPECT_NE(existing_control_decision.reason.find("completed add_ref"), std::string::npos)
+        << existing_control_decision.reason;
+
+    input.state.status = route_attestation_status::unattested_allowed;
+    EXPECT_EQ(evaluate_reference_route_policy(input).action, route_attestation_action::allow);
+
+    input.state.status = route_attestation_status::failed;
+    input.state.failure_reason = "policy rejected route";
+    auto failed_decision = evaluate_reference_route_policy(input);
+    EXPECT_EQ(failed_decision.action, route_attestation_action::reject);
+    EXPECT_EQ(failed_decision.reason, input.state.failure_reason);
+}
+
+TEST(
+    AttestationService,
+    MissingPeerEvidenceRequiresExplicitTwoPartPolicy)
+{
+    attestation_policy policy;
+
+    auto default_decision = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_FALSE(default_decision.accepted);
+
+    policy.allow_unattested_peer = true;
+    auto still_rejected = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_FALSE(still_rejected.accepted);
+
+    policy.require_peer_evidence = false;
+    auto accepted = evaluate_missing_peer_evidence_policy(policy);
+    EXPECT_TRUE(accepted.accepted);
+}
+
+TEST(
+    AttestationService,
+    ZoneSecurityPolicyOwnsServiceSpecificRouteAdmission)
+{
+    zone_security_policy_options options;
+    options.reference_routes_require_attestation = true;
+    options.peer_attestation_policy.require_peer_evidence = false;
+    options.peer_attestation_policy.allow_unattested_peer = true;
+
+    zone_security_policy policy(std::move(options));
+
+    reference_route_policy_input input;
+    input.state.status = route_attestation_status::unknown;
+    input.may_start_handshake = true;
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::start_handshake);
+
+    input.may_start_handshake = false;
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::reject);
+
+    EXPECT_TRUE(policy.evaluate_missing_peer_evidence().accepted);
+
+    policy.set_reference_routes_require_attestation(false);
+    EXPECT_EQ(policy.evaluate_reference_route(input).action, route_attestation_action::allow);
+}
+
+TEST(
+    AttestationService,
+    GeneratesFixedSizeAttestationNonces)
+{
+    auto nonce = make_attestation_nonce();
+    ASSERT_TRUE(nonce.has_value());
+    EXPECT_EQ(nonce->size(), canopy::security::attestation::attestation_nonce_size);
+}
+
+TEST(
+    AttestationService,
+    RouteHandshakePayloadsUseGeneratedTypeIdsAndAgreedEncoding)
+{
+    rpc::route_attestation_handshake_request request;
+    request.transcript_id = 42;
+    request.claimant.security_domain_id = "domain-a";
+    request.claimant.zone_id = "zone-a";
+    request.backend_id = fake_backend_id;
+    request.evidence = rpc::attestation_cmw{};
+    request.evidence->media_type = fake_evidence_media_type;
+    request.evidence->content_format = fake_evidence_content_format;
+    request.evidence->payload = {1, 2, 3};
+    request.verifier_challenge = rpc::attestation_cmw{};
+    request.verifier_challenge->media_type = "application/canopy-test-verifier-challenge";
+    request.verifier_challenge->content_format = "canopy.test.challenge.v1";
+    request.verifier_challenge->payload = {9, 9, 9};
+    request.nonce = {4, 5, 6};
+
+    auto request_type_id = rpc::id<rpc::route_attestation_handshake_request>::get(rpc::get_version());
+    auto response_type_id = rpc::id<rpc::route_attestation_handshake_response>::get(rpc::get_version());
+    EXPECT_NE(request_type_id, 0U);
+    EXPECT_NE(response_type_id, 0U);
+    EXPECT_NE(request_type_id, response_type_id);
+
+    rpc::route_attestation_handshake_response response;
+    response.transcript_id = request.transcript_id;
+    response.accepted = true;
+    response.reason = "accepted";
+    response.responder.security_domain_id = "domain-b";
+    response.responder.zone_id = "zone-b";
+    response.backend_id = fake_backend_id;
+    response.security_level = static_cast<uint64_t>(security_level::development);
+    response.session_epoch = 1;
+    response.evidence = request.evidence;
+    response.nonce = {7, 8, 9};
+
+    for (auto encoding : agreed_payload_encodings())
+    {
+        SCOPED_TRACE(static_cast<uint64_t>(encoding));
+
+        auto bytes = rpc::serialise<std::vector<char>>(request, encoding);
+        rpc::route_attestation_handshake_request decoded_request;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(bytes), decoded_request).empty());
+        EXPECT_EQ(decoded_request, request);
+
+        auto response_bytes = rpc::serialise<std::vector<char>>(response, encoding);
+        rpc::route_attestation_handshake_response decoded_response;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(response_bytes), decoded_response).empty());
+        EXPECT_EQ(decoded_response, response);
+
+        auto request_without_evidence = request;
+        request_without_evidence.evidence.reset();
+        auto no_evidence_bytes = rpc::serialise<std::vector<char>>(request_without_evidence, encoding);
+        rpc::route_attestation_handshake_request decoded_no_evidence_request;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(no_evidence_bytes), decoded_no_evidence_request).empty());
+        EXPECT_EQ(decoded_no_evidence_request, request_without_evidence);
+
+        auto request_without_challenge = request;
+        request_without_challenge.verifier_challenge.reset();
+        auto no_challenge_bytes = rpc::serialise<std::vector<char>>(request_without_challenge, encoding);
+        rpc::route_attestation_handshake_request decoded_no_challenge_request;
+        EXPECT_TRUE(rpc::deserialise(encoding, rpc::byte_span(no_challenge_bytes), decoded_no_challenge_request).empty());
+        EXPECT_EQ(decoded_no_challenge_request, request_without_challenge);
+    }
+}
+
+TEST(
+    AttestationService,
+    RouteHandshakeRejectsPresentOptionalEvidenceWrapperWithoutValue)
+{
+    const std::vector<char> malformed_request = {
+        static_cast<char>((4U << 3U) | 2U),
+        0,
+    };
+    const std::vector<char> malformed_response = {
+        static_cast<char>((8U << 3U) | 2U),
+        0,
+    };
+
+    auto expect_rejected = [](rpc::encoding encoding, const std::vector<char>& bytes, auto& decoded)
+    {
+        const auto error = rpc::deserialise(encoding, rpc::byte_span(bytes), decoded);
+        EXPECT_FALSE(error.empty());
+        EXPECT_NE(error.find("wrapper is present without value"), std::string::npos) << error;
+    };
+
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+    {
+        rpc::route_attestation_handshake_request decoded_request;
+        expect_rejected(rpc::encoding::protocol_buffers, malformed_request, decoded_request);
+
+        rpc::route_attestation_handshake_response decoded_response;
+        expect_rejected(rpc::encoding::protocol_buffers, malformed_response, decoded_response);
+    }
+#endif
+
+#ifdef CANOPY_BUILD_NANOPB
+    {
+        rpc::route_attestation_handshake_request decoded_request;
+        expect_rejected(rpc::encoding::nanopb, malformed_request, decoded_request);
+
+        rpc::route_attestation_handshake_response decoded_response;
+        expect_rejected(rpc::encoding::nanopb, malformed_response, decoded_response);
+    }
+#endif
+}
+
+TEST(
+    AttestationService,
+    KdfGoldenVectorIsStable)
+{
+    auto service = make_service("domain-a", "zone-a");
+    const auto context = establish(service, identity{"domain-b", "zone-b"});
+    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+
+    auto material = service->derive_aead_key(scope);
+    ASSERT_TRUE(material.has_value());
+
+    const std::array<uint8_t, canopy::security::attestation::aead_key_size> expected_key{0x03,
+        0xc6,
+        0x04,
+        0xeb,
+        0x28,
+        0xc6,
+        0xbd,
+        0x20,
+        0x68,
+        0x7b,
+        0xff,
+        0x70,
+        0x0e,
+        0x8e,
+        0xe7,
+        0xfe,
+        0xfe,
+        0x13,
+        0x86,
+        0x89,
+        0x7f,
+        0x30,
+        0xd2,
+        0x3b,
+        0x58,
+        0xf8,
+        0x24,
+        0xc0,
+        0x49,
+        0xaa,
+        0x35,
+        0x8d};
+    const std::array<uint8_t, canopy::security::attestation::aead_nonce_prefix_size> expected_nonce_prefix{
+        0x72, 0xc2, 0xc1, 0x0a};
+    const std::array<uint8_t, canopy::security::attestation::aead_nonce_size> expected_nonce{
+        0x72, 0xc2, 0xc1, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07};
+
+    EXPECT_EQ(material->key, expected_key);
+    EXPECT_EQ(material->nonce_prefix, expected_nonce_prefix);
+    EXPECT_EQ(service->make_aead_nonce(*material, 7), expected_nonce);
+}
+
+TEST(
+    AttestationService,
+    SessionEstablishmentDoesNotResetCountersForSameEpoch)
+{
+    auto service = make_service("domain-a", "zone-a");
+    const std::vector<uint8_t> shared_secret{1, 2, 3, 4};
+    const auto context = establish(service, identity{"domain-b", "zone-b"}, 99, shared_secret);
+    ASSERT_TRUE(context.established);
+
+    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+    auto first_counter = service->next_send_counter(scope);
+    ASSERT_TRUE(first_counter.accepted);
+    EXPECT_EQ(first_counter.counter, 1U);
+
+    auto repeated_context = establish(service, identity{"domain-b", "zone-b"}, 99, shared_secret);
+    EXPECT_TRUE(repeated_context.established);
+
+    auto second_counter = service->next_send_counter(scope);
+    ASSERT_TRUE(second_counter.accepted);
+    EXPECT_EQ(second_counter.counter, 2U);
+
+    auto conflicting_context = establish(service, identity{"domain-b", "zone-b"}, 99, {9, 9, 9, 9});
+    EXPECT_FALSE(conflicting_context.established);
+
+    establish_session_params rekey_params;
+    rekey_params.peer_identity = identity{"domain-b", "zone-b"};
+    rekey_params.transcript_id = 99;
+    rekey_params.local_evidence_sent = true;
+    rekey_params.peer_attested = true;
+    rekey_params.verified_backend_id = fake_backend_id;
+    rekey_params.verified_level = security_level::development;
+    rekey_params.session_epoch = 2;
+    rekey_params.shared_secret = shared_secret;
+
+    auto rekeyed_context = service->establish_session(rekey_params);
+    ASSERT_TRUE(rekeyed_context.established);
+    auto rekeyed_scope = make_scope(rekeyed_context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+    auto rekeyed_counter = service->next_send_counter(rekeyed_scope);
+    ASSERT_TRUE(rekeyed_counter.accepted);
+    EXPECT_EQ(rekeyed_counter.counter, 1U);
+}
+
+TEST(
+    AttestationService,
+    HardwareGradeSessionRequiresExplicitSharedSecret)
+{
+    auto service = make_service("domain-a", "zone-a");
+
+    establish_session_params params;
+    params.peer_identity = identity{"domain-b", "zone-b"};
+    params.transcript_id = 99;
+    params.local_evidence_sent = true;
+    params.peer_attested = true;
+    params.verified_backend_id = test_hardware_backend_id;
+    params.verified_level = security_level::hardware_legacy;
+
+    auto no_secret_context = service->establish_session(params);
+    EXPECT_FALSE(no_secret_context.established);
+
+    params.shared_secret = {1, 2, 3, 4};
+    auto explicit_secret_context = service->establish_session(params);
+    EXPECT_TRUE(explicit_secret_context.established);
+}
+
+TEST(
+    AttestationService,
+    AesGcmWrapperHandlesEmptyPlaintextAndAad)
+{
+    auto service = make_service("domain-a", "zone-a");
+    const auto context = establish(service, identity{"domain-b", "zone-b"});
+    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+
+    auto material = service->derive_aead_key(scope);
+    ASSERT_TRUE(material.has_value());
+    auto nonce = service->make_aead_nonce(*material, 1);
+
+    const std::vector<uint8_t> empty_plaintext;
+    const std::vector<uint8_t> empty_aad;
+    auto ciphertext = encrypt_aes_256_gcm(*material, nonce, empty_plaintext, empty_aad);
+    ASSERT_TRUE(ciphertext.has_value());
+    EXPECT_TRUE(ciphertext->payload.empty());
+    EXPECT_EQ(ciphertext->authentication_tag.size(), aead_aes_256_gcm_tag_size);
+
+    auto decrypted = decrypt_aes_256_gcm(*material, nonce, ciphertext->payload, ciphertext->authentication_tag, empty_aad);
+    ASSERT_TRUE(decrypted.has_value());
+    EXPECT_TRUE(decrypted->empty());
+
+    auto tampered_tag = ciphertext->authentication_tag;
+    ASSERT_FALSE(tampered_tag.empty());
+    tampered_tag.back() ^= 0x01;
+    EXPECT_FALSE(decrypt_aes_256_gcm(*material, nonce, ciphertext->payload, tampered_tag, empty_aad).has_value());
+}
+
+TEST(
+    AttestationService,
+    DerivesMatchingDirectionalKeysForBothPeers)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"});
+    ASSERT_EQ(context_a.session_id, context_b.session_id);
+
+    auto request_scope = make_scope(context_a, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+    auto a_request_key = service_a->derive_aead_key(request_scope);
+    auto b_request_key = service_b->derive_aead_key(request_scope);
+    ASSERT_TRUE(a_request_key.has_value());
+    ASSERT_TRUE(b_request_key.has_value());
+    EXPECT_EQ(a_request_key->key, b_request_key->key);
+    EXPECT_EQ(a_request_key->nonce_prefix, b_request_key->nonce_prefix);
+    EXPECT_EQ(a_request_key->session_epoch, 1U);
+
+    auto response_scope = make_scope(
+        context_a,
+        identity{"domain-a", "zone-a"},
+        identity{"domain-b", "zone-b"},
+        protected_rpc_direction::destination_to_caller);
+    auto response_key = service_a->derive_aead_key(response_scope);
+    ASSERT_TRUE(response_key.has_value());
+    EXPECT_TRUE(response_key->key != a_request_key->key || response_key->nonce_prefix != a_request_key->nonce_prefix);
+
+    auto sibling_zone_scope = make_scope(context_a, identity{"domain-a", "zone-a-2"}, identity{"domain-b", "zone-b"});
+    auto sibling_zone_key = service_a->derive_aead_key(sibling_zone_scope);
+    ASSERT_TRUE(sibling_zone_key.has_value());
+    EXPECT_TRUE(
+        sibling_zone_key->key != a_request_key->key || sibling_zone_key->nonce_prefix != a_request_key->nonce_prefix);
+
+    auto nonce = service_a->make_aead_nonce(*a_request_key, 7);
+    EXPECT_EQ(
+        std::vector<uint8_t>(nonce.begin(), nonce.begin() + a_request_key->nonce_prefix.size()),
+        std::vector<uint8_t>(a_request_key->nonce_prefix.begin(), a_request_key->nonce_prefix.end()));
+    EXPECT_EQ(nonce.back(), 7U);
+}
+
+TEST(
+    AttestationService,
+    AllocatesAndValidatesMonotonicCountersPerDerivedKey)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
+    establish(service_b, identity{"domain-a", "zone-a"});
+
+    auto scope = make_scope(context_a, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+
+    auto first_send = service_a->next_send_counter(scope);
+    auto second_send = service_a->next_send_counter(scope);
+    ASSERT_TRUE(first_send.accepted);
+    ASSERT_TRUE(second_send.accepted);
+    EXPECT_EQ(first_send.counter, 1U);
+    EXPECT_EQ(second_send.counter, 2U);
+
+    EXPECT_FALSE(service_b->accept_receive_counter(scope, 0).accepted);
+
+    auto first_receive = service_b->accept_receive_counter(scope, first_send.counter);
+    auto replayed_receive = service_b->accept_receive_counter(scope, first_send.counter);
+    auto second_receive = service_b->accept_receive_counter(scope, second_send.counter);
+    auto out_of_order_receive = service_b->accept_receive_counter(scope, second_send.counter);
+    EXPECT_TRUE(first_receive.accepted);
+    EXPECT_FALSE(replayed_receive.accepted);
+    EXPECT_TRUE(second_receive.accepted);
+    EXPECT_FALSE(out_of_order_receive.accepted);
+}
+
+TEST(
+    AttestationService,
+    RejectsCounterExhaustionAndMismatchedScopes)
+{
+    auto service = make_service("domain-a", "zone-a", 2);
+    const auto context = establish(service, identity{"domain-b", "zone-b"});
+    auto scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"domain-b", "zone-b"});
+
+    EXPECT_TRUE(service->next_send_counter(scope).accepted);
+    EXPECT_TRUE(service->next_send_counter(scope).accepted);
+    EXPECT_FALSE(service->next_send_counter(scope).accepted);
+    EXPECT_FALSE(service->accept_receive_counter(scope, 3).accepted);
+
+    auto attacker_scope = make_scope(context, identity{"domain-a", "zone-a"}, identity{"attacker", "zone-b"});
+    EXPECT_FALSE(service->derive_aead_key(attacker_scope).has_value());
+    EXPECT_FALSE(service->next_send_counter(attacker_scope).accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsSendRequestAndResponse)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"});
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"});
+
+    auto caller_zone = make_zone(10);
+    auto destination_zone = make_zone(20);
+    auto remote_object = destination_zone.with_object(rpc::object(7));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 1234;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x445566);
+    params.method_id = rpc::method(9);
+    params.in_data = {'h', 'e', 'l', 'l', 'o'};
+    params.in_back_channel.push_back(rpc::back_channel_entry{42, {1, 2, 3}});
+    params.request_id = 77;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(
+        protected_request.value.params.interface_id,
+        canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
+    EXPECT_EQ(protected_request.value.params.method_id, rpc::method(0));
+    EXPECT_EQ(protected_request.value.params.encoding_type, params.encoding_type);
+    EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
+    EXPECT_NE(protected_request.value.params.in_data, params.in_data);
+
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.encoding_type, params.encoding_type);
+    EXPECT_EQ(unprotected_request.value.params.tag, 0U);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
+    EXPECT_EQ(unprotected_request.value.params.method_id, params.method_id);
+    EXPECT_EQ(unprotected_request.value.params.in_data, params.in_data);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 42U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({1, 2, 3}));
+    EXPECT_EQ(unprotected_request.value.params.request_id, params.request_id);
+
+    auto replayed_request = unprotect_send_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+
+    rpc::send_result response;
+    response.error_code = rpc::error::INVALID_METHOD_ID();
+    response.out_buf = {'o', 'k'};
+    response.out_back_channel.push_back(rpc::back_channel_entry{99, {4, 5, 6}});
+
+    auto protected_response = protect_send_response(
+        *service_b, context_b, protected_request.value.params, unprotected_request.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    EXPECT_FALSE(protected_response.value.out_buf.empty());
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.error_code, rpc::error::INVALID_METHOD_ID());
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'o', 'k'}));
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 99U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].payload, std::vector<uint8_t>({4, 5, 6}));
+}
+
+TEST(
+    AttestationService,
+    ProtectsGetSchemaRequestAndResponse)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 333);
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 333);
+
+    auto caller_zone = make_zone(12);
+    auto destination_zone = make_zone(22);
+    auto remote_object = destination_zone.with_object(rpc::object(19));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::get_schema_query query;
+    query.encoding_type = rpc::encoding::yas_json;
+    query.flavor = rpc::schema_flavor::config;
+    query.remote_object_id = *remote_object;
+    query.interface_id = rpc::interface_ordinal(0x445577);
+    query.include_deprecated = true;
+
+    rpc::get_schema_params params;
+    params.protocol_version = rpc::get_version();
+    params.caller_zone_id = caller_zone;
+    params.destination_zone_id = destination_zone;
+    params.in_back_channel.push_back(rpc::back_channel_entry{43, {1, 3, 5}});
+    params.query = query;
+
+    auto protected_request = protect_get_schema_request(*service_a, context_a, params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(protected_request.value.params.destination_zone_id, destination_zone);
+    ASSERT_TRUE(rpc::holds_alternative<rpc::typed_payload>(protected_request.value.params.query));
+    const auto& protected_query = rpc::get<rpc::typed_payload>(protected_request.value.params.query);
+    EXPECT_EQ(protected_query.get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+    EXPECT_EQ(protected_query.get_encoding(), rpc::encoding::yas_binary);
+    EXPECT_FALSE(protected_query.get_payload().empty());
+
+    auto receiver_request = protected_request.value.params;
+    receiver_request.in_back_channel.push_back(rpc::back_channel_entry{44, {2, 4, 6}});
+
+    auto unprotected_request = unprotect_get_schema_request(*service_b, receiver_request);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.destination_zone_id, params.destination_zone_id);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 43U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[1].type_id, 44U);
+
+    const auto* unprotected_query = unprotected_request.value.params.query_if_plain();
+    ASSERT_NE(unprotected_query, nullptr);
+    EXPECT_EQ(unprotected_query->encoding_type, query.encoding_type);
+    EXPECT_EQ(unprotected_query->flavor, query.flavor);
+    EXPECT_EQ(unprotected_query->remote_object_id, query.remote_object_id);
+    ASSERT_TRUE(unprotected_query->interface_id.has_value());
+    EXPECT_EQ(unprotected_query->interface_id.value(), query.interface_id.value());
+    EXPECT_EQ(unprotected_query->include_deprecated, query.include_deprecated);
+
+    rpc::function_info method;
+    method.full_name = "xxx::i_secure.describe";
+    method.name = "describe";
+    method.id = rpc::method(7);
+    method.tag = 11;
+    method.marshalls_interfaces = false;
+    method.description = "schema method";
+    method.in_json_schema = R"({"type":"object"})";
+    method.out_json_schema = R"({"type":"object","properties":{"ok":{"type":"boolean"}}})";
+
+    rpc::interface_descriptor descriptor;
+    descriptor.interface_id = rpc::interface_ordinal(0x887766);
+    descriptor.qualified_name = "xxx::i_secure";
+    descriptor.deprecated = false;
+    descriptor.schema = R"({"title":"secure schema"})";
+    descriptor.methods.push_back(method);
+
+    rpc::get_schema_result plain_response{rpc::error::OK(),
+        rpc::encoding::yas_json,
+        std::vector<rpc::interface_descriptor>{descriptor},
+        std::vector<rpc::back_channel_entry>{rpc::back_channel_entry{45, {7, 8, 9}}}};
+
+    auto protected_response = protect_get_schema_response(
+        *service_b,
+        context_b,
+        protected_request.value.params,
+        unprotected_request.value.request_counter,
+        std::move(plain_response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    ASSERT_TRUE(rpc::holds_alternative<rpc::typed_payload>(protected_response.value.response));
+    const auto& protected_schema_response = rpc::get<rpc::typed_payload>(protected_response.value.response);
+    EXPECT_EQ(protected_schema_response.get_type_id(), encrypted_payload_type_id(rpc::get_version()));
+    EXPECT_EQ(protected_schema_response.get_encoding(), rpc::encoding::yas_binary);
+    EXPECT_FALSE(protected_schema_response.get_payload().empty());
+
+    protected_response.value.out_back_channel.push_back(rpc::back_channel_entry{46, {10, 11, 12}});
+    auto unprotected_response = unprotect_get_schema_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 45U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].type_id, 46U);
+
+    const auto* schema_response = unprotected_response.value.response_if_plain();
+    ASSERT_NE(schema_response, nullptr);
+    EXPECT_EQ(schema_response->encoding_type, rpc::encoding::yas_json);
+    ASSERT_EQ(schema_response->interfaces.size(), 1U);
+    EXPECT_EQ(schema_response->interfaces[0].interface_id, descriptor.interface_id);
+    EXPECT_EQ(schema_response->interfaces[0].qualified_name, descriptor.qualified_name);
+    EXPECT_EQ(schema_response->interfaces[0].schema, descriptor.schema);
+    ASSERT_EQ(schema_response->interfaces[0].methods.size(), 1U);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].full_name, method.full_name);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].id, method.id);
+    EXPECT_EQ(schema_response->interfaces[0].methods[0].out_json_schema, method.out_json_schema);
+}
+
+TEST(
+    AttestationService,
+    ProtectsPostRequestWithAgreedEncoding)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 108);
+    establish(service_b, identity{"domain-a", "zone-a"}, 108);
+
+    auto caller_zone = make_zone(18);
+    auto destination_zone = make_zone(28);
+    auto remote_object = destination_zone.with_object(rpc::object(12));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::post_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 0x5151;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1113);
+    params.method_id = rpc::method(11);
+    params.in_data = {'p', 'o', 's', 't'};
+    params.in_back_channel.push_back(rpc::back_channel_entry{52, {5, 2}});
+
+    auto protected_request = protect_post_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(protected_request.value.params.encoding_type, params.encoding_type);
+    EXPECT_EQ(
+        protected_request.value.params.interface_id,
+        canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
+    EXPECT_EQ(protected_request.value.params.method_id, rpc::method(0));
+    EXPECT_NE(protected_request.value.params.in_data, params.in_data);
+
+    auto unprotected_request = unprotect_post_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.encoding_type, params.encoding_type);
+    EXPECT_EQ(unprotected_request.value.params.tag, 0U);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
+    EXPECT_EQ(unprotected_request.value.params.method_id, params.method_id);
+    EXPECT_EQ(unprotected_request.value.params.in_data, params.in_data);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 52U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({5, 2}));
+}
+
+#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+TEST(
+    AttestationService,
+    ProtectsSendAndPostUsingProtocolBuffersCarrier)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 109);
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 109);
+
+    auto caller_zone = make_zone(19);
+    auto destination_zone = make_zone(29);
+    auto remote_object = destination_zone.with_object(rpc::object(13));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params send_params;
+    send_params.protocol_version = rpc::get_version();
+    send_params.encoding_type = rpc::encoding::protocol_buffers;
+    send_params.tag = 0x6262;
+    send_params.caller_zone_id = caller_zone;
+    send_params.remote_object_id = *remote_object;
+    send_params.interface_id = rpc::interface_ordinal(0x1114);
+    send_params.method_id = rpc::method(12);
+    send_params.in_data = {'p', 'b'};
+    send_params.request_id = 19;
+
+    auto protected_send = protect_send_request(*service_a, context_a, send_params);
+    ASSERT_TRUE(protected_send.accepted) << protected_send.error.reason;
+    EXPECT_EQ(protected_send.value.params.encoding_type, rpc::encoding::protocol_buffers);
+
+    auto unprotected_send = unprotect_send_request(*service_b, protected_send.value.params);
+    ASSERT_TRUE(unprotected_send.accepted) << unprotected_send.error.reason;
+    EXPECT_EQ(unprotected_send.value.params.encoding_type, send_params.encoding_type);
+    EXPECT_EQ(unprotected_send.value.params.in_data, send_params.in_data);
+
+    rpc::send_result response;
+    response.error_code = rpc::error::OK();
+    response.out_buf = {'o', 'u', 't'};
+    auto protected_response = protect_send_response(
+        *service_b, context_b, protected_send.value.params, unprotected_send.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_send.value.params,
+        protected_send.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'o', 'u', 't'}));
+
+    rpc::post_params post_params;
+    post_params.protocol_version = rpc::get_version();
+    post_params.encoding_type = rpc::encoding::protocol_buffers;
+    post_params.tag = 0x6363;
+    post_params.caller_zone_id = caller_zone;
+    post_params.remote_object_id = *remote_object;
+    post_params.interface_id = rpc::interface_ordinal(0x1115);
+    post_params.method_id = rpc::method(13);
+    post_params.in_data = {'p', 'b', 'p'};
+
+    auto protected_post = protect_post_request(*service_a, context_a, post_params);
+    ASSERT_TRUE(protected_post.accepted) << protected_post.error.reason;
+    EXPECT_EQ(protected_post.value.params.encoding_type, rpc::encoding::protocol_buffers);
+
+    auto unprotected_post = unprotect_post_request(*service_b, protected_post.value.params);
+    ASSERT_TRUE(unprotected_post.accepted) << unprotected_post.error.reason;
+    EXPECT_EQ(unprotected_post.value.params.encoding_type, post_params.encoding_type);
+    EXPECT_EQ(unprotected_post.value.params.in_data, post_params.in_data);
+}
+#endif
+
+TEST(
+    AttestationService,
+    ProtectsPositiveApplicationSendResult)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 106);
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 106);
+
+    auto caller_zone = make_zone(16);
+    auto destination_zone = make_zone(26);
+    auto remote_object = destination_zone.with_object(rpc::object(11));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 0x4242;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1111);
+    params.method_id = rpc::method(9);
+    params.in_data = {'a', 'p', 'p'};
+    params.request_id = 16;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+
+    constexpr int application_result_code = 42;
+    rpc::send_result response;
+    response.error_code = application_result_code;
+    response.out_buf = {'r', 'e', 's'};
+
+    auto protected_response = protect_send_response(
+        *service_b, context_b, protected_request.value.params, unprotected_request.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    EXPECT_EQ(protected_response.value.error_code, rpc::error::OK());
+    EXPECT_NE(protected_response.value.out_buf, std::vector<char>({'r', 'e', 's'}));
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.error_code, application_result_code);
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'r', 'e', 's'}));
+}
+
+TEST(
+    AttestationService,
+    RejectsPositiveProtectedSendCarrierStatus)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 107);
+    establish(service_b, identity{"domain-a", "zone-a"}, 107);
+
+    auto caller_zone = make_zone(17);
+    auto destination_zone = make_zone(27);
+    auto remote_object = destination_zone.with_object(rpc::object(12));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 0x4243;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1112);
+    params.method_id = rpc::method(10);
+    params.in_data = {'a', 'p', 'p'};
+    params.request_id = 17;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+
+    rpc::send_result route_failure;
+    route_failure.error_code = rpc::error::ZONE_NOT_FOUND();
+    auto accepted_route_failure = unprotect_send_response(
+        *service_a, context_a, protected_request.value.params, protected_request.value.request_counter, std::move(route_failure));
+    ASSERT_TRUE(accepted_route_failure.accepted) << accepted_route_failure.error.reason;
+    EXPECT_EQ(accepted_route_failure.value.error_code, rpc::error::ZONE_NOT_FOUND());
+
+    constexpr int application_result_code = 42;
+    rpc::send_result exposed_application_result;
+    exposed_application_result.error_code = application_result_code;
+    exposed_application_result.out_buf = {'r', 'e', 's'};
+
+    auto rejected_application_result = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_request.value.params,
+        protected_request.value.request_counter,
+        std::move(exposed_application_result));
+    EXPECT_FALSE(rejected_application_result.accepted);
+    EXPECT_EQ(rejected_application_result.error.error_code, rpc::error::PROTOCOL_ERROR());
+}
+
+TEST(
+    AttestationService,
+    ProtectedSendRejectsTamperedCiphertext)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 101);
+    establish(service_b, identity{"domain-a", "zone-a"}, 101);
+
+    auto caller_zone = make_zone(11);
+    auto destination_zone = make_zone(22);
+    auto remote_object = destination_zone.with_object(rpc::object(8));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params params;
+    params.protocol_version = rpc::get_version();
+    params.encoding_type = rpc::encoding::yas_binary;
+    params.tag = 5678;
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x112233);
+    params.method_id = rpc::method(4);
+    params.in_data = {'x'};
+    params.request_id = 12;
+
+    auto protected_request = protect_send_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    ASSERT_FALSE(protected_request.value.params.in_data.empty());
+
+    protected_request.value.params.in_data.back() ^= 0x01;
+    auto unprotected_request = unprotect_send_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(unprotected_request.accepted);
+    EXPECT_EQ(unprotected_request.error.error_code, rpc::error::FRAUDULANT_REQUEST());
+}
+
+TEST(
+    AttestationService,
+    ProtectsAddRefRequest)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 202);
+    establish(service_b, identity{"domain-a", "zone-a"}, 202);
+
+    auto caller_zone = make_zone(31);
+    auto destination_zone = make_zone(41);
+    auto requesting_zone = make_zone(51);
+    auto remote_object = destination_zone.with_object(rpc::object(12));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::add_ref_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = *remote_object;
+    params.caller_zone_id = caller_zone;
+    params.requesting_zone_id = requesting_zone;
+    params.build_out_param_channel = rpc::add_ref_options::build_caller_route | rpc::add_ref_options::optimistic;
+    params.in_back_channel.push_back(rpc::back_channel_entry{12, {7, 8, 9}});
+    params.request_id = 88;
+    const auto payload_type_id = 0xabcdefU;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'a', 'd', 'd'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
+
+    auto protected_request = protect_add_ref_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
+    EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
+
+    auto tampered_options = protected_request.value.params;
+    tampered_options.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+    auto tampered_options_result = unprotect_add_ref_request(*service_b, tampered_options);
+    EXPECT_FALSE(tampered_options_result.accepted);
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
+
+    auto tampered_requesting_zone = protected_request.value.params;
+    tampered_requesting_zone.requesting_zone_id = make_zone(52);
+    auto tampered_requesting_zone_result = unprotect_add_ref_request(*service_b, tampered_requesting_zone);
+    EXPECT_FALSE(tampered_requesting_zone_result.accepted);
+    EXPECT_EQ(tampered_requesting_zone_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
+
+    auto unprotected_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.requesting_zone_id, params.requesting_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.build_out_param_channel, params.build_out_param_channel);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 12U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({7, 8, 9}));
+    EXPECT_EQ(unprotected_request.value.params.request_id, params.request_id);
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
+
+    auto replayed_request = unprotect_add_ref_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsReleaseRequest)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 222);
+    establish(service_b, identity{"domain-a", "zone-a"}, 222);
+
+    auto caller_zone = make_zone(32);
+    auto destination_zone = make_zone(42);
+    auto remote_object = destination_zone.with_object(rpc::object(22));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::release_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = *remote_object;
+    params.caller_zone_id = caller_zone;
+    params.options = rpc::release_options::optimistic;
+    params.in_back_channel.push_back(rpc::back_channel_entry{21, {1, 3, 5}});
+    const auto payload_type_id = 0xbcdef0U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'r', 'e', 'l'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
+
+    auto protected_request = protect_release_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
+    EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
+
+    auto tampered_options = protected_request.value.params;
+    tampered_options.options = rpc::release_options::normal;
+    auto tampered_options_result = unprotect_release_request(*service_b, tampered_options);
+    EXPECT_FALSE(tampered_options_result.accepted);
+    EXPECT_EQ(tampered_options_result.error.error_code, rpc::error::FRAUDULANT_REQUEST());
+
+    auto unprotected_request = unprotect_release_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.options, params.options);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 21U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({1, 3, 5}));
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
+
+    auto replayed_request = unprotect_release_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsTryCastRequest)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 232);
+    establish(service_b, identity{"domain-a", "zone-a"}, 232);
+
+    auto caller_zone = make_zone(33);
+    auto destination_zone = make_zone(43);
+    auto remote_object = destination_zone.with_object(rpc::object(23));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::try_cast_params params;
+    params.protocol_version = rpc::get_version();
+    params.caller_zone_id = caller_zone;
+    params.remote_object_id = *remote_object;
+    params.interface_id = rpc::interface_ordinal(0x1020304050ULL);
+    params.in_back_channel.push_back(rpc::back_channel_entry{31, {2, 4, 6}});
+
+    auto protected_request = protect_try_cast_request(*service_a, context_a, params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    EXPECT_EQ(
+        protected_request.value.params.interface_id,
+        canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
+    expect_protected_payload(protected_request.value.params.payload, rpc::encoding::yas_binary);
+    EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
+    EXPECT_NE(protected_request.value.params.interface_id, params.interface_id);
+
+    auto unprotected_request = unprotect_try_cast_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.interface_id, params.interface_id);
+    EXPECT_FALSE(unprotected_request.value.params.payload.has_value());
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 31U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({2, 4, 6}));
+
+    auto replayed_request = unprotect_try_cast_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsObjectReleasedRequest)
+{
+    auto service_owner = make_service("domain-owner", "zone-owner");
+    auto service_caller = make_service("domain-caller", "zone-caller");
+    const auto owner_context = establish(service_owner, identity{"domain-caller", "zone-caller"}, 242);
+    establish(service_caller, identity{"domain-owner", "zone-owner"}, 242);
+
+    auto owner_zone = make_zone(44);
+    auto caller_zone = make_zone(34);
+    auto remote_object = owner_zone.with_object(rpc::object(24));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::object_released_params params;
+    params.protocol_version = rpc::get_version();
+    params.remote_object_id = *remote_object;
+    params.caller_zone_id = caller_zone;
+    params.in_back_channel.push_back(rpc::back_channel_entry{41, {3, 5, 7}});
+    const auto payload_type_id = 0xcafe01U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'o', 'b', 'j'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
+
+    auto protected_request = protect_object_released_request(*service_owner, owner_context, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
+    EXPECT_EQ(protected_request.value.params.remote_object_id.get_object_id().get_val(), 0U);
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
+
+    auto unprotected_request = unprotect_object_released_request(*service_caller, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.remote_object_id, params.remote_object_id);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 41U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({3, 5, 7}));
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
+
+    auto replayed_request = unprotect_object_released_request(*service_caller, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsTransportDownRequest)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 252);
+    establish(service_b, identity{"domain-a", "zone-a"}, 252);
+
+    auto caller_zone = make_zone(35);
+    auto destination_zone = make_zone(45);
+
+    rpc::transport_down_params params;
+    params.protocol_version = rpc::get_version();
+    params.destination_zone_id = destination_zone;
+    params.caller_zone_id = caller_zone;
+    params.in_back_channel.push_back(rpc::back_channel_entry{42, {4, 6, 8}});
+    const auto payload_type_id = 0xcafe02U;
+    const auto payload_encoding = rpc::encoding::yas_binary;
+    const auto payload_bytes = std::vector<char>{'d', 'o', 'w', 'n'};
+    params.payload = make_raw_payload(payload_type_id, payload_encoding, payload_bytes);
+
+    auto protected_request = protect_transport_down_request(*service_a, context_a, params);
+    ASSERT_TRUE(protected_request.accepted) << protected_request.error.reason;
+    expect_protected_payload(protected_request.value.params.payload, payload_encoding);
+    EXPECT_NE(protected_request.value.params.payload->get_payload(), payload_bytes);
+
+    auto unprotected_request = unprotect_transport_down_request(*service_b, protected_request.value.params);
+    ASSERT_TRUE(unprotected_request.accepted) << unprotected_request.error.reason;
+    EXPECT_EQ(unprotected_request.value.params.protocol_version, params.protocol_version);
+    EXPECT_EQ(unprotected_request.value.params.destination_zone_id, params.destination_zone_id);
+    EXPECT_EQ(unprotected_request.value.params.caller_zone_id, params.caller_zone_id);
+    ASSERT_EQ(unprotected_request.value.params.in_back_channel.size(), 1U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].type_id, 42U);
+    EXPECT_EQ(unprotected_request.value.params.in_back_channel[0].payload, std::vector<uint8_t>({4, 6, 8}));
+    expect_payload(unprotected_request.value.params.payload, payload_type_id, payload_encoding, payload_bytes);
+
+    auto replayed_request = unprotect_transport_down_request(*service_b, protected_request.value.params);
+    EXPECT_FALSE(replayed_request.accepted);
+}
+
+TEST(
+    AttestationService,
+    ProtectsControlRequestsUsingAgreedPayloadEncodings)
+{
+    auto payload_type_id = rpc::id<rpc::attestation_identity>::get(rpc::get_version());
+    ASSERT_NE(payload_type_id, 0U);
+
+    uint64_t transcript_id = 260;
+    for (auto encoding : agreed_payload_encodings())
+    {
+        SCOPED_TRACE(static_cast<uint64_t>(encoding));
+
+        auto service_a = make_service("domain-a", "zone-a");
+        auto service_b = make_service("domain-b", "zone-b");
+        const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, transcript_id);
+        establish(service_b, identity{"domain-a", "zone-a"}, transcript_id);
+        ++transcript_id;
+
+        auto caller_zone = make_zone(40 + transcript_id);
+        auto destination_zone = make_zone(50 + transcript_id);
+        auto requesting_zone = make_zone(60 + transcript_id);
+        auto remote_object = destination_zone.with_object(rpc::object(0x1234));
+        ASSERT_TRUE(remote_object.has_value());
+
+        rpc::add_ref_params add_ref_params;
+        add_ref_params.protocol_version = rpc::get_version();
+        add_ref_params.remote_object_id = *remote_object;
+        add_ref_params.caller_zone_id = caller_zone;
+        add_ref_params.requesting_zone_id = requesting_zone;
+        add_ref_params.build_out_param_channel = rpc::add_ref_options::build_caller_route;
+        add_ref_params.request_id = 901;
+        add_ref_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "add-ref"));
+
+        auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params);
+        ASSERT_TRUE(protected_add_ref.accepted) << protected_add_ref.error.reason;
+        expect_protected_payload(protected_add_ref.value.params.payload, encoding);
+        EXPECT_EQ(protected_add_ref.value.params.remote_object_id.get_object_id().get_val(), 0U);
+        EXPECT_NE(protected_add_ref.value.params.payload->get_payload(), add_ref_params.payload->get_payload());
+
+        auto unprotected_add_ref = unprotect_add_ref_request(*service_b, protected_add_ref.value.params);
+        ASSERT_TRUE(unprotected_add_ref.accepted) << unprotected_add_ref.error.reason;
+        EXPECT_EQ(unprotected_add_ref.value.params.remote_object_id, add_ref_params.remote_object_id);
+        expect_identity_typed_payload(unprotected_add_ref.value.params.payload, payload_type_id, encoding, "add-ref");
+
+        rpc::release_params release_params;
+        release_params.protocol_version = rpc::get_version();
+        release_params.remote_object_id = *remote_object;
+        release_params.caller_zone_id = caller_zone;
+        release_params.options = rpc::release_options::normal;
+        release_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "release"));
+
+        auto protected_release = protect_release_request(*service_a, context_a, release_params);
+        ASSERT_TRUE(protected_release.accepted) << protected_release.error.reason;
+        expect_protected_payload(protected_release.value.params.payload, encoding);
+        EXPECT_EQ(protected_release.value.params.remote_object_id.get_object_id().get_val(), 0U);
+        EXPECT_NE(protected_release.value.params.payload->get_payload(), release_params.payload->get_payload());
+
+        auto unprotected_release = unprotect_release_request(*service_b, protected_release.value.params);
+        ASSERT_TRUE(unprotected_release.accepted) << unprotected_release.error.reason;
+        EXPECT_EQ(unprotected_release.value.params.remote_object_id, release_params.remote_object_id);
+        expect_identity_typed_payload(unprotected_release.value.params.payload, payload_type_id, encoding, "release");
+
+        rpc::try_cast_params try_cast_params;
+        try_cast_params.protocol_version = rpc::get_version();
+        try_cast_params.caller_zone_id = caller_zone;
+        try_cast_params.remote_object_id = *remote_object;
+        try_cast_params.interface_id = rpc::interface_ordinal(0xabc123);
+        try_cast_params.payload = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "try-cast"));
+
+        auto protected_try_cast = protect_try_cast_request(*service_a, context_a, try_cast_params);
+        ASSERT_TRUE(protected_try_cast.accepted) << protected_try_cast.error.reason;
+        expect_protected_payload(protected_try_cast.value.params.payload, encoding);
+        EXPECT_EQ(
+            protected_try_cast.value.params.interface_id,
+            canopy::security::attestation::encrypted_payload_interface_id(rpc::get_version()));
+        EXPECT_EQ(protected_try_cast.value.params.remote_object_id.get_object_id().get_val(), 0U);
+        EXPECT_NE(protected_try_cast.value.params.payload->get_payload(), try_cast_params.payload->get_payload());
+
+        auto unprotected_try_cast = unprotect_try_cast_request(*service_b, protected_try_cast.value.params);
+        ASSERT_TRUE(unprotected_try_cast.accepted) << unprotected_try_cast.error.reason;
+        EXPECT_EQ(unprotected_try_cast.value.params.remote_object_id, try_cast_params.remote_object_id);
+        EXPECT_EQ(unprotected_try_cast.value.params.interface_id, try_cast_params.interface_id);
+        expect_identity_typed_payload(unprotected_try_cast.value.params.payload, payload_type_id, encoding, "try-cast");
+
+        rpc::object_released_params object_released_params;
+        object_released_params.protocol_version = rpc::get_version();
+        object_released_params.remote_object_id = *remote_object;
+        object_released_params.caller_zone_id = caller_zone;
+        object_released_params.payload
+            = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "object-released"));
+
+        auto protected_object_released = protect_object_released_request(*service_a, context_a, object_released_params);
+        ASSERT_TRUE(protected_object_released.accepted) << protected_object_released.error.reason;
+        expect_protected_payload(protected_object_released.value.params.payload, encoding);
+        EXPECT_EQ(protected_object_released.value.params.remote_object_id.get_object_id().get_val(), 0U);
+        EXPECT_NE(
+            protected_object_released.value.params.payload->get_payload(), object_released_params.payload->get_payload());
+
+        auto unprotected_object_released
+            = unprotect_object_released_request(*service_b, protected_object_released.value.params);
+        ASSERT_TRUE(unprotected_object_released.accepted) << unprotected_object_released.error.reason;
+        EXPECT_EQ(unprotected_object_released.value.params.remote_object_id, object_released_params.remote_object_id);
+        expect_identity_typed_payload(
+            unprotected_object_released.value.params.payload, payload_type_id, encoding, "object-released");
+
+        rpc::transport_down_params transport_down_params;
+        transport_down_params.protocol_version = rpc::get_version();
+        transport_down_params.destination_zone_id = destination_zone;
+        transport_down_params.caller_zone_id = caller_zone;
+        transport_down_params.payload
+            = make_raw_payload(payload_type_id, encoding, make_identity_payload(encoding, "transport-down"));
+
+        auto protected_transport_down = protect_transport_down_request(*service_a, context_a, transport_down_params);
+        ASSERT_TRUE(protected_transport_down.accepted) << protected_transport_down.error.reason;
+        expect_protected_payload(protected_transport_down.value.params.payload, encoding);
+        EXPECT_NE(
+            protected_transport_down.value.params.payload->get_payload(), transport_down_params.payload->get_payload());
+
+        auto unprotected_transport_down
+            = unprotect_transport_down_request(*service_b, protected_transport_down.value.params);
+        ASSERT_TRUE(unprotected_transport_down.accepted) << unprotected_transport_down.error.reason;
+        EXPECT_EQ(unprotected_transport_down.value.params.destination_zone_id, transport_down_params.destination_zone_id);
+        expect_identity_typed_payload(
+            unprotected_transport_down.value.params.payload, payload_type_id, encoding, "transport-down");
+    }
+}
+
+TEST(
+    AttestationService,
+    ProtectedRequestsAllowMutablePublicBackChannels)
+{
+    auto service_a = make_service("domain-a", "zone-a");
+    auto service_b = make_service("domain-b", "zone-b");
+    const auto context_a = establish(service_a, identity{"domain-b", "zone-b"}, 303);
+    const auto context_b = establish(service_b, identity{"domain-a", "zone-a"}, 303);
+
+    auto caller_zone = make_zone(61);
+    auto destination_zone = make_zone(71);
+    auto remote_object = destination_zone.with_object(rpc::object(13));
+    ASSERT_TRUE(remote_object.has_value());
+
+    rpc::send_params send_params;
+    send_params.protocol_version = rpc::get_version();
+    send_params.encoding_type = rpc::encoding::yas_binary;
+    send_params.tag = 4321;
+    send_params.caller_zone_id = caller_zone;
+    send_params.remote_object_id = *remote_object;
+    send_params.interface_id = rpc::interface_ordinal(0x778899);
+    send_params.method_id = rpc::method(6);
+    send_params.in_data = {'s'};
+    send_params.in_back_channel.push_back(rpc::back_channel_entry{1, {2}});
+    send_params.request_id = 14;
+
+    auto protected_send = protect_send_request(*service_a, context_a, send_params);
+    ASSERT_TRUE(protected_send.accepted) << protected_send.error.reason;
+
+    auto receiver_send = protected_send.value.params;
+    receiver_send.in_back_channel.push_back(rpc::back_channel_entry{99, {8, 7, 6}});
+
+    auto unprotected_send = unprotect_send_request(*service_b, receiver_send);
+    ASSERT_TRUE(unprotected_send.accepted) << unprotected_send.error.reason;
+    ASSERT_EQ(unprotected_send.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[0].type_id, 1U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[1].type_id, 99U);
+    EXPECT_EQ(unprotected_send.value.params.in_back_channel[1].payload, std::vector<uint8_t>({8, 7, 6}));
+
+    rpc::send_result response;
+    response.error_code = rpc::error::OK();
+    response.out_buf = {'r'};
+    response.out_back_channel.push_back(rpc::back_channel_entry{5, {6}});
+    auto protected_response = protect_send_response(
+        *service_b, context_b, receiver_send, unprotected_send.value.request_counter, std::move(response));
+    ASSERT_TRUE(protected_response.accepted) << protected_response.error.reason;
+    protected_response.value.out_back_channel.push_back(rpc::back_channel_entry{101, {10, 11}});
+
+    auto unprotected_response = unprotect_send_response(
+        *service_a,
+        context_a,
+        protected_send.value.params,
+        protected_send.value.request_counter,
+        std::move(protected_response.value));
+    ASSERT_TRUE(unprotected_response.accepted) << unprotected_response.error.reason;
+    EXPECT_EQ(unprotected_response.value.out_buf, std::vector<char>({'r'}));
+    ASSERT_EQ(unprotected_response.value.out_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[0].type_id, 5U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].type_id, 101U);
+    EXPECT_EQ(unprotected_response.value.out_back_channel[1].payload, std::vector<uint8_t>({10, 11}));
+
+    auto requesting_zone = make_zone(81);
+    rpc::add_ref_params add_ref_params;
+    add_ref_params.protocol_version = rpc::get_version();
+    add_ref_params.remote_object_id = *remote_object;
+    add_ref_params.caller_zone_id = caller_zone;
+    add_ref_params.requesting_zone_id = requesting_zone;
+    add_ref_params.build_out_param_channel = rpc::add_ref_options::normal;
+    add_ref_params.in_back_channel.push_back(rpc::back_channel_entry{3, {4}});
+    add_ref_params.request_id = 15;
+
+    auto protected_add_ref = protect_add_ref_request(*service_a, context_a, add_ref_params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_add_ref.accepted) << protected_add_ref.error.reason;
+
+    auto receiver_add_ref = protected_add_ref.value.params;
+    receiver_add_ref.in_back_channel.push_back(rpc::back_channel_entry{100, {9, 8, 7}});
+
+    auto unprotected_add_ref = unprotect_add_ref_request(*service_b, receiver_add_ref);
+    ASSERT_TRUE(unprotected_add_ref.accepted) << unprotected_add_ref.error.reason;
+    ASSERT_EQ(unprotected_add_ref.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[0].type_id, 3U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[1].type_id, 100U);
+    EXPECT_EQ(unprotected_add_ref.value.params.in_back_channel[1].payload, std::vector<uint8_t>({9, 8, 7}));
+
+    rpc::release_params release_params;
+    release_params.protocol_version = rpc::get_version();
+    release_params.remote_object_id = *remote_object;
+    release_params.caller_zone_id = caller_zone;
+    release_params.options = rpc::release_options::normal;
+    release_params.in_back_channel.push_back(rpc::back_channel_entry{4, {5}});
+
+    auto protected_release = protect_release_request(*service_a, context_a, release_params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_release.accepted) << protected_release.error.reason;
+
+    auto receiver_release = protected_release.value.params;
+    receiver_release.in_back_channel.push_back(rpc::back_channel_entry{102, {11, 10, 9}});
+
+    auto unprotected_release = unprotect_release_request(*service_b, receiver_release);
+    ASSERT_TRUE(unprotected_release.accepted) << unprotected_release.error.reason;
+    ASSERT_EQ(unprotected_release.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_release.value.params.in_back_channel[0].type_id, 4U);
+    EXPECT_EQ(unprotected_release.value.params.in_back_channel[1].type_id, 102U);
+    EXPECT_EQ(unprotected_release.value.params.in_back_channel[1].payload, std::vector<uint8_t>({11, 10, 9}));
+
+    rpc::try_cast_params try_cast_params;
+    try_cast_params.protocol_version = rpc::get_version();
+    try_cast_params.caller_zone_id = caller_zone;
+    try_cast_params.remote_object_id = *remote_object;
+    try_cast_params.interface_id = rpc::interface_ordinal(0x998877);
+    try_cast_params.in_back_channel.push_back(rpc::back_channel_entry{6, {7}});
+
+    auto protected_try_cast = protect_try_cast_request(*service_a, context_a, try_cast_params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_try_cast.accepted) << protected_try_cast.error.reason;
+
+    auto receiver_try_cast = protected_try_cast.value.params;
+    receiver_try_cast.in_back_channel.push_back(rpc::back_channel_entry{103, {12, 13, 14}});
+
+    auto unprotected_try_cast = unprotect_try_cast_request(*service_b, receiver_try_cast);
+    ASSERT_TRUE(unprotected_try_cast.accepted) << unprotected_try_cast.error.reason;
+    ASSERT_EQ(unprotected_try_cast.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_try_cast.value.params.in_back_channel[0].type_id, 6U);
+    EXPECT_EQ(unprotected_try_cast.value.params.in_back_channel[1].type_id, 103U);
+    EXPECT_EQ(unprotected_try_cast.value.params.in_back_channel[1].payload, std::vector<uint8_t>({12, 13, 14}));
+
+    rpc::object_released_params object_released_params;
+    object_released_params.protocol_version = rpc::get_version();
+    object_released_params.remote_object_id = *remote_object;
+    object_released_params.caller_zone_id = caller_zone;
+    object_released_params.in_back_channel.push_back(rpc::back_channel_entry{7, {8}});
+
+    auto protected_object_released
+        = protect_object_released_request(*service_b, context_b, object_released_params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_object_released.accepted) << protected_object_released.error.reason;
+
+    auto receiver_object_released = protected_object_released.value.params;
+    receiver_object_released.in_back_channel.push_back(rpc::back_channel_entry{104, {15, 16, 17}});
+
+    auto unprotected_object_released = unprotect_object_released_request(*service_a, receiver_object_released);
+    ASSERT_TRUE(unprotected_object_released.accepted) << unprotected_object_released.error.reason;
+    ASSERT_EQ(unprotected_object_released.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_object_released.value.params.in_back_channel[0].type_id, 7U);
+    EXPECT_EQ(unprotected_object_released.value.params.in_back_channel[1].type_id, 104U);
+    EXPECT_EQ(unprotected_object_released.value.params.in_back_channel[1].payload, std::vector<uint8_t>({15, 16, 17}));
+
+    rpc::transport_down_params transport_down_params;
+    transport_down_params.protocol_version = rpc::get_version();
+    transport_down_params.destination_zone_id = destination_zone;
+    transport_down_params.caller_zone_id = caller_zone;
+    transport_down_params.in_back_channel.push_back(rpc::back_channel_entry{8, {9}});
+
+    auto protected_transport_down
+        = protect_transport_down_request(*service_a, context_a, transport_down_params, rpc::encoding::yas_binary);
+    ASSERT_TRUE(protected_transport_down.accepted) << protected_transport_down.error.reason;
+
+    auto receiver_transport_down = protected_transport_down.value.params;
+    receiver_transport_down.in_back_channel.push_back(rpc::back_channel_entry{105, {18, 19, 20}});
+
+    auto unprotected_transport_down = unprotect_transport_down_request(*service_b, receiver_transport_down);
+    ASSERT_TRUE(unprotected_transport_down.accepted) << unprotected_transport_down.error.reason;
+    ASSERT_EQ(unprotected_transport_down.value.params.in_back_channel.size(), 2U);
+    EXPECT_EQ(unprotected_transport_down.value.params.in_back_channel[0].type_id, 8U);
+    EXPECT_EQ(unprotected_transport_down.value.params.in_back_channel[1].type_id, 105U);
+    EXPECT_EQ(unprotected_transport_down.value.params.in_back_channel[1].payload, std::vector<uint8_t>({18, 19, 20}));
+}

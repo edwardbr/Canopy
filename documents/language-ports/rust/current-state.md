@@ -1,7 +1,7 @@
 # Rust Current State
 
 This document intentionally keeps the original Rust port plan in
-[`original-translation-instructions.md`](/var/home/edward/projects/Canopy/documents/language-ports/rust/original-translation-instructions.md)
+[`original-translation-instructions.md`](../../../documents/language-ports/rust/original-translation-instructions.md)
 so drift from the initial assumptions remains visible.
 
 Current implemented scope:

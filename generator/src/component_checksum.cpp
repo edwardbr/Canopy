@@ -61,7 +61,7 @@ namespace component_checksum
 
         std::ofstream out(file);
         out << fingerprint::generate(m_ob, {}, nullptr, latest_protocol_version);
-    };
+    }
 
     void write_struct(
         const class_entity& m_ob,
@@ -82,7 +82,7 @@ namespace component_checksum
 
         std::ofstream out(file);
         out << fingerprint::generate(m_ob, {}, nullptr, latest_protocol_version);
-    };
+    }
 
     // entry point
     void write_namespace(

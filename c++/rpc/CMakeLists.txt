@@ -6,84 +6,35 @@
 cmake_minimum_required(VERSION 3.24)
 
 if(CANOPY_USE_TELEMETRY)
-  set(CANOPY_ENCLAVE_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_SERVICE rpc::rpc_telemetry)
   set(CANOPY_TELEMETRY_INTERFACE rpc::rpc_telemetry_interface)
   set(CANOPY_TELEMETRY_TYPES_IDL telemetry_types_idl)
 else()
-  set(CANOPY_ENCLAVE_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_SERVICE)
   set(CANOPY_TELEMETRY_INTERFACE)
   set(CANOPY_TELEMETRY_TYPES_IDL)
 endif()
 
-if(CANOPY_BUILD_ENCLAVE)
-  add_library(
-    rpc_enclave
-    include/rpc/internal/address_utils.h
-    include/rpc/internal/assert.h
-    include/rpc/internal/casting_interface.h
-    include/rpc/internal/error_codes.h
-    include/rpc/internal/logger.h
-    include/rpc/internal/marshaller.h
-    include/rpc/internal/object_proxy.h
-    include/rpc/internal/pass_through.h
-    include/rpc/internal/serialiser.h
-    include/rpc/internal/service_proxy.h
-    include/rpc/internal/service.h
-    include/rpc/internal/stub.h
-    include/rpc/internal/types.h
-    include/rpc/internal/transport.h
-    include/rpc/internal/version.h
-    src/address_utils.cpp
-    src/rpc_types.cpp
-    src/casting_interface.cpp
-    src/error_codes.cpp
-    src/object_proxy.cpp
-    src/pass_through.cpp
-    src/service_proxy.cpp
-    src/service.cpp
-    src/stub.cpp
-    src/transport.cpp
-    src/version.cpp)
-
-  target_compile_definitions(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC_ENCLAVE})
-  target_include_directories(
-    rpc_enclave
-    PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include/rpc>"
-    PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
-  target_link_libraries(
-    rpc_enclave
-    PUBLIC ${CANOPY_TELEMETRY_INTERFACE}
-           ${CANOPY_ENCLAVE_TELEMETRY_SERVICE}
-           ${CANOPY_ENCLAVE_FMT_LIB}
-           rpc_types_idl_enclave
-           noop_idl_enclave
-           logging_idl_enclave
-           ${CANOPY_ENCLAVE_TELEMETRY_TYPES_IDL}
-    PRIVATE yas_common)
-  target_link_options(rpc_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
-
-  set_property(TARGET rpc_enclave PROPERTY COMPILE_PDB_NAME rpc_enclave)
-  if(CANOPY_ENABLE_CLANG_TIDY)
-    set_target_properties(rpc_enclave PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
-  endif()
-  add_library(rpc::rpc_enclave ALIAS rpc_enclave)
+# ######################################################################################################################
+set(_rpc_blocking_executor_sources)
+if(NOT CANOPY_BUILD_COROUTINE)
+  list(APPEND _rpc_blocking_executor_sources include/rpc/internal/executor/blocking_executor.h
+       src/executor/blocking_executor.cpp)
 endif()
 
-# ######################################################################################################################
 add_library(
   rpc
   include/rpc/internal/address_utils.h
   include/rpc/internal/assert.h
   include/rpc/internal/casting_interface.h
   include/rpc/internal/error_codes.h
+  include/rpc/internal/executor/executor.h
   include/rpc/internal/logger.h
   include/rpc/internal/marshaller.h
   include/rpc/internal/object_proxy.h
   include/rpc/internal/pass_through.h
   include/rpc/internal/polyfill/atomic_shared_ptr.h
+  include/rpc/internal/polyfill/io_status.h
   include/rpc/internal/serialiser.h
   include/rpc/internal/service_proxy.h
   include/rpc/internal/service.h
@@ -91,6 +42,7 @@ add_library(
   include/rpc/internal/transport.h
   include/rpc/internal/types.h
   include/rpc/internal/version.h
+  ${_rpc_blocking_executor_sources}
   src/address_utils.cpp
   src/rpc_types.cpp
   src/casting_interface.cpp
@@ -122,7 +74,6 @@ target_link_libraries(
 
 target_compile_options(rpc PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(rpc PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(rpc PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET rpc PROPERTY COMPILE_PDB_NAME rpc)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

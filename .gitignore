@@ -15,14 +15,24 @@ CMakeUserPresets.json
 node_modules
 c++/demos/websocket/client/generated/
 c++/demos/websocket/server/www/generated/
+
+# Generated config demo JSON schemas.
+c++/demos/config_demo/schemas/**
+!c++/demos/config_demo/schemas/
+!c++/demos/config_demo/schemas/.gitignore
 .cache
+
+# Local AI/tool state
+.qwen/
+.opencode/
 .codex-index/
+.claude/
+.beads/
+
 venv
 __pycache__/
 *.pyc
 c++/telemetry/reports
-.beads/bd.sock.startlock
-.beads/*.log.gz
 
 # Rust build artifacts and generated code
 rust/target/

@@ -1,0 +1,76 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace websocket_stream
+    {
+        enum endpoint_role : uint8_t
+        {
+            client = 0,
+            server = 1,
+        };
+
+        // Optional protocol-level keep-alive for the WebSocket stream layer.
+        //
+        // This is WebSocket ping/pong, not application RPC liveness. It keeps
+        // intermediaries and peers from silently leaving an otherwise idle
+        // WebSocket connection half-open. Business-level health checks should
+        // still live above the transport when the application needs semantic
+        // service readiness rather than byte-stream liveness.
+        struct keep_alive_settings
+        {
+            [description="When true, the WebSocket stream periodically sends ping control frames while it is being polled for input. The default keeps existing behaviour unchanged."]
+            bool enabled = false;
+
+            [description="Milliseconds between keep-alive ping frames. Zero disables periodic ping generation even when enabled is true."]
+            uint64_t interval_ms = 30000;
+
+            [description="Milliseconds allowed for a matching pong before the stream is treated as closed. Zero disables pong timeout enforcement."]
+            uint64_t timeout_ms = 10000;
+        };
+
+        // RFC 7692 permessage-deflate settings. The first implementation uses
+        // no-context-takeover in both directions so compression state never
+        // outlives a single WebSocket message.
+        struct permessage_deflate_settings
+        {
+            [description="When true, WebSocket data messages may be compressed with RFC 7692 permessage-deflate. HTTP upgrade code should enable this only after negotiating Sec-WebSocket-Extensions."]
+            bool enabled = false;
+
+            [description="When true, the server does not reuse its deflate window across messages and advertises server_no_context_takeover during HTTP upgrade negotiation."]
+            bool server_no_context_takeover = true;
+
+            [description="When true, the client does not reuse its deflate window across messages and the server advertises client_no_context_takeover during HTTP upgrade negotiation."]
+            bool client_no_context_takeover = true;
+        };
+
+        // Settings for the WebSocket stream wrapper. WebSocket is a stream
+        // layer, not a base stream: it wraps an already-created stream after
+        // TCP/TLS/etc. are in place.
+        struct stream_settings
+        {
+            [description="Optional endpoint role override. If omitted, the connection factory derives client for connect paths and server for accept paths."]
+            rpc::optional<endpoint_role> role;
+
+            [description="Protocol-level WebSocket ping/pong keep-alive settings."]
+            keep_alive_settings keep_alive = {};
+
+            [description="RFC 7692 permessage-deflate compression settings for WebSocket data messages."]
+            permessage_deflate_settings permessage_deflate = {};
+
+            [description="Maximum reassembled WebSocket message payload bytes accepted from the peer. Zero disables this limit; public endpoints should keep a finite value."]
+            uint64_t max_message_bytes = 1048576;
+
+            [description="Maximum payload bytes accepted in a single WebSocket frame before the frame is handed to WSLay. Zero disables this limit; public endpoints should keep a finite value."]
+            uint64_t max_frame_payload_bytes = 1048576;
+
+            [description="Maximum complete WebSocket messages that may be queued inside the stream while the caller is still draining earlier messages. Zero disables this limit."]
+            uint64_t max_decoded_messages = 16;
+        };
+    }
+}

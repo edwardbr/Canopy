@@ -1,0 +1,41 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace attestation_stream
+    {
+        enum handshake_role : uint8_t
+        {
+            client = 0,
+            server = 1,
+        };
+
+        // Configuration owned by the streaming attestation wrapper.
+        //
+        // This stream layer proves or accepts peer evidence over an already
+        // constructed underlying stream. The attestation service, backend
+        // selection, policy, quote provider, verifier, and domain identity
+        // are deliberately not duplicated here. They are shared attestation
+        // configuration and must remain reusable by future non-stream
+        // attestation entry points.
+        struct stream_settings
+        {
+            [description="Handshake side used when a generic stream factory is asked to run the attestation handshake automatically. If omitted, connect uses client and accept uses server."]
+            rpc::optional<handshake_role> role;
+
+            [description="Transcript id bound into the attestation handshake. Callers that reuse one stream factory instance for multiple sessions should supply a fresh value per session."]
+            uint64_t transcript_id = 1;
+
+            [description="Maximum time, in milliseconds, allowed for the attestation handshake. Zero means the implementation default."]
+            uint64_t handshake_timeout_ms = 5000;
+
+            [description="Optional logical attestation service name. Factories may use this to resolve a prebuilt attestation_service from their context rather than constructing one from JSON."]
+            rpc::optional<std::string> service_name;
+        };
+    }
+}

@@ -3,7 +3,7 @@
  * All rights reserved.
  */
 
-// Autonomous Instruction-Based Fuzz Test for RPC++ Zone Hierarchies
+// Autonomous Instruction-Based Fuzz Test for Canopy Zone Hierarchies
 // Tests autonomous nodes executing instruction sets independently to build specific graph topologies.
 
 // Standard C++ headers
@@ -2207,7 +2207,7 @@ int main(
 {
     try
     {
-        args::ArgumentParser parser("RPC++ Fuzz Tester - Tests zone hierarchies and cross-zone object passing");
+        args::ArgumentParser parser("Canopy Fuzz Tester - Tests zone hierarchies and cross-zone object passing");
 
         args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
 

@@ -26,6 +26,7 @@ if(NOT TARGET test_types_idl)
     yas_compressed_binary
     yas_json
     protocol_buffers
+    canonical_crypto
     include_paths ${CANOPY_CPP_SOURCE_DIR}/tests/idls/.)
 endif()
 

@@ -11,7 +11,7 @@ namespace rpc
 {
     // A tiny non-blocking mutex for very short critical sections.
     //
-    // This is useful in places such as enclave-local bookkeeping where blocking
+    // This is useful in places such as local runtime bookkeeping where blocking
     // primitives may not be available. It is not an async mutex and must never
     // be held across CO_AWAIT or any other operation that can suspend.
     class spin_mutex

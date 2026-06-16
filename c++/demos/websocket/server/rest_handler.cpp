@@ -5,6 +5,61 @@
 
 #include <fmt/format.h>
 
+#include <string_view>
+
+namespace
+{
+    auto json_string(std::string_view value) -> std::string
+    {
+        std::string output;
+        output.reserve(value.size() + 2);
+        output.push_back('"');
+        for (char ch : value)
+        {
+            const auto c = static_cast<unsigned char>(ch);
+            switch (ch)
+            {
+            case '"':
+                output += "\\\"";
+                break;
+            case '\\':
+                output += "\\\\";
+                break;
+            case '\b':
+                output += "\\b";
+                break;
+            case '\f':
+                output += "\\f";
+                break;
+            case '\n':
+                output += "\\n";
+                break;
+            case '\r':
+                output += "\\r";
+                break;
+            case '\t':
+                output += "\\t";
+                break;
+            default:
+                if (c < 0x20)
+                {
+                    constexpr char hex[] = "0123456789abcdef";
+                    output += "\\u00";
+                    output.push_back(hex[(c >> 4U) & 0x0fU]);
+                    output.push_back(hex[c & 0x0fU]);
+                }
+                else
+                {
+                    output.push_back(ch);
+                }
+                break;
+            }
+        }
+        output.push_back('"');
+        return output;
+    }
+}
+
 namespace websocket_demo
 {
     namespace v1
@@ -54,7 +109,8 @@ namespace websocket_demo
             {
                 return create_success_response("{\"status\":\"running\",\"version\":\"1.0\"}");
             }
-            if (path.starts_with("/api/resource/"))
+            if ((path.size() >= sizeof("/api/resource/") - 1
+                    && path.compare(0, sizeof("/api/resource/") - 1, "/api/resource/") == 0))
             {
                 std::string resource_data = "{\"id\":123,\"name\":\"example\",\"value\":\"data\"}";
                 return create_success_response(resource_data);
@@ -67,12 +123,18 @@ namespace websocket_demo
             const std::string& path,
             const std::string& body) -> canopy::http_server::response
         {
+            if (path == "/api/echo")
+            {
+                const auto response_data
+                    = fmt::format(R"({{"echo":{},"body_length":{}}})", json_string(body), body.length());
+                return create_success_response(response_data);
+            }
             if (path == "/api/resource")
             {
                 std::string response_data = "{\"id\":456,\"created\":true,\"message\":\"Resource created\"}";
                 return create_success_response(response_data);
             }
-            if (path.starts_with("/api/"))
+            if ((path.size() >= sizeof("/api/") - 1 && path.compare(0, sizeof("/api/") - 1, "/api/") == 0))
             {
                 std::string response_data
                     = "{\"message\":\"POST request received\",\"body_length\":" + std::to_string(body.length()) + "}";
@@ -86,12 +148,13 @@ namespace websocket_demo
             const std::string& path,
             const std::string& body) -> canopy::http_server::response
         {
-            if (path.starts_with("/api/resource/"))
+            if ((path.size() >= sizeof("/api/resource/") - 1
+                    && path.compare(0, sizeof("/api/resource/") - 1, "/api/resource/") == 0))
             {
                 std::string response_data = "{\"updated\":true,\"message\":\"Resource updated\"}";
                 return create_success_response(response_data);
             }
-            if (path.starts_with("/api/"))
+            if ((path.size() >= sizeof("/api/") - 1 && path.compare(0, sizeof("/api/") - 1, "/api/") == 0))
             {
                 std::string response_data
                     = "{\"message\":\"PUT request received\",\"body_length\":" + std::to_string(body.length()) + "}";
@@ -103,12 +166,13 @@ namespace websocket_demo
 
         auto http_client_connection::handle_delete(const std::string& path) -> canopy::http_server::response
         {
-            if (path.starts_with("/api/resource/"))
+            if ((path.size() >= sizeof("/api/resource/") - 1
+                    && path.compare(0, sizeof("/api/resource/") - 1, "/api/resource/") == 0))
             {
                 std::string response_data = "{\"deleted\":true,\"message\":\"Resource deleted\"}";
                 return create_success_response(response_data);
             }
-            if (path.starts_with("/api/"))
+            if ((path.size() >= sizeof("/api/") - 1 && path.compare(0, sizeof("/api/") - 1, "/api/") == 0))
             {
                 std::string response_data = "{\"message\":\"DELETE request received\"}";
                 return create_success_response(response_data);

@@ -6,6 +6,10 @@
 # Canopy Shared Pointer Fuzz Test CMakeLists.txt
 cmake_minimum_required(VERSION 3.24)
 
+if(NOT CANOPY_BUILD_TEST)
+  return()
+endif()
+
 # Create fuzz test for Canopy zone graphs and shared_ptr testing
 add_executable(fuzz_test_main fuzz_test_main.cpp)
 
@@ -32,7 +36,6 @@ target_compile_features(fuzz_test_main PRIVATE cxx_std_17)
 target_compile_definitions(fuzz_test_main PRIVATE ${CANOPY_DEFINES})
 target_compile_options(fuzz_test_main PRIVATE ${CANOPY_COMPILE_OPTIONS})
 target_link_options(fuzz_test_main PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(fuzz_test_main PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET fuzz_test_main PROPERTY COMPILE_PDB_NAME fuzz_test_main)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -58,7 +61,20 @@ if(CANOPY_BUILD_TEST)
   include(GoogleTest)
   add_executable(fuzz_test_gtest fuzz_test_main.cpp fuzz_gtest_wrapper.cpp)
 
-  if(NOT CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
+  if(CANOPY_BUILD_RUST AND NOT CARGO_EXECUTABLE)
+    find_program(CARGO_EXECUTABLE cargo HINTS "$ENV{HOME}/.cargo/bin" "$ENV{CARGO_HOME}/bin")
+  endif()
+
+  if(CANOPY_BUILD_RUST
+     AND NOT CANOPY_BUILD_COROUTINE
+     AND CANOPY_BUILD_PROTOCOL_BUFFERS
+     AND CARGO_EXECUTABLE)
+    set(CANOPY_ENABLE_RUST_FUZZ_CHILD ON)
+  else()
+    set(CANOPY_ENABLE_RUST_FUZZ_CHILD OFF)
+  endif()
+
+  if(CANOPY_ENABLE_RUST_FUZZ_CHILD)
     set(CANOPY_RUST_FUZZ_CHILD_TARGET_DIR "${CMAKE_BINARY_DIR}/rust-fuzz-target")
     set(CANOPY_RUST_FUZZ_CHILD_LIB
         "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}/debug/${CMAKE_SHARED_LIBRARY_PREFIX}canopy_fuzz_test_rust_child${CMAKE_SHARED_LIBRARY_SUFFIX}"
@@ -73,7 +89,7 @@ if(CANOPY_BUILD_TEST)
 
     add_custom_command(
       OUTPUT "${CANOPY_RUST_FUZZ_CHILD_LIB}"
-      COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_RUST_FUZZ_CHILD_ENV} cargo build --manifest-path
+      COMMAND ${CMAKE_COMMAND} -E env ${CANOPY_RUST_FUZZ_CHILD_ENV} ${CARGO_EXECUTABLE} build --manifest-path
               "${CMAKE_CURRENT_SOURCE_DIR}/rust_child/Cargo.toml" --target-dir "${CANOPY_RUST_FUZZ_CHILD_TARGET_DIR}"
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       DEPENDS ${CANOPY_RUST_FUZZ_CHILD_DEPENDS}
@@ -118,13 +134,12 @@ if(CANOPY_BUILD_TEST)
 
   target_compile_features(fuzz_test_gtest PRIVATE cxx_std_17)
   target_compile_definitions(fuzz_test_gtest PRIVATE ${CANOPY_DEFINES} "main=fuzz_test_entry" CANOPY_FUZZ_TEST_GTEST)
-  if(NOT CANOPY_BUILD_COROUTINE AND CANOPY_BUILD_PROTOCOL_BUFFERS)
+  if(CANOPY_ENABLE_RUST_FUZZ_CHILD)
     target_compile_definitions(fuzz_test_gtest PRIVATE CANOPY_RUST_FUZZ_TEST_DLL_PATH="${CANOPY_RUST_FUZZ_CHILD_LIB}")
     add_dependencies(fuzz_test_gtest canopy_fuzz_test_rust_child)
   endif()
   target_compile_options(fuzz_test_gtest PRIVATE ${CANOPY_COMPILE_OPTIONS})
   target_link_options(fuzz_test_gtest PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_directories(fuzz_test_gtest PUBLIC ${SGX_LIBRARY_PATH})
   set_property(TARGET fuzz_test_gtest PROPERTY COMPILE_PDB_NAME fuzz_test_gtest)
 
   if(CANOPY_USE_TELEMETRY)
@@ -133,4 +148,43 @@ if(CANOPY_BUILD_TEST)
   endif()
 
   gtest_discover_tests(fuzz_test_gtest)
+endif()
+
+if(CANOPY_BUILD_COROUTINE
+   AND CANOPY_BUILD_WEBSOCKET
+   AND TARGET canopy_http_server
+   AND TARGET transport_untrusted_web)
+  include(GoogleTest)
+
+  add_executable(untrusted_web_fuzz_gtest untrusted_web_fuzz_gtest.cpp)
+
+  target_link_libraries(
+    untrusted_web_fuzz_gtest
+    PRIVATE rpc::rpc
+            streaming
+            streaming_websocket
+            canopy_http_server
+            transport_untrusted_web
+            websocket_protocol_idl
+            ${LINK_LIBS}
+            rpc_log
+            GTest::gtest_main)
+
+  target_include_directories(
+    untrusted_web_fuzz_gtest
+    PRIVATE ${CANOPY_CPP_SOURCE_DIR}/tests/fixtures/include ${CANOPY_CPP_SOURCE_DIR}/tests/common/include
+            ${CMAKE_BINARY_DIR}/generated/include ${CMAKE_BINARY_DIR}/generated/src)
+
+  target_compile_features(untrusted_web_fuzz_gtest PRIVATE cxx_std_20)
+  target_compile_definitions(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_DEFINES})
+  target_compile_options(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_link_options(untrusted_web_fuzz_gtest PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
+  set_property(TARGET untrusted_web_fuzz_gtest PROPERTY COMPILE_PDB_NAME untrusted_web_fuzz_gtest)
+
+  if(CANOPY_USE_TELEMETRY)
+    target_compile_definitions(untrusted_web_fuzz_gtest PRIVATE CANOPY_USE_TELEMETRY)
+    target_link_libraries(untrusted_web_fuzz_gtest PRIVATE rpc_telemetry)
+  endif()
+
+  gtest_discover_tests(untrusted_web_fuzz_gtest)
 endif()

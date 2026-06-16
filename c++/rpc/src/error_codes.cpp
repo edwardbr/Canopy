@@ -2,6 +2,8 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
+#include <string_view>
+
 #include <rpc/rpc.h>
 
 namespace rpc
@@ -182,6 +184,23 @@ namespace rpc
             return false;
         }
 
+        bool is_public_control_status(int err)
+        {
+            return err == OK() || is_error(err);
+        }
+
+        int sanitise_public_control_status(
+            int err,
+            std::string_view operation)
+        {
+            (void)operation;
+            if (is_public_control_status(err))
+                return err;
+
+            RPC_WARNING("control operation {} exposed non-RPC status {}; replacing with PROTOCOL_ERROR", operation, err);
+            return PROTOCOL_ERROR();
+        }
+
         void set_OK_val(int val)
         {
             state().OK_val = val;
@@ -195,7 +214,7 @@ namespace rpc
             state().offset_val_is_negative = val;
         }
 
-        const char* to_string(int err)
+        std::string_view to_string(int err)
         {
             if (err == OK())
             {

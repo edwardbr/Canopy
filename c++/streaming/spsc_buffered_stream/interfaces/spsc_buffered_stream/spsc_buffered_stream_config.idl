@@ -1,0 +1,33 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace rpc
+{
+    namespace spsc_buffered_stream
+    {
+        // Settings for the SPSC buffered stream layer.
+        //
+        // This is not the same thing as the spsc_queue base stream. spsc_queue
+        // is a rendezvous mechanism: two endpoints are connected by the same
+        // named queue pair. spsc_buffered_stream is a local buffering layer
+        // around one already-created underlying stream. It inserts two private
+        // SPSC queues and uses scheduler tasks to pump bytes between those
+        // queues and the underlying stream:
+        //
+        //   send() -> private send queue -> pump -> underlying stream
+        //   receive() <- private receive queue <- pump <- underlying stream
+        //
+        // Use it only when a stream stack needs this explicit queued boundary
+        // for buffering or scheduling isolation. Normal configured TCP/TLS/
+        // WebSocket/attestation stacks should not need it.
+        struct stream_settings
+        {
+            [description="Optional diagnostic label for this buffered stream layer instance."]
+            rpc::optional<std::string> name;
+        };
+    }
+}

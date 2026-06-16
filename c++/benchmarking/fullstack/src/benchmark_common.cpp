@@ -13,12 +13,10 @@
 
 #include <fmt/format.h>
 
-#ifdef CANOPY_BUILD_COROUTINE
-#  include <arpa/inet.h>
-#  include <netinet/in.h>
-#  include <sys/socket.h>
-#  include <unistd.h>
-#endif
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace comprehensive::v1
 {
@@ -36,24 +34,25 @@ namespace comprehensive::v1
         if (samples_ns.size() < (trim_each_side * 2))
             return stats;
 
+        std::vector<int64_t> sorted(samples_ns.begin(), samples_ns.end());
+        std::sort(sorted.begin(), sorted.end());
+
         const size_t begin = trim_each_side;
         const size_t end = samples_ns.size() - trim_each_side;
-        std::vector<int64_t> mid(
-            samples_ns.begin() + static_cast<long>(begin), samples_ns.begin() + static_cast<long>(end));
-
-        std::sort(mid.begin(), mid.end());
-        const size_t mid_count = mid.size();
+        const size_t mid_count = end - begin;
         if (mid_count == 0)
             return stats;
 
-        const auto sum = std::accumulate(mid.begin(), mid.end(), int64_t{0});
+        const auto mid_begin = sorted.begin() + static_cast<long>(begin);
+        const auto mid_end = sorted.begin() + static_cast<long>(end);
+        const auto sum = std::accumulate(mid_begin, mid_end, int64_t{0});
         constexpr double ns_to_us = 1.0 / 1000.0;
         stats.avg_us = (static_cast<double>(sum) / static_cast<double>(mid_count)) * ns_to_us;
-        stats.min_us = static_cast<double>(mid.front()) * ns_to_us;
-        stats.max_us = static_cast<double>(mid.back()) * ns_to_us;
-        stats.p50_us = static_cast<double>(mid[(mid_count * 50) / 100]) * ns_to_us;
-        stats.p90_us = static_cast<double>(mid[(mid_count * 90) / 100]) * ns_to_us;
-        stats.p95_us = static_cast<double>(mid[(mid_count * 95) / 100]) * ns_to_us;
+        stats.min_us = static_cast<double>(*mid_begin) * ns_to_us;
+        stats.max_us = static_cast<double>(*(mid_end - 1)) * ns_to_us;
+        stats.p50_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 50) / 100))) * ns_to_us;
+        stats.p90_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 90) / 100))) * ns_to_us;
+        stats.p95_us = static_cast<double>(*(mid_begin + static_cast<long>((mid_count * 95) / 100))) * ns_to_us;
         return stats;
     }
 
@@ -103,7 +102,7 @@ namespace comprehensive::v1
             "N/A");
     }
 
-    CORO_TASK(int)
+    CORO_TASK(comprehensive_error)
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
         const std::vector<uint8_t>& payload,
@@ -133,7 +132,7 @@ namespace comprehensive::v1
 
             if (response.size() != payload.size())
             {
-                CO_RETURN rpc::error::INVALID_DATA();
+                CO_RETURN comprehensive_error::INVALID_BENCHMARK_RESULT;
             }
 
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
@@ -141,25 +140,6 @@ namespace comprehensive::v1
         }
 
         CO_RETURN rpc::error::OK();
-    }
-
-#ifdef CANOPY_BUILD_COROUTINE
-    std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count)
-    {
-        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-                .pool = coro::thread_pool::options{.thread_count = thread_count},
-                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
-    }
-
-    void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler)
-    {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-        while (!scheduler.expired() && std::chrono::steady_clock::now() < deadline)
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
-        if (!scheduler.expired())
-            std::cerr << "benchmark: scheduler cleanup timed out\n";
     }
 
     uint16_t allocate_loopback_port()
@@ -183,17 +163,53 @@ namespace comprehensive::v1
         ::close(fd);
         return ntohs(bound_addr.sin_port);
     }
+
+#ifdef CANOPY_BUILD_COROUTINE
+    std::shared_ptr<coro::scheduler> make_benchmark_scheduler(uint32_t thread_count)
+    {
+        return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                .pool = coro::thread_pool::options{.thread_count = thread_count},
+                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+    }
+
+    void wait_for_scheduler_cleanup(std::weak_ptr<coro::scheduler> scheduler)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (!scheduler.expired() && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+        if (!scheduler.expired())
+            std::cerr << "benchmark: scheduler cleanup timed out\n";
+    }
 #endif
 
     void print_header()
     {
-        fmt::print("Benchmark: 1000 RPC calls per test, middle 80% (drop first/last 10%)\n");
+        fmt::print(
+            "Benchmark: {} RPC calls per test, sorted middle {} samples (drop fastest/slowest {} each)\n",
+            call_count,
+            call_count - (trim_each_side * 2),
+            trim_each_side);
 #ifdef CANOPY_BUILD_COROUTINE
         fmt::print(
-            "Warmup: local=10 calls, libcoro_dll=20 calls, libcoro_host=20 calls, ipc=30 calls, spsc=20 calls, "
-            "io_uring=100 calls, tcp=100 calls (not included in timing)\n");
+            "Warmup: local={} calls, unshared_scheduler_dll={} calls, shared_scheduler_dll={} calls, ipc={} calls, "
+            "spsc={} calls, "
+            "io_uring={} calls, tcp={} calls "
+            "(not included in timing)\n",
+            local_warmup_calls,
+            dll_warmup_calls,
+            dll_warmup_calls,
+            ipc_warmup_calls,
+            spsc_warmup_calls,
+            io_uring_warmup_calls,
+            tcp_warmup_calls);
 #else
-        fmt::print("Warmup: local=10 calls, dynamic_library=20 calls (not included in timing)\n");
+        fmt::print(
+            "Warmup: local={} calls, blocking_dll={} calls, tcp={} calls (not included in timing)\n",
+            local_warmup_calls,
+            dll_warmup_calls,
+            tcp_warmup_calls);
 #endif
         fmt::print("Note: Timings are sampled in nanoseconds and displayed in microseconds\n");
         fmt::print("Units: MB/s = megabytes per second (1 MB = 1024*1024 bytes)\n");

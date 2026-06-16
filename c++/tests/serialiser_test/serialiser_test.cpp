@@ -8,11 +8,15 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <rpc/rpc.h>
+#include <example_shared/example_shared.h>
 #include <serialiser_test/test_types.h>
+#include <json/json_dom.h>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -98,15 +102,38 @@ struct protocol_buffers_enc
 };
 #endif
 
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+struct canonical_crypto_enc
+{
+    static constexpr rpc::encoding value = rpc::encoding::canonical_crypto;
+    static constexpr const char* name = "canonical_crypto";
+
+    template<typename T> static std::vector<uint8_t> serialise(const T& obj) { return rpc::to_canonical_crypto(obj); }
+
+    template<typename T>
+    static std::string deserialise(
+        const rpc::byte_span& data,
+        T& obj)
+    {
+        return rpc::from_canonical_crypto(data, obj);
+    }
+};
+#endif
+
 // ============================================================
-// IDL wrapper scalar suite – tests all four encodings including
-// protocol_buffers, using the generated wrapper structs from
+// IDL wrapper scalar suite - tests the enabled encodings, using
+// the generated wrapper structs from
 // tests/idls/serialiser_test/test_types.idl.
 // Each wrapper holds a single scalar field named "value".
 // ============================================================
 
-#ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
+#if defined(CANOPY_BUILD_PROTOCOL_BUFFERS) && defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+using AllEncodings
+    = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, protocol_buffers_enc, canonical_crypto_enc>;
+#elif defined(CANOPY_BUILD_PROTOCOL_BUFFERS)
 using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, protocol_buffers_enc>;
+#elif defined(CANOPY_BUILD_CANONICAL_CRYPTO)
+using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc, canonical_crypto_enc>;
 #else
 using AllEncodings = ::testing::Types<yas_binary_enc, yas_compressed_binary_enc, yas_json_enc>;
 #endif
@@ -705,6 +732,156 @@ void expect_nanopb_unsupported(
 }
 #endif
 
+xxx::optional_variant_json_holder make_optional_variant_json_holder(
+    bool with_optionals,
+    bool use_string_variant)
+{
+    xxx::optional_variant_json_holder obj;
+    if (with_optionals)
+    {
+        obj.optional_int = 42;
+        obj.optional_json_value = json::v1::object(
+            json::v1::map{
+                {"enabled", true},
+                {"label", "optional-json"},
+            });
+        obj.rpc_optional_int = 43;
+        obj.rpc_optional_json_value = json::v1::object(
+            json::v1::map{
+                {"enabled", true},
+                {"label", "rpc-optional-json"},
+            });
+    }
+
+    if (use_string_variant)
+        obj.variant_value = std::string("variant-string");
+    else
+        obj.variant_value = int32_t{-17};
+
+    obj.json_value = json::v1::object(
+        json::v1::map{
+            {"name", "canopy"},
+            {"values", json::v1::array{"one", true, nullptr}},
+        });
+    return obj;
+}
+
+xxx::rpc_optional_holder make_rpc_optional_holder(bool with_optionals)
+{
+    xxx::rpc_optional_holder obj;
+    obj.required_int = 7;
+    obj.required_string = "required";
+    if (with_optionals)
+    {
+        obj.optional_int = 51;
+        obj.optional_string = std::string("present");
+        obj.optional_json_value = json::v1::object(
+            json::v1::map{
+                {"kind", "rpc-optional"},
+                {"enabled", true},
+            });
+    }
+    return obj;
+}
+
+template<typename T>
+void expect_yas_family_roundtrip(
+    const T& original,
+    const char* case_name)
+{
+    {
+        auto serialized = rpc::to_yas_binary(original);
+        rpc::byte_span data_span(serialized);
+        T deserialized{};
+        auto error = rpc::from_yas_binary(data_span, deserialized);
+        EXPECT_TRUE(error.empty()) << case_name << ": YAS binary failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": YAS binary value mismatch";
+    }
+
+    {
+        auto serialized = rpc::to_compressed_yas_binary(original);
+        rpc::byte_span data_span(serialized);
+        T deserialized{};
+        auto error = rpc::from_yas_compressed_binary(data_span, deserialized);
+        EXPECT_TRUE(error.empty()) << case_name << ": compressed YAS binary failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": compressed YAS binary value mismatch";
+    }
+
+    {
+        auto serialized = rpc::to_yas_json(original);
+        rpc::byte_span data_span(serialized);
+        T deserialized{};
+        auto error = rpc::from_yas_json(data_span, deserialized);
+        EXPECT_TRUE(error.empty()) << case_name << ": YAS JSON failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": YAS JSON value mismatch";
+    }
+}
+
+template<typename T>
+void expect_yas_binary_encodings_roundtrip(
+    const T& original,
+    const char* case_name)
+{
+    {
+        auto serialized = rpc::to_yas_binary(original);
+        rpc::byte_span data_span(serialized);
+        T deserialized{};
+        auto error = rpc::from_yas_binary(data_span, deserialized);
+        EXPECT_TRUE(error.empty()) << case_name << ": YAS binary failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": YAS binary value mismatch";
+    }
+
+    {
+        auto serialized = rpc::to_compressed_yas_binary(original);
+        rpc::byte_span data_span(serialized);
+        T deserialized{};
+        auto error = rpc::from_yas_compressed_binary(data_span, deserialized);
+        EXPECT_TRUE(error.empty()) << case_name << ": compressed YAS binary failed: " << error;
+        EXPECT_TRUE(deserialized == original) << case_name << ": compressed YAS binary value mismatch";
+    }
+}
+
+json::v1::object make_nested_json_map_object()
+{
+    return json::v1::object(
+        json::v1::map{
+            {"name", "canopy"},
+            {"enabled", true},
+            {"count", int32_t{3}},
+            {"items",
+                json::v1::array{
+                    "alpha",
+                    int32_t{7},
+                    false,
+                    nullptr,
+                    json::v1::map{
+                        {"inner", "value"},
+                        {"index", uint32_t{5}},
+                    },
+                }},
+            {"config",
+                json::v1::map{
+                    {"threshold", 1.25},
+                    {"empty_array", json::v1::array{}},
+                    {"empty_map", json::v1::map{}},
+                }},
+        });
+}
+
+json::v1::object make_nested_json_array_object()
+{
+    return json::v1::object(
+        json::v1::array{
+            "root-array",
+            uint64_t{42},
+            true,
+            nullptr,
+            json::v1::map{
+                {"nested", json::v1::array{"x", "y", "z"}},
+            },
+        });
+}
+
 // Test to_yas_json serialization with generated structure
 TEST_F(
     SerialiserTest,
@@ -747,6 +924,223 @@ TEST_F(
 
     EXPECT_FALSE(result.empty());
 }
+
+TEST_F(
+    SerialiserTest,
+    OptionalVariantJsonYasRoundtrip)
+{
+    expect_yas_family_roundtrip(make_optional_variant_json_holder(true, true), "optional/variant/json populated");
+    expect_yas_family_roundtrip(make_optional_variant_json_holder(false, false), "optional/variant/json empty optionals");
+    expect_yas_family_roundtrip(make_rpc_optional_holder(true), "rpc optional populated");
+    expect_yas_family_roundtrip(make_rpc_optional_holder(false), "rpc optional empty");
+}
+
+TEST_F(
+    SerialiserTest,
+    YasBinaryJsonObjectsMapsArraysRpcOptionalAndVariantRoundtrip)
+{
+    const auto map_object = make_nested_json_map_object();
+    const auto array_object = make_nested_json_array_object();
+
+    expect_yas_binary_encodings_roundtrip(map_object, "json object containing map and array");
+    expect_yas_binary_encodings_roundtrip(array_object, "json object containing root array");
+
+    rpc::optional<json::v1::object> populated_optional{map_object};
+    expect_yas_binary_encodings_roundtrip(populated_optional, "rpc optional containing json map object");
+
+    rpc::optional<json::v1::object> empty_optional;
+    expect_yas_binary_encodings_roundtrip(empty_optional, "empty rpc optional containing json object");
+
+    using json_object_variant = rpc::variant<int32_t, json::v1::object, std::string>;
+    expect_yas_binary_encodings_roundtrip(json_object_variant{map_object}, "rpc variant case containing json map object");
+    expect_yas_binary_encodings_roundtrip(
+        json_object_variant{array_object}, "rpc variant case containing json array object");
+
+    using json_dom_variant = rpc::variant<json::v1::map, json::v1::array, json::v1::object>;
+    expect_yas_binary_encodings_roundtrip(
+        json_dom_variant{map_object.get<json::v1::map>()}, "rpc variant case containing direct json map");
+    expect_yas_binary_encodings_roundtrip(
+        json_dom_variant{array_object.get<json::v1::array>()}, "rpc variant case containing direct json array");
+
+    rpc::optional<json_dom_variant> populated_optional_variant{json_dom_variant{array_object.get<json::v1::array>()}};
+    expect_yas_binary_encodings_roundtrip(
+        populated_optional_variant, "rpc optional containing rpc variant containing json array");
+
+    rpc::optional<json_dom_variant> empty_optional_variant;
+    expect_yas_binary_encodings_roundtrip(
+        empty_optional_variant, "empty rpc optional containing rpc variant with json alternatives");
+}
+
+TEST_F(
+    SerialiserTest,
+    RpcVariantYasJsonUsesTagKeyedObject)
+{
+    // The wire shape is keyed by the alternative's canonical tag from
+    // rpc::variant_alternative_tag<T>::value — for int32_t/std::string that
+    // is "int32" / "string". Both YAS JSON and the DOM-based json/convert.h
+    // converters share this shape so the schema validates either path.
+    const auto string_holder = make_optional_variant_json_holder(false, true);
+    const auto string_json = rpc::to_yas_json<std::string>(string_holder);
+    EXPECT_THAT(string_json, testing::HasSubstr(R"("variant_value":{"string":"variant-string"})"));
+
+    const auto int_holder = make_optional_variant_json_holder(false, false);
+    const auto int_json = rpc::to_yas_json<std::string>(int_holder);
+    EXPECT_THAT(int_json, testing::HasSubstr(R"("variant_value":{"int32":-17})"));
+
+    const std::string incoming_json = R"({"variant_value":{"string":"from-json"},"json_value":{"name":"decoded"}})";
+    xxx::optional_variant_json_holder decoded;
+    const auto error = rpc::from_yas_json(rpc::byte_span(incoming_json), decoded);
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_FALSE(decoded.optional_int.has_value());
+    ASSERT_TRUE(rpc::holds_alternative<std::string>(decoded.variant_value));
+    EXPECT_EQ(rpc::get<std::string>(decoded.variant_value), "from-json");
+}
+
+TEST_F(
+    SerialiserTest,
+    RpcOptionalYasJsonUsesMissingMemberSemantics)
+{
+    const auto empty_holder = make_rpc_optional_holder(false);
+    const auto json_result = rpc::to_yas_json<std::string>(empty_holder);
+    EXPECT_THAT(json_result, testing::HasSubstr("\"required_int\":7"));
+    EXPECT_THAT(json_result, testing::HasSubstr("\"required_string\":\"required\""));
+    EXPECT_THAT(json_result, testing::Not(testing::HasSubstr("optional_int")));
+    EXPECT_THAT(json_result, testing::Not(testing::HasSubstr("optional_string")));
+    EXPECT_THAT(json_result, testing::Not(testing::HasSubstr("optional_json_value")));
+
+    const std::string missing_optionals_json = R"({"required_int":9,"required_string":"from-json"})";
+    xxx::rpc_optional_holder decoded;
+    const auto error = rpc::from_yas_json(rpc::byte_span(missing_optionals_json), decoded);
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(decoded.required_int, 9);
+    EXPECT_EQ(decoded.required_string, "from-json");
+    EXPECT_FALSE(decoded.optional_int.has_value());
+    EXPECT_FALSE(decoded.optional_string.has_value());
+    EXPECT_FALSE(decoded.optional_json_value.has_value());
+
+    const std::string null_optionals_json
+        = R"({"required_int":10,"required_string":"from-null","optional_int":null,"optional_string":null,"optional_json_value":null})";
+    xxx::rpc_optional_holder null_decoded;
+    const auto null_error = rpc::from_yas_json(rpc::byte_span(null_optionals_json), null_decoded);
+    EXPECT_TRUE(null_error.empty()) << null_error;
+    EXPECT_EQ(null_decoded.required_int, 10);
+    EXPECT_EQ(null_decoded.required_string, "from-null");
+    EXPECT_FALSE(null_decoded.optional_int.has_value());
+    EXPECT_FALSE(null_decoded.optional_string.has_value());
+    EXPECT_FALSE(null_decoded.optional_json_value.has_value());
+}
+
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+TEST_F(
+    SerialiserTest,
+    ToCanonicalCryptoUsesStableBigEndianBytes)
+{
+    scalar_test::int32_holder obj;
+    obj.value = 0x01020304;
+
+    auto result = rpc::to_canonical_crypto(obj);
+
+    const std::vector<uint8_t> expected = {0x01, 0x02, 0x03, 0x04};
+    EXPECT_EQ(result, expected);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoStringRoundtrip)
+{
+    scalar_test::string_holder obj;
+    obj.value = "abc";
+
+    auto serialized = rpc::to_canonical_crypto(obj);
+    const std::vector<uint8_t> expected = {0, 0, 0, 0, 0, 0, 0, 3, 'a', 'b', 'c'};
+    EXPECT_EQ(serialized, expected);
+
+    rpc::byte_span data_span(serialized);
+    scalar_test::string_holder deserialized;
+    auto error = rpc::from_canonical_crypto(data_span, deserialized);
+
+    EXPECT_TRUE(error.empty()) << error;
+    EXPECT_EQ(deserialized.value, obj.value);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoRejectsTrailingBytes)
+{
+    scalar_test::int16_holder obj;
+    obj.value = 0x1234;
+
+    auto serialized = rpc::to_canonical_crypto(obj);
+    serialized.push_back(0);
+
+    rpc::byte_span data_span(serialized);
+    scalar_test::int16_holder deserialized;
+    auto error = rpc::from_canonical_crypto(data_span, deserialized);
+
+    EXPECT_FALSE(error.empty());
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceRequestProxyToStub)
+{
+    std::vector<char> request;
+    auto error = xxx::i_foo::proxy_serialiser<rpc::serialiser::canonical_crypto>::do_multi_val(10, 20, request);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(request.size(), 8u);
+
+    int first = 0;
+    int second = 0;
+    rpc::byte_span request_span(request);
+    error = xxx::i_foo::stub_deserialiser<rpc::serialiser::canonical_crypto>::do_multi_val(first, second, request_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(first, 10);
+    EXPECT_EQ(second, 20);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceReplyStubToProxy)
+{
+    std::vector<char> reply;
+    auto error = xxx::i_foo::stub_serialiser<rpc::serialiser::canonical_crypto>::do_something_out_val(42, reply);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(reply.size(), 4u);
+
+    int value = 0;
+    rpc::byte_span reply_span(reply);
+    error = xxx::i_foo::proxy_deserialiser<rpc::serialiser::canonical_crypto>::do_something_out_val(value, reply_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(value, 42);
+}
+
+TEST_F(
+    SerialiserTest,
+    CanonicalCryptoInterfaceInOutParameter)
+{
+    int value = 123;
+    std::vector<char> request;
+    auto error = xxx::i_foo::proxy_serialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(value, request);
+    EXPECT_EQ(error, rpc::error::OK());
+
+    int stub_value = 0;
+    rpc::byte_span request_span(request);
+    error = xxx::i_foo::stub_deserialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(
+        stub_value, request_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(stub_value, value);
+
+    stub_value = 456;
+    std::vector<char> reply;
+    error = xxx::i_foo::stub_serialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(stub_value, reply);
+    EXPECT_EQ(error, rpc::error::OK());
+
+    rpc::byte_span reply_span(reply);
+    error = xxx::i_foo::proxy_deserialiser<rpc::serialiser::canonical_crypto>::do_something_in_out_ref(value, reply_span);
+    EXPECT_EQ(error, rpc::error::OK());
+    EXPECT_EQ(value, stub_value);
+}
+#endif
 
 // Test to_protobuf serialization with generated structure
 #ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
@@ -1033,6 +1427,17 @@ TEST_F(
 
 TEST_F(
     SerialiserTest,
+    GoogleNanopbOptionalVariantJsonCompatibility)
+{
+    expect_google_nanopb_compatible(make_optional_variant_json_holder(true, true), "optional/variant/json populated");
+    expect_google_nanopb_compatible(
+        make_optional_variant_json_holder(false, false), "optional/variant/json empty optionals");
+    expect_google_nanopb_compatible(make_rpc_optional_holder(true), "rpc optional populated");
+    expect_google_nanopb_compatible(make_rpc_optional_holder(false), "rpc optional empty");
+}
+
+TEST_F(
+    SerialiserTest,
     NanopbUnsupportedTypeCoverage)
 {
     expect_nanopb_unsupported(scalar_test::int128_holder{__int128{1} << 100}, "__int128");
@@ -1085,6 +1490,10 @@ TEST_F(
 #ifdef CANOPY_BUILD_NANOPB
     auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
     EXPECT_FALSE(nanopb_result.empty());
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_result = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+    EXPECT_FALSE(canonical_result.empty());
 #endif
 }
 
@@ -1197,6 +1606,17 @@ TEST_F(
         EXPECT_EQ(deserialized.string_val, obj.string_val);
     }
 #endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    {
+        auto serialized = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+        rpc::byte_span data_span(serialized);
+        scalar_test::something_complicated deserialized;
+        auto error = rpc::deserialise(rpc::encoding::canonical_crypto, data_span, deserialized);
+        EXPECT_TRUE(error.empty());
+        EXPECT_EQ(deserialized.int_val, obj.int_val);
+        EXPECT_EQ(deserialized.string_val, obj.string_val);
+    }
+#endif
 }
 
 // Test get_saved_size function with all encodings
@@ -1225,6 +1645,10 @@ TEST_F(
     auto nanopb_size = rpc::get_saved_size(obj, rpc::encoding::nanopb);
     EXPECT_GT(nanopb_size, 0u);
 #endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_size = rpc::get_saved_size(obj, rpc::encoding::canonical_crypto);
+    EXPECT_GT(canonical_size, 0u);
+#endif
 
     auto json_result = rpc::serialise(obj, rpc::encoding::yas_json);
     EXPECT_EQ(json_size, json_result.size());
@@ -1239,6 +1663,10 @@ TEST_F(
 #ifdef CANOPY_BUILD_NANOPB
     auto nanopb_result = rpc::serialise(obj, rpc::encoding::nanopb);
     EXPECT_EQ(nanopb_size, nanopb_result.size());
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+    auto canonical_result = rpc::serialise(obj, rpc::encoding::canonical_crypto);
+    EXPECT_EQ(canonical_size, canonical_result.size());
 #endif
 }
 
@@ -1308,6 +1736,9 @@ TEST_F(
 #endif
 #ifdef CANOPY_BUILD_NANOPB
         rpc::encoding::nanopb,
+#endif
+#ifdef CANOPY_BUILD_CANONICAL_CRYPTO
+        rpc::encoding::canonical_crypto,
 #endif
     };
 

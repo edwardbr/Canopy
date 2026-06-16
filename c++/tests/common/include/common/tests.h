@@ -111,7 +111,7 @@ namespace marshalled_tests
     CORO_TASK(bool)
     standard_tests(
         xxx::i_foo& foo,
-        bool enclave);
+        bool supports_process_local_reference_tests);
 
     template<class T> inline CORO_TASK(bool) coro_standard_tests(T& lib)
     {
@@ -119,7 +119,7 @@ namespace marshalled_tests
 
         foo f;
 
-        CO_AWAIT standard_tests(f, lib.get_has_enclave());
+        CO_AWAIT standard_tests(f, lib.supports_process_local_reference_tests());
         CO_RETURN !lib.error_has_occurred();
     }
 
@@ -142,7 +142,7 @@ namespace marshalled_tests
             RPC_ERROR("create_foo returned OK but i_foo_ptr is null");
             CO_RETURN false;
         }
-        CO_AWAIT standard_tests(*i_foo_ptr, lib.get_has_enclave());
+        CO_AWAIT standard_tests(*i_foo_ptr, lib.supports_process_local_reference_tests());
         CO_RETURN true;
     }
 }

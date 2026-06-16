@@ -6,10 +6,12 @@
 # JSON Schema Generation Tests - consolidated into single test executable
 
 # Single consolidated JSON schema metadata test
-add_executable(json_schema_metadata_test json_schema_metadata_test.cpp i_foo_schema_validation_test.cpp)
+add_executable(json_schema_metadata_test json_schema_metadata_test.cpp i_foo_schema_validation_test.cpp
+                                         json_convert_test.cpp)
 
 # Add compile definitions like test
 target_compile_definitions(json_schema_metadata_test PRIVATE ${CANOPY_DEFINES})
+target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\")
 
 # Add include directories to match test structure
 target_include_directories(
@@ -18,34 +20,43 @@ target_include_directories(
          "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/src>"
   PRIVATE ${CANOPY_INCLUDES})
 
-if(CANOPY_BUILD_ENCLAVE)
-  set(ENCLAVE_DEPENDENCIES marshal_test_edl rpc_telemetry_edl_header)
-endif()
-
-# Link with libraries similar to test
 target_link_libraries(
   json_schema_metadata_test
-  PUBLIC common_tests
-         example_idl
+  PUBLIC example_idl
          example_import_idl
          example_shared_idl
+         schema_cycle_idl
+         set_fixture_idl
+         connection_factory_config_idl
+         connection_factory
+         network_config_idl
          rpc::rpc
          yas_common
          fmt::fmt-header-only
+         json
          GTest::gtest_main
          GTest::gmock_main
          spdlog::spdlog
-         nlohmann_json::nlohmann_json
-         nlohmann_json_schema_validator
-         ${CANOPY_LIBRARIES}
-         ${ENCLAVE_DEPENDENCIES}
-         test_fixtures
          rpc_log)
+
+if(TARGET tcp_coroutine_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC tcp_coroutine_stream_config_idl)
+endif()
+if(TARGET tcp_blocking_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC tcp_blocking_stream_config_idl)
+endif()
+if(TARGET compression_stream_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC compression_stream_config_idl)
+  target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_CONNECTION_FACTORY_HAS_COMPRESSION)
+endif()
+if(TARGET http_server_config_idl)
+  target_link_libraries(json_schema_metadata_test PUBLIC http_server_config_idl)
+  target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_HAS_HTTP_SERVER_CONFIG)
+endif()
 
 # Add compile options and link options like test
 target_compile_options(json_schema_metadata_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(json_schema_metadata_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-target_link_directories(json_schema_metadata_test PUBLIC ${SGX_LIBRARY_PATH})
 set_property(TARGET json_schema_metadata_test PROPERTY COMPILE_PDB_NAME json_schema_metadata_test)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

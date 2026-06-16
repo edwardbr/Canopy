@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <coro/coro.hpp>
+#include <rpc/internal/coro_runtime/libcoro/runtime.h>
 
 #include <memory>
 #include <utility>
@@ -13,15 +13,15 @@ namespace rpc::coro
 {
     namespace net = ::coro::net;
 
-    using event = ::coro::event;
-    using scheduler = ::coro::scheduler;
-    using thread_pool = ::coro::thread_pool;
+    using event = libcoro::event;
+    using scheduler = libcoro::scheduler;
+    using thread_pool = libcoro::thread_pool;
 
-    template<class T> using task = ::coro::task<T>;
+    template<class T> using task = libcoro::task<T>;
 
     template<class Awaitable> decltype(auto) sync_wait(Awaitable&& awaitable)
     {
-        return ::coro::sync_wait(std::forward<Awaitable>(awaitable));
+        return libcoro::sync_wait(std::forward<Awaitable>(awaitable));
     }
 
     using scheduler_ptr = std::shared_ptr<scheduler>;

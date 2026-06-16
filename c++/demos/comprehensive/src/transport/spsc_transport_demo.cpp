@@ -19,9 +19,9 @@
 
 #include <demo_impl.h>
 #include <rpc/rpc.h>
+#include <connection_factory/options.h>
+#include <streaming/spsc_queue/factory.h>
 #include <comprehensive/comprehensive_stub.h>
-#include <streaming/spsc_queue/stream.h>
-#include <transports/streaming/transport.h>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -33,25 +33,20 @@ namespace comprehensive
 {
     namespace v1
     {
+        namespace calc = ::calculator::v1;
 
 #ifdef CANOPY_BUILD_COROUTINE
-        struct spsc_queues
-        {
-            streaming::spsc_queue::queue_type to_process_2;
-            streaming::spsc_queue::queue_type to_process_1;
-        };
-
         CORO_TASK(bool)
         process_1_task(
             bool& success,
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
             rpc::zone zone_2,
-            spsc_queues* queues,
+            rpc::spsc_queue::queue_pair queues,
             std::atomic<bool>& is_loaded,
             rpc::event& client_finished)
         {
-            rpc::shared_ptr<comprehensive::v1::i_calculator> remote_calculator;
+            rpc::shared_ptr<calc::i_calculator> remote_calculator;
             auto on_shutdown_event = std::make_shared<rpc::event>();
             int error = rpc::error::OK();
 
@@ -60,22 +55,23 @@ namespace comprehensive
 
                 service_1->set_shutdown_event(on_shutdown_event);
 
-                auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
-                    &queues->to_process_1, &queues->to_process_2, scheduler);
-                auto transport_1 = rpc::stream_transport::make_client("transport_1", service_1, std::move(stream_1));
+                rpc::shared_ptr<calc::i_calculator> local_calculator;
 
-                rpc::shared_ptr<i_calculator> local_calculator; // = rpc::shared_ptr<i_calculator>(new calculator_impl());
+                rpc::connection_factory::stream_rpc_connection_settings options;
+                options.service.name = "process_1";
+                options.transport.name = "transport_1";
+                options.transport.service_proxy_name = "process_2";
+                options.transport.call_timeout_sweep = uint64_t{1};
 
                 std::cout << "Process 1: Connecting...\n";
-                auto connect_result = CO_AWAIT service_1->connect_to_zone<i_calculator, comprehensive::v1::i_calculator>(
-                    "process_2", transport_1, local_calculator);
+                auto connect_result = CO_AWAIT rpc::spsc_queue::connect_rpc<calc::i_calculator, calc::i_calculator>(
+                    local_calculator, queues, options, service_1);
                 remote_calculator = connect_result.output_interface;
-                auto error = connect_result.error_code;
+                error = connect_result.error_code;
 
                 is_loaded = true;
 
                 service_1.reset();
-                transport_1.reset();
             }
 
             if (error == rpc::error::OK())
@@ -125,7 +121,7 @@ namespace comprehensive
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
             rpc::zone zone_1,
-            spsc_queues* queues,
+            rpc::spsc_queue::queue_pair queues,
             std::atomic<bool>& is_loaded,
             rpc::event& server_ready,
             const rpc::event& client_finished)
@@ -136,22 +132,31 @@ namespace comprehensive
 
             rpc::event on_connected;
 
-            auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
-                &queues->to_process_2, &queues->to_process_1, scheduler);
-            auto transport_2 = CO_AWAIT service_2->make_acceptor<i_calculator, i_calculator>(
-                "transport_2",
-                rpc::stream_transport::transport_factory(std::move(stream_2)),
+            rpc::connection_factory::stream_rpc_connection_settings options;
+            options.service.name = "process_2";
+            options.transport.name = "transport_2";
+            options.transport.service_proxy_name = "process_2";
+            options.transport.call_timeout_sweep = uint64_t{1};
+
+            auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<calc::i_calculator, calc::i_calculator>(
                 // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&](const rpc::shared_ptr<i_calculator>&,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<i_calculator>)
+                [&](const rpc::shared_ptr<calc::i_calculator>&,
+                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
                 {
                     on_connected.set();
                     std::cout << "Process 2: Created calculator service\n";
-                    CO_RETURN rpc::service_connect_result<i_calculator>{
-                        rpc::error::OK(), rpc::shared_ptr<i_calculator>(new calculator_impl(svc))};
-                });
-
-            co_await transport_2->accept();
+                    CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
+                },
+                queues,
+                options,
+                service_2);
+            if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
+            {
+                std::cout << "Process 2: Accept failed: " << static_cast<int>(accept_result.error_code) << "\n";
+                server_ready.set();
+                CO_RETURN;
+            }
+            auto connection = std::move(accept_result.handle);
 
             std::cout << "Process 2: Ready for connections\n";
             server_ready.set();
@@ -162,7 +167,7 @@ namespace comprehensive
             service_2.reset();
 
             std::cout << "Process 2: Service reset\n";
-            transport_2.reset();
+            connection.reset();
             std::cout << "Process 2: Transport reset\n";
 
             // Wait for client to finish
@@ -187,7 +192,7 @@ namespace comprehensive
             zone_gen_.allocate_zone(addr2);
             rpc::zone zone_1(addr1);
             rpc::zone zone_2(addr2);
-            auto queues = std::make_shared<spsc_queues>();
+            auto queues = rpc::spsc_queue::queue_pair::create();
 
             auto scheduler_1 = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
                 coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
@@ -208,8 +213,8 @@ namespace comprehensive
             bool success = true;
             coro::sync_wait(
                 coro::when_all(
-                    process_1_task(success, scheduler_1, zone_1, zone_2, queues.get(), is_loaded, client_finished),
-                    process_2_task(scheduler_2, zone_2, zone_1, queues.get(), is_loaded, server_ready, client_finished)));
+                    process_1_task(success, scheduler_1, zone_1, zone_2, queues, is_loaded, client_finished),
+                    process_2_task(scheduler_2, zone_2, zone_1, queues, is_loaded, server_ready, client_finished)));
 
             // Explicitly shutdown schedulers to terminate and join their spawned threads
             // This prevents thread accumulation across multiple iterations

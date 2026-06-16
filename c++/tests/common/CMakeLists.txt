@@ -4,36 +4,7 @@
 ]]
 cmake_minimum_required(VERSION 3.24)
 
-message("common_enclave")
-
-# ######################################################################################################################
-# common_enclave
-
-if(${CANOPY_BUILD_ENCLAVE})
-  add_library(common_enclave INTERFACE)
-
-  target_include_directories(common_enclave INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-                                                      "$<INSTALL_INTERFACE:include/marshalled_tests>")
-
-  target_link_libraries(
-    common_enclave
-    INTERFACE transport_sgx_enclave
-              transport_local_enclave
-              rpc_enclave
-              marshal_test_edl_enclave
-              ${CANOPY_TELEMETRY_ENCLAVE_EDL}
-              ${CANOPY_ENCLAVE_FMT_LIB}
-              example_idl_enclave
-              yas_common)
-
-  # ####################################################################################################################
-
-endif()
-
 set(SOURCES ${COROUTINE_SERVICE_PROXIES} src/foo_impl.cpp src/tests.cpp)
-if(CANOPY_BUILD_ENCLAVE)
-  set(ADDITIONAL_TARGET marshal_test_edl rpc_telemetry_edl_header)
-endif()
 
 add_library(common_tests STATIC ${SOURCES})
 

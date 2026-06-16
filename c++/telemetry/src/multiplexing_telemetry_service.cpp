@@ -14,17 +14,14 @@
 #include <rpc/rpc.h>
 #include <rpc/telemetry/i_telemetry_service.h>
 
-#ifndef FOR_SGX
 // Forward declare TestInfo to avoid including gtest in headers
 namespace testing
 {
     class TestInfo;
 }
-#endif
 
 namespace rpc::telemetry
 {
-#ifndef FOR_SGX
     /**
      * @brief Configuration for creating telemetry services with test-specific names.
      */
@@ -41,7 +38,6 @@ namespace rpc::telemetry
         {
         }
     };
-#endif
 
     /**
      * @brief A telemetry service that forwards all telemetry events to multiple child services.
@@ -50,15 +46,12 @@ namespace rpc::telemetry
      * telemetry events to a configurable list of child telemetry services. This allows
      * running multiple telemetry backends simultaneously (e.g., console + file + custom).
      *
-     * Non-enclave builds only.
      */
     class multiplexing_telemetry_service : public i_telemetry_service
     {
     private:
         std::vector<std::shared_ptr<i_telemetry_service>> children_;
-#ifndef FOR_SGX
         std::vector<telemetry_service_config> service_configs_;
-#endif
 
     public:
         /**
@@ -103,7 +96,6 @@ namespace rpc::telemetry
 
         void handle_telemetry_event(rpc::telemetry_event event) const override;
 
-#ifndef FOR_SGX
         /**
          * @brief Register a telemetry service configuration that will be created for each test.
          *
@@ -127,7 +119,6 @@ namespace rpc::telemetry
          * @brief Reset for a new test - clear children hem with current test info.
          */
         void reset_for_test();
-#endif
 
         // i_telemetry_service interface - all methods forward to children
         void on_service_creation(const rpc::telemetry::service_creation_event& event) const override;
@@ -287,7 +278,6 @@ namespace rpc::telemetry
         children_.clear();
     }
 
-#ifndef FOR_SGX
     void multiplexing_telemetry_service::register_service_config(
         const std::string& type,
         const std::string& output_path)
@@ -319,7 +309,6 @@ namespace rpc::telemetry
         // Clear existing children
         children_.clear();
     }
-#endif
 
     // Forward all telemetry events to children
     void multiplexing_telemetry_service::handle_telemetry_event(rpc::telemetry_event event) const

@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Edward Boggis-Rolfe
 # All rights reserved.
 
-# RPC++ Multithreaded Stress Test Script
+# Canopy Multithreaded Stress Test Script
 # Comprehensive testing for race conditions, deadlocks, and service lifecycle issues
 # Usage: ./stress_test_multithreaded.sh [OPTIONS]
 
@@ -36,7 +36,7 @@ PARALLEL_RUNS=1
 # Usage function
 usage() {
     cat << EOF
-RPC++ Multithreaded Stress Test Script
+Canopy Multithreaded Stress Test Script
 
 Usage: $0 [OPTIONS]
 
@@ -62,7 +62,6 @@ MULTITHREADED TESTS COVERED:
     - multithreaded_standard_tests_with_and_foos
     - multithreaded_remote_tests
     - multithreaded_create_new_zone
-    - multithreaded_create_new_zone_releasing_host_then_running_on_other_enclave
     - multithreaded_bounce_baz_between_two_interfaces
     - multithreaded_check_sub_subordinate
     - multithreaded_two_zones_get_one_to_lookup_other
@@ -322,7 +321,7 @@ generate_summary() {
 
 # Main execution
 main() {
-    log "${BLUE}🚀 Starting RPC++ Multithreaded Stress Test${NC}"
+    log "${BLUE}🚀 Starting Canopy Multithreaded Stress Test${NC}"
     echo "Configuration:"
     echo "  Test Filter: $TEST_FILTER"
     echo "  Iterations: $ITERATIONS"

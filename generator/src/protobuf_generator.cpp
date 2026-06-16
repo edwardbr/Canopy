@@ -14,6 +14,7 @@
 #include <map>
 #include <functional>
 #include <set>
+#include <utility>
 
 // Other headers
 extern "C"
@@ -182,6 +183,35 @@ namespace protobuf_generator
         return proto_generator::cpp_type_to_proto_type(cpp_type);
     }
 
+    std::string proto_schema_custom_type_name(const std::string& type_name)
+    {
+        std::string normalized = proto_generator::normalise_cpp_type(type_name);
+        while (normalized.rfind("::", 0) == 0)
+            normalized.erase(0, 2);
+
+        std::vector<std::string> parts;
+        size_t start = 0;
+        for (size_t pos = normalized.find("::"); pos != std::string::npos; pos = normalized.find("::", start))
+        {
+            parts.push_back(normalized.substr(start, pos - start));
+            start = pos + 2;
+        }
+        parts.push_back(normalized.substr(start));
+
+        if (parts.size() <= 1)
+            return sanitize_type_name(normalized);
+
+        std::string package_name;
+        for (size_t index = 0; index + 1 < parts.size(); ++index)
+        {
+            if (!package_name.empty())
+                package_name += "_";
+            package_name += sanitize_type_name(parts[index]);
+        }
+
+        return ".protobuf." + package_name + "." + sanitize_type_name(parts.back());
+    }
+
     std::string resolve_typedef_alias(
         const class_entity& current_scope,
         const std::string& type_name)
@@ -202,16 +232,68 @@ namespace protobuf_generator
         return type_name;
     }
 
+    bool is_error_type(
+        const class_entity& current_scope,
+        const std::string& type_name)
+    {
+        auto normalized = proto_generator::normalise_cpp_type(type_name);
+        if (normalized.rfind("::", 0) == 0)
+            normalized.erase(0, 2);
+
+        std::string unqualified = normalized;
+        if (const auto ns_pos = normalized.rfind("::"); ns_pos != std::string::npos)
+            unqualified = normalized.substr(ns_pos + 2);
+
+        for (auto* scope = &current_scope; scope != nullptr; scope = scope->get_owner())
+        {
+            std::function<bool(const class_entity&)> search_for_error = [&](const class_entity& entity) -> bool
+            {
+                for (auto& elem : entity.get_elements(entity_type::ERROR))
+                {
+                    if (!elem)
+                        continue;
+
+                    const auto* error_entity = dynamic_cast<const class_entity*>(elem.get());
+                    if (!error_entity)
+                        continue;
+
+                    auto qualified_name = get_full_name(*error_entity, true, true);
+                    while (qualified_name.rfind("::", 0) == 0)
+                        qualified_name.erase(0, 2);
+                    if (qualified_name == normalized || error_entity->get_name() == unqualified)
+                        return true;
+                }
+
+                for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
+                {
+                    if (elem && search_for_error(static_cast<const class_entity&>(*elem)))
+                        return true;
+                }
+
+                return false;
+            };
+
+            if (search_for_error(*scope))
+                return true;
+        }
+
+        return false;
+    }
+
     std::string cpp_type_to_proto_type(
         const class_entity& current_scope,
         const std::string& cpp_type)
     {
+        auto resolved_type = resolve_typedef_alias(current_scope, cpp_type);
+        if (is_error_type(current_scope, resolved_type))
+            return "int32";
+
         return proto_generator::cpp_type_to_proto_type(
-            cpp_type,
+            resolved_type,
             [](const std::string&) { return false; },
             [](const std::string&) { return false; },
             [&current_scope](const std::string& type_name)
-            { return sanitize_type_name(resolve_typedef_alias(current_scope, type_name)); });
+            { return proto_schema_custom_type_name(resolve_typedef_alias(current_scope, type_name)); });
     }
 
     // Helper function to sanitize type name for protobuf
@@ -224,6 +306,100 @@ namespace protobuf_generator
     std::string sanitize_field_name(const std::string& field_name)
     {
         return proto_generator::sanitize_field_name(field_name);
+    }
+
+    std::string cpp_accessor_name_for_proto_field(const std::string& field_name)
+    {
+        // protoc appends an underscore for fields whose accessor would collide
+        // with methods inherited from google::protobuf::Message.
+        if (field_name == "descriptor")
+            return "descriptor_";
+        return field_name;
+    }
+
+    std::string sanitize_scoped_proto_field_type(std::string field_type)
+    {
+        if (field_type.find("::") == std::string::npos)
+            return field_type;
+
+        if (field_type.find("repeated ") == 0)
+        {
+            const std::string type_name = field_type.substr(9); // Skip "repeated "
+            return "repeated " + sanitize_type_name(type_name);
+        }
+
+        if (field_type.find("optional ") == 0)
+        {
+            const std::string type_name = field_type.substr(9); // Skip "optional "
+            return "optional " + sanitize_type_name(type_name);
+        }
+
+        if (field_type.find("map<") == 0)
+        {
+            // Map types are already in protobuf syntax. Only replace C++ namespace
+            // separators in the inner key/value types.
+            size_t pos = 0;
+            while ((pos = field_type.find("::", pos)) != std::string::npos)
+            {
+                field_type.replace(pos, 2, ".");
+                pos += 1;
+            }
+            return field_type;
+        }
+
+        return sanitize_type_name(field_type);
+    }
+
+    std::string optional_wrapper_message_name(
+        const std::string& owning_message_name,
+        const std::string& field_name)
+    {
+        return sanitize_type_name(owning_message_name) + "_" + field_name + "_optional";
+    }
+
+    std::string variant_wrapper_message_name(
+        const std::string& owning_message_name,
+        const std::string& field_name)
+    {
+        return sanitize_type_name(owning_message_name) + "_" + field_name + "_variant";
+    }
+
+    std::string variant_value_field_name(size_t alternative_index)
+    {
+        return "value_" + std::to_string(alternative_index);
+    }
+
+    void write_optional_wrapper_message_definition(
+        const class_entity& current_scope,
+        const std::string& wrapper_name,
+        const std::string& inner_type,
+        writer& proto)
+    {
+        proto("message {} {{", wrapper_name);
+        auto value_type = cpp_type_to_proto_type(current_scope, inner_type);
+        value_type = sanitize_scoped_proto_field_type(std::move(value_type));
+        proto("{} value = 1;", value_type);
+        proto("}}");
+        proto("");
+    }
+
+    void write_variant_wrapper_message_definition(
+        const class_entity& current_scope,
+        const std::string& wrapper_name,
+        const std::vector<std::string>& alternative_types,
+        writer& proto)
+    {
+        proto("message {} {{", wrapper_name);
+        proto("uint32 index = 1;");
+        int field_number = 2;
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            auto value_type = cpp_type_to_proto_type(current_scope, alternative_types[index]);
+            value_type = sanitize_scoped_proto_field_type(std::move(value_type));
+            proto("{} {} = {};", value_type, variant_value_field_name(index), field_number++);
+        }
+        proto("}}");
+        proto("");
     }
 
     // Helper function to get the fully scoped name for a type
@@ -263,36 +439,19 @@ namespace protobuf_generator
                     continue;
 
                 // For struct fields, the return type is the field type and the name is the field name
-                std::string field_type = cpp_type_to_proto_type(entity, func_entity->get_return_type());
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                const auto member_type = func_entity->get_return_type();
+                std::string optional_inner;
+                std::vector<std::string> variant_alternatives;
+                std::string field_type;
+                if (proto_generator::is_optional_type(member_type, optional_inner))
+                    field_type = optional_wrapper_message_name(entity.get_name(), field_name);
+                else if (proto_generator::is_variant_type(member_type, variant_alternatives))
+                    field_type = variant_wrapper_message_name(entity.get_name(), field_name);
+                else
+                    field_type = cpp_type_to_proto_type(entity, member_type);
 
-                // For custom types with namespace, sanitize only the type name part
-                // Handle "repeated TypeName" and "map<K, V>" specially to preserve keywords
-                if (field_type.find("::") != std::string::npos)
-                {
-                    if (field_type.find("repeated ") == 0)
-                    {
-                        // Extract and sanitize just the type name after "repeated "
-                        std::string type_name = field_type.substr(9); // Skip "repeated "
-                        field_type = "repeated " + sanitize_type_name(type_name);
-                    }
-                    else if (field_type.find("map<") == 0)
-                    {
-                        // Map types are already in correct format, don't sanitize
-                        // Just remove C++ namespace separators in the inner types
-                        size_t pos = 0;
-                        while ((pos = field_type.find("::", pos)) != std::string::npos)
-                        {
-                            field_type.replace(pos, 2, ".");
-                            pos += 1;
-                        }
-                    }
-                    else
-                    {
-                        // Simple custom type, sanitize normally
-                        field_type = sanitize_type_name(field_type);
-                    }
-                }
+                field_type = sanitize_scoped_proto_field_type(std::move(field_type));
 
                 field_number++;
                 proto("{} {} = {};", field_type, field_name, field_number);
@@ -307,6 +466,42 @@ namespace protobuf_generator
         // Close the message definition
         proto("}}");
         proto("");
+
+        for (auto& member : entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+        {
+            if (member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                continue;
+
+            auto func_entity = std::static_pointer_cast<function_entity>(member);
+            if (func_entity->is_static())
+                continue;
+
+            std::string optional_inner;
+            if (!proto_generator::is_optional_type(func_entity->get_return_type(), optional_inner))
+                continue;
+
+            const auto field_name = sanitize_field_name(func_entity->get_name());
+            write_optional_wrapper_message_definition(
+                entity, optional_wrapper_message_name(entity.get_name(), field_name), optional_inner, proto);
+        }
+
+        for (auto& member : entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+        {
+            if (member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                continue;
+
+            auto func_entity = std::static_pointer_cast<function_entity>(member);
+            if (func_entity->is_static())
+                continue;
+
+            std::vector<std::string> variant_alternatives;
+            if (!proto_generator::is_variant_type(func_entity->get_return_type(), variant_alternatives))
+                continue;
+
+            const auto field_name = sanitize_field_name(func_entity->get_name());
+            write_variant_wrapper_message_definition(
+                entity, variant_wrapper_message_name(entity.get_name(), field_name), variant_alternatives, proto);
+        }
     }
 
     // Helper function to write a concrete template instantiation message
@@ -335,36 +530,12 @@ namespace protobuf_generator
                     field_type = template_param;
                 }
 
-                // Convert to proto type
-                field_type = cpp_type_to_proto_type(field_type);
+                std::string optional_inner;
+                field_type = proto_generator::is_optional_type(field_type, optional_inner)
+                                 ? optional_wrapper_message_name(concrete_name, field_name)
+                                 : cpp_type_to_proto_type(template_entity, field_type);
 
-                // For custom types with namespace, sanitize only the type name part
-                // Handle "repeated TypeName" and "map<K, V>" specially to preserve keywords
-                if (field_type.find("::") != std::string::npos)
-                {
-                    if (field_type.find("repeated ") == 0)
-                    {
-                        // Extract and sanitize just the type name after "repeated "
-                        std::string type_name = field_type.substr(9); // Skip "repeated "
-                        field_type = "repeated " + sanitize_type_name(type_name);
-                    }
-                    else if (field_type.find("map<") == 0)
-                    {
-                        // Map types are already in correct format, don't sanitize
-                        // Just remove C++ namespace separators in the inner types
-                        size_t pos = 0;
-                        while ((pos = field_type.find("::", pos)) != std::string::npos)
-                        {
-                            field_type.replace(pos, 2, ".");
-                            pos += 1;
-                        }
-                    }
-                    else
-                    {
-                        // Simple custom type, sanitize normally
-                        field_type = sanitize_type_name(field_type);
-                    }
-                }
+                field_type = sanitize_scoped_proto_field_type(std::move(field_type));
 
                 field_number++;
                 proto("{} {} = {};", field_type, field_name, field_number);
@@ -374,6 +545,28 @@ namespace protobuf_generator
         // Close the message definition
         proto("}}");
         proto("");
+
+        for (auto& member : template_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+        {
+            if (member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                continue;
+
+            auto func_entity = std::static_pointer_cast<function_entity>(member);
+            if (func_entity->is_static())
+                continue;
+
+            std::string field_type = func_entity->get_return_type();
+            if (field_type == "T")
+                field_type = template_param;
+
+            std::string optional_inner;
+            if (!proto_generator::is_optional_type(field_type, optional_inner))
+                continue;
+
+            const auto field_name = sanitize_field_name(func_entity->get_name());
+            write_optional_wrapper_message_definition(
+                template_entity, optional_wrapper_message_name(concrete_name, field_name), optional_inner, proto);
+        }
     }
 
     // NOTE: Previously generated per-interface _ptr structures, but now we use
@@ -1150,6 +1343,8 @@ namespace protobuf_generator
                 // Write request message
                 proto("message {} {{", input_type);
                 int field_number = 0;
+                std::vector<std::pair<std::string, std::string>> request_optional_wrappers;
+                std::vector<std::pair<std::string, std::vector<std::string>>> request_variant_wrappers;
                 for (auto& parameter : function->get_parameters())
                 {
                     // Treat parameters without [in] or [out] as implicit [in] parameters
@@ -1168,12 +1363,23 @@ namespace protobuf_generator
                         }
                         else
                         {
-                            param_type = cpp_type_to_proto_type(parameter.get_type());
-                            // For custom types, sanitize the name
-                            if (param_type.find("::") != std::string::npos)
+                            std::string optional_inner;
+                            std::vector<std::string> variant_alternatives;
+                            if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
                             {
-                                param_type = sanitize_type_name(param_type);
+                                param_type = optional_wrapper_message_name(input_type, param_name);
+                                request_optional_wrappers.push_back({param_type, optional_inner});
                             }
+                            else if (proto_generator::is_variant_type(parameter.get_type(), variant_alternatives))
+                            {
+                                param_type = variant_wrapper_message_name(input_type, param_name);
+                                request_variant_wrappers.push_back({param_type, variant_alternatives});
+                            }
+                            else
+                            {
+                                param_type = cpp_type_to_proto_type(*interface_entity, parameter.get_type());
+                            }
+                            param_type = sanitize_scoped_proto_field_type(std::move(param_type));
                         }
 
                         field_number++;
@@ -1182,10 +1388,16 @@ namespace protobuf_generator
                 }
                 proto("}}");
                 proto("");
+                for (const auto& [wrapper_name, inner_type] : request_optional_wrappers)
+                    write_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
+                for (const auto& [wrapper_name, alternatives] : request_variant_wrappers)
+                    write_variant_wrapper_message_definition(*interface_entity, wrapper_name, alternatives, proto);
 
                 // Write response message
                 proto("message {} {{", output_type);
                 field_number = 0;
+                std::vector<std::pair<std::string, std::string>> response_optional_wrappers;
+                std::vector<std::pair<std::string, std::vector<std::string>>> response_variant_wrappers;
                 for (auto& parameter : function->get_parameters())
                 {
                     if (is_out_param(parameter))
@@ -1202,12 +1414,23 @@ namespace protobuf_generator
                         }
                         else
                         {
-                            param_type = cpp_type_to_proto_type(parameter.get_type());
-                            // For custom types, sanitize the name
-                            if (param_type.find("::") != std::string::npos)
+                            std::string optional_inner;
+                            std::vector<std::string> variant_alternatives;
+                            if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
                             {
-                                param_type = sanitize_type_name(param_type);
+                                param_type = optional_wrapper_message_name(output_type, param_name);
+                                response_optional_wrappers.push_back({param_type, optional_inner});
                             }
+                            else if (proto_generator::is_variant_type(parameter.get_type(), variant_alternatives))
+                            {
+                                param_type = variant_wrapper_message_name(output_type, param_name);
+                                response_variant_wrappers.push_back({param_type, variant_alternatives});
+                            }
+                            else
+                            {
+                                param_type = cpp_type_to_proto_type(*interface_entity, parameter.get_type());
+                            }
+                            param_type = sanitize_scoped_proto_field_type(std::move(param_type));
                         }
 
                         field_number++;
@@ -1218,11 +1441,8 @@ namespace protobuf_generator
                 // If there's a return type, add it to the response
                 if (!function->get_return_type().empty() && function->get_return_type() != "void")
                 {
-                    std::string return_type = cpp_type_to_proto_type(function->get_return_type());
-                    if (return_type.find("::") != std::string::npos)
-                    {
-                        return_type = sanitize_type_name(return_type);
-                    }
+                    std::string return_type = cpp_type_to_proto_type(*interface_entity, function->get_return_type());
+                    return_type = sanitize_scoped_proto_field_type(std::move(return_type));
 
                     field_number++;
                     proto("{} result = {};", return_type, field_number);
@@ -1230,6 +1450,10 @@ namespace protobuf_generator
 
                 proto("}}");
                 proto("");
+                for (const auto& [wrapper_name, inner_type] : response_optional_wrappers)
+                    write_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
+                for (const auto& [wrapper_name, alternatives] : response_variant_wrappers)
+                    write_variant_wrapper_message_definition(*interface_entity, wrapper_name, alternatives, proto);
             }
         }
 
@@ -1469,6 +1693,11 @@ namespace protobuf_generator
                || norm_type == "std::vector<signed char>";
     }
 
+    bool is_json_dom_type(const std::string& type_str)
+    {
+        return proto_generator::is_json_dom_type(normalize_type(type_str));
+    }
+
     bool is_simple_protobuf_type(const std::string& type_str)
     {
         std::string norm_type = normalize_type(type_str);
@@ -1631,6 +1860,42 @@ namespace protobuf_generator
         return search_for_enum(lib);
     }
 
+    void write_optional_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& inner_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent);
+
+    void write_proto_field_to_optional(
+        const class_entity& root_entity,
+        const std::string& inner_type,
+        const std::string& proto_var,
+        const std::string& field_accessor,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent);
+
+    void write_variant_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& variant_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent);
+
+    void write_proto_field_to_variant(
+        const class_entity& root_entity,
+        const std::string& variant_type,
+        const std::string& proto_var,
+        const std::string& dest_expr,
+        writer& cpp,
+        const std::string& indent);
+
     // Helper to write a single proxy serialization function for protobuf
     void write_proxy_protobuf_method(
         const class_entity& lib,
@@ -1728,6 +1993,8 @@ namespace protobuf_generator
         // Set message fields from parameters
         for (const auto& [param_name, param_type] : param_info)
         {
+            std::string param_accessor = cpp_accessor_name_for_proto_field(sanitize_field_name(param_name));
+
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
@@ -1741,7 +2008,7 @@ namespace protobuf_generator
                 // Interface types need special handling - serialize remote_object to proto message
                 cpp("if ({}.is_set())", param_name);
                 cpp("{{");
-                cpp("auto* proto_{} = __request.mutable_{}();", param_name, param_name);
+                cpp("auto* proto_{} = __request.mutable_{}();", param_name, param_accessor);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
                 cpp("{}.protobuf_serialise(__dz_buf);", param_name);
@@ -1755,7 +2022,30 @@ namespace protobuf_generator
             else if (is_pointer)
             {
                 // Pointer types marshal the address only (uint64_t)
-                cpp("__request.set_{}({});", param_name, param_name);
+                cpp("__request.set_{}({});", param_accessor, param_name);
+            }
+            else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
+            {
+                write_optional_to_proto_field(
+                    lib, package_name, optional_inner, param_name, "(*__request.mutable_" + param_accessor + "())", cpp, "");
+            }
+            else if (std::vector<std::string> variant_alternatives;
+                proto_generator::is_variant_type(param_type, variant_alternatives))
+            {
+                write_variant_to_proto_field(
+                    lib, package_name, param_type, param_name, "(*__request.mutable_" + param_accessor + "())", cpp, "");
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("{}.protobuf_serialise({}_protobuf_buffer);", param_name, param_name);
+                cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *__request.mutable_{}());",
+                    param_name,
+                    param_accessor);
+            }
+            else if (is_error_type(lib, param_type))
+            {
+                cpp("__request.set_{}(static_cast<int>({}));", param_accessor, param_name);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -1764,19 +2054,21 @@ namespace protobuf_generator
                 if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
-                    cpp("rpc::serialization::protobuf::serialize_bytes({}, *__request.mutable_{}());", param_name, param_name);
+                    cpp("rpc::serialization::protobuf::serialize_bytes({}, *__request.mutable_{}());",
+                        param_name,
+                        param_accessor);
                 }
                 else if (is_scalar_vector_type(param_type))
                 {
                     // Vector of scalar types - copy elements to repeated field
                     cpp("for (const auto& __elem : {}) {{", param_name);
-                    cpp("__request.add_{}(__elem);", param_name);
+                    cpp("__request.add_{}(__elem);", param_accessor);
                     cpp("}}");
                 }
                 else if (is_scalar_map_type(param_type))
                 {
                     // Map with scalar key/value - copy to protobuf map
-                    cpp("auto* __map = __request.mutable_{}();", param_name);
+                    cpp("auto* __map = __request.mutable_{}();", param_accessor);
                     cpp("for (const auto& [__k, __v] : {}) {{", param_name);
                     cpp("(*__map)[__k] = __v;");
                     cpp("}}");
@@ -1784,14 +2076,14 @@ namespace protobuf_generator
                 else
                 {
                     // Primitives and std::string
-                    cpp("__request.set_{}({});", param_name, param_name);
+                    cpp("__request.set_{}({});", param_accessor, param_name);
                 }
             }
             else if (is_enum_type(lib, param_type))
             {
                 // Enum types can be directly assigned - cast to protobuf enum type
                 std::string norm_type = normalize_type(param_type);
-                cpp("__request.set_{}(static_cast<protobuf::{}::{}>({}));", param_name, package_name, norm_type, param_name);
+                cpp("__request.set_{}(static_cast<protobuf::{}::{}>({}));", param_accessor, package_name, norm_type, param_name);
             }
             else
             {
@@ -1801,7 +2093,7 @@ namespace protobuf_generator
                 cpp("{{");
                 cpp("std::vector<char> param_buffer;");
                 cpp("{}.protobuf_serialise(param_buffer);", param_name);
-                cpp("auto* proto_param = __request.mutable_{}();", param_name);
+                cpp("auto* proto_param = __request.mutable_{}();", param_accessor);
                 cpp("(void)proto_param->ParseFromArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("}}");
             }
@@ -1916,6 +2208,8 @@ namespace protobuf_generator
         // Extract output parameters from __response
         for (const auto& [param_name, param_type] : out_params)
         {
+            std::string param_accessor = cpp_accessor_name_for_proto_field(sanitize_field_name(param_name));
+
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
@@ -1927,9 +2221,9 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - deserialize proto message to remote_object
-                cpp("if (__response.has_{}())", param_name);
+                cpp("if (__response.has_{}())", param_accessor);
                 cpp("{{");
-                cpp("const auto& proto_{} = __response.{}();", param_name, param_name);
+                cpp("const auto& proto_{} = __response.{}();", param_name, param_accessor);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
                 cpp("if (!proto_{}.SerializeToArray(__dz_buf.data(), "
@@ -1947,7 +2241,37 @@ namespace protobuf_generator
             else if (is_pointer)
             {
                 // Pointer types marshal the address only (uint64_t)
-                cpp("{} = __response.{}();", param_name, param_name);
+                cpp("{} = __response.{}();", param_name, param_accessor);
+            }
+            else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
+            {
+                write_proto_field_to_optional(
+                    lib, optional_inner, "__response", param_accessor, param_name, optional_inner, cpp, "");
+            }
+            else if (std::vector<std::string> variant_alternatives;
+                proto_generator::is_variant_type(param_type, variant_alternatives))
+            {
+                cpp("if (__response.has_{}())", param_accessor);
+                cpp("{{");
+                write_proto_field_to_variant(
+                    lib, param_type, "__response." + param_accessor + "()", param_name, cpp, "    ");
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{} = {}{{}};", param_name, proto_generator::normalise_cpp_type(param_type));
+                cpp("}}");
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("rpc::serialization::protobuf::deserialize_bytes(__response.{}(), {}_protobuf_buffer);",
+                    param_accessor,
+                    param_name);
+                cpp("{}.protobuf_deserialise({}_protobuf_buffer);", param_name, param_name);
+            }
+            else if (is_error_type(lib, param_type))
+            {
+                cpp("{} = static_cast<int>(__response.{}());", param_name, param_accessor);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -1956,35 +2280,35 @@ namespace protobuf_generator
                 if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
-                    cpp("rpc::serialization::protobuf::deserialize_bytes(__response.{}(), {});", param_name, param_name);
+                    cpp("rpc::serialization::protobuf::deserialize_bytes(__response.{}(), {});", param_accessor, param_name);
                 }
                 else if (is_scalar_vector_type(param_type))
                 {
                     // Vector of scalar types - copy from repeated field
                     cpp("{}.clear();", param_name);
-                    cpp("for (int __i = 0; __i < __response.{}_size(); ++__i) {{", param_name);
-                    cpp("{}.push_back(__response.{}(__i));", param_name, param_name);
+                    cpp("for (int __i = 0; __i < __response.{}_size(); ++__i) {{", param_accessor);
+                    cpp("{}.push_back(__response.{}(__i));", param_name, param_accessor);
                     cpp("}}");
                 }
                 else if (is_scalar_map_type(param_type))
                 {
                     // Map with scalar key/value - copy from protobuf map
                     cpp("{}.clear();", param_name);
-                    cpp("for (const auto& [__k, __v] : __response.{}()) {{", param_name);
+                    cpp("for (const auto& [__k, __v] : __response.{}()) {{", param_accessor);
                     cpp("{}[__k] = __v;", param_name);
                     cpp("}}");
                 }
                 else
                 {
                     // Primitives and std::string
-                    cpp("{} = __response.{}();", param_name, param_name);
+                    cpp("{} = __response.{}();", param_name, param_accessor);
                 }
             }
             else if (is_enum_type(lib, param_type))
             {
                 // Enum types - cast from protobuf enum to IDL enum (drop reference for casting)
                 std::string norm_type = normalize_type(param_type);
-                cpp("{} = static_cast<{}>(__response.{}());", param_name, norm_type, param_name);
+                cpp("{} = static_cast<{}>(__response.{}());", param_name, norm_type, param_accessor);
             }
             else
             {
@@ -1993,7 +2317,7 @@ namespace protobuf_generator
                 cpp("// Deserialize complex output parameter");
                 cpp("{{");
                 cpp("std::vector<char> param_buffer;");
-                cpp("const auto& proto_param = __response.{}();", param_name);
+                cpp("const auto& proto_param = __response.{}();", param_accessor);
                 cpp("param_buffer.resize(proto_param.ByteSizeLong());");
                 cpp("(void)proto_param.SerializeToArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("{}.protobuf_deserialise(param_buffer);", param_name);
@@ -2114,6 +2438,8 @@ namespace protobuf_generator
         // Extract input parameters from request
         for (const auto& [param_name, param_type] : in_params)
         {
+            std::string param_accessor = cpp_accessor_name_for_proto_field(sanitize_field_name(param_name));
+
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
@@ -2125,9 +2451,9 @@ namespace protobuf_generator
             if (is_interface)
             {
                 // Interface types need special handling - deserialize proto message to remote_object
-                cpp("if (__request.has_{}())", param_name);
+                cpp("if (__request.has_{}())", param_accessor);
                 cpp("{{");
-                cpp("const auto& proto_{} = __request.{}();", param_name, param_name);
+                cpp("const auto& proto_{} = __request.{}();", param_name, param_accessor);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf(proto_{}.ByteSizeLong());", param_name);
                 cpp("if (!proto_{}.SerializeToArray(__dz_buf.data(), "
@@ -2145,7 +2471,37 @@ namespace protobuf_generator
             else if (is_pointer)
             {
                 // Pointer types marshal the address only (uint64_t)
-                cpp("{} = __request.{}();", param_name, param_name);
+                cpp("{} = __request.{}();", param_name, param_accessor);
+            }
+            else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
+            {
+                write_proto_field_to_optional(
+                    lib, optional_inner, "__request", param_accessor, param_name, optional_inner, cpp, "");
+            }
+            else if (std::vector<std::string> variant_alternatives;
+                proto_generator::is_variant_type(param_type, variant_alternatives))
+            {
+                cpp("if (__request.has_{}())", param_accessor);
+                cpp("{{");
+                write_proto_field_to_variant(
+                    lib, param_type, "__request." + param_accessor + "()", param_name, cpp, "    ");
+                cpp("}}");
+                cpp("else");
+                cpp("{{");
+                cpp("{} = {}{{}};", param_name, proto_generator::normalise_cpp_type(param_type));
+                cpp("}}");
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("rpc::serialization::protobuf::deserialize_bytes(__request.{}(), {}_protobuf_buffer);",
+                    param_accessor,
+                    param_name);
+                cpp("{}.protobuf_deserialise({}_protobuf_buffer);", param_name, param_name);
+            }
+            else if (is_error_type(lib, param_type))
+            {
+                cpp("{} = static_cast<int>(__request.{}());", param_name, param_accessor);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -2154,35 +2510,35 @@ namespace protobuf_generator
                 if (is_byte_vector_type(norm_type))
                 {
                     // Use helper for bytes
-                    cpp("rpc::serialization::protobuf::deserialize_bytes(__request.{}(), {});", param_name, param_name);
+                    cpp("rpc::serialization::protobuf::deserialize_bytes(__request.{}(), {});", param_accessor, param_name);
                 }
                 else if (is_scalar_vector_type(param_type))
                 {
                     // Vector of scalar types - copy from repeated field
                     cpp("{}.clear();", param_name);
-                    cpp("for (int __i = 0; __i < __request.{}_size(); ++__i) {{", param_name);
-                    cpp("{}.push_back(__request.{}(__i));", param_name, param_name);
+                    cpp("for (int __i = 0; __i < __request.{}_size(); ++__i) {{", param_accessor);
+                    cpp("{}.push_back(__request.{}(__i));", param_name, param_accessor);
                     cpp("}}");
                 }
                 else if (is_scalar_map_type(param_type))
                 {
                     // Map with scalar key/value - copy from protobuf map
                     cpp("{}.clear();", param_name);
-                    cpp("for (const auto& [__k, __v] : __request.{}()) {{", param_name);
+                    cpp("for (const auto& [__k, __v] : __request.{}()) {{", param_accessor);
                     cpp("{}[__k] = __v;", param_name);
                     cpp("}}");
                 }
                 else
                 {
                     // Primitives and std::string
-                    cpp("{} = __request.{}();", param_name, param_name);
+                    cpp("{} = __request.{}();", param_name, param_accessor);
                 }
             }
             else if (is_enum_type(lib, param_type))
             {
                 // Enum types - cast from protobuf enum to IDL enum (drop reference for casting)
                 std::string norm_type = normalize_type(param_type);
-                cpp("{} = static_cast<{}>(__request.{}());", param_name, norm_type, param_name);
+                cpp("{} = static_cast<{}>(__request.{}());", param_name, norm_type, param_accessor);
             }
             else
             {
@@ -2191,7 +2547,7 @@ namespace protobuf_generator
                 cpp("// Deserialize complex input parameter");
                 cpp("{{");
                 cpp("std::vector<char> param_buffer;");
-                cpp("const auto& proto_param = __request.{}();", param_name);
+                cpp("const auto& proto_param = __request.{}();", param_accessor);
                 cpp("param_buffer.resize(proto_param.ByteSizeLong());");
                 cpp("(void)proto_param.SerializeToArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("{}.protobuf_deserialise(param_buffer);", param_name);
@@ -2301,6 +2657,8 @@ namespace protobuf_generator
         // Set output parameters in __response
         for (const auto& [param_name, param_type] : out_params)
         {
+            std::string param_accessor = cpp_accessor_name_for_proto_field(sanitize_field_name(param_name));
+
             // Check if this is a pointer type (IDL pointers become uint64_t in signatures - marshal address only)
             bool is_pointer = (param_type.find('*') != std::string::npos);
             // Check if this is an rpc::shared_ptr or rpc::optimistic_ptr (becomes remote_object)
@@ -2314,7 +2672,7 @@ namespace protobuf_generator
                 // Interface types need special handling - serialize remote_object to proto message
                 cpp("if ({}.is_set())", param_name);
                 cpp("{{");
-                cpp("auto* proto_{} = __response.mutable_{}();", param_name, param_name);
+                cpp("auto* proto_{} = __response.mutable_{}();", param_name, param_accessor);
                 cpp("{{");
                 cpp("std::vector<char> __dz_buf;");
                 cpp("{}.protobuf_serialise(__dz_buf);", param_name);
@@ -2328,7 +2686,30 @@ namespace protobuf_generator
             else if (is_pointer)
             {
                 // Pointer types marshal the address only (uint64_t)
-                cpp("__response.set_{}({});", param_name, param_name);
+                cpp("__response.set_{}({});", param_accessor, param_name);
+            }
+            else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
+            {
+                write_optional_to_proto_field(
+                    lib, package_name, optional_inner, param_name, "(*__response.mutable_" + param_accessor + "())", cpp, "");
+            }
+            else if (std::vector<std::string> variant_alternatives;
+                proto_generator::is_variant_type(param_type, variant_alternatives))
+            {
+                write_variant_to_proto_field(
+                    lib, package_name, param_type, param_name, "(*__response.mutable_" + param_accessor + "())", cpp, "");
+            }
+            else if (is_json_dom_type(param_type))
+            {
+                cpp("std::vector<char> {}_protobuf_buffer;", param_name);
+                cpp("{}.protobuf_serialise({}_protobuf_buffer);", param_name, param_name);
+                cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *__response.mutable_{}());",
+                    param_name,
+                    param_accessor);
+            }
+            else if (is_error_type(lib, param_type))
+            {
+                cpp("__response.set_{}(static_cast<int>({}));", param_accessor, param_name);
             }
             else if (is_simple_protobuf_type(param_type))
             {
@@ -2339,19 +2720,19 @@ namespace protobuf_generator
                     // Use helper for bytes
                     cpp("rpc::serialization::protobuf::serialize_bytes({}, *__response.mutable_{}());",
                         param_name,
-                        param_name);
+                        param_accessor);
                 }
                 else if (is_scalar_vector_type(param_type))
                 {
                     // Vector of scalar types - copy elements to repeated field
                     cpp("for (const auto& __elem : {}) {{", param_name);
-                    cpp("__response.add_{}(__elem);", param_name);
+                    cpp("__response.add_{}(__elem);", param_accessor);
                     cpp("}}");
                 }
                 else if (is_scalar_map_type(param_type))
                 {
                     // Map with scalar key/value - copy to protobuf map
-                    cpp("auto* __map = __response.mutable_{}();", param_name);
+                    cpp("auto* __map = __response.mutable_{}();", param_accessor);
                     cpp("for (const auto& [__k, __v] : {}) {{", param_name);
                     cpp("(*__map)[__k] = __v;");
                     cpp("}}");
@@ -2359,14 +2740,14 @@ namespace protobuf_generator
                 else
                 {
                     // Primitives and std::string
-                    cpp("__response.set_{}({});", param_name, param_name);
+                    cpp("__response.set_{}({});", param_accessor, param_name);
                 }
             }
             else if (is_enum_type(lib, param_type))
             {
                 // Enum types can be directly assigned - cast to protobuf enum type
                 std::string norm_type = normalize_type(param_type);
-                cpp("__response.set_{}(static_cast<protobuf::{}::{}>({}));", param_name, package_name, norm_type, param_name);
+                cpp("__response.set_{}(static_cast<protobuf::{}::{}>({}));", param_accessor, package_name, norm_type, param_name);
             }
             else
             {
@@ -2376,7 +2757,7 @@ namespace protobuf_generator
                 cpp("{{");
                 cpp("std::vector<char> param_buffer;");
                 cpp("{}.protobuf_serialise(param_buffer);", param_name);
-                cpp("auto* proto_param = __response.mutable_{}();", param_name);
+                cpp("auto* proto_param = __response.mutable_{}();", param_accessor);
                 cpp("(void)proto_param->ParseFromArray(param_buffer.data(), static_cast<int>(param_buffer.size()));");
                 cpp("}}");
             }
@@ -2457,6 +2838,17 @@ namespace protobuf_generator
         return type_str.find("std::vector<") == 0;
     }
 
+    bool is_rpc_optional(const std::string& type_str)
+    {
+        std::string inner_type;
+        return proto_generator::is_optional_type(type_str, inner_type);
+    }
+
+    std::string extract_optional_inner_type(const std::string& type_str)
+    {
+        return proto_generator::optional_inner_type(type_str);
+    }
+
     // Helper to check if a type is a std::array
     bool is_std_array(const std::string& type_str)
     {
@@ -2490,6 +2882,28 @@ namespace protobuf_generator
     bool is_std_map(const std::string& type_str)
     {
         return type_str.find("std::map<") == 0;
+    }
+
+    bool optional_wrapper_value_has_protobuf_presence(
+        const class_entity& root_entity,
+        const std::string& inner_type)
+    {
+        const auto normalized = proto_generator::normalise_cpp_type(inner_type);
+
+        if (is_primitive_type(normalized) || normalized == "std::string" || normalized == "string"
+            || is_json_dom_type(normalized) || is_pointer_type(normalized) || is_enum_type(root_entity, normalized)
+            || is_error_type(root_entity, normalized))
+            return false;
+
+        if (normalized == "std::vector<uint8_t>" || normalized == "std::vector<unsigned char>"
+            || normalized == "std::vector<char>" || normalized == "std::vector<signed char>"
+            || is_std_vector(normalized) || is_std_array(normalized) || is_std_map(normalized))
+            return false;
+
+        // 128-bit integer fields are represented by a generated uint128 message.
+        // User structs and cross-namespace struct references are also protobuf
+        // messages, so their wrapper value has explicit presence.
+        return true;
     }
 
     // Helper to extract map key and value types
@@ -2616,6 +3030,7 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
@@ -2624,28 +3039,52 @@ namespace protobuf_generator
                     cpp("{}{}.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({}.{})));",
                         indent,
                         proto_var,
-                        field_name,
+                        field_accessor,
                         cpp_var,
                         member_name);
                 }
-                else if (is_primitive_type(field_type) || field_type == "std::string")
+                else if (is_primitive_type(field_type) || field_type == "std::string"
+                         || is_error_type(root_entity, field_type))
                 {
-                    cpp("{}{}.set_{}({}.{});", indent, proto_var, field_name, cpp_var, member_name);
+                    cpp("{}{}.set_{}({}.{});", indent, proto_var, field_accessor, cpp_var, member_name);
+                }
+                else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
+                {
+                    cpp("{}rpc::serialization::protobuf::serialize_bytes({}.{}, *{}.mutable_{}());",
+                        indent,
+                        cpp_var,
+                        member_name,
+                        proto_var,
+                        field_accessor);
                 }
                 else
                 {
-                    // nested struct type - recursively copy fields
+                    // nested struct type — round-trip through the nested type's
+                    // own protobuf_serialise rather than copying its fields by
+                    // hand. Field-by-field recursion touches members directly,
+                    // which fails for strong-typedef fields whose storage is
+                    // private (e.g. rpc::method::id). This mirrors the scalar
+                    // nested-struct path and delegates to the authoritative
+                    // converter, so any nesting depth is handled correctly.
                     const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
                     if (nested_struct)
                     {
-                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_struct_to_proto_copy(
-                            root_entity,
-                            nested_struct,
-                            cpp_var + "." + member_name,
-                            "(*" + proto_var + ".mutable_" + field_name + "())",
-                            cpp,
-                            indent);
+                        cpp("{}// Serialize nested struct {} for field {}", indent, field_type, field_name);
+                        cpp("{}{{", indent);
+                        cpp("{}    std::vector<char> {}_buf;", indent, field_name);
+                        cpp("{}    {}.{}.protobuf_serialise({}_buf);", indent, cpp_var, member_name, field_name);
+                        cpp("{}    if (!{}.mutable_{}()->ParseFromArray({}_buf.data(), "
+                            "static_cast<int>({}_buf.size())))",
+                            indent,
+                            proto_var,
+                            field_accessor,
+                            field_name,
+                            field_name);
+                        cpp("{}        throw std::runtime_error(\"Failed to parse nested {} for field {}\");",
+                            indent,
+                            field_type,
+                            field_name);
+                        cpp("{}}}", indent);
                     }
                 }
             }
@@ -2676,6 +3115,7 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
@@ -2687,26 +3127,49 @@ namespace protobuf_generator
                         member_name,
                         pointer_cast_type(field_type),
                         proto_var,
-                        field_name);
+                        field_accessor);
                 }
-                else if (is_primitive_type(field_type) || field_type == "std::string")
+                else if (is_primitive_type(field_type) || field_type == "std::string"
+                         || is_error_type(root_entity, field_type))
                 {
-                    cpp("{}{}.{} = {}.{}();", indent, cpp_var, member_name, proto_var, field_name);
+                    cpp("{}{}.{} = {}.{}();", indent, cpp_var, member_name, proto_var, field_accessor);
+                }
+                else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
+                {
+                    cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {}.{});",
+                        indent,
+                        proto_var,
+                        field_accessor,
+                        cpp_var,
+                        member_name);
                 }
                 else
                 {
-                    // nested struct type - recursively copy fields
+                    // nested struct type — round-trip through the nested type's
+                    // own protobuf_deserialise (see the serialize counterpart for
+                    // why field-by-field recursion is avoided).
                     const class_entity* nested_struct = find_struct_by_name(root_entity, field_type);
                     if (nested_struct)
                     {
-                        cpp("{}// Copy nested struct {} for field {}", indent, field_type, field_name);
-                        generate_proto_to_struct_copy(
-                            root_entity,
-                            nested_struct,
-                            proto_var + "." + field_name + "()",
-                            cpp_var + "." + member_name,
-                            cpp,
-                            indent);
+                        cpp("{}// Deserialize nested struct {} for field {}", indent, field_type, field_name);
+                        cpp("{}{{", indent);
+                        cpp("{}    std::vector<char> {}_buf({}.{}().ByteSizeLong());",
+                            indent,
+                            field_name,
+                            proto_var,
+                            field_accessor);
+                        cpp("{}    if (!{}.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                            indent,
+                            proto_var,
+                            field_accessor,
+                            field_name,
+                            field_name);
+                        cpp("{}        throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                            indent,
+                            field_type,
+                            field_name);
+                        cpp("{}    {}.{}.protobuf_deserialise({}_buf);", indent, cpp_var, member_name, field_name);
+                        cpp("{}}}", indent);
                     }
                 }
             }
@@ -2732,6 +3195,468 @@ namespace protobuf_generator
             result += *it;
         }
         return result;
+    }
+
+    void write_value_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& field_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        const std::string& field_name,
+        writer& cpp,
+        const std::string& indent)
+    {
+        const auto field_accessor = cpp_accessor_name_for_proto_field(field_name);
+        if (is_pointer_type(field_type))
+        {
+            cpp("{}{}.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({})));",
+                indent,
+                proto_var,
+                field_accessor,
+                source_expr);
+        }
+        else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                 || field_type == "int128_t")
+        {
+            cpp("{}{}.mutable_{}()->set_lo(static_cast<uint64_t>({}));", indent, proto_var, field_accessor, source_expr);
+            cpp("{}{}.mutable_{}()->set_hi(static_cast<uint64_t>({} >> 64));", indent, proto_var, field_accessor, source_expr);
+        }
+        else if (is_primitive_type(field_type) || field_type == "std::string")
+        {
+            cpp("{}{}.set_{}({});", indent, proto_var, field_accessor, source_expr);
+        }
+        else if (is_error_type(root_entity, field_type))
+        {
+            cpp("{}{}.set_{}(static_cast<int>({}));", indent, proto_var, field_accessor, source_expr);
+        }
+        else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
+        {
+            cpp("{}rpc::serialization::protobuf::serialize_bytes({}, *{}.mutable_{}());",
+                indent,
+                source_expr,
+                proto_var,
+                field_accessor);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("{}std::vector<char> {}_protobuf_buffer;", indent, field_name);
+            cpp("{}{}.protobuf_serialise({}_protobuf_buffer);", indent, source_expr, field_name);
+            cpp("{}rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *{}.mutable_{}());",
+                indent,
+                field_name,
+                proto_var,
+                field_accessor);
+        }
+        else if (is_std_vector(field_type))
+        {
+            const auto inner_type = extract_template_inner_type(field_type);
+            cpp("{}for (const auto& elem : {})", indent, source_expr);
+            cpp("{}{{", indent);
+            if (is_int128_type(inner_type))
+            {
+                cpp("{}auto* pb_elem = {}.add_{}();", indent, proto_var, field_accessor);
+                cpp("{}pb_elem->set_lo(static_cast<uint64_t>(elem));", indent);
+                cpp("{}pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));", indent);
+            }
+            else if (is_primitive_type(inner_type) || inner_type == "std::string")
+            {
+                cpp("{}{}.add_{}(elem);", indent, proto_var, field_accessor);
+            }
+            else if (const auto* inner_struct = find_struct_by_name(root_entity, inner_type); inner_struct)
+            {
+                cpp("{}auto* proto_elem = {}.add_{}();", indent, proto_var, field_accessor);
+                generate_struct_to_proto_copy(root_entity, inner_struct, "elem", "(*proto_elem)", cpp, indent + "    ");
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported vector element type {} for field {}", indent, inner_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (is_std_array(field_type))
+        {
+            const auto inner_type = extract_array_inner_type(field_type);
+            cpp("{}for (const auto& elem : {})", indent, source_expr);
+            cpp("{}{{", indent);
+            if (is_int128_type(inner_type))
+            {
+                cpp("{}auto* pb_elem = {}.add_{}();", indent, proto_var, field_accessor);
+                cpp("{}pb_elem->set_lo(static_cast<uint64_t>(elem));", indent);
+                cpp("{}pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));", indent);
+            }
+            else if (is_primitive_type(inner_type) || inner_type == "std::string")
+            {
+                cpp("{}{}.add_{}(elem);", indent, proto_var, field_accessor);
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported array element type {} for field {}", indent, inner_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (is_std_map(field_type))
+        {
+            auto [key_type, value_type] = extract_map_types(field_type);
+            cpp("{}for (const auto& [key, value] : {})", indent, source_expr);
+            cpp("{}{{", indent);
+            if (is_primitive_type(value_type) || value_type == "std::string")
+            {
+                cpp("{}(*{}.mutable_{}())[key] = value;", indent, proto_var, field_accessor);
+            }
+            else if (const auto* value_struct = find_struct_by_name(root_entity, value_type); value_struct)
+            {
+                cpp("{}auto& proto_value = (*{}.mutable_{}())[key];", indent, proto_var, field_accessor);
+                generate_struct_to_proto_copy(root_entity, value_struct, "value", "proto_value", cpp, indent + "    ");
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported map value type {} for field {}", indent, value_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
+        {
+            cpp("{}{{", indent);
+            cpp("{}    std::vector<char> {}_buf;", indent, field_name);
+            cpp("{}    {}.protobuf_serialise({}_buf);", indent, source_expr, field_name);
+            cpp("{}    if (!{}.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name,
+                field_name);
+            cpp("{}        throw std::runtime_error(\"Failed to parse nested {} for field {}\");",
+                indent,
+                field_type,
+                field_name);
+            cpp("{}}}", indent);
+        }
+        else if (is_enum_type(root_entity, field_type))
+        {
+            std::string proto_enum_type;
+            if (field_type.find("::") != std::string::npos)
+                proto_enum_type = "::protobuf::" + field_type;
+            else if (!package_name.empty())
+                proto_enum_type = "::protobuf::" + package_name + "::" + field_type;
+            else
+                proto_enum_type = "::protobuf::" + field_type;
+            cpp("{}{}.set_{}(static_cast<{}>(static_cast<int>({})));",
+                indent,
+                proto_var,
+                field_accessor,
+                proto_enum_type,
+                source_expr);
+        }
+        else
+        {
+            cpp("{}// TODO: Handle unsupported type {} for field {}", indent, field_type, field_name);
+        }
+    }
+
+    void write_proto_field_to_value(
+        const class_entity& root_entity,
+        const std::string& field_type,
+        const std::string& proto_var,
+        const std::string& field_name,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent)
+    {
+        const auto field_accessor = cpp_accessor_name_for_proto_field(field_name);
+        if (is_pointer_type(field_type))
+        {
+            cpp("{}{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>({}.{}()));",
+                indent,
+                dest_expr,
+                pointer_cast_type(field_type),
+                proto_var,
+                field_accessor);
+        }
+        else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
+                 || field_type == "int128_t")
+        {
+            cpp("{}{} = (static_cast<unsigned __int128>({}.{}().hi()) << 64)"
+                " | static_cast<unsigned __int128>({}.{}().lo());",
+                indent,
+                dest_expr,
+                proto_var,
+                field_accessor,
+                proto_var,
+                field_accessor);
+        }
+        else if (is_primitive_type(field_type) || field_type == "std::string")
+        {
+            cpp("{}{} = {}.{}();", indent, dest_expr, proto_var, field_accessor);
+        }
+        else if (is_error_type(root_entity, field_type))
+        {
+            cpp("{}{} = static_cast<int>({}.{}());", indent, dest_expr, proto_var, field_accessor);
+        }
+        else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
+        {
+            cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {});", indent, proto_var, field_accessor, dest_expr);
+        }
+        else if (is_json_dom_type(field_type))
+        {
+            cpp("{}std::vector<char> {}_protobuf_buffer;", indent, field_name);
+            cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {}_protobuf_buffer);",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name);
+            cpp("{}{}.protobuf_deserialise({}_protobuf_buffer);", indent, dest_expr, field_name);
+        }
+        else if (is_std_vector(field_type))
+        {
+            const auto inner_type = extract_template_inner_type(field_type);
+            cpp("{}{}.clear();", indent, dest_expr);
+            cpp("{}{}.reserve({}.{}_size());", indent, dest_expr, proto_var, field_accessor);
+            cpp("{}for (int i = 0; i < {}.{}_size(); ++i)", indent, proto_var, field_accessor);
+            cpp("{}{{", indent);
+            if (is_int128_type(inner_type))
+            {
+                cpp("{}const auto& pb_elem = {}.{}(i);", indent, proto_var, field_accessor);
+                cpp("{}{}.push_back((static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
+                    " | static_cast<unsigned __int128>(pb_elem.lo()));",
+                    indent,
+                    dest_expr);
+            }
+            else if (is_primitive_type(inner_type) || inner_type == "std::string")
+            {
+                cpp("{}{}.push_back({}.{}(i));", indent, dest_expr, proto_var, field_accessor);
+            }
+            else if (const auto* inner_struct = find_struct_by_name(root_entity, inner_type); inner_struct)
+            {
+                cpp("{}const auto& proto_elem = {}.{}(i);", indent, proto_var, field_accessor);
+                cpp("{}{} elem;", indent, inner_type);
+                generate_proto_to_struct_copy(root_entity, inner_struct, "proto_elem", "elem", cpp, indent + "    ");
+                cpp("{}{}.push_back(elem);", indent, dest_expr);
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported vector element type {} for field {}", indent, inner_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (is_std_array(field_type))
+        {
+            const auto inner_type = extract_array_inner_type(field_type);
+            cpp("{}for (size_t i = 0; i < {}.size() && i < static_cast<size_t>({}.{}_size()); ++i)",
+                indent,
+                dest_expr,
+                proto_var,
+                field_accessor);
+            cpp("{}{{", indent);
+            if (is_int128_type(inner_type))
+            {
+                cpp("{}const auto& pb_elem = {}.{}(static_cast<int>(i));", indent, proto_var, field_accessor);
+                cpp("{}{}[i] = (static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
+                    " | static_cast<unsigned __int128>(pb_elem.lo());",
+                    indent,
+                    dest_expr);
+            }
+            else if (is_primitive_type(inner_type) || inner_type == "std::string")
+            {
+                cpp("{}{}[i] = {}.{}(static_cast<int>(i));", indent, dest_expr, proto_var, field_accessor);
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported array element type {} for field {}", indent, inner_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (is_std_map(field_type))
+        {
+            auto [key_type, value_type] = extract_map_types(field_type);
+            cpp("{}{}.clear();", indent, dest_expr);
+            cpp("{}for (const auto& [key, proto_value] : {}.{}())", indent, proto_var, field_accessor);
+            cpp("{}{{", indent);
+            if (is_primitive_type(value_type) || value_type == "std::string")
+            {
+                cpp("{}{}[key] = proto_value;", indent, dest_expr);
+            }
+            else if (const auto* value_struct = find_struct_by_name(root_entity, value_type); value_struct)
+            {
+                cpp("{}{} value;", indent, value_type);
+                generate_proto_to_struct_copy(root_entity, value_struct, "proto_value", "value", cpp, indent + "    ");
+                cpp("{}{}[key] = value;", indent, dest_expr);
+            }
+            else
+            {
+                cpp("{}// TODO: Handle unsupported map value type {} for field {}", indent, value_type, field_name);
+            }
+            cpp("{}}}", indent);
+        }
+        else if (const class_entity* nested_struct = find_struct_by_name(root_entity, field_type); nested_struct)
+        {
+            cpp("{}{{", indent);
+            cpp("{}    std::vector<char> {}_buf({}.{}().ByteSizeLong());", indent, field_name, proto_var, field_accessor);
+            cpp("{}    if (!{}.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
+                indent,
+                proto_var,
+                field_accessor,
+                field_name,
+                field_name);
+            cpp("{}        throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
+                indent,
+                field_type,
+                field_name);
+            cpp("{}    {}.protobuf_deserialise({}_buf);", indent, dest_expr, field_name);
+            cpp("{}}}", indent);
+        }
+        else if (is_enum_type(root_entity, field_type))
+        {
+            cpp("{}{} = static_cast<{}>(static_cast<int>({}.{}()));",
+                indent,
+                dest_expr,
+                qualified_dest_type,
+                proto_var,
+                field_accessor);
+        }
+        else
+        {
+            cpp("{}// TODO: Handle unsupported type {} for field {}", indent, field_type, field_name);
+        }
+    }
+
+    void write_optional_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& inner_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent)
+    {
+        cpp("{}if ({}.has_value())", indent, source_expr);
+        cpp("{}{{", indent);
+        write_value_to_proto_field(
+            root_entity, package_name, inner_type, source_expr + ".value()", proto_var, "value", cpp, indent + "    ");
+        cpp("{}}}", indent);
+    }
+
+    void write_proto_field_to_optional(
+        const class_entity& root_entity,
+        const std::string& inner_type,
+        const std::string& proto_var,
+        const std::string& field_accessor,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent)
+    {
+        cpp("{}if ({}.has_{}())", indent, proto_var, field_accessor);
+        cpp("{}{{", indent);
+        if (optional_wrapper_value_has_protobuf_presence(root_entity, inner_type))
+        {
+            cpp("{}if (!{}.{}().has_value())", indent + "    ", proto_var, field_accessor);
+            cpp("{}{{", indent + "    ");
+            cpp("{}throw std::runtime_error(\"Malformed protobuf optional field {}: wrapper is present without "
+                "value\");",
+                indent + "        ",
+                field_accessor);
+            cpp("{}}}", indent + "    ");
+        }
+        cpp("{}{} {}_value {{}};", indent + "    ", inner_type, field_accessor);
+        write_proto_field_to_value(
+            root_entity,
+            inner_type,
+            proto_var + "." + field_accessor + "()",
+            "value",
+            field_accessor + "_value",
+            qualified_dest_type,
+            cpp,
+            indent + "    ");
+        cpp("{}{} = {}_value;", indent + "    ", dest_expr, field_accessor);
+        cpp("{}}}", indent);
+        cpp("{}else", indent);
+        cpp("{}{{", indent);
+        cpp("{}{}.reset();", indent + "    ", dest_expr);
+        cpp("{}}}", indent);
+    }
+
+    void write_variant_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& variant_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent)
+    {
+        const auto normalized_variant_type = proto_generator::normalise_cpp_type(variant_type);
+        std::vector<std::string> alternative_types;
+        if (!proto_generator::is_variant_type(normalized_variant_type, alternative_types))
+            return;
+
+        cpp("{}if ({}.valueless_by_exception())", indent, source_expr);
+        cpp("{}{{", indent);
+        cpp("{}throw std::runtime_error(\"Cannot serialize valueless variant\");", indent + "    ");
+        cpp("{}}}", indent);
+        cpp("{}{}.set_index(static_cast<uint32_t>({}.index()));", indent, proto_var, source_expr);
+        cpp("{}switch ({}.index())", indent, source_expr);
+        cpp("{}{{", indent);
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            cpp("{}case {}:", indent + "    ", index);
+            cpp("{}{{", indent + "    ");
+            write_value_to_proto_field(
+                root_entity,
+                package_name,
+                alternative_types[index],
+                "rpc::get<" + std::to_string(index) + ">(" + source_expr + ")",
+                proto_var,
+                variant_value_field_name(index),
+                cpp,
+                indent + "        ");
+            cpp("{}break;", indent + "        ");
+            cpp("{}}}", indent + "    ");
+        }
+        cpp("{}default:", indent + "    ");
+        cpp("{}throw std::runtime_error(\"Unknown variant alternative\");", indent + "        ");
+        cpp("{}}}", indent);
+    }
+
+    void write_proto_field_to_variant(
+        const class_entity& root_entity,
+        const std::string& variant_type,
+        const std::string& proto_var,
+        const std::string& dest_expr,
+        writer& cpp,
+        const std::string& indent)
+    {
+        const auto normalized_variant_type = proto_generator::normalise_cpp_type(variant_type);
+        std::vector<std::string> alternative_types;
+        if (!proto_generator::is_variant_type(normalized_variant_type, alternative_types))
+            return;
+
+        cpp("{}switch ({}.index())", indent, proto_var);
+        cpp("{}{{", indent);
+        for (size_t index = 0; index < alternative_types.size(); ++index)
+        {
+            const auto value_name = variant_value_field_name(index);
+            cpp("{}case {}:", indent + "    ", index);
+            cpp("{}{{", indent + "    ");
+            cpp("{}{} __variant_value {{}};", indent + "        ", alternative_types[index]);
+            write_proto_field_to_value(
+                root_entity,
+                alternative_types[index],
+                proto_var,
+                value_name,
+                "__variant_value",
+                alternative_types[index],
+                cpp,
+                indent + "        ");
+            cpp("{}{} = std::move(__variant_value);", indent + "        ", dest_expr);
+            cpp("{}break;", indent + "        ");
+            cpp("{}}}", indent + "    ");
+        }
+        cpp("{}default:", indent + "    ");
+        cpp("{}{} = {}{{}};", indent + "        ", dest_expr, normalized_variant_type);
+        cpp("{}break;", indent + "        ");
+        cpp("{}}}", indent);
     }
 
     // Helper to write protobuf struct member serialization implementations
@@ -2769,31 +3694,68 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
                 // Handle different type categories
                 if (is_pointer_type(field_type))
                 {
-                    cpp("msg.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({})));", field_name, member_name);
+                    cpp("msg.set_{}(static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>({})));",
+                        field_accessor,
+                        member_name);
                 }
                 else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
                          || field_type == "int128_t")
                 {
                     // Serialize 128-bit integer into a uint128 message (lo = bits 0-63, hi = bits 64-127).
-                    cpp("msg.mutable_{}()->set_lo(static_cast<uint64_t>({}));", field_name, member_name);
-                    cpp("msg.mutable_{}()->set_hi(static_cast<uint64_t>({} >> 64));", field_name, member_name);
+                    cpp("msg.mutable_{}()->set_lo(static_cast<uint64_t>({}));", field_accessor, member_name);
+                    cpp("msg.mutable_{}()->set_hi(static_cast<uint64_t>({} >> 64));", field_accessor, member_name);
                 }
-                else if (is_primitive_type(field_type) || field_type == "std::string")
+                else if (is_primitive_type(field_type) || field_type == "std::string"
+                         || is_error_type(root_entity, field_type))
                 {
                     // Simple primitive types
-                    cpp("msg.set_{}({});", field_name, member_name);
+                    cpp("msg.set_{}({});", field_accessor, member_name);
+                }
+                else if (is_rpc_optional(field_type))
+                {
+                    const auto inner_type = extract_optional_inner_type(field_type);
+                    cpp("// Serialize rpc::optional<{}>", inner_type);
+                    cpp("if ({}.has_value())", member_name);
+                    cpp("{{");
+                    write_value_to_proto_field(
+                        root_entity,
+                        package_name,
+                        inner_type,
+                        member_name + ".value()",
+                        "(*msg.mutable_" + field_accessor + "())",
+                        "value",
+                        cpp,
+                        "    ");
+                    cpp("}}");
+                }
+                else if (std::vector<std::string> variant_alternatives;
+                    proto_generator::is_variant_type(field_type, variant_alternatives))
+                {
+                    cpp("// Serialize variant {}", field_type);
+                    write_variant_to_proto_field(
+                        root_entity, package_name, field_type, member_name, "(*msg.mutable_" + field_accessor + "())", cpp, "");
                 }
                 else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
                 {
                     // Special case: std::vector<uint8_t> and std::vector<char> map to protobuf bytes field
                     cpp("// Serialize {} as bytes", field_type);
-                    cpp("rpc::serialization::protobuf::serialize_bytes({}, *msg.mutable_{}());", member_name, field_name);
+                    cpp("rpc::serialization::protobuf::serialize_bytes({}, *msg.mutable_{}());", member_name, field_accessor);
+                }
+                else if (is_json_dom_type(field_type))
+                {
+                    cpp("// Serialize {} as protobuf bytes", field_type);
+                    cpp("std::vector<char> {}_protobuf_buffer;", field_name);
+                    cpp("{}.protobuf_serialise({}_protobuf_buffer);", member_name, field_name);
+                    cpp("rpc::serialization::protobuf::serialize_bytes({}_protobuf_buffer, *msg.mutable_{}());",
+                        field_name,
+                        field_accessor);
                 }
                 else if (is_std_vector(field_type))
                 {
@@ -2807,19 +3769,19 @@ namespace protobuf_generator
                     if (is_int128_type(inner_type))
                     {
                         // Vector of 128-bit integers: add a uint128 message per element
-                        cpp("auto* pb_elem = msg.add_{}();", field_name);
+                        cpp("auto* pb_elem = msg.add_{}();", field_accessor);
                         cpp("pb_elem->set_lo(static_cast<uint64_t>(elem));");
                         cpp("pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));");
                     }
                     else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
                         // Vector of primitives
-                        cpp("msg.add_{}(elem);", field_name);
+                        cpp("msg.add_{}(elem);", field_accessor);
                     }
                     else
                     {
                         // Vector of structs - need to serialize each element
-                        cpp("auto* proto_elem = msg.add_{}();", field_name);
+                        cpp("auto* proto_elem = msg.add_{}();", field_accessor);
 
                         // Look up the struct definition and generate field copying code
                         const class_entity* inner_struct = find_struct_by_name(root_entity, inner_type);
@@ -2828,7 +3790,8 @@ namespace protobuf_generator
                             generate_struct_to_proto_copy(
                                 root_entity, inner_struct, "elem", "(*proto_elem)", cpp, "        ");
                         }
-                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type))
+                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type)
+                                 && !is_error_type(root_entity, inner_type))
                         {
                             // Cross-namespace struct: serialize via protobuf_serialise
                             cpp("// Serialize cross-namespace struct element {}", inner_type);
@@ -2859,13 +3822,13 @@ namespace protobuf_generator
                     if (is_int128_type(inner_type))
                     {
                         // Array of 128-bit integers: add a uint128 message per element
-                        cpp("auto* pb_elem = msg.add_{}();", field_name);
+                        cpp("auto* pb_elem = msg.add_{}();", field_accessor);
                         cpp("pb_elem->set_lo(static_cast<uint64_t>(elem));");
                         cpp("pb_elem->set_hi(static_cast<uint64_t>(elem >> 64));");
                     }
                     else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
-                        cpp("msg.add_{}(elem);", field_name);
+                        cpp("msg.add_{}(elem);", field_accessor);
                     }
                     else
                     {
@@ -2886,12 +3849,12 @@ namespace protobuf_generator
                     if (is_primitive_type(value_type) || value_type == "std::string")
                     {
                         // Map with primitive values
-                        cpp("(*msg.mutable_{}())[key] = value;", field_name);
+                        cpp("(*msg.mutable_{}())[key] = value;", field_accessor);
                     }
                     else
                     {
                         // Map with struct values - need to serialize each value
-                        cpp("auto& proto_value = (*msg.mutable_{}())[key];", field_name);
+                        cpp("auto& proto_value = (*msg.mutable_{}())[key];", field_accessor);
 
                         // Look up the struct definition and generate field copying code
                         const class_entity* value_struct = find_struct_by_name(root_entity, value_type);
@@ -2922,7 +3885,7 @@ namespace protobuf_generator
                         cpp("std::vector<char> {}_buf;", field_name);
                         cpp("{}.protobuf_serialise({}_buf);", member_name, field_name);
                         cpp("if (!msg.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
-                            field_name,
+                            field_accessor,
                             field_name,
                             field_name);
                         cpp("throw std::runtime_error(\"Failed to parse nested {} for field {}\");", field_type, field_name);
@@ -2936,7 +3899,7 @@ namespace protobuf_generator
                         cpp("std::vector<char> {}_buf;", field_name);
                         cpp("{}.protobuf_serialise({}_buf);", member_name, field_name);
                         cpp("if (!msg.mutable_{}()->ParseFromArray({}_buf.data(), static_cast<int>({}_buf.size())))",
-                            field_name,
+                            field_accessor,
                             field_name,
                             field_name);
                         cpp("throw std::runtime_error(\"Failed to parse nested {} for field {}\");", field_type, field_name);
@@ -2961,7 +3924,7 @@ namespace protobuf_generator
                         {
                             proto_enum_type = "::protobuf::" + field_type;
                         }
-                        cpp("msg.set_{}(static_cast<{}>(static_cast<int>({})));", field_name, proto_enum_type, member_name);
+                        cpp("msg.set_{}(static_cast<{}>(static_cast<int>({})));", field_accessor, proto_enum_type, member_name);
                     }
                     else
                     {
@@ -3011,6 +3974,7 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string field_type = func_entity->get_return_type();
                 std::string member_name = func_entity->get_name();
 
@@ -3020,7 +3984,7 @@ namespace protobuf_generator
                     cpp("{} = reinterpret_cast<{}>(static_cast<std::uintptr_t>(msg.{}()));",
                         member_name,
                         pointer_cast_type(field_type),
-                        field_name);
+                        field_accessor);
                 }
                 else if (field_type == "unsigned __int128" || field_type == "__int128" || field_type == "uint128_t"
                          || field_type == "int128_t")
@@ -3029,19 +3993,81 @@ namespace protobuf_generator
                     cpp("{} = (static_cast<unsigned __int128>(msg.{}().hi()) << 64)"
                         " | static_cast<unsigned __int128>(msg.{}().lo());",
                         member_name,
-                        field_name,
-                        field_name);
+                        field_accessor,
+                        field_accessor);
                 }
-                else if (is_primitive_type(field_type) || field_type == "std::string")
+                else if (is_primitive_type(field_type) || field_type == "std::string"
+                         || is_error_type(root_entity, field_type))
                 {
                     // Simple primitive types
-                    cpp("{} = msg.{}();", member_name, field_name);
+                    cpp("{} = msg.{}();", member_name, field_accessor);
+                }
+                else if (is_rpc_optional(field_type))
+                {
+                    const auto inner_type = extract_optional_inner_type(field_type);
+                    std::string qualified_inner_type = inner_type;
+                    if (is_enum_type(root_entity, inner_type))
+                    {
+                        if (inner_type.find("::") != std::string::npos)
+                            qualified_inner_type = "::" + inner_type;
+                        else if (!struct_cpp_ns.empty())
+                            qualified_inner_type = struct_cpp_ns + "::" + inner_type;
+                    }
+                    cpp("if (msg.has_{}())", field_accessor);
+                    cpp("{{");
+                    if (optional_wrapper_value_has_protobuf_presence(root_entity, inner_type))
+                    {
+                        cpp("if (!msg.{}().has_value())", field_accessor);
+                        cpp("{{");
+                        cpp("throw std::runtime_error(\"Malformed protobuf optional field {}: wrapper is present "
+                            "without value\");",
+                            field_name);
+                        cpp("}}");
+                    }
+                    cpp("{} {}_value {{}};", inner_type, field_name);
+                    write_proto_field_to_value(
+                        root_entity,
+                        inner_type,
+                        "msg." + field_accessor + "()",
+                        "value",
+                        field_name + "_value",
+                        qualified_inner_type,
+                        cpp,
+                        "    ");
+                    cpp("{} = {}_value;", member_name, field_name);
+                    cpp("}}");
+                    cpp("else");
+                    cpp("{{");
+                    cpp("{}.reset();", member_name);
+                    cpp("}}");
+                }
+                else if (std::vector<std::string> variant_alternatives;
+                    proto_generator::is_variant_type(field_type, variant_alternatives))
+                {
+                    cpp("if (msg.has_{}())", field_accessor);
+                    cpp("{{");
+                    write_proto_field_to_variant(
+                        root_entity, field_type, "msg." + field_accessor + "()", member_name, cpp, "    ");
+                    cpp("}}");
+                    cpp("else");
+                    cpp("{{");
+                    cpp("{} = {}{{}};", member_name, proto_generator::normalise_cpp_type(field_type));
+                    cpp("}}");
                 }
                 else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
                 {
                     // Special case: std::vector<uint8_t> and std::vector<char> map to protobuf bytes field
                     cpp("// Deserialize {} from bytes", field_type);
-                    cpp("rpc::serialization::protobuf::deserialize_bytes(msg.{}(), {});", field_name, member_name);
+                    cpp("rpc::serialization::protobuf::deserialize_bytes(msg.{}(), {});", field_accessor, member_name);
+                }
+                else if (is_json_dom_type(field_type))
+                {
+                    cpp("// Deserialize {} from protobuf bytes", field_type);
+                    cpp("std::vector<char> {}_protobuf_buffer;", field_name);
+                    cpp("rpc::serialization::protobuf::deserialize_bytes(msg.{}(), {}_protobuf_buffer);",
+                        field_accessor,
+                        field_name);
+                    cpp("{}.protobuf_deserialise({}_protobuf_buffer);", member_name, field_name);
                 }
                 else if (is_std_vector(field_type))
                 {
@@ -3050,14 +4076,14 @@ namespace protobuf_generator
 
                     cpp("// Deserialize std::vector<{}>", inner_type);
                     cpp("{}.clear();", member_name);
-                    cpp("{}.reserve(msg.{}_size());", member_name, field_name);
-                    cpp("for (int i = 0; i < msg.{}_size(); ++i)", field_name);
+                    cpp("{}.reserve(msg.{}_size());", member_name, field_accessor);
+                    cpp("for (int i = 0; i < msg.{}_size(); ++i)", field_accessor);
                     cpp("{{");
 
                     if (is_int128_type(inner_type))
                     {
                         // Vector of 128-bit integers: reconstruct from uint128 lo/hi fields
-                        cpp("const auto& pb_elem = msg.{}(i);", field_name);
+                        cpp("const auto& pb_elem = msg.{}(i);", field_accessor);
                         cpp("{}.push_back((static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
                             " | static_cast<unsigned __int128>(pb_elem.lo()));",
                             member_name);
@@ -3065,12 +4091,12 @@ namespace protobuf_generator
                     else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
                         // Vector of primitives
-                        cpp("{}.push_back(msg.{}(i));", member_name, field_name);
+                        cpp("{}.push_back(msg.{}(i));", member_name, field_accessor);
                     }
                     else
                     {
                         // Vector of structs - need to deserialize each element
-                        cpp("const auto& proto_elem = msg.{}(i);", field_name);
+                        cpp("const auto& proto_elem = msg.{}(i);", field_accessor);
                         cpp("{} elem;", inner_type);
 
                         // Look up the struct definition and generate field copying code
@@ -3079,7 +4105,8 @@ namespace protobuf_generator
                         {
                             generate_proto_to_struct_copy(root_entity, inner_struct, "proto_elem", "elem", cpp, "        ");
                         }
-                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type))
+                        else if (inner_type.find("::") != std::string::npos && !is_enum_type(root_entity, inner_type)
+                                 && !is_error_type(root_entity, inner_type))
                         {
                             // Cross-namespace struct: deserialize via protobuf_deserialise
                             cpp("// Deserialize cross-namespace struct element {}", inner_type);
@@ -3109,19 +4136,19 @@ namespace protobuf_generator
                     cpp("// Deserialize std::array<{}>", inner_type);
                     cpp("for (size_t i = 0; i < {}.size() && i < static_cast<size_t>(msg.{}_size()); ++i)",
                         member_name,
-                        field_name);
+                        field_accessor);
                     cpp("{{");
 
                     if (is_int128_type(inner_type))
                     {
-                        cpp("const auto& pb_elem = msg.{}(static_cast<int>(i));", field_name);
+                        cpp("const auto& pb_elem = msg.{}(static_cast<int>(i));", field_accessor);
                         cpp("{}[i] = (static_cast<unsigned __int128>(pb_elem.hi()) << 64)"
                             " | static_cast<unsigned __int128>(pb_elem.lo());",
                             member_name);
                     }
                     else if (is_primitive_type(inner_type) || inner_type == "std::string")
                     {
-                        cpp("{}[i] = msg.{}(static_cast<int>(i));", member_name, field_name);
+                        cpp("{}[i] = msg.{}(static_cast<int>(i));", member_name, field_accessor);
                     }
                     else
                     {
@@ -3137,7 +4164,7 @@ namespace protobuf_generator
 
                     cpp("// Deserialize std::map<{}, {}>", key_type, value_type);
                     cpp("{}.clear();", member_name);
-                    cpp("for (const auto& [key, proto_value] : msg.{}())", field_name);
+                    cpp("for (const auto& [key, proto_value] : msg.{}())", field_accessor);
                     cpp("{{");
 
                     if (is_primitive_type(value_type) || value_type == "std::string")
@@ -3178,9 +4205,9 @@ namespace protobuf_generator
                     {
                         cpp("// Deserialize template instantiation {}", field_type);
                         cpp("{{");
-                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_name);
+                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_accessor);
                         cpp("if (!msg.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
-                            field_name,
+                            field_accessor,
                             field_name,
                             field_name);
                         cpp("throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
@@ -3194,9 +4221,9 @@ namespace protobuf_generator
                     {
                         cpp("// Deserialize nested struct {}", field_type);
                         cpp("{{");
-                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_name);
+                        cpp("std::vector<char> {}_buf(msg.{}().ByteSizeLong());", field_name, field_accessor);
                         cpp("if (!msg.{}().SerializeToArray({}_buf.data(), static_cast<int>({}_buf.size())))",
-                            field_name,
+                            field_accessor,
                             field_name,
                             field_name);
                         cpp("throw std::runtime_error(\"Failed to serialize nested {} for field {}\");",
@@ -3224,7 +4251,10 @@ namespace protobuf_generator
                         {
                             qualified_enum_type = field_type;
                         }
-                        cpp("{} = static_cast<{}>(static_cast<int>(msg.{}()));", member_name, qualified_enum_type, field_name);
+                        cpp("{} = static_cast<{}>(static_cast<int>(msg.{}()));",
+                            member_name,
+                            qualified_enum_type,
+                            field_accessor);
                     }
                     else
                     {
@@ -3271,10 +4301,11 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string member_name = func_entity->get_name();
 
                 // For template structs, we assume simple field assignment
-                cpp("msg.set_{}({});", field_name, member_name);
+                cpp("msg.set_{}({});", field_accessor, member_name);
             }
         }
 
@@ -3318,10 +4349,11 @@ namespace protobuf_generator
                     continue;
 
                 std::string field_name = sanitize_field_name(func_entity->get_name());
+                std::string field_accessor = cpp_accessor_name_for_proto_field(field_name);
                 std::string member_name = func_entity->get_name();
 
                 // For template structs, we assume simple field assignment
-                cpp("{} = msg.{}();", member_name, field_name);
+                cpp("{} = msg.{}();", member_name, field_accessor);
             }
         }
 

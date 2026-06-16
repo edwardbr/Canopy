@@ -12,7 +12,7 @@ There are two C++ protobuf-compatible backends:
 - `protocol_buffers`: the full Google C++ protobuf runtime and generated C++ message API.
 - `nanopb`: a small C runtime with Canopy-generated C++ adapters over Nanopb-generated C structs.
 
-Both paths are intended to encode the same `.proto` schema and wire format. The important distinction is runtime footprint and deployment boundary: full protobuf is useful for ordinary host processes that want the Google C++ API and tooling, while Nanopb is the small-runtime path for environments where linking the full protobuf library is not practical.
+Both paths are intended to encode the same `.proto` schema and wire format. The important distinction is runtime footprint and deployment boundary: full protobuf is useful for ordinary host processes that want the Google C++ API and tooling, while Nanopb is the enclave-safe path for SGX and other small-runtime environments where linking the full protobuf library is not practical.
 
 ## 1. Overview
 
@@ -21,7 +21,7 @@ Protocol Buffers (protobuf) is a binary serialization format developed by Google
 | Feature | Description |
 |---------|-------------|
 | Format | Binary |
-| Cross-language | Yes |
+| Cross-language | Yes, for the generated protobuf schema and supported type subset |
 | Schema | Required (.proto files) |
 | Performance | Good (slightly slower than YAS binary) |
 
@@ -58,10 +58,15 @@ backends are actually produced:
   stand-in for that IDL target and `rpc::encoding::protocol_buffers` is routed
   through Nanopb
 - if Nanopb is OFF but full protobuf is ON, `rpc::encoding::nanopb` is routed
-  through the full protobuf backend
+  through the full protobuf backend for non-SGX targets
 - if both protobuf-compatible backends are OFF and no other requested encoding
   can satisfy the target, configuration should fail rather than silently linking
   an unwanted runtime
+
+SGX enclave targets are stricter: the full Google C++ protobuf runtime is not
+linked into enclave modules.  Host-side targets in an SGX build may still use
+full protobuf, but enclave targets remove `CANOPY_BUILD_PROTOCOL_BUFFERS` from
+their compile definitions and map `rpc::encoding::protocol_buffers` to Nanopb.
 
 The raw generator flags remain literal: `--protobuf` requests full protobuf
 generation and `--nanopb` requests Nanopb generation.  The policy that maps an
@@ -127,7 +132,7 @@ The IDL generator automatically maps C++ types to Protocol Buffers types.
 | C++ Type | Protobuf Type | Notes |
 |----------|---------------|-------|
 | `int`, `int32_t`, `signed int` | `int32` | |
-| `int64_t`, `long`, `long long` | `int64` | `long` treated as 64-bit for portability |
+| `int64_t`, `long`, `long long` | `int64` | |
 | `uint32_t`, `unsigned int` | `uint32` | |
 | `uint64_t`, `unsigned long`, `unsigned long long` | `uint64` | |
 | `int16_t`, `short` | `int32` | Protobuf has no 16-bit type |
@@ -142,6 +147,9 @@ The IDL generator automatically maps C++ types to Protocol Buffers types.
 | `size_t`, `uintptr_t` | `uint64` | Platform-specific types |
 | `ptrdiff_t`, `ssize_t`, `intptr_t` | `int64` | Platform-specific types |
 | `error_code` | `int32` | Common typedef |
+
+Prefer fixed-width IDL types such as `int32_t`, `int64_t`, `uint32_t`, and
+`uint64_t` for portable protobuf schemas.
 
 ### Container Types
 
@@ -158,10 +166,11 @@ The IDL generator automatically maps C++ types to Protocol Buffers types.
 | C++ Type | Protobuf Type | Notes |
 |----------|---------------|-------|
 | `std::vector<uint8_t>` | `bytes` | Binary data, not repeated uint32 |
+| `std::vector<int8_t>` | `bytes` | Binary data |
 | `std::vector<char>` | `bytes` | Binary data |
 | `std::vector<signed char>` | `bytes` | Binary data |
-| `rpc::shared_ptr<T>` | `rpc.interface_descriptor` | Interface reference |
-| `rpc::optimistic_ptr<T>` | `rpc.interface_descriptor` | Interface reference |
+| `rpc::shared_ptr<T>` | `rpc.remote_object` | Interface reference descriptor |
+| `rpc::optimistic_ptr<T>` | `rpc.remote_object` | Interface reference descriptor |
 | Pointer types (`T*`) | `uint64` | Address only |
 
 ## 4. Nested Templates
@@ -229,16 +238,14 @@ double second = received.secondval();
 ### With Canopy Transport
 
 ```cpp
-// Send using protobuf encoding
-auto error = CO_AWAIT proxy_->send(
-    protocol_version,
-    rpc::encoding::protocol_buffers,  // Use protobuf
-    tag,
-    interface_id,
-    method_id,
-    input_buffer,
-    output_buffer);
+root_service->set_default_encoding(rpc::encoding::protocol_buffers);
+auto error = CO_AWAIT proxy->my_method(input, output);
 ```
+
+Generated proxies use the active service-proxy encoding. Low-level transport
+calls carry the encoding in `rpc::send_params` / `rpc::post_params`, but normal
+application code should call generated interface methods instead of hand-building
+marshaller messages.
 
 ## 7. Performance Comparison
 
@@ -265,14 +272,15 @@ yas_json:         1.0 ms (slowest)
 - Communicating with non-C++ services
 - Schema evolution is important
 - Using established protobuf tooling
-- Interoperating with gRPC services
+- Interoperating with code that already consumes the generated `.proto` schema
 - Running in a normal host process where linking the Google C++ protobuf runtime is acceptable
 
 ### Use Nanopb When
 
+- Building SGX enclave code
 - You need protobuf-compatible wire bytes but cannot link the full protobuf runtime
 - Runtime footprint and dependency surface matter more than access to the Google C++ generated message API
-- You want one `.proto` compatibility contract across host, JavaScript, and constrained-runtime paths
+- You want one `.proto` compatibility contract across host, JavaScript, and enclave paths
 
 ### Use YAS Binary When
 
@@ -286,10 +294,10 @@ yas_json:         1.0 ms (slowest)
 ```cpp
 auto error = rpc::deserialise(rpc::encoding::protocol_buffers, data, obj);
 
-if (error == rpc::error::INCOMPATIBLE_SERIALISATION())
+if (!error.empty())
 {
-    // Protobuf not supported or malformed data
-    // Fall back to yas_json
+    // Malformed data or a type/backend mismatch. Generated proxy calls surface
+    // serialization incompatibility as rpc::error::INCOMPATIBLE_SERIALISATION().
 }
 ```
 
@@ -305,5 +313,5 @@ if (error == rpc::error::INCOMPATIBLE_SERIALISATION())
 
 - [Nanopb](nanopb.md) - Current small-runtime protobuf-compatible backend
 - [YAS Serializer](yas-serializer.md) - Native C++ serialization
-- [Error Handling](../08-error-handling.md) - Error code reference
-- [API Reference](../12-api-reference.md) - Complete API
+- [Error Handling](../06-error-handling.md) - Error code reference
+- [API Reference](../09-api-reference.md) - Complete API

@@ -109,7 +109,7 @@ child_transport->set_child_entry_point<InterfaceType, InterfaceType>(
 **MISCONCEPTION REPORT**:
 - TCP transport requires coroutines for async I/O
 - Without coroutines, you need a synchronous TCP wrapper
-- The rpc::tcp::listener and tcp_transport classes are coroutine-based
+- The rpc::tcp_blocking::listener and tcp_transport classes are coroutine-based
 
 ---
 

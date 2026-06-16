@@ -1,0 +1,101 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+namespace llm_mcp
+{
+    namespace v1
+    {
+        error llm_mcp_error
+        {
+            [description = "A supplied argument is invalid."]
+            INVALID_ARGUMENT,
+
+            [description = "The requested MCP provider was not found."]
+            MCP_NOT_FOUND,
+
+            [description = "The requested MCP tool was not found."]
+            TOOL_NOT_FOUND,
+
+            [description = "The requested MCP tool cannot be called by the generic JSON bridge."]
+            TOOL_UNSUPPORTED,
+
+            [description = "The target tool returned an application-level failure."]
+            TOOL_CALL_FAILED,
+
+            [description = "A callback must be registered before prompting the demo LLM."]
+            CALLBACK_NOT_ASSIGNED,
+
+            [description = "The demo LLM backend failed."]
+            LLM_BACKEND_FAILURE
+        };
+
+        [status=demo]
+        struct llm_options
+        {
+            std::string system_prompt;
+            double temperature;
+            double min_p;
+            bool stream_events;
+            uint32_t max_tool_calls;
+        };
+
+        [status=demo]
+        struct mcp_tool
+        {
+            std::string name;
+            std::string description;
+            std::string interface_name;
+            std::string method_name;
+            rpc::interface_ordinal interface_id;
+            rpc::method method_id;
+            uint64_t tag;
+            bool marshalls_interfaces;
+            std::string input_schema;
+            std::string output_schema;
+        };
+
+        [status=demo]
+        interface i_llm_events
+        {
+            [post] llm_mcp_error piece(const std::string& piece);
+            [post] llm_mcp_error complete();
+        };
+
+        [status=demo]
+        interface i_mcp
+        {
+            [description="Return the raw Canopy interface descriptors exposed by this MCP provider."]
+            llm_mcp_error list_interfaces([out] std::vector<rpc::interface_descriptor>& interfaces);
+
+            [description="Return flattened LLM-callable tools built from the exposed interface schemas."]
+            llm_mcp_error list_tools([out] std::vector<mcp_tool>& tools);
+
+            [description="Call one tool by passing generated yas_json input directly to the target RPC object."]
+            llm_mcp_error call_tool(const std::string& tool_name, const std::string& arguments_json, [out] std::string& result_json);
+        };
+
+        [status=demo]
+        interface i_llm
+        {
+            [description="Add an MCP provider whose tools can be discovered and called by this LLM instance."]
+            llm_mcp_error add_mcp(const rpc::shared_ptr<i_mcp>& mcp);
+
+            [description="Register callback events for prompt output."]
+            llm_mcp_error set_callback(const rpc::shared_ptr<i_llm_events>& events);
+
+            [description="Prompt the LLM instance. The demo backend discovers schemas and calls matching MCP tools."]
+            llm_mcp_error prompt(const std::string& prompt);
+        };
+
+        [status=demo]
+        interface i_llm_factory
+        {
+            [description="Create an LLM instance configured with a system prompt and sampling flags."]
+            llm_mcp_error create_llm(const llm_options& options, [out] rpc::shared_ptr<i_llm>& llm);
+        };
+    }
+}

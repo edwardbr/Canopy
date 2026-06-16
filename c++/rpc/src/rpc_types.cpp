@@ -3,6 +3,8 @@
  *   All rights reserved.
  */
 
+#include <string_view>
+
 #include <rpc/rpc.h>
 
 namespace rpc
@@ -53,7 +55,7 @@ namespace rpc
         validate_prefix_bits(
             const std::vector<uint8_t>& data,
             uint16_t width,
-            const char* field_name)
+            std::string_view field_name)
         {
             auto required_bytes = static_cast<size_t>((width + 7u) / 8u);
             if (data.size() != required_bytes)

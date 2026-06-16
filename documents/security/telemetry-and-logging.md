@@ -67,3 +67,29 @@ The enclave should assume OCALL logging is observable and controllable by the
 host. For normal operation, SGX coroutine logs should be telemetry events over
 the stream transport. OCALL logging should only cover startup-before-stream and
 stream-submission failure cases, and those messages must be low detail.
+
+## Ordered Diagnostics
+
+OCALL logging is not ordered with SPSC protocol traffic. During SGX coroutine
+debugging, OCALL-backed logs made enclave-side add-ref progress appear to happen
+after the host had sent a later protocol message, even though the OCALL log could
+overtake the SPSC message it described.
+
+When investigating stream protocol ordering, prefer diagnostics carried on the
+same ordered path as the protocol message being observed. Do not add high-volume
+`RPC_INFO` calls inside enclave stream or add-ref hot paths: when enclave logs
+share the normal SPSC stream, logging itself can fill the enclave-to-host queue
+and perturb the protocol.
+
+For stalled pollers, use a narrow diagnostic path outside the hot protocol lane.
+A useful watchdog record includes:
+
+- enclave zone id
+- runtime loop iteration or progress counter
+- worker count and per-worker progress counters
+- scheduler ready/timer/thread-pool sizes
+- transport adjacent zone
+- last receive/send sequence observed by each stream transport
+
+This watchdog path should be opt-in diagnostic infrastructure, not normal
+logging.

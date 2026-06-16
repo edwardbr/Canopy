@@ -9,11 +9,10 @@
 
 namespace rpc::telemetry
 {
-#if defined(CANOPY_USE_TELEMETRY) && !defined(FOR_SGX)
+#if defined(CANOPY_USE_TELEMETRY)
     std::shared_ptr<i_telemetry_service> telemetry_service_ = nullptr;
 #endif
 
-#ifndef FOR_SGX
     bool create_test_telemetry_service(
         std::shared_ptr<i_telemetry_service>& service,
         const std::string& type,
@@ -29,5 +28,4 @@ namespace rpc::telemetry
             return create_sequence_diagram_telemetry_service(service, test_suite_name, name, directory);
         return false;
     }
-#endif
 }

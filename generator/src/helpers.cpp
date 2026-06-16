@@ -104,6 +104,27 @@ bool is_interface_param(
     return false;
 }
 
+std::string render_cpp_type(
+    const class_entity& scope,
+    const std::string& type)
+{
+    auto lookup_type = type;
+    std::string reference_modifiers;
+    strip_reference_modifiers(lookup_type, reference_modifiers);
+
+    std::shared_ptr<class_entity> obj;
+    if (scope.find_class(lookup_type, obj) && obj && obj->get_entity_type() == entity_type::ERROR)
+    {
+        // IDL error domains are generated as public C++ value types. The RPC
+        // transport/status path still lowers them to int explicitly in the
+        // generated proxy/stub code; public signatures should keep the domain
+        // type so application code cannot accidentally mix unrelated errors.
+        return lookup_type + reference_modifiers;
+    }
+
+    return type;
+}
+
 bool is_in_param(const attributes& attribs)
 {
     return attribs.has_value(attribute_types::in_param);
@@ -182,6 +203,51 @@ bool is_type_and_parameter_the_same(
     return type == name;
 }
 
+std::string cpp_string_literal(const std::string& value)
+{
+    std::string output;
+    output.reserve(value.size() + 2);
+    output += '"';
+    for (const auto ch : value)
+    {
+        switch (ch)
+        {
+        case '\\':
+            output += "\\\\";
+            break;
+        case '"':
+            output += "\\\"";
+            break;
+        case '\n':
+            output += "\\n";
+            break;
+        case '\r':
+            output += "\\r";
+            break;
+        case '\t':
+            output += "\\t";
+            break;
+        case '\b':
+            output += "\\b";
+            break;
+        case '\f':
+            output += "\\f";
+            break;
+        default:
+        {
+            const auto byte = static_cast<unsigned char>(ch);
+            if (byte < 0x20)
+                output += fmt::format("\\{:03o}", byte);
+            else
+                output += ch;
+            break;
+        }
+        }
+    }
+    output += '"';
+    return output;
+}
+
 void render_parameter(
     writer& wrtr,
     const class_entity& m_ob,
@@ -213,7 +279,7 @@ void render_parameter(
             modifier = modifier + "enum ";
     }
 
-    wrtr.raw("{}{} {}", modifier, parameter.get_type(), parameter.get_name());
+    wrtr.raw("{}{} {}", modifier, render_cpp_type(m_ob, parameter.get_type()), parameter.get_name());
 }
 
 void render_function(
@@ -245,5 +311,5 @@ void render_function(
             modifier = modifier + "enum ";
     }
 
-    wrtr.raw("{}{} {}", modifier, function.get_return_type(), function.get_name());
+    wrtr.raw("{}{} {}", modifier, render_cpp_type(m_ob, function.get_return_type()), function.get_name());
 }
