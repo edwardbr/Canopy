@@ -44,11 +44,9 @@ if(CANOPY_USE_TELEMETRY OR CANOPY_BUILD_TEST)
   add_subdirectory(spdlog)
 endif()
 
-# wslay + llhttp are both needed by the dual-mode WebSocket framing stream
-# (streaming_websocket) and the dual-mode canopy_http_server. In coroutine
-# builds they're also pulled in by the WS transport block below; in
-# blocking builds these are the host-side consumers, so we add them eagerly
-# when websocket is enabled regardless of coroutine mode.
+# wslay + llhttp are both needed by the dual-mode WebSocket framing stream (streaming_websocket) and the dual-mode
+# canopy_http_server. In coroutine builds they're also pulled in by the WS transport block below; in blocking builds
+# these are the host-side consumers, so we add them eagerly when websocket is enabled regardless of coroutine mode.
 if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
   add_subdirectory(wslay)
 
@@ -82,9 +80,8 @@ if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
   endif()
 
   add_library(
-    llhttp_static STATIC
-    ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
+    llhttp_static STATIC ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
+                         ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
   add_dependencies(llhttp_static llhttp_generate)
   target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
                                                   ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
@@ -121,11 +118,9 @@ if(CANOPY_BUILD_COROUTINE)
 
   set(CANOPY_CARES_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/canopy-cares-config")
   file(MAKE_DIRECTORY "${CANOPY_CARES_CONFIG_DIR}")
-  file(
-    WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
-    "if(NOT TARGET c-ares::cares)\n"
-    "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
-    "endif()\n")
+  file(WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
+       "if(NOT TARGET c-ares::cares)\n" "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
+       "endif()\n")
   set(c-ares_DIR
       "${CANOPY_CARES_CONFIG_DIR}"
       CACHE PATH "Canopy c-ares package shim for libcoro" FORCE)
@@ -135,9 +130,8 @@ if(CANOPY_BUILD_COROUTINE)
   if(CANOPY_BUILD_WEBSOCKET)
     add_subdirectory(wslay)
 
-    # llhttp for HTTP parsing. Prefer the generated C sources when present so
-    # build hosts do not need a modern Node.js toolchain just to compile the
-    # untrusted_web transport and demo.
+    # llhttp for HTTP parsing. Prefer the generated C sources when present so build hosts do not need a modern Node.js
+    # toolchain just to compile the untrusted_web transport and demo.
     set(CANOPY_LLHTTP_GENERATED_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/c/llhttp.c")
     set(CANOPY_LLHTTP_GENERATED_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build/llhttp.h")
     option(CANOPY_LLHTTP_GENERATE_FROM_TYPESCRIPT "Regenerate llhttp C sources from TypeScript" OFF)
@@ -171,16 +165,17 @@ if(CANOPY_BUILD_COROUTINE)
     endif()
 
     add_library(
-      llhttp_static STATIC
-      ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
-      ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
+      llhttp_static STATIC ${CANOPY_LLHTTP_GENERATED_SOURCE} ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/api.c
+                           ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native/http.c)
     add_dependencies(llhttp_static llhttp_generate)
     target_include_directories(llhttp_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/build
                                                     ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
 
   endif()
 
-  if(CANOPY_BUILD_DEMOS AND CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
+  if(CANOPY_BUILD_DEMOS
+     AND CANOPY_BUILD_WEBSOCKET
+     AND NOT CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY)
     # llama.cpp has update=none in .gitmodules so it is not cloned by default. cmake/Canopy.cmake selectively
     # initialises it when the full websocket demo is enabled via CANOPY_REQUIRED_SUBMODULES.
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/CMakeLists.txt")
@@ -196,8 +191,8 @@ if(CANOPY_BUILD_COROUTINE)
   endif()
 
   if(CANOPY_BUILD_DEMOS AND CANOPY_BUILD_WEBSOCKET)
-    # libvpx powers the websocket video demo. It is independent of llama and is
-    # still needed for CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY builds.
+    # libvpx powers the websocket video demo. It is independent of llama and is still needed for
+    # CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY builds.
     include(CanopyLibvpx)
   endif()
 endif()
@@ -206,10 +201,12 @@ if(CANOPY_BUILD_WEBSOCKET AND (CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE OR CANO
   set(CANOPY_ZLIB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zlib")
 
   if(NOT EXISTS "${CANOPY_ZLIB_SOURCE_DIR}/zlib.h")
-    message(FATAL_ERROR "zlib-backed HTTP/WebSocket compression support is enabled, but the zlib submodule was not "
-                        "populated at ${CANOPY_ZLIB_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency "
-                        "bootstrap can initialise c++/submodules/zlib, or reconfigure with "
-                        "-DCANOPY_BUILD_HTTP_COMPRESSION=OFF -DCANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE=OFF.")
+    message(
+      FATAL_ERROR
+        "zlib-backed HTTP/WebSocket compression support is enabled, but the zlib submodule was not "
+        "populated at ${CANOPY_ZLIB_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency "
+        "bootstrap can initialise c++/submodules/zlib, or reconfigure with "
+        "-DCANOPY_BUILD_HTTP_COMPRESSION=OFF -DCANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE=OFF.")
   endif()
 
   set(CANOPY_ZLIB_CORE_SOURCES
@@ -271,15 +268,16 @@ if(CANOPY_BUILD_MBEDTLS)
 
   add_subdirectory(mbedtls)
 
-  foreach(_canopy_mbedtls_target
-          canopy_external_mbedtls
-          canopy_external_mbedx509
-          canopy_external_tfpsacrypto
-          canopy_external_mbedcrypto
-          mbedtls
-          mbedx509
-          tfpsacrypto
-          mbedcrypto)
+  foreach(
+    _canopy_mbedtls_target
+    canopy_external_mbedtls
+    canopy_external_mbedx509
+    canopy_external_tfpsacrypto
+    canopy_external_mbedcrypto
+    mbedtls
+    mbedx509
+    tfpsacrypto
+    mbedcrypto)
     if(TARGET ${_canopy_mbedtls_target})
       set_target_properties(${_canopy_mbedtls_target} PROPERTIES C_CLANG_TIDY "")
     endif()
@@ -309,7 +307,9 @@ if(CANOPY_BUILD_MBEDTLS)
     endif()
   endforeach()
 
-  if(NOT _canopy_mbedtls_tls_target OR NOT _canopy_mbedtls_x509_target OR NOT _canopy_mbedtls_crypto_target)
+  if(NOT _canopy_mbedtls_tls_target
+     OR NOT _canopy_mbedtls_x509_target
+     OR NOT _canopy_mbedtls_crypto_target)
     message(FATAL_ERROR "Mbed TLS submodule did not provide the expected TLS, X.509, and crypto CMake targets.")
   endif()
 
@@ -329,9 +329,11 @@ if(CANOPY_BUILD_COMPRESSION)
   set(CANOPY_ZSTD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zstd")
 
   if(NOT EXISTS "${CANOPY_ZSTD_SOURCE_DIR}/build/cmake/CMakeLists.txt")
-    message(FATAL_ERROR "Compression stream support is enabled, but the zstd submodule was not populated at "
-                        "${CANOPY_ZSTD_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency bootstrap "
-                        "can initialise c++/submodules/zstd, or reconfigure with -DCANOPY_BUILD_COMPRESSION=OFF.")
+    message(
+      FATAL_ERROR
+        "Compression stream support is enabled, but the zstd submodule was not populated at "
+        "${CANOPY_ZSTD_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency bootstrap "
+        "can initialise c++/submodules/zstd, or reconfigure with -DCANOPY_BUILD_COMPRESSION=OFF.")
   endif()
 
   set(ZSTD_BUILD_PROGRAMS
