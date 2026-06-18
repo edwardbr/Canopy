@@ -18,7 +18,7 @@ All rights reserved.
 
 **A Modern C++ Remote Procedure Call Library for High-Performance Distributed Systems**
 
-> Note: Canopy is in Beta, including the documentation, and is under active development.
+> Note: This is the curated version 4 of the underlying wire protocol pre-release and cleanup.
 >
 > Current implementation status:
 > - C++ is the primary and most complete implementation
