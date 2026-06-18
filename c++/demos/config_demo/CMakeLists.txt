@@ -20,7 +20,11 @@ set(CONFIG_DEMO_SOURCE_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schemas")
 
 file(MAKE_DIRECTORY "${CONFIG_DEMO_CERT_DIR}" "${CONFIG_DEMO_SAMPLE_DIR}" "${CONFIG_DEMO_SCHEMA_DIR}")
 file(COPY "${CONFIG_DEMO_CERT_SOURCE_DIR}/" DESTINATION "${CONFIG_DEMO_CERT_DIR}")
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/samples/" DESTINATION "${CONFIG_DEMO_SAMPLE_DIR}" FILES_MATCHING PATTERN "*.json")
+file(
+  COPY "${CMAKE_CURRENT_SOURCE_DIR}/samples/"
+  DESTINATION "${CONFIG_DEMO_SAMPLE_DIR}"
+  FILES_MATCHING
+  PATTERN "*.json")
 
 add_executable(config_demo src/config_demo.cpp src/config_processing.cpp src/rpc_demo.cpp)
 
@@ -46,18 +50,24 @@ target_compile_options(config_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WA
 target_link_options(config_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET config_demo PROPERTY COMPILE_PDB_NAME config_demo)
 
-CanopyGenerateConnectionConfigSchema(
+canopygenerateconnectionconfigschema(
   config_demo_config_idl
   "${CONFIG_DEMO_SCHEMA_DIR}"
-  TARGET config_demo_schema
-  ROOT_DEFINITION config_demo_v1_demo_settings
-  OUTPUT_SCHEMA config_demo_config.schema.json)
-CanopyGenerateConnectionConfigSchema(
+  TARGET
+  config_demo_schema
+  ROOT_DEFINITION
+  config_demo_v1_demo_settings
+  OUTPUT_SCHEMA
+  config_demo_config.schema.json)
+canopygenerateconnectionconfigschema(
   config_demo_config_idl
   "${CONFIG_DEMO_SOURCE_SCHEMA_DIR}"
-  TARGET config_demo_source_schema
-  ROOT_DEFINITION config_demo_v1_demo_settings
-  OUTPUT_SCHEMA config_demo_config.schema.json)
+  TARGET
+  config_demo_source_schema
+  ROOT_DEFINITION
+  config_demo_v1_demo_settings
+  OUTPUT_SCHEMA
+  config_demo_config.schema.json)
 add_dependencies(config_demo config_demo_schema config_demo_source_schema)
 
 if(CANOPY_ENABLE_CLANG_TIDY)

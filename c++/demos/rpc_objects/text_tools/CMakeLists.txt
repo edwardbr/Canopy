@@ -31,17 +31,13 @@ target_include_directories(
   demo_text_tools_rpc_object
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
-target_link_libraries(
-  demo_text_tools_rpc_object
-  PUBLIC text_tools_idl
-         rpc::modules
-         ${CANOPY_LIBRARIES})
+target_link_libraries(demo_text_tools_rpc_object PUBLIC text_tools_idl rpc::modules ${CANOPY_LIBRARIES})
 target_compile_options(demo_text_tools_rpc_object PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(demo_text_tools_rpc_object PRIVATE ${CANOPY_LINK_OPTIONS})
 set_property(TARGET demo_text_tools_rpc_object PROPERTY COMPILE_PDB_NAME demo_text_tools_rpc_object)
 
 if(NOT CANOPY_BUILD_COROUTINE AND TARGET transport_blocking_dll_runtime)
-  CanopyCreateBlockingDll(
+  canopycreateblockingdll(
     demo_text_tools_blocking_dll
     SOURCES
     src/module.cpp
@@ -53,7 +49,7 @@ if(NOT CANOPY_BUILD_COROUTINE AND TARGET transport_blocking_dll_runtime)
 endif()
 
 if(CANOPY_BUILD_COROUTINE AND TARGET transport_shared_scheduler_dll_runtime)
-  CanopyCreateSharedSchedulerDll(
+  canopycreatesharedschedulerdll(
     demo_text_tools_coroutine_shared_dll
     SOURCES
     src/module.cpp

@@ -12,14 +12,15 @@ CanopyGenerate(
   ""
   yas_json
   dependencies rpc_types_idl io_uring_config_idl
-  include_paths
-    ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
-    ${CANOPY_CPP_SOURCE_DIR}/subcomponents/io_uring_config/interfaces
-    ${CANOPY_INTERFACE_SOURCE_DIR}
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_CPP_SOURCE_DIR}/subcomponents/io_uring_config/interfaces
+                ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
-if(NOT CANOPY_BUILD_COROUTINE OR NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux") OR NOT TARGET canopy_io_uring)
-  message(STATUS "streaming_tcp_coroutine implementation not configured: it requires coroutine Linux and canopy_io_uring")
+if(NOT CANOPY_BUILD_COROUTINE
+   OR NOT (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+   OR NOT TARGET canopy_io_uring)
+  message(
+    STATUS "streaming_tcp_coroutine implementation not configured: it requires coroutine Linux and canopy_io_uring")
   return()
 endif()
 
@@ -35,7 +36,11 @@ target_compile_options(streaming_tcp_coroutine PRIVATE ${CANOPY_COMPILE_OPTIONS}
 target_link_options(streaming_tcp_coroutine PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_tcp_coroutine
-  PUBLIC streaming transport_streaming canopy_io_uring io_uring_config_idl tcp_coroutine_stream_config_idl
+  PUBLIC streaming
+         transport_streaming
+         canopy_io_uring
+         io_uring_config_idl
+         tcp_coroutine_stream_config_idl
   PRIVATE rpc libcoro)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
@@ -58,6 +63,7 @@ if(CANOPY_BUILD_TEST
             streaming_websocket
             transport_streaming
             rpc_log)
-  set_property(TARGET tcp_coroutine_stream_composition_fit PROPERTY COMPILE_PDB_NAME tcp_coroutine_stream_composition_fit)
+  set_property(TARGET tcp_coroutine_stream_composition_fit PROPERTY COMPILE_PDB_NAME
+                                                                    tcp_coroutine_stream_composition_fit)
   message(STATUS "tcp_coroutine_stream_composition_fit configured")
 endif()

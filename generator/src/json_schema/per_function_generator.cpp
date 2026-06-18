@@ -470,9 +470,7 @@ namespace json_schema
             // Fail-closed: emit a schema that rejects every value rather than
             // a permissive empty schema. The converter generator also skips
             // structs that reach this branch, so the runtime never sees one.
-            writer.write_string_property(
-                "description",
-                "rpc::variant with non-taggable alternatives; no runtime support");
+            writer.write_string_property("description", "rpc::variant with non-taggable alternatives; no runtime support");
             writer.write_key("not");
             writer.open_object();
             writer.close_object();

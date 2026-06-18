@@ -1,6 +1,6 @@
 #
-# transport_blocking_dll       - host-side library (links into the host process)
-# transport_blocking_dll_runtime - DLL-side library (links into the loaded shared object)
+# transport_blocking_dll       - host-side library (links into the host process) transport_blocking_dll_runtime -
+# DLL-side library (links into the loaded shared object)
 #
 
 include(CanopyCreateBlockingDll)
@@ -26,15 +26,12 @@ target_compile_definitions(transport_blocking_dll PRIVATE ${CANOPY_DEFINES})
 target_include_directories(
   transport_blocking_dll
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-         "$<INSTALL_INTERFACE:include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(
   transport_blocking_dll
-  PUBLIC transport_factory
-         blocking_dll_config_idl
-         json
+  PUBLIC transport_factory blocking_dll_config_idl json
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 if(UNIX AND NOT APPLE)
@@ -69,9 +66,7 @@ target_link_libraries(
 
 target_compile_options(
   transport_blocking_dll_runtime
-  PRIVATE ${CANOPY_COMPILE_OPTIONS}
-          ${CANOPY_WARN_OK}
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
+  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
           $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
 
 target_link_options(transport_blocking_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
@@ -86,5 +81,4 @@ endif()
 # Test support: INTERFACE library that exposes the setup.h include path
 # ---------------------------------------------------------------------------
 add_library(transport_blocking_dll_test INTERFACE)
-target_include_directories(
-  transport_blocking_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(transport_blocking_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")

@@ -1,6 +1,6 @@
 #
-# transport_shared_scheduler_dll - host-side (links into host process)
-# transport_shared_scheduler_dll_runtime - DLL-side (links into shared object)
+# transport_shared_scheduler_dll - host-side (links into host process) transport_shared_scheduler_dll_runtime - DLL-side
+# (links into shared object)
 #
 # Both targets are only meaningful in coroutine builds.
 
@@ -31,15 +31,12 @@ target_compile_definitions(transport_shared_scheduler_dll PRIVATE ${CANOPY_DEFIN
 target_include_directories(
   transport_shared_scheduler_dll
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-         "$<INSTALL_INTERFACE:include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(
   transport_shared_scheduler_dll
-  PUBLIC transport_factory
-         shared_dll_config_idl
-         json
+  PUBLIC transport_factory shared_dll_config_idl json
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 if(UNIX AND NOT APPLE)
@@ -60,8 +57,8 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(transport_shared_scheduler_dll_runtime STATIC src/dll_transport.cpp)
 
-target_compile_definitions(
-  transport_shared_scheduler_dll_runtime PRIVATE ${CANOPY_DEFINES} CANOPY_SHARED_SCHEDULER_DLL_BUILDING)
+target_compile_definitions(transport_shared_scheduler_dll_runtime PRIVATE ${CANOPY_DEFINES}
+                                                                          CANOPY_SHARED_SCHEDULER_DLL_BUILDING)
 
 target_include_directories(
   transport_shared_scheduler_dll_runtime
@@ -83,7 +80,8 @@ target_compile_options(
 
 target_link_options(transport_shared_scheduler_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
-set_property(TARGET transport_shared_scheduler_dll_runtime PROPERTY COMPILE_PDB_NAME transport_shared_scheduler_dll_runtime)
+set_property(TARGET transport_shared_scheduler_dll_runtime PROPERTY COMPILE_PDB_NAME
+                                                                    transport_shared_scheduler_dll_runtime)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(transport_shared_scheduler_dll_runtime PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -93,5 +91,5 @@ endif()
 # Test support: INTERFACE library that exposes the setup.h include path
 # ---------------------------------------------------------------------------
 add_library(transport_shared_scheduler_dll_test INTERFACE)
-target_include_directories(
-  transport_shared_scheduler_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(transport_shared_scheduler_dll_test
+                           INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")

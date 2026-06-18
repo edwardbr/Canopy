@@ -1,6 +1,6 @@
 #
-# transport_unshared_scheduler_dll       — host-side (links into host process)
-# transport_unshared_scheduler_dll_runtime — DLL-side  (links into shared object)
+# transport_unshared_scheduler_dll       — host-side (links into host process) transport_unshared_scheduler_dll_runtime
+# — DLL-side  (links into shared object)
 #
 # Both targets are only meaningful in coroutine builds.
 
@@ -31,15 +31,12 @@ target_compile_definitions(transport_unshared_scheduler_dll PRIVATE ${CANOPY_DEF
 target_include_directories(
   transport_unshared_scheduler_dll
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
-         "$<INSTALL_INTERFACE:include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_link_libraries(
   transport_unshared_scheduler_dll
-  PUBLIC transport_factory
-         unshared_dll_config_idl
-         json
+  PUBLIC transport_factory unshared_dll_config_idl json
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
 if(UNIX AND NOT APPLE)
@@ -60,8 +57,8 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(transport_unshared_scheduler_dll_runtime STATIC src/dll_transport.cpp)
 
-target_compile_definitions(transport_unshared_scheduler_dll_runtime
-                           PRIVATE ${CANOPY_DEFINES} CANOPY_UNSHARED_SCHEDULER_DLL_BUILDING)
+target_compile_definitions(transport_unshared_scheduler_dll_runtime PRIVATE ${CANOPY_DEFINES}
+                                                                            CANOPY_UNSHARED_SCHEDULER_DLL_BUILDING)
 
 target_include_directories(
   transport_unshared_scheduler_dll_runtime
@@ -94,5 +91,5 @@ endif()
 # Test support: INTERFACE library that exposes the setup.h include path
 # ---------------------------------------------------------------------------
 add_library(transport_unshared_scheduler_dll_test INTERFACE)
-target_include_directories(
-  transport_unshared_scheduler_dll_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(transport_unshared_scheduler_dll_test
+                           INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")

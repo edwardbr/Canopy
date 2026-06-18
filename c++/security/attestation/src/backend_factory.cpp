@@ -19,8 +19,7 @@
 #  error "Production releases must not build fake attestation backend implementations"
 #endif
 
-#if !defined(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)                                                           \
-    && defined(CANOPY_ATTESTATION_BACKEND_FAKE)
+#if !defined(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS) && defined(CANOPY_ATTESTATION_BACKEND_FAKE)
 #  error "Fake attestation backend selected while development backends are disabled"
 #endif
 

@@ -96,11 +96,10 @@ set_property(TARGET transport_ipc_spsc_dll_runtime PROPERTY COMPILE_PDB_NAME tra
 
 target_link_libraries(transport_ipc_spsc INTERFACE transport_ipc_spsc_impl)
 target_include_directories(transport_ipc_spsc INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-                                                             "$<INSTALL_INTERFACE:include>")
+                                                        "$<INSTALL_INTERFACE:include>")
 
 add_library(transport_ipc_spsc_test INTERFACE)
-target_include_directories(transport_ipc_spsc_test
-                           INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
+target_include_directories(transport_ipc_spsc_test INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
 target_link_libraries(transport_ipc_spsc_test INTERFACE transport_ipc_spsc)
 
 add_library(transport_ipc_spsc_dll_host_test INTERFACE)
@@ -108,8 +107,8 @@ target_include_directories(transport_ipc_spsc_dll_host_test
                            INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tests>")
 target_link_libraries(transport_ipc_spsc_dll_host_test INTERFACE transport_ipc_spsc_dll_host)
 
-# Generic sidecar helpers. The built-in executable hosts a configured DLL; a
-# direct executable still belongs in the app or test that owns its service interfaces.
+# Generic sidecar helpers. The built-in executable hosts a configured DLL; a direct executable still belongs in the app
+# or test that owns its service interfaces.
 add_subdirectory(sidecar_process)
 
 if(TARGET canopy_ipc_spsc_sidecar_process)
@@ -119,7 +118,6 @@ if(TARGET canopy_ipc_spsc_sidecar_process)
 endif()
 
 if(CANOPY_ENABLE_CLANG_TIDY)
-  set_target_properties(
-    transport_ipc_spsc_impl transport_ipc_spsc_dll_host transport_ipc_spsc_dll_runtime PROPERTIES CXX_CLANG_TIDY
-                                                                                                   "${CLANG_TIDY_COMMAND}")
+  set_target_properties(transport_ipc_spsc_impl transport_ipc_spsc_dll_host transport_ipc_spsc_dll_runtime
+                        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

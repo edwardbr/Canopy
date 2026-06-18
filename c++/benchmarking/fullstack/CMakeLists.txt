@@ -64,7 +64,7 @@ if(CANOPY_BUILD_COROUTINE)
   set_property(TARGET canopy_benchmark_ipc_child_process PROPERTY COMPILE_PDB_NAME canopy_benchmark_ipc_child_process)
 
 else()
-  CanopyCreateBlockingDll(
+  canopycreateblockingdll(
     canopy_benchmark_blocking_dll
     SOURCES
     src/dll_init.cpp
@@ -105,16 +105,15 @@ endif()
 if(CANOPY_BUILD_COROUTINE)
   target_compile_definitions(
     benchmark
-    PRIVATE
-      CANOPY_BENCHMARK_UNSHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:canopy_benchmark_unshared_scheduler_dll>"
-      CANOPY_BENCHMARK_SHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:canopy_benchmark_shared_scheduler_dll>"
-      CANOPY_BENCHMARK_IPC_SPSC_SIDECAR_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_spsc_sidecar_process>"
-      CANOPY_BENCHMARK_IPC_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_ipc_spsc_dll>"
-      CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
+    PRIVATE CANOPY_BENCHMARK_UNSHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:canopy_benchmark_unshared_scheduler_dll>"
+            CANOPY_BENCHMARK_SHARED_SCHEDULER_DLL_PATH="$<TARGET_FILE:canopy_benchmark_shared_scheduler_dll>"
+            CANOPY_BENCHMARK_IPC_SPSC_SIDECAR_PROCESS_PATH="$<TARGET_FILE:canopy_ipc_spsc_sidecar_process>"
+            CANOPY_BENCHMARK_IPC_SPSC_DLL_PATH="$<TARGET_FILE:canopy_benchmark_ipc_spsc_dll>"
+            CANOPY_BENCHMARK_IPC_CHILD_PROCESS_PATH="$<TARGET_FILE:canopy_benchmark_ipc_child_process>")
 else()
   target_sources(benchmark PRIVATE src/benchmark_tcp_blocking.cpp)
-  target_compile_definitions(
-    benchmark PRIVATE CANOPY_BENCHMARK_BLOCKING_DLL_PATH="$<TARGET_FILE:canopy_benchmark_blocking_dll>")
+  target_compile_definitions(benchmark
+                             PRIVATE CANOPY_BENCHMARK_BLOCKING_DLL_PATH="$<TARGET_FILE:canopy_benchmark_blocking_dll>")
 endif()
 target_include_directories(benchmark PRIVATE "${CANOPY_CPP_SOURCE_DIR}/benchmarking/fullstack/src"
                                              "${CANOPY_CPP_SOURCE_DIR}/demos/comprehensive/include" ${CANOPY_INCLUDES})

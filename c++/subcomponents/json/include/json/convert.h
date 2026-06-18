@@ -64,7 +64,12 @@ namespace json
 
             template<
                 typename T,
-                std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool>, int> = 0>
+                std::enable_if_t<
+                    std::is_integral_v<T>
+                        && !std::is_same_v<
+                            T,
+                            bool>,
+                    int> = 0>
             [[nodiscard]] T from_json_object(
                 tag<T>,
                 const json::v1::object& value)
@@ -76,7 +81,9 @@ namespace json
 
             template<
                 typename T,
-                std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
+                std::enable_if_t<
+                    std::is_floating_point_v<T>,
+                    int> = 0>
             [[nodiscard]] T from_json_object(
                 tag<T>,
                 const json::v1::object& value)
@@ -105,9 +112,16 @@ namespace json
                 return rpc::optional<T>(from_json_object<T>(value));
             }
 
-            template<typename T, std::size_t N>
-            [[nodiscard]] std::array<T, N> from_json_object(
-                tag<std::array<T, N>>,
+            template<
+                typename T,
+                std::size_t N>
+            [[nodiscard]] std::array<
+                T,
+                N>
+            from_json_object(
+                tag<std::array<
+                    T,
+                    N>>,
                 const json::v1::object& value)
             {
                 if (value.get_type() != object::type::array_type)
@@ -135,8 +149,7 @@ namespace json
                     const json::v1::object& /*value*/,
                     std::true_type /*end*/)
                 {
-                    throw config_error(
-                        "rpc::variant JSON tag '" + std::string(requested) + "' is not a known alternative");
+                    throw config_error("rpc::variant JSON tag '" + std::string(requested) + "' is not a known alternative");
                 }
 
                 template<
@@ -250,8 +263,13 @@ namespace json
             // K is std::string. Other key types remain on the unsupported list
             // in the generator.
             template<typename V>
-            [[nodiscard]] std::map<std::string, V> from_json_object(
-                tag<std::map<std::string, V>>,
+            [[nodiscard]] std::map<
+                std::string,
+                V>
+            from_json_object(
+                tag<std::map<
+                    std::string,
+                    V>>,
                 const json::v1::object& value)
             {
                 if (value.get_type() != object::type::map_type)
@@ -263,8 +281,13 @@ namespace json
             }
 
             template<typename V>
-            [[nodiscard]] std::unordered_map<std::string, V> from_json_object(
-                tag<std::unordered_map<std::string, V>>,
+            [[nodiscard]] std::unordered_map<
+                std::string,
+                V>
+            from_json_object(
+                tag<std::unordered_map<
+                    std::string,
+                    V>>,
                 const json::v1::object& value)
             {
                 if (value.get_type() != object::type::map_type)
@@ -282,7 +305,10 @@ namespace json
 
             // ---- primitive writers ------------------------------------------------
 
-            [[nodiscard]] inline json::v1::object to_json_object(bool value) { return json::v1::object(value); }
+            [[nodiscard]] inline json::v1::object to_json_object(bool value)
+            {
+                return json::v1::object(value);
+            }
 
             [[nodiscard]] inline json::v1::object to_json_object(const std::string& value)
             {
@@ -296,7 +322,13 @@ namespace json
 
             template<
                 typename T,
-                std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool> && std::is_signed_v<T>, int> = 0>
+                std::enable_if_t<
+                    std::is_integral_v<T>
+                        && !std::is_same_v<
+                            T,
+                            bool>
+                        && std::is_signed_v<T>,
+                    int> = 0>
             [[nodiscard]] json::v1::object to_json_object(T value)
             {
                 return json::v1::object(static_cast<int64_t>(value));
@@ -304,30 +336,41 @@ namespace json
 
             template<
                 typename T,
-                std::enable_if_t<std::is_integral_v<T> && !std::is_same_v<T, bool> && std::is_unsigned_v<T>, int> = 0>
+                std::enable_if_t<
+                    std::is_integral_v<T>
+                        && !std::is_same_v<
+                            T,
+                            bool>
+                        && std::is_unsigned_v<T>,
+                    int> = 0>
             [[nodiscard]] json::v1::object to_json_object(T value)
             {
                 return json::v1::object(static_cast<uint64_t>(value));
             }
 
-            template<typename T, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
+            template<
+                typename T,
+                std::enable_if_t<
+                    std::is_floating_point_v<T>,
+                    int> = 0>
             [[nodiscard]] json::v1::object to_json_object(T value)
             {
                 return json::v1::object(static_cast<double>(value));
             }
 
-            [[nodiscard]] inline json::v1::object to_json_object(const json::v1::object& value) { return value; }
+            [[nodiscard]] inline json::v1::object to_json_object(const json::v1::object& value)
+            {
+                return value;
+            }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const rpc::optional<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::optional<T>& value)
             {
                 if (!value.has_value())
                     return json::v1::object(nullptr);
                 return to_json_object(*value);
             }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const std::vector<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::vector<T>& value)
             {
                 json::v1::array result;
                 result.reserve(value.size());
@@ -336,8 +379,7 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const std::list<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::list<T>& value)
             {
                 json::v1::array result;
                 for (const auto& item : value)
@@ -345,8 +387,7 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const std::deque<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::deque<T>& value)
             {
                 json::v1::array result;
                 for (const auto& item : value)
@@ -354,8 +395,7 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const std::set<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::set<T>& value)
             {
                 json::v1::array result;
                 for (const auto& item : value)
@@ -363,8 +403,7 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename T>
-            [[nodiscard]] json::v1::object to_json_object(const std::unordered_set<T>& value)
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::unordered_set<T>& value)
             {
                 json::v1::array result;
                 for (const auto& item : value)
@@ -373,7 +412,10 @@ namespace json
             }
 
             template<typename V>
-            [[nodiscard]] json::v1::object to_json_object(const std::map<std::string, V>& value)
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::map<
+                    std::string,
+                    V>& value)
             {
                 json::v1::map result;
                 for (const auto& [key, sub] : value)
@@ -382,7 +424,10 @@ namespace json
             }
 
             template<typename V>
-            [[nodiscard]] json::v1::object to_json_object(const std::unordered_map<std::string, V>& value)
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::unordered_map<
+                    std::string,
+                    V>& value)
             {
                 json::v1::map result;
                 for (const auto& [key, sub] : value)
@@ -390,8 +435,13 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename T, std::size_t N>
-            [[nodiscard]] json::v1::object to_json_object(const std::array<T, N>& value)
+            template<
+                typename T,
+                std::size_t N>
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::array<
+                    T,
+                    N>& value)
             {
                 json::v1::array result;
                 result.reserve(N);
@@ -400,8 +450,7 @@ namespace json
                 return json::v1::object(std::move(result));
             }
 
-            template<typename... Ts>
-            [[nodiscard]] json::v1::object to_json_object(const rpc::variant<Ts...>& value)
+            template<typename... Ts> [[nodiscard]] json::v1::object to_json_object(const rpc::variant<Ts...>& value)
             {
                 if (value.valueless_by_exception())
                     throw config_error("cannot serialise valueless rpc::variant");
@@ -411,8 +460,7 @@ namespace json
                     [&result](const auto& alternative)
                     {
                         using alternative_type = std::decay_t<decltype(alternative)>;
-                        result.emplace(
-                            rpc::variant_alternative_tag<alternative_type>::value, to_json_object(alternative));
+                        result.emplace(rpc::variant_alternative_tag<alternative_type>::value, to_json_object(alternative));
                     },
                     value);
                 return json::v1::object(std::move(result));

@@ -26,7 +26,8 @@ target_include_directories(
 target_compile_definitions(streaming_attestation PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_attestation PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_attestation PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(streaming_attestation PUBLIC streaming canopy::security_attestation libcoro attestation_stream_config_idl)
+target_link_libraries(streaming_attestation PUBLIC streaming canopy::security_attestation libcoro
+                                                   attestation_stream_config_idl)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_attestation PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -41,8 +42,8 @@ if(CANOPY_BUILD_TEST
   target_compile_options(attestation_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(attestation_stream_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   if(NOT CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
-    target_sources(attestation_stream_test PRIVATE
-                   ${CANOPY_CPP_SOURCE_DIR}/security/attestation/src/backends/fake/fake_backend.cpp)
+    target_sources(attestation_stream_test
+                   PRIVATE ${CANOPY_CPP_SOURCE_DIR}/security/attestation/src/backends/fake/fake_backend.cpp)
   endif()
   target_link_libraries(attestation_stream_test PRIVATE streaming_attestation streaming_spsc_queue GTest::gtest_main
                                                         rpc_log)

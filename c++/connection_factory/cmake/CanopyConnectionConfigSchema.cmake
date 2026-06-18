@@ -7,7 +7,12 @@ function(CanopyGenerateConnectionConfigSchema idl_target output_dir)
   set(options)
   set(oneValueArgs TARGET OUTPUT_SCHEMA ROOT_DEFINITION)
   set(multiValueArgs)
-  cmake_parse_arguments(SCHEMA "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+  cmake_parse_arguments(
+    SCHEMA
+    "${options}"
+    "${oneValueArgs}"
+    "${multiValueArgs}"
+    ${ARGN})
 
   if(NOT TARGET ${idl_target})
     message(FATAL_ERROR "CanopyGenerateConnectionConfigSchema expected an IDL CMake target, got '${idl_target}'")
@@ -37,11 +42,8 @@ function(CanopyGenerateConnectionConfigSchema idl_target output_dir)
     OUTPUT "${output_file}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${output_dir}"
     COMMAND
-      "$<TARGET_FILE:config_schema_compose>"
-      --app-schema "${app_schema}"
-      --generated-schema-dir "${CMAKE_BINARY_DIR}/generated/json_schema"
-      --output-dir "${output_dir}"
-      --output-schema "${SCHEMA_OUTPUT_SCHEMA}"
+      "$<TARGET_FILE:config_schema_compose>" --app-schema "${app_schema}" --generated-schema-dir
+      "${CMAKE_BINARY_DIR}/generated/json_schema" --output-dir "${output_dir}" --output-schema "${SCHEMA_OUTPUT_SCHEMA}"
       ${root_definition_args}
     DEPENDS config_schema_compose ${idl_target}
     COMMENT "Composing connection config schema ${output_file}"

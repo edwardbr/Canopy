@@ -349,9 +349,9 @@ function(
     else()
       message("target ${dep}_generate does not exist so skipped")
     endif()
-    # when installed(used through a package) idl dependencies can be found through their targets : we
-    # know that < package_dir> / ${param_install_dir } / interfaces / include is in the target's include directories,
-    # and that the idls themselves are in < package_dir> / ${param_install_dir }
+    # when installed(used through a package) idl dependencies can be found through their targets : we know that <
+    # package_dir> / ${param_install_dir } / interfaces / include is in the target's include directories, and that the
+    # idls themselves are in < package_dir> / ${param_install_dir }
     if(TARGET ${dep})
       get_target_property(include_dirs ${dep} INTERFACE_INCLUDE_DIRECTORIES)
       foreach(include_dir ${include_dirs})
@@ -367,7 +367,10 @@ function(
   list(REMOVE_DUPLICATES IDL_FILE_DEPENDENCIES)
   set(IDL_EXPORTED_SEARCH_PATHS "${base_dir}" ${IDL_SEARCH_PATHS})
   list(REMOVE_DUPLICATES IDL_EXPORTED_SEARCH_PATHS)
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${idl} ${IDL_FILE_DEPENDENCIES})
+  set_property(
+    DIRECTORY
+    APPEND
+    PROPERTY CMAKE_CONFIGURE_DEPENDS ${idl} ${IDL_FILE_DEPENDENCIES})
 
   foreach(path ${IDL_SEARCH_PATHS})
     set(PATHS_PARAMS ${PATHS_PARAMS} --path "${path}")
@@ -473,9 +476,8 @@ function(
     OUTPUT ${GENERATOR_OUTPUTS}
     COMMAND
       ${IDL_GENERATOR} --idl ${idl} --output_path ${output_path} --name ${base_name} --schema_id_base
-      ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS}
-      ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
-      ${GENERATOR_POST_COMMANDS}
+      ${CANOPY_SCHEMA_ID_BASE} ${SERIALIZATION_FLAGS} ${PATHS_PARAMS} ${ADDITIONAL_HEADERS} ${RETHROW_STUB_EXCEPTION}
+      ${ADDITIONAL_STUB_HEADER} ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
     DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
@@ -492,17 +494,15 @@ function(
 
   add_custom_target(${name}_idl_generate DEPENDS ${GENERATOR_OUTPUTS})
 
-  # Ensure generator executable is built before generating IDL when Canopy is
-  # being built from source. Installed-package consumers may provide only
-  # CANOPY_IDL_GENERATOR_EXECUTABLE.
+  # Ensure generator executable is built before generating IDL when Canopy is being built from source. Installed-package
+  # consumers may provide only CANOPY_IDL_GENERATOR_EXECUTABLE.
   if(TARGET generator)
     add_dependencies(${name}_idl_generate generator)
   endif()
 
   set_target_properties(
     ${name}_idl_generate
-    PROPERTIES
-               base_dir "${base_dir}"
+    PROPERTIES base_dir "${base_dir}"
                idl_path "${idl}"
                idl_file_dependencies "${IDL_FILE_DEPENDENCIES}"
                idl_search_paths "${IDL_EXPORTED_SEARCH_PATHS}")

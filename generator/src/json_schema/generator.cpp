@@ -342,7 +342,9 @@ namespace json_schema
     // string (enum constant) or refused (potentially a scoped integer
     // constexpr that would conflict with the field's declared type).
     inline std::set<std::string> idl_enum_names_from_definitions(
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map)
     {
         std::set<std::string> out;
         for (const auto& entry : definition_info_map)
@@ -393,9 +395,7 @@ namespace json_schema
             return {};
 
         const auto accept = [](std::string candidate) -> std::string
-        {
-            return is_strict_json_literal(candidate) ? std::move(candidate) : std::string{};
-        };
+        { return is_strict_json_literal(candidate) ? std::move(candidate) : std::string{}; };
 
         if (default_text == "true" || default_text == "false")
             return default_text;
@@ -604,7 +604,9 @@ namespace json_schema
     // generator's definition_info_map so callers do not have to thread a
     // separate parameter.
     inline taggable_idl_type_set taggable_types_from_definitions(
-        const std::map<std::string, DefinitionInfoVariant>& definition_info_map)
+        const std::map<
+            std::string,
+            DefinitionInfoVariant>& definition_info_map)
     {
         taggable_idl_type_set out;
         for (const auto& entry : definition_info_map)
@@ -649,9 +651,7 @@ namespace json_schema
             // instantiations, json::v1::object, typedef aliases) and the
             // converter generator filters their parent struct out, so no
             // serializer ever produces a value for this schema.
-            writer.write_string_property(
-                "description",
-                "rpc::variant with non-taggable alternatives; no runtime support");
+            writer.write_string_property("description", "rpc::variant with non-taggable alternatives; no runtime support");
             writer.write_key("not");
             writer.open_object();
             writer.close_object();
@@ -941,8 +941,8 @@ namespace json_schema
                 // write_schema_metadata (and the inline metadata paths in
                 // map_idl_type_to_json_schema) pick it up to emit `default`.
                 attributes member_attribs = *var;
-                if (auto translated_default = translate_idl_default_to_json(
-                        var->get_default_value(), cleaned_member_type, idl_enum_names);
+                if (auto translated_default
+                    = translate_idl_default_to_json(var->get_default_value(), cleaned_member_type, idl_enum_names);
                     !translated_default.empty())
                 {
                     member_attribs.push_back({"default", std::move(translated_default)});
@@ -985,8 +985,7 @@ namespace json_schema
                 writer.open_object();
                 writer.close_object();
             }
-            if (active_profile().required == schema_profile::required_policy::idl_accurate
-                && !required_fields.empty())
+            if (active_profile().required == schema_profile::required_policy::idl_accurate && !required_fields.empty())
             {
                 writer.write_key("required");
                 writer.open_array();
@@ -1285,8 +1284,7 @@ namespace json_schema
                 writer.open_object();
                 if (attribs.get_value("description").empty())
                     writer.write_string_property(
-                        "description",
-                        "optional, any JSON value (rpc::optional<json::v1::object> passthrough)");
+                        "description", "optional, any JSON value (rpc::optional<json::v1::object> passthrough)");
                 write_schema_metadata(attribs, writer);
                 writer.close_object();
                 return;
@@ -2504,12 +2502,12 @@ namespace json_schema
         struct field_info
         {
             std::string name;
-            std::string raw_type;        // verbatim IDL type, suitable for pasting into C++.
-            std::string cleaned_type;    // whitespace-stripped form used for classification.
-            std::string default_value;   // verbatim text after `=` in the IDL; empty if none.
-            bool is_optional = false;    // true iff raw_type is rpc::optional<...>.
-            std::string optional_inner;  // inner T when is_optional, raw form.
-            bool is_raw_json = false;    // true iff raw_type is json::v1::object (passthrough).
+            std::string raw_type;       // verbatim IDL type, suitable for pasting into C++.
+            std::string cleaned_type;   // whitespace-stripped form used for classification.
+            std::string default_value;  // verbatim text after `=` in the IDL; empty if none.
+            bool is_optional = false;   // true iff raw_type is rpc::optional<...>.
+            std::string optional_inner; // inner T when is_optional, raw form.
+            bool is_raw_json = false;   // true iff raw_type is json::v1::object (passthrough).
         };
 
         inline std::string strip_outer_braces(std::string value)
@@ -2621,8 +2619,7 @@ namespace json_schema
             // friend declarations emitted alongside the struct definition in
             // the IDL-generated header.
             using underlying = std::underlying_type<entity_type>::type;
-            const auto all_members = static_cast<entity_type>(
-                static_cast<underlying>(entity_type::STRUCTURE_MEMBERS));
+            const auto all_members = static_cast<entity_type>(static_cast<underlying>(entity_type::STRUCTURE_MEMBERS));
             for (const auto& element : ent.get_elements(all_members))
             {
                 if (!element)
@@ -2684,7 +2681,7 @@ namespace json_schema
             // own namespace alongside the primitives in json::v1::convert.
             const auto value_var = "__it->second";
             const auto present_check = std::string("__it != __map.end() && ") + value_var
-                + ".get_type() != ::json::v1::object::type::null_type";
+                                       + ".get_type() != ::json::v1::object::type::null_type";
 
             os << indent << "{\n";
             os << indent << "    const auto __it = __map.find(\"" << field.name << "\");\n";
@@ -2694,18 +2691,17 @@ namespace json_schema
                 if (field.default_value.empty())
                 {
                     os << indent << "    if (" << present_check << ")\n";
-                    os << indent << "        __result." << field.name << " = from_json_object<"
-                       << field.optional_inner << ">(" << value_var << ");\n";
+                    os << indent << "        __result." << field.name << " = from_json_object<" << field.optional_inner
+                       << ">(" << value_var << ");\n";
                 }
                 else
                 {
                     os << indent << "    if (__it == __map.end())\n";
                     os << indent << "        __result." << field.name << " = " << field.optional_inner << "{"
                        << strip_outer_braces(field.default_value) << "};\n";
-                    os << indent << "    else if (" << value_var
-                       << ".get_type() != ::json::v1::object::type::null_type)\n";
-                    os << indent << "        __result." << field.name << " = from_json_object<"
-                       << field.optional_inner << ">(" << value_var << ");\n";
+                    os << indent << "    else if (" << value_var << ".get_type() != ::json::v1::object::type::null_type)\n";
+                    os << indent << "        __result." << field.name << " = from_json_object<" << field.optional_inner
+                       << ">(" << value_var << ");\n";
                 }
             }
             else if (field.is_raw_json)
@@ -2713,14 +2709,13 @@ namespace json_schema
                 // json::v1::object accepts any JSON value including null, so
                 // key presence is the only signal of "user supplied this".
                 os << indent << "    if (__it != __map.end())\n";
-                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type
-                   << ">(" << value_var << ");\n";
+                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type << ">("
+                   << value_var << ");\n";
                 if (field.default_value.empty())
                 {
                     os << indent << "    else\n";
-                    os << indent << "        throw ::json::v1::config_error(" << cpp_string_literal(
-                        struct_label + ": required field '" + field.name + "' is missing")
-                       << ");\n";
+                    os << indent << "        throw ::json::v1::config_error("
+                       << cpp_string_literal(struct_label + ": required field '" + field.name + "' is missing") << ");\n";
                 }
                 else
                 {
@@ -2731,14 +2726,13 @@ namespace json_schema
             else
             {
                 os << indent << "    if (" << present_check << ")\n";
-                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type
-                   << ">(" << value_var << ");\n";
+                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type << ">("
+                   << value_var << ");\n";
                 if (field.default_value.empty())
                 {
                     os << indent << "    else\n";
-                    os << indent << "        throw ::json::v1::config_error(" << cpp_string_literal(
-                        struct_label + ": required field '" + field.name + "' is missing")
-                       << ");\n";
+                    os << indent << "        throw ::json::v1::config_error("
+                       << cpp_string_literal(struct_label + ": required field '" + field.name + "' is missing") << ");\n";
                 }
                 else
                 {
@@ -2757,13 +2751,12 @@ namespace json_schema
             if (field.is_optional)
             {
                 os << indent << "if (__value." << field.name << ".has_value())\n";
-                os << indent << "    __map.emplace(\"" << field.name << "\", to_json_object(*__value."
-                   << field.name << "));\n";
+                os << indent << "    __map.emplace(\"" << field.name << "\", to_json_object(*__value." << field.name
+                   << "));\n";
             }
             else
             {
-                os << indent << "__map.emplace(\"" << field.name << "\", to_json_object(__value." << field.name
-                   << "));\n";
+                os << indent << "__map.emplace(\"" << field.name << "\", to_json_object(__value." << field.name << "));\n";
             }
         }
 
@@ -2853,11 +2846,10 @@ namespace json_schema
             os << "        const auto __name = __value.get<std::string>();\n";
             for (const auto& v : values)
             {
-                os << "        if (__name == \"" << v.name << "\") return " << member_scope_name << "::" << v.name
-                   << ";\n";
+                os << "        if (__name == \"" << v.name << "\") return " << member_scope_name << "::" << v.name << ";\n";
             }
-            os << "        throw ::json::v1::config_error(" << cpp_string_literal(qualified_label + ": unknown enum value '")
-               << " + __name + \"'\");\n";
+            os << "        throw ::json::v1::config_error("
+               << cpp_string_literal(qualified_label + ": unknown enum value '") << " + __name + \"'\");\n";
             os << "    }\n";
             os << "    if (__value.get_type() == ::json::v1::object::type::number_type)\n";
             os << "    {\n";
@@ -2934,8 +2926,8 @@ namespace json_schema
             // in user namespaces.
             os << "    using ::json::v1::convert::from_json_object;\n";
             os << "    if (__value.get_type() != ::json::v1::object::type::map_type)\n";
-            os << "        throw ::json::v1::config_error(" << cpp_string_literal(qualified_label + ": expected JSON object")
-               << ");\n";
+            os << "        throw ::json::v1::config_error("
+               << cpp_string_literal(qualified_label + ": expected JSON object") << ");\n";
             os << "    const auto& __map = __value.as_map();\n";
             os << "    " << member_scope_name << " __result{};\n";
 

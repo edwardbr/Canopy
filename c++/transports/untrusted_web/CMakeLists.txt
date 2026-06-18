@@ -20,7 +20,8 @@ add_library(transport_untrusted_web STATIC src/transport.cpp src/factory.cpp)
 
 target_include_directories(
   transport_untrusted_web
-  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+         "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>"
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(transport_untrusted_web PRIVATE ${CANOPY_DEFINES})

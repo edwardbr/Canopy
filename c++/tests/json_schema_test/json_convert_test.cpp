@@ -1575,7 +1575,6 @@ namespace
         ASSERT_TRUE(local_settings.settings.encoding.has_value());
         EXPECT_EQ(local_settings.settings.encoding.value(), rpc::encoding::nanopb);
 #endif
-
     }
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC

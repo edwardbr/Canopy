@@ -18,9 +18,8 @@ set(CANOPY_SECURITY_ATTESTATION_SOURCES
     src/zone_security_policy.cpp
     src/service.cpp)
 
-# SGX-specific attestation backends were stripped out during the config topology
-# refactor. Reintroduce them only as a dedicated backend module once that work
-# has settled.
+# SGX-specific attestation backends were stripped out during the config topology refactor. Reintroduce them only as a
+# dedicated backend module once that work has settled.
 set(CANOPY_SECURITY_ATTESTATION_IDL_LIBS protected_rpc_protocol_idl)
 
 if(CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)

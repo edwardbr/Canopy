@@ -15,15 +15,10 @@ CanopyGenerate(
   ""
   yas_json
   dependencies rpc_types_idl json_idl stream_layers_idl
-  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces
-                ${CANOPY_INTERFACE_SOURCE_DIR}
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/interfaces ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})
 
-add_library(
-  connection_factory STATIC
-  src/application_config.cpp
-  src/connection_factory.cpp
-  src/options.cpp)
+add_library(connection_factory STATIC src/application_config.cpp src/connection_factory.cpp src/options.cpp)
 target_include_directories(
   connection_factory
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
@@ -56,9 +51,7 @@ if(CANOPY_ENABLE_CLANG_TIDY)
 endif()
 
 if(TARGET streaming_tcp_blocking)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/streams/tcp_blocking.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/streams/tcp_blocking.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_tcp_blocking tcp_blocking_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_BLOCKING)
 endif()
@@ -76,55 +69,37 @@ install(
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(TARGET transport_local)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/transports/local.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/transports/local.cpp)
   target_link_libraries(connection_factory PUBLIC transport_local local_transport_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_LOCAL)
 endif()
 
 if(TARGET transport_blocking_dll AND NOT CANOPY_BUILD_COROUTINE)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/transports/blocking_dll.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/transports/blocking_dll.cpp)
   target_link_libraries(connection_factory PUBLIC transport_blocking_dll blocking_dll_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_BLOCKING_DLL)
 endif()
 
 if(TARGET transport_ipc_spsc)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/transports/ipc_spsc.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/transports/ipc_spsc.cpp)
   target_link_libraries(connection_factory PUBLIC transport_ipc_spsc ipc_spsc_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_IPC_SPSC)
 endif()
 
 if(TARGET transport_shared_scheduler_dll)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/transports/shared_scheduler_dll.cpp)
-  target_link_libraries(
-    connection_factory
-    PUBLIC transport_shared_scheduler_dll
-           shared_dll_config_idl)
+  target_sources(connection_factory PRIVATE src/adapters/transports/shared_scheduler_dll.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_shared_scheduler_dll shared_dll_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SHARED_SCHEDULER_DLL)
 endif()
 
 if(TARGET transport_unshared_scheduler_dll)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/transports/unshared_scheduler_dll.cpp)
-  target_link_libraries(
-    connection_factory
-    PUBLIC transport_unshared_scheduler_dll
-           unshared_dll_config_idl)
+  target_sources(connection_factory PRIVATE src/adapters/transports/unshared_scheduler_dll.cpp)
+  target_link_libraries(connection_factory PUBLIC transport_unshared_scheduler_dll unshared_dll_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_UNSHARED_SCHEDULER_DLL)
 endif()
 
 if(TARGET streaming_spsc_queue)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/streams/spsc_queue.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/streams/spsc_queue.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_spsc_queue spsc_queue_stream_config_idl)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_SPSC)
 endif()
@@ -135,9 +110,7 @@ if(TARGET streaming_spsc_buffered_stream)
 endif()
 
 if(TARGET streaming_tcp_coroutine)
-  target_sources(
-    connection_factory
-    PRIVATE src/adapters/streams/tcp_coroutine.cpp)
+  target_sources(connection_factory PRIVATE src/adapters/streams/tcp_coroutine.cpp)
   target_link_libraries(connection_factory PUBLIC streaming_tcp_coroutine)
   target_compile_definitions(connection_factory PUBLIC CANOPY_CONNECTION_FACTORY_HAS_TCP_COROUTINE)
 endif()

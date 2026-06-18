@@ -47,8 +47,7 @@ if(NOT DEPENDENCIES_LOADED)
          ${CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY_DEFAULT})
   option(
     CANOPY_IO_URING_SQPOLL
-    "Enable io_uring SQPOLL for host io_uring control; turn OFF only for explicit debugging or unsupported kernels."
-    ON)
+    "Enable io_uring SQPOLL for host io_uring control; turn OFF only for explicit debugging or unsupported kernels." ON)
   if(NOT CANOPY_IO_URING_SQPOLL)
     message(WARNING "CANOPY_IO_URING_SQPOLL is OFF; use this only for explicit debugging or unsupported kernels.")
   endif()
@@ -56,27 +55,20 @@ if(NOT DEPENDENCIES_LOADED)
   set(CANOPY_ATTESTATION_BACKEND
       "NULL"
       CACHE STRING "Attestation backend selected by security/attestation backend factory")
-  set_property(
-    CACHE CANOPY_ATTESTATION_BACKEND
-    PROPERTY STRINGS
-             "FAKE"
-             "NULL")
+  set_property(CACHE CANOPY_ATTESTATION_BACKEND PROPERTY STRINGS "FAKE" "NULL")
   if(NOT CANOPY_ATTESTATION_BACKEND MATCHES "^(FAKE|NULL)$")
     message(FATAL_ERROR "Invalid CANOPY_ATTESTATION_BACKEND '${CANOPY_ATTESTATION_BACKEND}', expected FAKE or NULL")
   endif()
   set(CANOPY_ATTESTATION_BACKEND_IS_HARDWARE OFF)
 
-  option(
-    CANOPY_PRODUCTION_RELEASE
-    "Enable production release guardrails. Production releases reject fake attestation."
-    OFF)
+  option(CANOPY_PRODUCTION_RELEASE "Enable production release guardrails. Production releases reject fake attestation."
+         OFF)
 
   if(CANOPY_PRODUCTION_RELEASE)
     if(CANOPY_ATTESTATION_BACKEND STREQUAL "FAKE")
       message(
-        FATAL_ERROR
-          "CANOPY_PRODUCTION_RELEASE=ON rejects CANOPY_ATTESTATION_BACKEND=${CANOPY_ATTESTATION_BACKEND}. "
-          "Use NULL for explicitly unattested production routes.")
+        FATAL_ERROR "CANOPY_PRODUCTION_RELEASE=ON rejects CANOPY_ATTESTATION_BACKEND=${CANOPY_ATTESTATION_BACKEND}. "
+                    "Use NULL for explicitly unattested production routes.")
     endif()
   endif()
 
@@ -613,8 +605,8 @@ if(NOT DEPENDENCIES_LOADED)
     set(CANOPY_IO_URING_SQPOLL_FLAG)
   endif()
 
-  # OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls
-  # is still coroutine-only.
+  # OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface).
+  # mbedtls is still coroutine-only.
   if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
     if(CANOPY_BUILD_COROUTINE)
       set(CANOPY_SECURE_STREAM_BACKEND_FLAG CANOPY_SECURE_STREAM_BACKEND_MBEDTLS)

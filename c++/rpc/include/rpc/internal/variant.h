@@ -377,24 +377,48 @@ namespace rpc
     // specializations emitted by the generator alongside the IDL header.
     template<typename T> struct variant_alternative_tag;
 
-#define CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(Type, Name)                                                       \
-    template<> struct variant_alternative_tag<Type>                                                              \
-    {                                                                                                            \
-        static constexpr const char* value = Name;                                                               \
+#define CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(Type, Name)                                                             \
+    template<> struct variant_alternative_tag<Type>                                                                    \
+    {                                                                                                                  \
+        static constexpr const char* value = Name;                                                                     \
     }
 
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(bool, "bool");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::int8_t, "int8");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::int16_t, "int16");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::int32_t, "int32");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::int64_t, "int64");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::uint8_t, "uint8");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::uint16_t, "uint16");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::uint32_t, "uint32");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::uint64_t, "uint64");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(float, "float");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(double, "double");
-    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(std::string, "string");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        bool,
+        "bool");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::int8_t,
+        "int8");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::int16_t,
+        "int16");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::int32_t,
+        "int32");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::int64_t,
+        "int64");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::uint8_t,
+        "uint8");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::uint16_t,
+        "uint16");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::uint32_t,
+        "uint32");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::uint64_t,
+        "uint64");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        float,
+        "float");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        double,
+        "double");
+    CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG(
+        std::string,
+        "string");
 
 #undef CANOPY_DECLARE_VARIANT_ALTERNATIVE_TAG
 } // namespace rpc

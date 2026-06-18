@@ -38,7 +38,8 @@ if(CANOPY_BUILD_TEST
   target_compile_definitions(streaming_regression_test PRIVATE ${CANOPY_DEFINES})
   target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
   target_link_options(streaming_regression_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-  target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_buffered_stream GTest::gtest_main rpc_log)
+  target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_buffered_stream GTest::gtest_main
+                                                          rpc_log)
   add_test(NAME streaming_regression_test COMMAND streaming_regression_test)
   message(STATUS "streaming_regression_test configured")
 endif()

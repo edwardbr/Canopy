@@ -31,8 +31,8 @@ else()
   set(CANOPY_HTTP_SERVER_TCP_TARGET streaming_tcp_blocking)
 endif()
 
-# OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface). mbedtls is
-# still coroutine-only.
+# OpenSSL TLS is dual-mode (streaming_openssl_tls drives memory BIOs over the dual-mode streaming::stream interface).
+# mbedtls is still coroutine-only.
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "MBEDTLS")
   if(NOT CANOPY_BUILD_COROUTINE)
     message(

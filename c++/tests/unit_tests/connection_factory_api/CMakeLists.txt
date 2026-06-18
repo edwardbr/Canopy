@@ -2,11 +2,8 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-add_executable(
-  connection_factory_api_test
-  public_config_api_test.cpp
-  direct_stream_factory_api_test.cpp
-  direct_transport_factory_api_test.cpp)
+add_executable(connection_factory_api_test public_config_api_test.cpp direct_stream_factory_api_test.cpp
+                                           direct_transport_factory_api_test.cpp)
 
 add_executable(connection_factory_public_header_smoke public_header_smoke.cpp)
 
@@ -50,7 +47,8 @@ target_link_options(connection_factory_api_test PRIVATE ${CANOPY_LINK_EXE_OPTION
 set_property(TARGET connection_factory_api_test PROPERTY COMPILE_PDB_NAME connection_factory_api_test)
 target_compile_options(connection_factory_public_header_smoke PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(connection_factory_public_header_smoke PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
-set_property(TARGET connection_factory_public_header_smoke PROPERTY COMPILE_PDB_NAME connection_factory_public_header_smoke)
+set_property(TARGET connection_factory_public_header_smoke PROPERTY COMPILE_PDB_NAME
+                                                                    connection_factory_public_header_smoke)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(connection_factory_api_test PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
@@ -64,24 +62,18 @@ if(CANOPY_BUILD_TEST)
   endif()
   add_test(NAME connection_factory_public_header_smoke COMMAND connection_factory_public_header_smoke)
 
-  configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/run_install_smoke.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/run_install_smoke.cmake"
-    @ONLY)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_install_smoke.cmake.in"
+                 "${CMAKE_CURRENT_BINARY_DIR}/run_install_smoke.cmake" @ONLY)
   add_test(NAME connection_factory_install_smoke COMMAND ${CMAKE_COMMAND} -P
-                                                   "${CMAKE_CURRENT_BINARY_DIR}/run_install_smoke.cmake")
+                                                         "${CMAKE_CURRENT_BINARY_DIR}/run_install_smoke.cmake")
 
-  configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/run_downstream_smoke.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake"
-    @ONLY)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_downstream_smoke.cmake.in"
+                 "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake" @ONLY)
   add_test(NAME connection_factory_downstream_smoke COMMAND ${CMAKE_COMMAND} -P
-                                                       "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake")
+                                                            "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake")
 
-  configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/run_negative_typed_registration.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake"
-    @ONLY)
-  add_test(NAME connection_factory_negative_typed_registration COMMAND ${CMAKE_COMMAND} -P
-                                                                  "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_negative_typed_registration.cmake.in"
+                 "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake" @ONLY)
+  add_test(NAME connection_factory_negative_typed_registration
+           COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake")
 endif()

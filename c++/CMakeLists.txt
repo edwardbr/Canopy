@@ -16,9 +16,8 @@ add_subdirectory(subcomponents/json)
 add_subdirectory(subcomponents/modules)
 add_subdirectory(subcomponents/io_uring_config)
 
-# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking,
-# openssl_tls, mbedtls, spsc, attestation, websocket, compression) gate themselves on build options in their own
-# CMakeLists.
+# The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking, openssl_tls,
+# mbedtls, spsc, attestation, websocket, compression) gate themselves on build options in their own CMakeLists.
 add_subdirectory(streaming)
 
 # io_uring is coroutine-only by design (see project memory). file_system is dual-mode: coroutine builds use the io_uring
@@ -32,10 +31,9 @@ endif()
 
 add_subdirectory(transports)
 
-# The tcp_coroutine stream IDL is generated in all builds so JSON schema users
-# can materialise stream configs independently of the coroutine-only
-# implementation. The implementation target still gates itself on coroutine
-# Linux builds and on the low-level io_uring controller target.
+# The tcp_coroutine stream IDL is generated in all builds so JSON schema users can materialise stream configs
+# independently of the coroutine-only implementation. The implementation target still gates itself on coroutine Linux
+# builds and on the low-level io_uring controller target.
 add_subdirectory(streaming/tcp_coroutine)
 
 # canopy_http_server is dual-mode. OpenSSL TLS can be used in both modes; mbedtls secure streams remain coroutine-only
