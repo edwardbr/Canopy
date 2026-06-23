@@ -87,17 +87,55 @@ if(CANOPY_BUILD_WEBSOCKET AND NOT CANOPY_BUILD_COROUTINE)
                                                   ${CMAKE_CURRENT_SOURCE_DIR}/llhttp/src/native)
 endif()
 
-if(CANOPY_BUILD_COROUTINE)
-  set(CARES_STATIC
-      $<NOT:${LIBCORO_BUILD_SHARED_LIBS}>
-      CACHE INTERNAL "")
-  set(CARES_SHARED
-      ${LIBCORO_BUILD_SHARED_LIBS}
-      CACHE INTERNAL "")
-  set(CARES_INSTALL
-      OFF
-      CACHE INTERNAL "")
+set(LIBCORO_BUILD_SHARED_LIBS
+    OFF
+    CACHE BOOL "Build libcoro shared libraries")
 
+if(CANOPY_BUILD_COROUTINE)
+  set(CANOPY_CARES_SHARED "${LIBCORO_BUILD_SHARED_LIBS}")
+else()
+  set(CANOPY_CARES_SHARED OFF)
+endif()
+
+if(CANOPY_CARES_SHARED)
+  set(CANOPY_CARES_STATIC OFF)
+else()
+  set(CANOPY_CARES_STATIC ON)
+endif()
+
+set(CARES_STATIC
+    ${CANOPY_CARES_STATIC}
+    CACHE BOOL "Build c-ares as a static library" FORCE)
+set(CARES_SHARED
+    ${CANOPY_CARES_SHARED}
+    CACHE BOOL "Build c-ares as a shared library" FORCE)
+set(CARES_INSTALL
+    OFF
+    CACHE BOOL "Disable c-ares installation" FORCE)
+set(CARES_BUILD_TESTS
+    OFF
+    CACHE BOOL "Disable c-ares tests" FORCE)
+set(CARES_BUILD_CONTAINER_TESTS
+    OFF
+    CACHE BOOL "Disable c-ares container tests" FORCE)
+set(CARES_BUILD_TOOLS
+    OFF
+    CACHE BOOL "Disable c-ares tools" FORCE)
+
+add_subdirectory(c-ares)
+add_library(canopy_cares INTERFACE)
+target_link_libraries(canopy_cares INTERFACE c-ares::cares)
+
+set(CANOPY_CARES_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/canopy-cares-config")
+file(MAKE_DIRECTORY "${CANOPY_CARES_CONFIG_DIR}")
+file(WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
+     "if(NOT TARGET c-ares::cares)\n" "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
+     "endif()\n")
+set(c-ares_DIR
+    "${CANOPY_CARES_CONFIG_DIR}"
+    CACHE PATH "Canopy c-ares package shim for libcoro" FORCE)
+
+if(CANOPY_BUILD_COROUTINE)
   # Enable io_scheduler support in libcoro (required for SPSC transport)
   set(LIBCORO_FEATURE_NETWORKING
       ON
@@ -111,19 +149,6 @@ if(CANOPY_BUILD_COROUTINE)
   set(LIBCORO_EXTERNAL_DEPENDENCIES
       ON
       CACHE BOOL "Use Canopy-provided dependencies for libcoro" FORCE)
-
-  add_subdirectory(c-ares)
-  add_library(canopy_cares INTERFACE)
-  target_link_libraries(canopy_cares INTERFACE c-ares::cares)
-
-  set(CANOPY_CARES_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/canopy-cares-config")
-  file(MAKE_DIRECTORY "${CANOPY_CARES_CONFIG_DIR}")
-  file(WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
-       "if(NOT TARGET c-ares::cares)\n" "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
-       "endif()\n")
-  set(c-ares_DIR
-      "${CANOPY_CARES_CONFIG_DIR}"
-      CACHE PATH "Canopy c-ares package shim for libcoro" FORCE)
 
   add_subdirectory(libcoro)
 

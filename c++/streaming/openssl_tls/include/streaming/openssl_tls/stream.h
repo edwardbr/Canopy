@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 
 #include <rpc/rpc.h>
 #ifdef CANOPY_BUILD_COROUTINE
@@ -38,6 +39,7 @@ namespace streaming::openssl_tls
     struct client_context_options
     {
         bool verify_peer{false};
+        std::string server_name;
     };
 
     struct pem_credentials
@@ -87,9 +89,13 @@ namespace streaming::openssl_tls
 
         [[nodiscard]] auto get() const -> SSL_CTX* { return ctx_; }
         [[nodiscard]] auto is_valid() const -> bool { return ctx_ != nullptr; }
+        [[nodiscard]] const std::string& server_name() const { return server_name_; }
+        [[nodiscard]] bool verify_peer() const { return verify_peer_; }
 
     private:
         SSL_CTX* ctx_{nullptr};
+        bool verify_peer_{false};
+        std::string server_name_;
     };
 
     class stream : public ::streaming::stream
@@ -97,10 +103,12 @@ namespace streaming::openssl_tls
     public:
         stream(
             std::shared_ptr<::streaming::stream> underlying,
-            std::shared_ptr<context> tls_ctx);
+            std::shared_ptr<context> tls_ctx,
+            rpc::executor_ptr executor);
         stream(
             std::shared_ptr<::streaming::stream> underlying,
-            std::shared_ptr<client_context> client_ctx);
+            std::shared_ptr<client_context> client_ctx,
+            rpc::executor_ptr executor);
         ~stream() override;
 
         stream(const stream&) = delete;
@@ -116,6 +124,7 @@ namespace streaming::openssl_tls
 
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
         [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
+        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
 
         [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
@@ -124,11 +133,13 @@ namespace streaming::openssl_tls
         const std::shared_ptr<::streaming::stream> underlying_;
         const std::shared_ptr<context> tls_ctx_{};
         const std::shared_ptr<client_context> tls_client_ctx_{};
+        const rpc::executor_ptr executor_;
         SSL* ssl_{nullptr};
         BIO* rbio_{nullptr};
         BIO* wbio_{nullptr};
         std::atomic<bool> closed_{false};
         bool handshake_complete_{false};
+        bool client_handshake_configured_{false};
 #ifdef CANOPY_BUILD_COROUTINE
         rpc::coro::mutex tls_mtx_;
 #else

@@ -30,13 +30,12 @@ namespace streaming::coroutine::tcp
         // Adapts an io_uring direct descriptor into the generic streaming API.
         // The descriptor may come from any future byte-oriented io_uring
         // resource; this class deliberately does not know which.
-        explicit stream(
-            std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
-            uint16_t peer_port = 0) noexcept;
         stream(
             std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
             uint16_t peer_port,
-            options stream_options) noexcept;
+            options stream_options,
+            rpc::executor_ptr executor) noexcept;
+        ~stream() override;
 
         auto receive(
             rpc::mutable_byte_span buffer,
@@ -46,6 +45,7 @@ namespace streaming::coroutine::tcp
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
 
         [[nodiscard]] bool is_closed() const override;
+        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] streaming::peer_info get_peer_info() const override;
 
@@ -53,6 +53,7 @@ namespace streaming::coroutine::tcp
         const std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor_;
         const uint16_t peer_port_{0};
         const options options_;
+        const rpc::executor_ptr executor_;
         std::atomic<bool> closed_{false};
     };
 
@@ -68,11 +69,13 @@ namespace streaming::coroutine::tcp
 
     [[nodiscard]] std::shared_ptr<streaming::stream> make_stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
-        uint16_t peer_port = 0,
-        stream::options stream_options = default_stream_options()) noexcept;
+        uint16_t peer_port,
+        stream::options stream_options,
+        rpc::executor_ptr executor) noexcept;
 
     [[nodiscard]] stream_result make_stream_result(
         const rpc::io_uring::direct_descriptor_result& result,
-        uint16_t peer_port = 0,
-        stream::options stream_options = default_stream_options()) noexcept;
+        uint16_t peer_port,
+        stream::options stream_options,
+        rpc::executor_ptr executor) noexcept;
 } // namespace streaming::coroutine::tcp

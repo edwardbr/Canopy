@@ -43,12 +43,10 @@ namespace streaming::layer_factory
 
     struct layer_context
     {
-#ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
-        // Required only by spsc_buffered_stream. That layer inserts private
-        // queues around one existing stream and runs two proxy coroutines to
-        // move bytes between the queues and the underlying stream.
+        // Scheduler/executor retained by stream layers that need background
+        // work after construction. spsc_buffered_stream uses it for proxy
+        // loops; OpenSSL TLS uses it for destructor-time close cleanup.
         rpc::executor_ptr stream_scheduler;
-#endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION
         std::shared_ptr<canopy::security::attestation::attestation_service> attestation_service;

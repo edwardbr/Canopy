@@ -93,6 +93,94 @@ namespace streaming::openssl_tls
         }
     }
 
+    struct stream_cleanup_state
+    {
+        stream_cleanup_state(
+            SSL* input_ssl,
+            std::shared_ptr<::streaming::stream> input_underlying,
+            bool input_handshake_complete,
+            bool input_already_closed)
+            : ssl(input_ssl)
+            , underlying(std::move(input_underlying))
+            , handshake_complete(input_handshake_complete)
+            , already_closed(input_already_closed)
+        {
+        }
+
+        ~stream_cleanup_state() { free_ssl(); }
+
+        stream_cleanup_state(const stream_cleanup_state&) = delete;
+        auto operator=(const stream_cleanup_state&) -> stream_cleanup_state& = delete;
+
+        void free_ssl() noexcept
+        {
+            if (ssl)
+            {
+                SSL_free(ssl);
+                ssl = nullptr;
+            }
+        }
+
+        SSL* ssl{nullptr};
+        std::shared_ptr<::streaming::stream> underlying;
+        bool handshake_complete{false};
+        bool already_closed{false};
+    };
+
+    auto cleanup_stream_state(std::shared_ptr<stream_cleanup_state> state) -> CORO_TASK(void)
+    {
+        if (!state)
+            CO_RETURN;
+
+        try
+        {
+            if (!state->already_closed)
+            {
+                if (state->ssl && state->handshake_complete)
+                {
+                    SSL_shutdown(state->ssl);
+                }
+
+                // The parent stream is intentionally held in state until this
+                // lambda has finished TLS-owned cleanup. Releasing that shared
+                // pointer then allows the parent destructor to run after this
+                // layer has finished with its internal state.
+            }
+        }
+        catch (const std::exception& ex)
+        {
+            RPC_WARNING("TLS stream async cleanup failed: {}", ex.what());
+        }
+        catch (...)
+        {
+            RPC_WARNING("TLS stream async cleanup failed with an unknown exception");
+        }
+
+        state->free_ssl();
+        CO_RETURN;
+    }
+
+    auto spawn_cleanup(
+        const rpc::executor_ptr& executor,
+        const std::shared_ptr<stream_cleanup_state>& state) noexcept -> bool
+    {
+        if (!executor || executor->is_shutdown())
+            return false;
+
+        try
+        {
+#ifdef CANOPY_BUILD_COROUTINE
+            return executor->spawn_detached(cleanup_stream_state(state));
+#else
+            return executor->post([state] { cleanup_stream_state(state); });
+#endif
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
+
     static auto load_file_credentials(
         SSL_CTX*& ctx,
         const std::string& cert_file,
@@ -324,11 +412,19 @@ namespace streaming::openssl_tls
 
     // TLS client context implementation
     client_context::client_context(bool verify_peer)
-        : client_context(client_context_options{FLD(verify_peer) verify_peer})
+        : client_context(
+              [verify_peer]
+              {
+                  client_context_options options;
+                  options.verify_peer = verify_peer;
+                  return options;
+              }())
     {
     }
 
     client_context::client_context(client_context_options options)
+        : verify_peer_(options.verify_peer)
+        , server_name_(std::move(options.server_name))
     {
         ctx_ = SSL_CTX_new(TLS_client_method());
         if (!ctx_)
@@ -342,7 +438,7 @@ namespace streaming::openssl_tls
 
         SSL_CTX_set_verify(ctx_, options.verify_peer ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, nullptr);
 
-        RPC_DEBUG("TLS client context initialized (verify_peer={})", options.verify_peer);
+        RPC_DEBUG("TLS client context initialized (verify_peer={}, server_name={})", options.verify_peer, server_name_);
     }
 
     client_context::client_context(
@@ -350,7 +446,12 @@ namespace streaming::openssl_tls
         bool verify_peer)
         : client_context(
               std::move(trust_anchor),
-              client_context_options{FLD(verify_peer) verify_peer})
+              [verify_peer]
+              {
+                  client_context_options options;
+                  options.verify_peer = verify_peer;
+                  return options;
+              }())
     {
     }
 
@@ -375,9 +476,11 @@ namespace streaming::openssl_tls
     // TLS stream implementation
     stream::stream(
         std::shared_ptr<::streaming::stream> underlying,
-        std::shared_ptr<context> tls_ctx)
+        std::shared_ptr<context> tls_ctx,
+        rpc::executor_ptr executor)
         : underlying_(std::move(underlying))
         , tls_ctx_(std::move(tls_ctx))
+        , executor_(std::move(executor))
     {
         if (tls_ctx_ && tls_ctx_->is_valid())
         {
@@ -396,9 +499,11 @@ namespace streaming::openssl_tls
 
     stream::stream(
         std::shared_ptr<::streaming::stream> underlying,
-        std::shared_ptr<client_context> client_ctx)
+        std::shared_ptr<client_context> client_ctx,
+        rpc::executor_ptr executor)
         : underlying_(std::move(underlying))
         , tls_client_ctx_(std::move(client_ctx))
+        , executor_(std::move(executor))
     {
         if (tls_client_ctx_ && tls_client_ctx_->is_valid())
         {
@@ -414,16 +519,44 @@ namespace streaming::openssl_tls
 
     stream::~stream()
     {
-        if (ssl_)
+        request_close();
+    }
+
+    void stream::request_close() noexcept
+    {
+        auto* ssl = std::exchange(ssl_, nullptr);
+        rbio_ = nullptr;
+        wbio_ = nullptr;
+
+        const auto already_closed = closed_.exchange(true, std::memory_order_acq_rel);
+        if (!already_closed && underlying_)
+            underlying_->request_close();
+
+        if (!ssl)
+            return;
+
+        if (already_closed)
         {
-            if (handshake_complete_ && !closed_.load(std::memory_order_acquire))
-            {
-                // Queue the TLS close_notify alert into wbio; the bytes are
-                // dropped here since we cannot await in a destructor. The
-                // underlying socket close signals connection termination.
-                SSL_shutdown(ssl_);
-            }
-            SSL_free(ssl_); // also frees rbio_ and wbio_
+            SSL_free(ssl);
+            return;
+        }
+
+        try
+        {
+            auto state = std::make_shared<stream_cleanup_state>(ssl, underlying_, handshake_complete_, already_closed);
+            if (spawn_cleanup(executor_, state))
+                return;
+
+            // Destructors cannot block or drive coroutine work. If no executor
+            // was supplied, free the OpenSSL state locally and let the
+            // underlying stream's own lifetime cleanup handle its descriptor.
+            RPC_WARNING("TLS stream cleanup executor unavailable; freeing TLS state without async close");
+            state->free_ssl();
+        }
+        catch (...)
+        {
+            RPC_WARNING("TLS stream cleanup state allocation failed; freeing TLS state without async close");
+            SSL_free(ssl);
         }
     }
 
@@ -435,6 +568,8 @@ namespace streaming::openssl_tls
     {
         std::array<char, 4096> buf;
         auto [status, span] = CO_AWAIT underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
+        if (status.is_ok() && span.empty())
+            CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::timeout};
         if (status.is_ok() && !span.empty())
         {
             if (!fits_openssl_int(span.size()))
@@ -570,6 +705,28 @@ namespace streaming::openssl_tls
             {
                 RPC_ERROR("TLS client handshake failed: SSL not initialized");
                 CO_RETURN false;
+            }
+
+            if (!client_handshake_configured_)
+            {
+                if (tls_client_ctx_ && !tls_client_ctx_->server_name().empty())
+                {
+                    if (SSL_set_tlsext_host_name(ssl_, tls_client_ctx_->server_name().c_str()) != 1)
+                    {
+                        RPC_ERROR("Failed to configure TLS SNI for {}", tls_client_ctx_->server_name());
+                        log_ssl_errors();
+                        CO_RETURN false;
+                    }
+                    if (tls_client_ctx_->verify_peer() && SSL_set1_host(ssl_, tls_client_ctx_->server_name().c_str()) != 1)
+                    {
+                        RPC_ERROR(
+                            "Failed to configure TLS certificate hostname verification for {}",
+                            tls_client_ctx_->server_name());
+                        log_ssl_errors();
+                        CO_RETURN false;
+                    }
+                }
+                client_handshake_configured_ = true;
             }
         }
 

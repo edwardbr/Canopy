@@ -101,7 +101,7 @@ namespace streaming::coroutine::tcp
                 CO_RETURN std::nullopt;
             }
 
-            auto stream_result = make_stream_result(result, low_level_acceptor->port(), stream_options_);
+            auto stream_result = make_stream_result(result, low_level_acceptor->port(), stream_options_, scheduler_);
             if (stream_result.error_code == rpc::error::OK() && stream_result.connection)
             {
                 CO_RETURN std::optional<std::shared_ptr<streaming::stream>>{std::move(stream_result.connection)};

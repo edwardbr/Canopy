@@ -44,6 +44,7 @@ namespace stream_bench
 
         void run_tcp_coroutine_pair(
             const std::shared_ptr<coro::scheduler>& server_scheduler,
+            const std::shared_ptr<coro::scheduler>& client_scheduler,
             const std::shared_ptr<rpc::io_uring::controller>& server_controller,
             const std::shared_ptr<rpc::io_uring::controller>& client_controller,
             uint16_t port,
@@ -73,7 +74,8 @@ namespace stream_bench
                         co_await server_ready.wait();
                         rpc::io_uring::connector connector(client_controller);
                         auto connect_result = co_await connector.connect_loopback_with_result(port);
-                        auto stream_result = streaming::coroutine::tcp::make_stream_result(connect_result, port);
+                        auto stream_result = streaming::coroutine::tcp::make_stream_result(
+                            connect_result, port, streaming::coroutine::tcp::default_stream_options(), client_scheduler);
                         if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
                             co_return;
                         co_await client_fn(std::move(stream_result.connection));
@@ -105,6 +107,7 @@ namespace stream_bench
                 std::atomic<bool> stop{false};
                 run_tcp_coroutine_pair(
                     server_scheduler,
+                    client_scheduler,
                     server_controller,
                     client_controller,
                     allocate_loopback_port(),
@@ -119,6 +122,7 @@ namespace stream_bench
                 std::atomic<bool> stop{false};
                 run_tcp_coroutine_pair(
                     server_scheduler,
+                    client_scheduler,
                     server_controller,
                     client_controller,
                     allocate_loopback_port(),
@@ -155,6 +159,7 @@ namespace stream_bench
             std::atomic<bool> stop{false};
             run_tcp_coroutine_pair(
                 server_scheduler,
+                client_scheduler,
                 server_controller,
                 client_controller,
                 allocate_loopback_port(),

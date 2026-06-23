@@ -193,6 +193,7 @@ namespace streaming::layer_factory
         {
             ::streaming::secure::client_context_options options;
             options.verify_peer = settings.client.verify_peer;
+            options.server_name = settings.client.server_name;
             if (!settings.client.trust_anchor.empty())
                 return std::make_shared<::streaming::secure::client_context>(settings.client.trust_anchor, options);
             return std::make_shared<::streaming::secure::client_context>(options);
@@ -212,7 +213,8 @@ namespace streaming::layer_factory
         auto apply_tls_layer(
             std::shared_ptr<::streaming::stream> stream,
             const rpc::stream_layers::stream_layer_settings& layer,
-            layer_direction direction) -> CORO_TASK(stream_layer_result)
+            layer_direction direction,
+            const layer_context& context) -> CORO_TASK(stream_layer_result)
         {
             auto settings = materialise_layer_settings<tls_stream_settings>(layer_settings_object(layer));
             if (!settings)
@@ -224,14 +226,24 @@ namespace streaming::layer_factory
                 auto server_context = make_tls_server_context(*settings);
                 if (!server_context)
                     CO_RETURN stream_layer_result{rpc::error::INVALID_DATA(), {}};
+#  ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG
+                tls_stream = std::make_shared<::streaming::secure::stream>(
+                    std::move(stream), std::move(server_context), context.stream_scheduler);
+#  else
                 tls_stream = std::make_shared<::streaming::secure::stream>(std::move(stream), std::move(server_context));
+#  endif
                 if (!CO_AWAIT tls_stream->handshake())
                     CO_RETURN stream_layer_result{rpc::error::TRANSPORT_ERROR(), {}};
             }
             else
             {
                 auto client_context = make_tls_client_context(*settings);
+#  ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG
+                tls_stream = std::make_shared<::streaming::secure::stream>(
+                    std::move(stream), std::move(client_context), context.stream_scheduler);
+#  else
                 tls_stream = std::make_shared<::streaming::secure::stream>(std::move(stream), std::move(client_context));
+#  endif
                 if (!CO_AWAIT tls_stream->client_handshake())
                     CO_RETURN stream_layer_result{rpc::error::TRANSPORT_ERROR(), {}};
             }
@@ -391,7 +403,7 @@ namespace streaming::layer_factory
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
         if (layer.type == "tls")
-            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction);
+            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction, context);
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM

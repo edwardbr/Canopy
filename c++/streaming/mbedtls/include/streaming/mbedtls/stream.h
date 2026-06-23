@@ -35,6 +35,7 @@ namespace streaming::mbedtls
     struct client_context_options
     {
         bool verify_peer{false};
+        std::string server_name;
     };
 
     struct pem_credentials
@@ -112,6 +113,7 @@ namespace streaming::mbedtls
         [[nodiscard]] auto configure_connection(mbedtls_ssl_config& config) const -> bool;
         [[nodiscard]] auto verifies_peer() const -> bool;
         [[nodiscard]] auto is_valid() const -> bool;
+        [[nodiscard]] auto server_name() const -> const std::string&;
 
     private:
         struct impl;

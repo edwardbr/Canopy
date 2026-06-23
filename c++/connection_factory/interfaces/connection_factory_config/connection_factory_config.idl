@@ -31,7 +31,7 @@ namespace rpc
         //
         // Examples:
         //   { "type": "tcp_blocking", "settings": { "host": "127.0.0.1", "port": 8080 } }
-        //   { "type": "tls", "settings": { "client": { "verify_peer": false } } }
+        //   { "type": "tls", "settings": { "client": { "verify_peer": false, "server_name": "example.com" } } }
         //   { "type": "websocket", "settings": { "keep_alive": { "enabled": true } } }
         //   { "type": "stream_rpc", "settings": { "encoding": "nanopb" } }
         //   { "type": "ipc_spsc", "settings": { "use_sidecar": true, "dynamic_library_path": "./plugin.so" } }

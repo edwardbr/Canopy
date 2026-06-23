@@ -484,6 +484,17 @@ namespace streaming::mbedtls
                 return;
             }
 
+            if (!tls_client_context->server_name().empty())
+            {
+                result = mbedtls_ssl_set_hostname(&ssl, tls_client_context->server_name().c_str());
+                if (result != 0)
+                {
+                    log_mbedtls_error("mbedtls_ssl_set_hostname", result);
+                    closed = true;
+                    return;
+                }
+            }
+
             mbedtls_ssl_set_bio(&ssl, this, send_callback, receive_callback, nullptr);
         }
 
@@ -814,7 +825,9 @@ namespace streaming::mbedtls
     client_context::client_context(bool verify_peer)
         : impl_(std::make_unique<impl>())
     {
-        impl_->initialise({}, client_context_options{.verify_peer = verify_peer});
+        client_context_options options;
+        options.verify_peer = verify_peer;
+        impl_->initialise({}, options);
     }
 
     client_context::client_context(client_context_options options)
@@ -828,7 +841,9 @@ namespace streaming::mbedtls
         bool verify_peer)
         : impl_(std::make_unique<impl>())
     {
-        impl_->initialise(trust_anchor, client_context_options{.verify_peer = verify_peer});
+        client_context_options options;
+        options.verify_peer = verify_peer;
+        impl_->initialise(trust_anchor, options);
     }
 
     client_context::client_context(
@@ -849,6 +864,12 @@ namespace streaming::mbedtls
     auto client_context::verifies_peer() const -> bool
     {
         return impl_ && impl_->options.verify_peer;
+    }
+
+    auto client_context::server_name() const -> const std::string&
+    {
+        static const std::string empty;
+        return impl_ ? impl_->options.server_name : empty;
     }
 
     auto client_context::is_valid() const -> bool

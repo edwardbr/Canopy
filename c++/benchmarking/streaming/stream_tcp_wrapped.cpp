@@ -66,29 +66,32 @@ namespace stream_bench
                     raw.scheduler_a->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw.side_a, server_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(
+                                raw.side_a, server_context, raw.scheduler_a);
                             if (co_await stream->handshake())
                                 tls_a = stream;
                         }()),
                     raw.scheduler_b->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw.side_b, client_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(
+                                raw.side_b, client_context, raw.scheduler_b);
                             if (co_await stream->client_handshake())
                                 tls_b = stream;
                         }())));
 #  else
+            auto executor = rpc::make_executor();
             std::thread server_thread(
                 [&]()
                 {
-                    auto stream = std::make_shared<streaming::secure::stream>(raw.side_a, server_context);
+                    auto stream = std::make_shared<streaming::secure::stream>(raw.side_a, server_context, executor);
                     if (stream->handshake())
                         tls_a = stream;
                 });
             std::thread client_thread(
                 [&]()
                 {
-                    auto stream = std::make_shared<streaming::secure::stream>(raw.side_b, client_context);
+                    auto stream = std::make_shared<streaming::secure::stream>(raw.side_b, client_context, executor);
                     if (stream->client_handshake())
                         tls_b = stream;
                 });

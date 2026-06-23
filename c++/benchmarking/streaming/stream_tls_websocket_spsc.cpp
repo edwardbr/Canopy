@@ -52,14 +52,14 @@ namespace stream_bench
                     scheduler_a->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw_a, server_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(raw_a, server_context, scheduler_a);
                             if (co_await stream->handshake())
                                 tls_a = stream;
                         }()),
                     scheduler_b->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw_b, client_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(raw_b, client_context, scheduler_b);
                             if (co_await stream->client_handshake())
                                 tls_b = stream;
                         }())));

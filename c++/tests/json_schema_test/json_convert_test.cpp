@@ -994,7 +994,7 @@ namespace
         TlsLayerSettingsUseOpenSslGeneratedConfig)
     {
         const auto valid = json::v1::parse(R"json({
-            "client": {"verify_peer": true, "trust_anchor_file": "client-ca.pem"},
+            "client": {"verify_peer": true, "server_name": "airport-web.appspot.com", "trust_anchor_file": "client-ca.pem"},
             "server": {
                 "verify_peer": "required",
                 "credentials": {
@@ -1009,6 +1009,7 @@ namespace
             = rpc::connection_factory::materialise_settings<rpc::openssl_tls_stream::stream_settings>(valid);
         ASSERT_EQ(materialised.error_code, rpc::error::OK());
         EXPECT_TRUE(materialised.settings.client.verify_peer);
+        EXPECT_EQ(materialised.settings.client.server_name, "airport-web.appspot.com");
         EXPECT_EQ(materialised.settings.client.trust_anchor_file, "client-ca.pem");
         EXPECT_EQ(materialised.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::required);
         ASSERT_TRUE(materialised.settings.server.credentials.has_value());
@@ -1020,6 +1021,7 @@ namespace
             json::v1::parse(R"json({})json"));
         ASSERT_EQ(sparse.error_code, rpc::error::OK());
         EXPECT_FALSE(sparse.settings.client.verify_peer);
+        EXPECT_TRUE(sparse.settings.client.server_name.empty());
         EXPECT_TRUE(sparse.settings.client.trust_anchor_file.empty());
         EXPECT_EQ(sparse.settings.server.verify_peer, rpc::openssl_tls_stream::peer_verification::none);
         EXPECT_FALSE(sparse.settings.server.credentials.has_value());

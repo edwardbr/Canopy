@@ -21,7 +21,11 @@ namespace streaming::coroutine::tcp
     public:
         explicit connector(
             std::shared_ptr<rpc::io_uring::controller> controller,
-            stream::options stream_options = default_stream_options()) noexcept;
+            rpc::executor_ptr executor) noexcept;
+        connector(
+            std::shared_ptr<rpc::io_uring::controller> controller,
+            stream::options stream_options,
+            rpc::executor_ptr executor) noexcept;
 
         connector(const connector&) = delete;
         connector& operator=(const connector&) = delete;
@@ -50,14 +54,16 @@ namespace streaming::coroutine::tcp
     private:
         const std::shared_ptr<rpc::io_uring::controller> controller_;
         const stream::options stream_options_;
+        const rpc::executor_ptr executor_;
     };
 
     CORO_TASK(stream_result)
     connect_loopback(
         std::shared_ptr<rpc::io_uring::controller> controller,
         uint16_t port,
-        stream::options stream_options = default_stream_options(),
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
+        stream::options stream_options,
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor);
 
     CORO_TASK(stream_result)
     connect_ipv4(
@@ -66,8 +72,9 @@ namespace streaming::coroutine::tcp
             uint8_t,
             4>& address,
         uint16_t port,
-        stream::options stream_options = default_stream_options(),
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
+        stream::options stream_options,
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor);
 
     CORO_TASK(stream_result)
     connect_ipv6(
@@ -76,6 +83,7 @@ namespace streaming::coroutine::tcp
             uint8_t,
             16>& address,
         uint16_t port,
-        stream::options stream_options = default_stream_options(),
-        std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
+        stream::options stream_options,
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor);
 } // namespace streaming::coroutine::tcp

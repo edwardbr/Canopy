@@ -41,6 +41,7 @@ namespace rpc::tcp_coroutine
     {
         int error_code{rpc::error::OK()};
         std::shared_ptr<rpc::io_uring::io_uring_scheduler> scheduler_owner;
+        rpc::executor_ptr scheduler;
         std::shared_ptr<rpc::io_uring::controller> controller;
     };
 

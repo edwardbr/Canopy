@@ -13,9 +13,21 @@ namespace streaming::coroutine::tcp
 {
     connector::connector(
         std::shared_ptr<rpc::io_uring::controller> controller,
-        stream::options stream_options) noexcept
+        rpc::executor_ptr executor) noexcept
+        : connector(
+              std::move(controller),
+              default_stream_options(),
+              std::move(executor))
+    {
+    }
+
+    connector::connector(
+        std::shared_ptr<rpc::io_uring::controller> controller,
+        stream::options stream_options,
+        rpc::executor_ptr executor) noexcept
         : controller_(std::move(controller))
         , stream_options_(stream_options)
+        , executor_(std::move(executor))
     {
     }
 
@@ -37,7 +49,7 @@ namespace streaming::coroutine::tcp
     {
         rpc::io_uring::connector low_level_connector(controller_);
         auto result = CO_AWAIT low_level_connector.connect_ipv4_with_result(address, port, timeout);
-        CO_RETURN make_stream_result(result, port, stream_options_);
+        CO_RETURN make_stream_result(result, port, stream_options_, executor_);
     }
 
     CORO_TASK(stream_result)
@@ -50,7 +62,7 @@ namespace streaming::coroutine::tcp
     {
         rpc::io_uring::connector low_level_connector(controller_);
         auto result = CO_AWAIT low_level_connector.connect_ipv6_with_result(address, port, timeout);
-        CO_RETURN make_stream_result(result, port, stream_options_);
+        CO_RETURN make_stream_result(result, port, stream_options_, executor_);
     }
 
     CORO_TASK(stream_result)
@@ -58,9 +70,10 @@ namespace streaming::coroutine::tcp
         std::shared_ptr<rpc::io_uring::controller> controller,
         uint16_t port,
         stream::options stream_options,
-        std::chrono::milliseconds timeout)
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor)
     {
-        connector tcp_connector(std::move(controller), stream_options);
+        connector tcp_connector(std::move(controller), stream_options, std::move(executor));
         CO_RETURN CO_AWAIT tcp_connector.connect_loopback(port, timeout);
     }
 
@@ -72,9 +85,10 @@ namespace streaming::coroutine::tcp
             4>& address,
         uint16_t port,
         stream::options stream_options,
-        std::chrono::milliseconds timeout)
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor)
     {
-        connector tcp_connector(std::move(controller), stream_options);
+        connector tcp_connector(std::move(controller), stream_options, std::move(executor));
         CO_RETURN CO_AWAIT tcp_connector.connect_ipv4(address, port, timeout);
     }
 
@@ -86,9 +100,10 @@ namespace streaming::coroutine::tcp
             16>& address,
         uint16_t port,
         stream::options stream_options,
-        std::chrono::milliseconds timeout)
+        std::chrono::milliseconds timeout,
+        rpc::executor_ptr executor)
     {
-        connector tcp_connector(std::move(controller), stream_options);
+        connector tcp_connector(std::move(controller), stream_options, std::move(executor));
         CO_RETURN CO_AWAIT tcp_connector.connect_ipv6(address, port, timeout);
     }
 } // namespace streaming::coroutine::tcp

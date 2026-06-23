@@ -35,6 +35,11 @@ namespace streaming
 
         // Check if connection is closed
         [[nodiscard]] virtual bool is_closed() const = 0;
+        // Non-blocking close request for destructor-driven teardown. The default
+        // is a no-op so existing stream adapters remain source-compatible; stream
+        // implementations that own asynchronous resources should override it and
+        // schedule cleanup on the executor they were constructed with.
+        virtual void request_close() noexcept { }
         // Initiate shutdown of the stream and complete only once stream-local shutdown work
         // has reached a stable state for that implementation.
         virtual auto set_closed() -> CORO_TASK(void) = 0;

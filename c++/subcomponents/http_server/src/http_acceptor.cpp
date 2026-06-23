@@ -42,9 +42,11 @@ namespace canopy::http_server
         auto handle_tls_client(
             std::shared_ptr<streaming::stream> tcp_stream,
             std::shared_ptr<streaming::secure::context> tls_context,
+            rpc::executor_ptr executor,
             accepted_stream_handler stream_handler) -> CORO_TASK(void)
         {
-            auto tls_stream = std::make_shared<streaming::secure::stream>(tcp_stream, tls_context);
+            auto tls_stream
+                = std::make_shared<streaming::secure::stream>(std::move(tcp_stream), tls_context, std::move(executor));
 
             bool handshake_ok = CO_AWAIT tls_stream->handshake();
             if (!handshake_ok)
@@ -195,7 +197,7 @@ namespace canopy::http_server
             {
                 auto stream_for_task = stream;
                 spawned = executor->SPAWN_DETACHED(
-                    handle_tls_client(std::move(stream_for_task), tls_context, stream_handler));
+                    handle_tls_client(std::move(stream_for_task), tls_context, executor, stream_handler));
             }
             else
             {

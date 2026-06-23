@@ -200,7 +200,7 @@ namespace stream_composition
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
             auto spsc_stm = streaming::spsc_buffered_stream::stream::create(tcp_stm, scheduler);
-            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
+            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx, scheduler);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
             CO_RETURN tls_stm;
@@ -273,7 +273,12 @@ namespace stream_composition
             CO_RETURN;
         }
 
-        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, connect_ep.port);
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(
+            controller,
+            connect_ep.port,
+            streaming::coroutine::tcp::default_stream_options(),
+            std::chrono::milliseconds{5000},
+            scheduler);
         if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
         {
             RPC_ERROR("Client: TCP coroutine connect failed: {}", tcp_result.error_code);
@@ -293,7 +298,7 @@ namespace stream_composition
             client_finished.set();
             CO_RETURN;
         }
-        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx);
+        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx, scheduler);
 
         if (!CO_AWAIT tls_stm->client_handshake())
         {

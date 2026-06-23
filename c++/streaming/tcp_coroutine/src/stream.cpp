@@ -45,26 +45,48 @@ namespace streaming::coroutine::tcp
             const auto native_code = native_error_code(native_result);
             return native_code == EAGAIN || native_code == EWOULDBLOCK || native_code == EINTR;
         }
+
+        CORO_TASK(void)
+        close_descriptor_task(std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor)
+        {
+            if (descriptor)
+                CO_AWAIT descriptor->close();
+            CO_RETURN;
+        }
+
+        bool spawn_descriptor_close(
+            const rpc::executor_ptr& executor,
+            const std::shared_ptr<rpc::io_uring::direct_descriptor>& descriptor) noexcept
+        {
+            if (!executor || executor->is_shutdown() || !descriptor)
+                return false;
+
+            try
+            {
+                return executor->spawn_detached(close_descriptor_task(descriptor));
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
     } // namespace
 
     stream::stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
-        uint16_t peer_port) noexcept
-        : stream(
-              std::move(descriptor),
-              peer_port,
-              options{})
-    {
-    }
-
-    stream::stream(
-        std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
         uint16_t peer_port,
-        options stream_options) noexcept
+        options stream_options,
+        rpc::executor_ptr executor) noexcept
         : descriptor_(std::move(descriptor))
         , peer_port_(peer_port)
         , options_(stream_options)
+        , executor_(std::move(executor))
     {
+    }
+
+    stream::~stream()
+    {
+        request_close();
     }
 
     stream::options default_stream_options() noexcept
@@ -224,6 +246,18 @@ namespace streaming::coroutine::tcp
         return closed_.load(std::memory_order_acquire) || !descriptor || !descriptor->is_open();
     }
 
+    void stream::request_close() noexcept
+    {
+        auto descriptor = descriptor_;
+        if (!closed_.exchange(true, std::memory_order_acq_rel) && descriptor)
+        {
+            if (!spawn_descriptor_close(executor_, descriptor))
+            {
+                RPC_WARNING("tcp_coroutine stream cleanup executor unavailable; descriptor cleanup deferred to descriptor destructor");
+            }
+        }
+    }
+
     auto stream::set_closed() -> CORO_TASK(void)
     {
         auto descriptor = descriptor_;
@@ -249,7 +283,8 @@ namespace streaming::coroutine::tcp
     std::shared_ptr<streaming::stream> make_stream(
         std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor,
         uint16_t peer_port,
-        stream::options stream_options) noexcept
+        stream::options stream_options,
+        rpc::executor_ptr executor) noexcept
     {
         if (!descriptor)
         {
@@ -258,7 +293,7 @@ namespace streaming::coroutine::tcp
 
         try
         {
-            return std::make_shared<stream>(std::move(descriptor), peer_port, stream_options);
+            return std::make_shared<stream>(std::move(descriptor), peer_port, stream_options, std::move(executor));
         }
         catch (...)
         {
@@ -269,14 +304,15 @@ namespace streaming::coroutine::tcp
     stream_result make_stream_result(
         const rpc::io_uring::direct_descriptor_result& result,
         uint16_t peer_port,
-        stream::options stream_options) noexcept
+        stream::options stream_options,
+        rpc::executor_ptr executor) noexcept
     {
         if (result.error_code != rpc::error::OK() || !result.descriptor)
         {
             return stream_result{result.error_code, result.native_result, result.cqe_flags, {}};
         }
 
-        auto connection = make_stream(result.descriptor, peer_port, stream_options);
+        auto connection = make_stream(result.descriptor, peer_port, stream_options, std::move(executor));
         if (!connection)
         {
             return stream_result{rpc::error::OUT_OF_MEMORY(), result.native_result, result.cqe_flags, {}};

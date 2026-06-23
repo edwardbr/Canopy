@@ -20,6 +20,7 @@ namespace streaming::blocking::tcp
     {
     public:
         explicit stream(socket sock);
+        ~stream() override;
 
 #ifdef CANOPY_BUILD_COROUTINE
         // Convenience constructor for existing coroutine call sites that
@@ -38,6 +39,7 @@ namespace streaming::blocking::tcp
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
 
         [[nodiscard]] bool is_closed() const override;
+        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] peer_info get_peer_info() const override;
 

@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include <io_uring/direct_descriptor.h>
+#include <rpc/rpc.h>
 #include <streaming/tcp_coroutine/stream.h>
 #include <streaming/stream.h>
 #include <streaming/secure_stream.h>
@@ -22,9 +23,10 @@ namespace
     void compile_fit_stream_layers()
     {
         std::shared_ptr<rpc::io_uring::controller> controller;
+        auto executor = rpc::make_executor();
         auto descriptor = std::make_shared<rpc::io_uring::direct_descriptor>(controller, 0);
-        std::shared_ptr<streaming::stream> base_stream
-            = std::make_shared<streaming::coroutine::tcp::stream>(std::move(descriptor), uint16_t{443});
+        std::shared_ptr<streaming::stream> base_stream = std::make_shared<streaming::coroutine::tcp::stream>(
+            std::move(descriptor), uint16_t{443}, streaming::coroutine::tcp::default_stream_options(), executor);
 
         // The TCP coroutine stream is just another streaming::stream. TLS,
         // websocket, and streaming transport code should compose with it
@@ -32,7 +34,7 @@ namespace
         // descriptor is socket-backed, file-backed, or something else.
         std::shared_ptr<streaming::secure::client_context> tls_client_context;
         [[maybe_unused]] std::shared_ptr<streaming::stream> tls_stream
-            = std::make_shared<streaming::secure::stream>(base_stream, tls_client_context);
+            = std::make_shared<streaming::secure::stream>(base_stream, tls_client_context, executor);
         [[maybe_unused]] std::shared_ptr<streaming::stream> websocket_stream
             = std::make_shared<streaming::websocket::stream>(base_stream);
         [[maybe_unused]] std::shared_ptr<rpc::stream_transport::transport> transport;

@@ -420,7 +420,8 @@ protected:
 
         rpc::io_uring::connector connector(controller);
         auto descriptor_result = CO_AWAIT connector.connect_loopback_with_result(8091);
-        auto stream_result = streaming::coroutine::tcp::make_stream_result(descriptor_result, 8091);
+        auto stream_result = streaming::coroutine::tcp::make_stream_result(
+            descriptor_result, 8091, streaming::coroutine::tcp::default_stream_options(), root_service_->get_scheduler());
         if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
         {
             RPC_ERROR("timeout_tcp_coroutine_setup: connect failed");
@@ -490,7 +491,7 @@ protected:
             -> CORO_TASK(std::optional<std::shared_ptr<streaming::stream>>)
         {
             auto spsc_stm = streaming::spsc_buffered_stream::stream::create(tcp_stm, io_sched);
-            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx);
+            auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_ctx, io_sched);
             if (!CO_AWAIT tls_stm->handshake())
                 CO_RETURN std::nullopt;
             CO_RETURN tls_stm;
@@ -518,7 +519,8 @@ protected:
         }
 
         auto scheduler = root_service_->get_scheduler();
-        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, 8092);
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(
+            controller, 8092, streaming::coroutine::tcp::default_stream_options(), std::chrono::milliseconds{5000}, scheduler);
         if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
         {
             RPC_ERROR("timeout_tls_setup: TCP coroutine connect failed: {}", tcp_result.error_code);
@@ -533,7 +535,7 @@ protected:
             RPC_ERROR("timeout_tls_setup: TLS client context failed");
             CO_RETURN false;
         }
-        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx);
+        auto tls_stm = std::make_shared<streaming::secure::stream>(spsc_stm, tls_client_ctx, scheduler);
         if (!CO_AWAIT tls_stm->client_handshake())
         {
             RPC_ERROR("timeout_tls_setup: TLS handshake failed");
@@ -607,7 +609,9 @@ protected:
             CO_RETURN false;
         }
 
-        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, 8093);
+        auto scheduler = root_service_->get_scheduler();
+        auto tcp_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(
+            controller, 8093, streaming::coroutine::tcp::default_stream_options(), std::chrono::milliseconds{5000}, scheduler);
         if (tcp_result.error_code != rpc::error::OK() || !tcp_result.connection)
         {
             RPC_ERROR("timeout_websocket_setup: TCP coroutine connect failed: {}", tcp_result.error_code);

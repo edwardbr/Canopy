@@ -58,6 +58,11 @@ namespace streaming::blocking::tcp
     }
 #endif
 
+    stream::~stream()
+    {
+        request_close();
+    }
+
     auto stream::receive(
         rpc::mutable_byte_span buffer,
         std::chrono::milliseconds timeout) -> CORO_TASK(::streaming::receive_result)
@@ -119,19 +124,20 @@ namespace streaming::blocking::tcp
         return closed_;
     }
 
-    auto stream::set_closed() -> CORO_TASK(void)
+    void stream::request_close() noexcept
     {
         closed_.store(true, std::memory_order_release);
-        // CAS the close-once flag so concurrent set_closed()/send()/receive()
-        // calls only invoke ::shutdown + ::close on the underlying socket
-        // once. Without the CAS, two threads could both pass the !flag
-        // check and double-close.
         bool expected = false;
         if (socket_closed_.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
         {
             socket_.shutdown();
             socket_.close();
         }
+    }
+
+    auto stream::set_closed() -> CORO_TASK(void)
+    {
+        request_close();
         CO_RETURN;
     }
 

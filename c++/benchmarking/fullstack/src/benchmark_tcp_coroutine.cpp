@@ -139,7 +139,8 @@ namespace comprehensive::v1
             auto shutdown_event = std::make_shared<rpc::event>();
             client_service->set_shutdown_event(shutdown_event);
 
-            auto stream_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(controller, port);
+            auto stream_result = CO_AWAIT streaming::coroutine::tcp::connect_loopback(
+                controller, port, streaming::coroutine::tcp::default_stream_options(), std::chrono::milliseconds{5000}, scheduler);
             if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
             {
                 result.error = stream_result.error_code == rpc::error::OK() ? rpc::error::ZONE_NOT_FOUND()

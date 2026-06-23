@@ -239,29 +239,32 @@ namespace comprehensive::v1
                     pair.server_scheduler->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(pair.server, server_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(
+                                pair.server, server_context, pair.server_scheduler);
                             if (co_await stream->handshake())
                                 server_tls = stream;
                         }()),
                     pair.client_scheduler->schedule(
                         [&]() -> coro::task<void>
                         {
-                            auto stream = std::make_shared<streaming::secure::stream>(pair.client, client_context);
+                            auto stream = std::make_shared<streaming::secure::stream>(
+                                pair.client, client_context, pair.client_scheduler);
                             if (co_await stream->client_handshake())
                                 client_tls = stream;
                         }())));
 #  else
+            auto executor = rpc::make_executor();
             std::thread server_thread(
                 [&]()
                 {
-                    auto stream = std::make_shared<streaming::secure::stream>(pair.server, server_context);
+                    auto stream = std::make_shared<streaming::secure::stream>(pair.server, server_context, executor);
                     if (stream->handshake())
                         server_tls = stream;
                 });
             std::thread client_thread(
                 [&]()
                 {
-                    auto stream = std::make_shared<streaming::secure::stream>(pair.client, client_context);
+                    auto stream = std::make_shared<streaming::secure::stream>(pair.client, client_context, executor);
                     if (stream->client_handshake())
                         client_tls = stream;
                 });

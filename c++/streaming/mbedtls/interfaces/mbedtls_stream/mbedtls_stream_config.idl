@@ -56,6 +56,9 @@ namespace rpc
             [description="Require peer certificate verification when constructing an mbedTLS client context."]
             bool verify_peer = false;
 
+            [description="Optional TLS server name used for SNI and, when verify_peer is true, certificate hostname verification."]
+            std::string server_name = "";
+
             [description="Optional PEM trust anchor used by the client context when verify_peer is true."]
             std::string trust_anchor = "";
 

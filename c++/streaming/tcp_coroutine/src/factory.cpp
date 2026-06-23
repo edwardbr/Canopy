@@ -88,30 +88,30 @@ namespace rpc::tcp_coroutine
         const bool borrowed_scheduler = service && service->get_executor();
         auto scheduler = borrowed_scheduler ? service->get_executor() : rpc::make_executor();
         if (!scheduler)
-            return {rpc::error::TRANSPORT_ERROR(), {}, {}};
+            return {rpc::error::TRANSPORT_ERROR(), {}, {}, {}};
 
         if (borrowed_scheduler)
         {
             std::shared_ptr<rpc::io_uring::linux_io_uring_handle> handle;
             auto error_code = rpc::io_uring::linux_io_uring_handle::create(handle, controller_options, scheduler);
             if (error_code != rpc::error::OK())
-                return {error_code, {}, {}};
+                return {error_code, {}, {}, {}};
 
             auto controller = std::make_shared<rpc::io_uring::controller>(
                 std::move(handle), scheduler.get(), rpc::io_uring::default_controller_options());
-            return {rpc::error::OK(), {}, std::move(controller)};
+            return {rpc::error::OK(), {}, std::move(scheduler), std::move(controller)};
         }
 
         std::shared_ptr<rpc::io_uring::io_uring_scheduler> owner;
         auto error_code = rpc::io_uring::create_scheduler(owner, controller_options, scheduler);
         if (error_code != rpc::error::OK())
-            return {error_code, {}, {}};
+            return {error_code, {}, {}, {}};
 
         auto controller = owner ? owner->get_controller() : nullptr;
         if (!controller)
-            return {rpc::error::TRANSPORT_ERROR(), {}, {}};
+            return {rpc::error::TRANSPORT_ERROR(), {}, {}, {}};
 
-        return {rpc::error::OK(), std::move(owner), std::move(controller)};
+        return {rpc::error::OK(), std::move(owner), std::move(scheduler), std::move(controller)};
     }
 
     CORO_TASK(listen_result)
@@ -258,7 +258,8 @@ namespace rpc::tcp_coroutine
         if (runtime.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::stream_result{runtime.error_code, {}};
 
-        auto result = CO_AWAIT ::streaming::coroutine::tcp::connect_loopback(runtime.controller, port, stream_options);
+        auto result = CO_AWAIT ::streaming::coroutine::tcp::connect_loopback(
+            runtime.controller, port, stream_options, std::chrono::milliseconds{5000}, runtime.scheduler);
         if (result.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::stream_result{result.error_code, {}, result.native_result};
 
@@ -290,7 +291,8 @@ namespace rpc::tcp_coroutine
                 address.ipv6,
                 runtime_options.port,
                 runtime_options.stream_options,
-                runtime_options.connect_timeout);
+                runtime_options.connect_timeout,
+                runtime.scheduler);
         }
         else
         {
@@ -299,7 +301,8 @@ namespace rpc::tcp_coroutine
                 address.ipv4,
                 runtime_options.port,
                 runtime_options.stream_options,
-                runtime_options.connect_timeout);
+                runtime_options.connect_timeout,
+                runtime.scheduler);
         }
         if (result.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::stream_result{result.error_code, {}, result.native_result};

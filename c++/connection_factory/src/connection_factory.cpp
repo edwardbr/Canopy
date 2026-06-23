@@ -305,7 +305,36 @@ namespace rpc::connection_factory
             const std::shared_ptr<rpc::service>& service) -> streaming_layer_context_result
         {
             (void)state;
+            (void)layer_type;
+            (void)service;
             streaming_layer_context_result result;
+
+#if defined(CANOPY_CONNECTION_FACTORY_HAS_OPENSSL_TLS_CONFIG)                                                          \
+    && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_OPENSSL_TLS_CONFIG)
+            if (layer_type == "tls")
+            {
+                if (!service)
+                {
+                    RPC_ERROR("tls stream layer requires a service with an executor, but no service was available");
+                    result.error_code = rpc::error::INVALID_DATA();
+                    return result;
+                }
+
+                auto scheduler = service->get_executor();
+                if (!scheduler)
+                {
+                    RPC_ERROR(
+                        "tls stream layer requires service '{}' to have an executor for async stream cleanup; "
+                        "construct "
+                        "the service with rpc::make_executor() or let connection_factory create it",
+                        service->get_name());
+                    result.error_code = rpc::error::INVALID_DATA();
+                    return result;
+                }
+
+                result.context.stream_scheduler = std::move(scheduler);
+            }
+#endif
 
 #if defined(CANOPY_CONNECTION_FACTORY_HAS_SPSC_BUFFERED_STREAM)                                                        \
     && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM)
@@ -337,9 +366,6 @@ namespace rpc::connection_factory
 
                 result.context.stream_scheduler = std::move(scheduler);
             }
-#else
-            (void)layer_type;
-            (void)service;
 #endif
 
 #if defined(CANOPY_CONNECTION_FACTORY_HAS_ATTESTATION) && defined(CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION)
