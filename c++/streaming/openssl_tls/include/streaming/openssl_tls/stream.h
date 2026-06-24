@@ -124,12 +124,13 @@ namespace streaming::openssl_tls
 
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
         [[nodiscard]] auto is_closed() const -> bool override { return closed_.load(std::memory_order_acquire); }
-        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
 
         [[nodiscard]] auto get_peer_info() const -> peer_info override { return underlying_->get_peer_info(); }
 
     private:
+        void close_detached() noexcept;
+
         const std::shared_ptr<::streaming::stream> underlying_;
         const std::shared_ptr<context> tls_ctx_{};
         const std::shared_ptr<client_context> tls_client_ctx_{};

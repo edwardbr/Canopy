@@ -60,7 +60,7 @@ namespace streaming::blocking::tcp
 
     stream::~stream()
     {
-        request_close();
+        close_now();
     }
 
     auto stream::receive(
@@ -124,7 +124,7 @@ namespace streaming::blocking::tcp
         return closed_;
     }
 
-    void stream::request_close() noexcept
+    void stream::close_now() noexcept
     {
         closed_.store(true, std::memory_order_release);
         bool expected = false;
@@ -137,7 +137,7 @@ namespace streaming::blocking::tcp
 
     auto stream::set_closed() -> CORO_TASK(void)
     {
-        request_close();
+        close_now();
         CO_RETURN;
     }
 

@@ -39,11 +39,12 @@ namespace streaming::blocking::tcp
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
 
         [[nodiscard]] bool is_closed() const override;
-        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] peer_info get_peer_info() const override;
 
     private:
+        void close_now() noexcept;
+
         socket socket_;
         // The streaming transport runs receive_consumer_loop and
         // send_producer_loop on different threads (worker pool in blocking

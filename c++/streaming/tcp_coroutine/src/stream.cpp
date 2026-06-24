@@ -86,7 +86,7 @@ namespace streaming::coroutine::tcp
 
     stream::~stream()
     {
-        request_close();
+        close_detached();
     }
 
     stream::options default_stream_options() noexcept
@@ -246,7 +246,7 @@ namespace streaming::coroutine::tcp
         return closed_.load(std::memory_order_acquire) || !descriptor || !descriptor->is_open();
     }
 
-    void stream::request_close() noexcept
+    void stream::close_detached() noexcept
     {
         auto descriptor = descriptor_;
         if (!closed_.exchange(true, std::memory_order_acq_rel) && descriptor)

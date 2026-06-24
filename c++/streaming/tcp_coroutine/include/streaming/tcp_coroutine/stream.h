@@ -45,11 +45,12 @@ namespace streaming::coroutine::tcp
         auto send(rpc::byte_span buffer) -> CORO_TASK(rpc::io_status) override;
 
         [[nodiscard]] bool is_closed() const override;
-        void request_close() noexcept override;
         auto set_closed() -> CORO_TASK(void) override;
         [[nodiscard]] streaming::peer_info get_peer_info() const override;
 
     private:
+        void close_detached() noexcept;
+
         const std::shared_ptr<rpc::io_uring::direct_descriptor> descriptor_;
         const uint16_t peer_port_{0};
         const options options_;

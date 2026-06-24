@@ -26,12 +26,17 @@ namespace rpc::io_uring
         }
 
         CORO_TASK(void)
-        close_descriptor_task(
+        cleanup_descriptor_task(
             std::shared_ptr<controller> owner,
             uint32_t descriptor)
         {
             if (owner)
             {
+                auto cancel_result = CO_AWAIT owner->cancel_direct(descriptor);
+                if (cancel_result.error_code != rpc::error::OK() && !is_ignorable_cancel_result(cancel_result.native_result))
+                {
+                    CO_RETURN;
+                }
                 CO_AWAIT owner->close_direct(descriptor);
             }
             CO_RETURN;
@@ -48,9 +53,10 @@ namespace rpc::io_uring
 
     direct_descriptor::~direct_descriptor()
     {
-        // Destructors cannot co_await. Move the controller into a detached close
-        // task when a scheduler is still accepting work so the fixed-file slot
-        // is released without blocking object destruction.
+        // Destructors cannot co_await. Move the controller into a detached
+        // cleanup task when a scheduler is still accepting work so pending
+        // operations are cancelled and the fixed-file slot is released without
+        // blocking object destruction.
         close_detached(std::move(controller_), descriptor_.exchange(invalid_descriptor, std::memory_order_acq_rel));
     }
 
@@ -129,22 +135,20 @@ namespace rpc::io_uring
         auto* scheduler = owner->scheduler_;
         if (scheduler && !scheduler->is_shutdown())
         {
-            auto task = close_descriptor_task(std::move(owner), descriptor);
+            auto task = cleanup_descriptor_task(std::move(owner), descriptor);
             if (scheduler->spawn_detached(std::move(task)))
             {
                 return;
             }
-            // With a scheduler-backed controller, close_direct may suspend onto
-            // that scheduler. A destructor must not block trying to drive it
+
+            // With a scheduler-backed controller, cleanup may suspend onto that
+            // scheduler. A destructor must not block trying to drive it
             // synchronously after the scheduler has rejected detached work.
             return;
         }
 
-        if (!scheduler)
-        {
-            // The no-scheduler path is the cooperative polling fallback used by
-            // non-scheduled controller tests; it does not suspend onto a queue.
-            (void)SYNC_WAIT(owner->close_direct(descriptor));
-        }
+        // Without a scheduler/executor there is nowhere to hand asynchronous
+        // cleanup. Keep destructors non-blocking; callers that construct
+        // unscheduled controllers must use close() for deterministic cleanup.
     }
 } // namespace rpc::io_uring

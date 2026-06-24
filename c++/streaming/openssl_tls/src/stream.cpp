@@ -519,18 +519,16 @@ namespace streaming::openssl_tls
 
     stream::~stream()
     {
-        request_close();
+        close_detached();
     }
 
-    void stream::request_close() noexcept
+    void stream::close_detached() noexcept
     {
         auto* ssl = std::exchange(ssl_, nullptr);
         rbio_ = nullptr;
         wbio_ = nullptr;
 
         const auto already_closed = closed_.exchange(true, std::memory_order_acq_rel);
-        if (!already_closed && underlying_)
-            underlying_->request_close();
 
         if (!ssl)
             return;
@@ -548,9 +546,9 @@ namespace streaming::openssl_tls
                 return;
 
             // Destructors cannot block or drive coroutine work. If no executor
-            // was supplied, free the OpenSSL state locally and let the
-            // underlying stream's own lifetime cleanup handle its descriptor.
-            RPC_WARNING("TLS stream cleanup executor unavailable; freeing TLS state without async close");
+            // was supplied, free the OpenSSL state locally and release the
+            // underlying stream so its own RAII cleanup can run.
+            RPC_WARNING("TLS stream cleanup executor unavailable; freeing TLS state without async cleanup");
             state->free_ssl();
         }
         catch (...)
