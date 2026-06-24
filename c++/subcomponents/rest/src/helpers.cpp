@@ -46,6 +46,35 @@ namespace canopy::rest
         return path;
     }
 
+    std::string join_target(
+        std::string_view base_path,
+        std::string_view operation_path)
+    {
+        std::string target(base_path);
+        if (target.empty())
+            target = "/";
+        if (!operation_path.empty())
+        {
+            if (target.back() == '/' && operation_path.front() == '/')
+                target.pop_back();
+            else if (target.back() != '/' && operation_path.front() != '/')
+                target.push_back('/');
+            target += operation_path;
+        }
+        return target;
+    }
+
+    void append_query_parameter(
+        std::string& target,
+        std::string_view name,
+        std::string_view value)
+    {
+        target.push_back(target.find('?') == std::string::npos ? '?' : '&');
+        target += encode_path_segment(name);
+        target.push_back('=');
+        target += encode_path_segment(value);
+    }
+
     std::string required_string_field(
         std::string_view json_text,
         std::string_view field_name)

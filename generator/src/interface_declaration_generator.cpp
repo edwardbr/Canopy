@@ -659,7 +659,8 @@ namespace interface_declaration_generator
 
     void write_interface(
         const class_entity& m_ob,
-        writer& header)
+        writer& header,
+        bool enable_rest_client)
     {
         if (m_ob.is_in_import())
             return;
@@ -723,6 +724,11 @@ namespace interface_declaration_generator
         header(
             "static std::shared_ptr<rpc::local_proxy<{0}>> create_local_proxy(const rpc::weak_ptr<{0}>& ptr);",
             interface_name);
+        if (enable_rest_client)
+        {
+            header("using rest_settings = ::canopy::rest::connection_settings;");
+            header("class rest_caller;");
+        }
         header("");
         header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
         header("");
@@ -975,5 +981,45 @@ namespace interface_declaration_generator
         }
         header("}};");
         header("");
+
+        if (enable_rest_client)
+        {
+            header("class {0}::rest_caller final : public rpc::base<rest_caller, {0}>", interface_name);
+            header("{{");
+            header("public:");
+            header("explicit rest_caller(std::shared_ptr<::streaming::stream>&& stream, rest_settings settings = rest_settings{{}});");
+            header(
+                "static CORO_TASK(::canopy::rest::connect_result<{0}>) connect(rest_settings settings, "
+                "std::shared_ptr<rpc::service> service = {{}}, ::rpc::connection_factory::context factory_context = "
+                "::rpc::connection_factory::default_context());",
+                interface_name);
+            header("");
+            for (auto& function : m_ob.get_functions())
+            {
+                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
+                    continue;
+
+                header.print_tabs();
+                header.raw("CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
+                bool has_parameter = false;
+                for (auto& parameter : function->get_parameters())
+                {
+                    if (has_parameter)
+                        header.raw(", ");
+                    has_parameter = true;
+                    render_parameter(header, m_ob, parameter);
+                }
+                if (function->has_value("const"))
+                    header.raw(") const override;\n");
+                else
+                    header.raw(") override;\n");
+            }
+            header("");
+            header("private:");
+            header("std::shared_ptr<::streaming::stream> stream_;");
+            header("rest_settings settings_;");
+            header("}};");
+            header("");
+        }
     }
 }

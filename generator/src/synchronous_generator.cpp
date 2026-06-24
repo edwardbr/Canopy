@@ -3292,7 +3292,8 @@ namespace synchronous_generator
         yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
-        bool enable_canonical_crypto)
+        bool enable_canonical_crypto,
+        bool enable_rest_client)
     {
         for (auto& elem : lib.get_elements(entity_type::NAMESPACE_MEMBERS))
         {
@@ -3336,7 +3337,8 @@ namespace synchronous_generator
                     yas_options,
                     enable_protobuf,
                     enable_nanopb,
-                    enable_canonical_crypto);
+                    enable_canonical_crypto,
+                    enable_rest_client);
                 header("}}");
                 proxy("}}");
                 stub("}}");
@@ -3350,7 +3352,7 @@ namespace synchronous_generator
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
                 auto& ent = static_cast<const class_entity&>(*elem);
-                interface_declaration_generator::write_interface(ent, header);
+                interface_declaration_generator::write_interface(ent, header, enable_rest_client);
                 write_interface(
                     from_host,
                     ent,
@@ -3460,7 +3462,8 @@ namespace synchronous_generator
         yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
-        bool enable_canonical_crypto)
+        bool enable_canonical_crypto,
+        bool enable_rest_client)
     {
         writer header(hos);
         writer proxy(pos);
@@ -3494,7 +3497,12 @@ namespace synchronous_generator
         header("#include <rpc/internal/optional.h>");
         header("#include <variant>");
         header("#include <rpc/internal/variant.h>");
+        header("#include <cstddef>");
         header("#include <cstdint>");
+        if (enable_rest_client)
+        {
+            header("#include <canopy/rest/connection.h>");
+        }
         if (enable_canonical_crypto)
         {
             header("#include <stdexcept>");
@@ -3600,7 +3608,8 @@ namespace synchronous_generator
             yas_options,
             enable_protobuf,
             enable_nanopb,
-            enable_canonical_crypto);
+            enable_canonical_crypto,
+            enable_rest_client);
 
         for (auto& ns : namespaces)
         {

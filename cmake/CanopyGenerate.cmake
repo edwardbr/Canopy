@@ -25,7 +25,7 @@ function(
       protocol_buffers
       nanopb
       canonical_crypto)
-  set(singleValueArgs mock install_dir)
+  set(singleValueArgs mock install_dir rest_client)
   set(multiValueArgs
       dependencies
       link_libraries
@@ -42,6 +42,10 @@ function(
     "${singleValueArgs}"
     "${multiValueArgs}"
     ${ARGN})
+
+  if(params_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR "Unknown CanopyGenerate arguments for '${name}': ${params_UNPARSED_ARGUMENTS}")
+  endif()
 
   # Define cache variables for global settings with defaults These allow users to override settings while providing
   # sensible defaults
@@ -166,6 +170,7 @@ function(
   set(generate_protobuf FALSE)
   set(generate_nanopb FALSE)
   set(generate_canonical_crypto FALSE)
+  set(generate_rest_client FALSE)
 
   if(${params_yas_binary}
      OR ${params_yas_compressed_binary}
@@ -232,6 +237,20 @@ function(
     endif()
   endif()
 
+  if(NOT "${params_rest_client}" STREQUAL "")
+    if(NOT ${params_yas_json})
+      message(FATAL_ERROR "rest_client generation for '${name}' requires yas_json generation.")
+    endif()
+    set(generate_rest_client TRUE)
+    set(rest_metadata_path "${params_rest_client}")
+    set(rest_path ${sub_directory}/${base_filename}_rest.cpp)
+    set(full_rest_path ${output_path}/src/${rest_path})
+  else()
+    set(rest_metadata_path "")
+    set(rest_path "")
+    set(full_rest_path "")
+  endif()
+
   if(generate_protobuf OR generate_nanopb)
     set(protobuf_path ${sub_directory}/protobuf/${base_filename}.proto)
     set(full_protobuf_path ${output_path}/src/${protobuf_path})
@@ -286,6 +305,8 @@ function(
     message("protobuf_cpp_path ${protobuf_cpp_path}")
     message("full_protobuf_cpp_path ${full_protobuf_cpp_path}")
     message("generate_canonical_crypto ${generate_canonical_crypto}")
+    message("generate_rest_client ${generate_rest_client}")
+    message("rest_client ${rest_metadata_path}")
     message("no_include_rpc_headers ${params_no_include_rpc_headers}")
   endif()
 
@@ -411,6 +432,10 @@ function(
     list(APPEND GENERATOR_OUTPUTS ${full_yas_path})
   endif()
 
+  if(generate_rest_client)
+    list(APPEND GENERATOR_OUTPUTS ${full_rest_path})
+  endif()
+
   if(generate_protobuf OR generate_nanopb)
     # Only the manifest and wrapper C++ files are direct generator outputs.Individual.proto files are listed in
     # manifest.txt and compiled separately.
@@ -453,6 +478,9 @@ function(
   if(generate_canonical_crypto)
     set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --canonical_crypto)
   endif()
+  if(generate_rest_client)
+    set(SERIALIZATION_FLAGS ${SERIALIZATION_FLAGS} --rest_client ${rest_metadata_path})
+  endif()
 
   # Determine generator dependency for custom command If generator target exists(building from source), depend on the
   # executable file Otherwise use the cached executable path(installed version)
@@ -470,7 +498,7 @@ function(
     ${RETHROW_STUB_EXCEPTION} ${ADDITIONAL_STUB_HEADER}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY})")
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY} ${rest_metadata_path})")
 
   add_custom_command(
     OUTPUT ${GENERATOR_OUTPUTS}
@@ -480,7 +508,7 @@ function(
       ${ADDITIONAL_STUB_HEADER} ${GENERATOR_POST_COMMANDS}
     MAIN_DEPENDENCY ${idl}
     IMPLICIT_DEPENDS ${idl}
-    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY}
+    DEPENDS ${IDL_FILE_DEPENDENCIES} ${GENERATOR_DEPENDENCY} ${rest_metadata_path}
     COMMENT "Running generator ${idl}")
 
   if(${CANOPY_VERBOSE_GENERATOR})
@@ -751,6 +779,10 @@ function(
     list(APPEND IDL_SOURCES ${full_yas_path})
   endif()
 
+  if(generate_rest_client)
+    list(APPEND IDL_SOURCES ${full_rest_path})
+  endif()
+
   if(generate_protobuf)
     list(APPEND IDL_SOURCES ${full_protobuf_cpp_path} ${PROTO_PB_SOURCES})
   endif()
@@ -775,6 +807,9 @@ function(
   # Link YAS if any YAS format is enabled
   if(generate_yas)
     target_link_libraries(${name}_idl PUBLIC yas_common)
+  endif()
+  if(generate_rest_client)
+    target_link_libraries(${name}_idl PUBLIC streaming_http_client rest json streaming)
   endif()
 
   # Link protobuf library if building protobuf support
@@ -866,4 +901,64 @@ function(
     endif()
   endforeach()
 
+endfunction()
+
+function(
+  CanopyGenerateRest
+  name
+  openapi_json
+  base_dir
+  output_path
+  namespace)
+  get_filename_component(_canopy_rest_converter "${_CANOPY_GENERATE_CMAKE_DIR}/../tools/openapi_to_canopy_idl.py"
+                         ABSOLUTE)
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  get_filename_component(_canopy_rest_base_dir_abs "${base_dir}" ABSOLUTE)
+
+  cmake_path(IS_RELATIVE openapi_json _canopy_rest_spec_is_relative)
+  if(_canopy_rest_spec_is_relative)
+    cmake_path(
+      APPEND
+      "${_canopy_rest_base_dir_abs}"
+      ${openapi_json}
+      OUTPUT_VARIABLE _canopy_rest_spec)
+  else()
+    set(_canopy_rest_spec "${openapi_json}")
+  endif()
+  get_filename_component(_canopy_rest_spec_abs "${_canopy_rest_spec}" ABSOLUTE)
+
+  get_filename_component(_canopy_rest_spec_dir "${_canopy_rest_spec_abs}" DIRECTORY)
+  get_filename_component(_canopy_rest_spec_name "${_canopy_rest_spec_abs}" NAME)
+  string(REGEX REPLACE "\\.(openapi|swagger)\\.json$" ".idl" _canopy_rest_idl_name
+                       "${_canopy_rest_spec_name}")
+  if("${_canopy_rest_idl_name}" STREQUAL "${_canopy_rest_spec_name}")
+    string(REGEX REPLACE "\\.json$" ".idl" _canopy_rest_idl_name "${_canopy_rest_spec_name}")
+  endif()
+  get_filename_component(_canopy_rest_idl_stem "${_canopy_rest_idl_name}" NAME_WE)
+  set(_canopy_rest_idl_abs "${_canopy_rest_spec_dir}/${_canopy_rest_idl_name}")
+  set(_canopy_rest_metadata_abs "${_canopy_rest_spec_dir}/${_canopy_rest_idl_stem}.rest.meta")
+  file(RELATIVE_PATH _canopy_rest_idl "${_canopy_rest_base_dir_abs}" "${_canopy_rest_idl_abs}")
+
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} "${_canopy_rest_converter}" --input "${_canopy_rest_spec_abs}" --output
+            "${_canopy_rest_idl_abs}" --metadata "${_canopy_rest_metadata_abs}"
+    RESULT_VARIABLE _canopy_rest_convert_result
+    OUTPUT_VARIABLE _canopy_rest_convert_stdout
+    ERROR_VARIABLE _canopy_rest_convert_stderr)
+  if(NOT _canopy_rest_convert_result EQUAL 0)
+    message(FATAL_ERROR "OpenAPI/Swagger conversion failed for ${_canopy_rest_spec_abs}:\n"
+                        "${_canopy_rest_convert_stdout}${_canopy_rest_convert_stderr}")
+  endif()
+
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_canopy_rest_spec_abs}" "${_canopy_rest_converter}")
+
+  CanopyGenerate(
+    ${name}
+    ${_canopy_rest_idl}
+    ${base_dir}
+    ${output_path}
+    "${namespace}"
+    ${ARGN}
+    yas_json
+    rest_client "${_canopy_rest_metadata_abs}")
 endfunction()

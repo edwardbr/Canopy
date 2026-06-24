@@ -27,5 +27,6 @@ namespace synchronous_generator
         yas_serialization_options yas_options,
         bool enable_protobuf,
         bool enable_nanopb,
-        bool enable_canonical_crypto);
+        bool enable_canonical_crypto,
+        bool enable_rest_client);
 }

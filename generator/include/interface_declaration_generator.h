@@ -58,5 +58,6 @@ namespace interface_declaration_generator
 
     void write_interface(
         const class_entity& m_ob,
-        writer& header);
+        writer& header,
+        bool enable_rest_client);
 }

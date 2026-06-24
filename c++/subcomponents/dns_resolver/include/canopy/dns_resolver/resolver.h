@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include <sys/socket.h>
+
 #include <rpc/rpc.h>
 
 namespace canopy::dns_resolver
@@ -59,6 +61,15 @@ namespace canopy::dns_resolver
         std::string canonical_name;
         std::vector<endpoint> endpoints;
     };
+
+    [[nodiscard]] resolve_options make_stream_resolve_options(
+        bool ipv6 = false,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds{5000}) noexcept;
+
+    [[nodiscard]] bool sockaddr_from_endpoint(
+        const endpoint& endpoint,
+        sockaddr_storage& storage,
+        socklen_t& storage_size) noexcept;
 
     [[nodiscard]] resolve_result resolve_service_blocking(
         const std::string& host,

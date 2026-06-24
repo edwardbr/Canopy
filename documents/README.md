@@ -28,6 +28,7 @@ Use this directory by task, not by file number.
   - [API Reference](09-api-reference.md)
   - [Examples](10-examples.md)
   - [Best Practices](11-best-practices.md)
+  - [REST Clients](rest.md)
 
 ## Implementation Status
 

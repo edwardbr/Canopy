@@ -1,0 +1,22 @@
+# Canopy REST caller metadata v1
+interface	todoapi::v1::todos::i_todos	example.test	
+method	todoapi::v1::todos::i_todos	get_todo	GET	/todoapi/v1/todos/{todo_id}		response
+param	todoapi::v1::todos::i_todos	get_todo	todo_id	path	todo_id	true
+param	todoapi::v1::todos::i_todos	get_todo	include_notes	query	include_notes	false
+method	todoapi::v1::todos::i_todos	put_replace_todo	PUT	/todoapi/v1/todos/{todo_id}	request	response
+param	todoapi::v1::todos::i_todos	put_replace_todo	todo_id	path	todo_id	true
+param	todoapi::v1::todos::i_todos	put_replace_todo	request	body	request	true
+method	todoapi::v1::todos::i_todos	patch_todo	PATCH	/todoapi/v1/todos/{todo_id}	request	response
+param	todoapi::v1::todos::i_todos	patch_todo	todo_id	path	todo_id	true
+param	todoapi::v1::todos::i_todos	patch_todo	request	body	request	true
+method	todoapi::v1::todos::i_todos	delete_todo	DELETE	/todoapi/v1/todos/{todo_id}
+param	todoapi::v1::todos::i_todos	delete_todo	todo_id	path	todo_id	true
+method	todoapi::v1::todos::i_todos	head_todo	HEAD	/todoapi/v1/todos/{todo_id}
+param	todoapi::v1::todos::i_todos	head_todo	todo_id	path	todo_id	true
+method	todoapi::v1::todos::i_todos	post_create_todo	POST	/todoapi/v1/todos	request	response
+param	todoapi::v1::todos::i_todos	post_create_todo	request	body	request	true
+method	todoapi::v1::todos::i_todos	options_todos	OPTIONS	/todoapi/v1/todos/options		response
+method	todoapi::v1::todos::i_todos	get_todo_audit	GET	/todoapi/v1/todos/{todo_id}/audit		response
+param	todoapi::v1::todos::i_todos	get_todo_audit	todo_id	path	todo_id	true
+method	todoapi::v1::todos::i_todos	get_todo_state	GET	/todoapi/v1/todos/{todo_id}/state		response
+param	todoapi::v1::todos::i_todos	get_todo_state	todo_id	path	todo_id	true

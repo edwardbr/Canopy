@@ -43,6 +43,7 @@
 #include "rust_generator.h"
 #include "rust_protobuf_generator.h"
 #include "javascript_generator.h"
+#include "rest_generator.h"
 #include "component_checksum.h"
 
 #include "json_schema/generator.h"
@@ -326,6 +327,8 @@ int main(
         args::Flag javascript_arg(
             args_parser, "javascript", "enable JavaScript proxy/stub generation", {'j', "javascript"});
         args::Flag rust_arg(args_parser, "rust", "enable initial Rust constants generation", {'R', "rust"});
+        args::ValueFlag<std::string> rest_metadata_arg(
+            args_parser, "path", "enable generated REST caller using REST metadata", {"rest_client"});
         args::Flag suppress_catch_stub_exceptions_arg(
             args_parser, "suppress_catch_stub_exceptions", "catch stub exceptions", {'c', "suppress_catch_stub_exceptions"});
         args::ValueFlagList<std::string> include_paths_arg(
@@ -376,6 +379,8 @@ int main(
         bool enable_canonical_crypto = args::get(canonical_crypto_arg);
         bool enable_javascript = args::get(javascript_arg);
         bool enable_rust = args::get(rust_arg);
+        std::filesystem::path rest_metadata_path = args::get(rest_metadata_arg);
+        bool enable_rest_client = !rest_metadata_path.empty();
         std::vector<std::string> namespaces = args::get(namespaces_arg);
         std::vector<std::string> include_paths = args::get(include_paths_arg);
         std::vector<std::string> defines = args::get(defines_arg);
@@ -389,7 +394,7 @@ int main(
         root_idl = root_idl.lexically_normal();
         mock_path = mock_path.lexically_normal();
         output_path = output_path.lexically_normal();
-
+        rest_metadata_path = rest_metadata_path.lexically_normal();
         // Extract immediate parent directory from IDL path using filesystem::path
         // root_idl could be (absolute paths):
         //   - "/path/to/example_shared/example_shared.idl" -> directory = "example_shared"
@@ -575,7 +580,8 @@ int main(
                 yas_options,
                 enable_protobuf,
                 enable_nanopb,
-                enable_canonical_crypto);
+                enable_canonical_crypto,
+                enable_rest_client);
 
             header_stream << ends;
             proxy_stream << ends;
@@ -666,6 +672,28 @@ int main(
             {
                 ofstream file(header_fs_path);
                 file << header_stream.str();
+            }
+        }
+
+        if (enable_rest_client)
+        {
+            auto rest_cpp_path = output_path / "src" / (path_prefix + "_rest.cpp");
+            std::filesystem::create_directories(rest_cpp_path.parent_path());
+
+            std::string existing_rest_cpp_data;
+            {
+                std::ifstream rest_cpp_fs(rest_cpp_path);
+                std::getline(rest_cpp_fs, existing_rest_cpp_data, '\0');
+            }
+
+            std::stringstream rest_cpp_stream;
+            rest_generator::write_files(*objects, rest_cpp_stream, namespaces, header_path, rest_metadata_path);
+            rest_cpp_stream << ends;
+
+            if (is_different(rest_cpp_stream, existing_rest_cpp_data))
+            {
+                std::ofstream file(rest_cpp_path);
+                file << rest_cpp_stream.str();
             }
         }
 

@@ -1,0 +1,92 @@
+/*
+ * Generated from rest_fixture.openapi.json by openapi_to_canopy_idl.py.
+ * Treat the OpenAPI/Swagger JSON as the source of truth.
+ */
+
+#import "rpc/rpc_types.idl"
+#import "json/json.idl"
+
+typedef int error_code;
+
+namespace todoapi
+{
+    namespace v1
+    {
+        namespace todos
+        {
+            struct todo_audit_base
+            {
+                std::string id;
+            };
+
+            struct todo_audit
+            {
+                std::string id;
+                std::string source;
+                rpc::optional<std::vector<std::string>> changes;
+            };
+
+            struct todo_create
+            {
+                std::string title;
+                bool completed;
+                rpc::optional<std::string> notes;
+            };
+
+            struct todo_operation_status
+            {
+                std::string id;
+                std::string action;
+            };
+
+            struct todo_patch
+            {
+                rpc::optional<std::string> title;
+                rpc::optional<bool> completed;
+                rpc::optional<std::string> notes;
+            };
+
+            struct todo_item
+            {
+                std::string id;
+                std::string title;
+                bool completed;
+                rpc::optional<std::string> notes;
+            };
+
+            interface i_todos
+            {
+                error_code get_todo(
+                    [in] const std::string& todo_id,
+                    [in] rpc::optional<bool> include_notes,
+                    [out] todo_item& response
+                );
+                error_code put_replace_todo(
+                    [in] const std::string& todo_id,
+                    [in] const todo_create& request,
+                    [out] todo_item& response
+                );
+                error_code patch_todo(
+                    [in] const std::string& todo_id,
+                    [in] const todo_patch& request,
+                    [out] todo_item& response
+                );
+                error_code delete_todo([in] const std::string& todo_id);
+                error_code head_todo([in] const std::string& todo_id);
+                error_code post_create_todo(
+                    [in] const todo_create& request,
+                    [out] todo_item& response
+                );
+                error_code options_todos([out] todo_operation_status& response);
+                error_code get_todo_audit(
+                    [in] const std::string& todo_id,
+                    [out] todo_audit& response
+                );
+                error_code get_todo_state(
+                    [in] const std::string& todo_id,
+                    [out] json::v1::object& response
+                );
+            };
+        } // namespace todos
+    } // namespace v1
+} // namespace todoapi

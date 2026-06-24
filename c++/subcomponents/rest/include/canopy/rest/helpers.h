@@ -18,6 +18,13 @@ namespace canopy::rest
     [[nodiscard]] std::string append_path_segment(
         std::string_view base_path,
         std::string_view segment);
+    [[nodiscard]] std::string join_target(
+        std::string_view base_path,
+        std::string_view operation_path);
+    void append_query_parameter(
+        std::string& target,
+        std::string_view name,
+        std::string_view value);
     [[nodiscard]] std::string required_string_field(
         std::string_view json_text,
         std::string_view field_name);

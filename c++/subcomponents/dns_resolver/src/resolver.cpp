@@ -23,6 +23,48 @@
 
 namespace canopy::dns_resolver
 {
+    resolve_options make_stream_resolve_options(
+        bool ipv6,
+        std::chrono::milliseconds timeout) noexcept
+    {
+        resolve_options result;
+        result.family = ipv6 ? address_family::ipv6 : address_family::ipv4;
+        result.type = socket_type::stream;
+        result.timeout = timeout;
+        return result;
+    }
+
+    bool sockaddr_from_endpoint(
+        const endpoint& endpoint,
+        sockaddr_storage& storage,
+        socklen_t& storage_size) noexcept
+    {
+        storage = sockaddr_storage{};
+        storage_size = 0;
+
+        if (endpoint.family == address_family::ipv6)
+        {
+            auto* addr = reinterpret_cast<sockaddr_in6*>(&storage);
+            addr->sin6_family = AF_INET6;
+            addr->sin6_port = htons(endpoint.port);
+            std::memcpy(&addr->sin6_addr, endpoint.ipv6.data(), endpoint.ipv6.size());
+            storage_size = sizeof(sockaddr_in6);
+            return true;
+        }
+
+        if (endpoint.family == address_family::ipv4)
+        {
+            auto* addr = reinterpret_cast<sockaddr_in*>(&storage);
+            addr->sin_family = AF_INET;
+            addr->sin_port = htons(endpoint.port);
+            std::memcpy(&addr->sin_addr, endpoint.ipv4.data(), endpoint.ipv4.size());
+            storage_size = sizeof(sockaddr_in);
+            return true;
+        }
+
+        return false;
+    }
+
     namespace
     {
         class cares_library

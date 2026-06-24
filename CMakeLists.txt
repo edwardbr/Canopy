@@ -21,6 +21,8 @@ set(CANOPY_INTERFACE_SOURCE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/interfaces"
     CACHE INTERNAL "Root of the shared Canopy interface tree")
 
+option(CANOPY_BUILD_THIRD_PARTY_INTERFACES "Build third-party interface compatibility extraction examples" OFF)
+
 if("${CMAKE_CURRENT_SOURCE_DIR}" PATH_EQUAL "${CMAKE_SOURCE_DIR}")
   message("RPC standalone")
   project(rpc_standalone VERSION 3.0.0)
@@ -46,6 +48,16 @@ include(CanopyGenerate)
 add_subdirectory(generator)
 add_subdirectory("${CANOPY_INTERFACE_SOURCE_DIR}" interfaces)
 add_subdirectory("${CANOPY_CPP_SOURCE_DIR}" c++)
+if(CANOPY_BUILD_THIRD_PARTY_INTERFACES)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party_interfaces/CMakeLists.txt")
+    add_subdirectory(third_party_interfaces)
+  else()
+    message(
+      FATAL_ERROR
+        "CANOPY_BUILD_THIRD_PARTY_INTERFACES is ON, but third_party_interfaces is not available. "
+        "Run: git submodule update --init third_party_interfaces")
+  endif()
+endif()
 if(CANOPY_BUILD_TEST)
   add_subdirectory(integration_tests)
 endif()

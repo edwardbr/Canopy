@@ -13,7 +13,6 @@ add_subdirectory(subcomponents/network_config)
 add_subdirectory(subcomponents/rpc_log)
 add_subdirectory(subcomponents/spsc_queue)
 add_subdirectory(subcomponents/json)
-add_subdirectory(subcomponents/rest)
 add_subdirectory(subcomponents/modules)
 add_subdirectory(subcomponents/io_uring_config)
 add_subdirectory(subcomponents/dns_resolver)
@@ -21,6 +20,7 @@ add_subdirectory(subcomponents/dns_resolver)
 # The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking, openssl_tls,
 # mbedtls, spsc, attestation, websocket, compression) gate themselves on build options in their own CMakeLists.
 add_subdirectory(streaming)
+add_subdirectory(subcomponents/http_client)
 
 # io_uring is coroutine-only by design (see project memory). file_system is dual-mode: coroutine builds use the io_uring
 # controller, blocking builds use plain POSIX ::open/::read/::write/::close.
@@ -42,10 +42,10 @@ add_subdirectory(streaming/tcp_coroutine)
 # in streaming/mbedtls.
 if(CANOPY_BUILD_WEBSOCKET)
   add_subdirectory(subcomponents/http_server)
-  add_subdirectory(subcomponents/http_client)
 endif()
 
 add_subdirectory(connection_factory)
+add_subdirectory(subcomponents/rest)
 
 if(CANOPY_BUILD_TEST)
   add_subdirectory(tests)

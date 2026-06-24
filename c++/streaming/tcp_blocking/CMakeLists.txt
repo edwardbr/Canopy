@@ -31,7 +31,7 @@ target_link_options(streaming_tcp_blocking PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_tcp_blocking
   PUBLIC streaming tcp_blocking_stream_config_idl
-  PRIVATE rpc)
+  PRIVATE rpc canopy_dns_resolver)
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_tcp_blocking PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

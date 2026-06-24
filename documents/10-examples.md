@@ -26,6 +26,9 @@ implementation.
 
 For basic calculator examples covering IDL definition, implementation, and simple usage, see [Getting Started](02-getting-started.md). The examples below focus on advanced patterns and cross-zone communication scenarios.
 
+For generated HTTP/JSON REST callers, including how to expose a REST-backed
+object to another Canopy zone, see [REST Clients](rest.md).
+
 ## 1. Local Child-Zone Communication
 
 The local child transport creates a child zone from a parent service. For peer

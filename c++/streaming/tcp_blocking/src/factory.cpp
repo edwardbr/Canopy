@@ -7,13 +7,13 @@
 
 #include <chrono>
 
+#include <canopy/dns_resolver/resolver.h>
 #include <streaming/tcp_blocking/socket.h>
 #include <streaming/tcp_blocking/stream.h>
 
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <coro/net/tcp/client.hpp>
 #else
-#  include <arpa/inet.h>
 #  include <cerrno>
 #  include <fcntl.h>
 #  include <netinet/in.h>
@@ -28,10 +28,10 @@ namespace rpc::tcp_blocking
     {
 #ifndef CANOPY_BUILD_COROUTINE
         int connect_socket_blocking(
-            const ::rpc::tcp_blocking_stream::endpoint& endpoint,
+            const canopy::dns_resolver::endpoint& endpoint,
             std::chrono::milliseconds timeout)
         {
-            const int family = endpoint.ipv6 ? AF_INET6 : AF_INET;
+            const int family = endpoint.family == canopy::dns_resolver::address_family::ipv6 ? AF_INET6 : AF_INET;
             int fd = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0);
             if (fd < 0)
                 return -1;
@@ -42,29 +42,10 @@ namespace rpc::tcp_blocking
 
             sockaddr_storage storage{};
             socklen_t storage_size = 0;
-            if (endpoint.ipv6)
+            if (!canopy::dns_resolver::sockaddr_from_endpoint(endpoint, storage, storage_size))
             {
-                auto* addr = reinterpret_cast<sockaddr_in6*>(&storage);
-                addr->sin6_family = AF_INET6;
-                addr->sin6_port = htons(endpoint.port);
-                if (::inet_pton(AF_INET6, endpoint.host.c_str(), &addr->sin6_addr) != 1)
-                {
-                    ::close(fd);
-                    return -1;
-                }
-                storage_size = sizeof(sockaddr_in6);
-            }
-            else
-            {
-                auto* addr = reinterpret_cast<sockaddr_in*>(&storage);
-                addr->sin_family = AF_INET;
-                addr->sin_port = htons(endpoint.port);
-                if (::inet_pton(AF_INET, endpoint.host.c_str(), &addr->sin_addr) != 1)
-                {
-                    ::close(fd);
-                    return -1;
-                }
-                storage_size = sizeof(sockaddr_in);
+                ::close(fd);
+                return -1;
             }
 
             int result = ::connect(fd, reinterpret_cast<sockaddr*>(&storage), storage_size);
@@ -109,19 +90,41 @@ namespace rpc::tcp_blocking
         if (!executor)
             CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 
-        coro::net::tcp::client client(executor, coro::net::socket_address{endpoint.host, endpoint.port});
-        auto status = CO_AWAIT client.connect(std::chrono::milliseconds(endpoint.connect_timeout));
-        if (status != coro::net::connect_status::connected)
+        const auto timeout = std::chrono::milliseconds(endpoint.connect_timeout);
+        const auto resolved = CO_AWAIT canopy::dns_resolver::resolve_host(
+            endpoint.host, endpoint.port, canopy::dns_resolver::make_stream_resolve_options(endpoint.ipv6, timeout));
+        if (resolved.error_code != rpc::error::OK() || resolved.endpoints.empty())
             CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 
-        CO_RETURN rpc::stream_transport::stream_result{rpc::error::OK(),
-            std::make_shared<::streaming::blocking::tcp::stream>(std::move(client), std::move(executor))};
+        for (const auto& resolved_endpoint : resolved.endpoints)
+        {
+            coro::net::tcp::client client(
+                executor, coro::net::socket_address{resolved_endpoint.numeric_host, resolved_endpoint.port});
+            auto status = CO_AWAIT client.connect(timeout);
+            if (status == coro::net::connect_status::connected)
+            {
+                CO_RETURN rpc::stream_transport::stream_result{rpc::error::OK(),
+                    std::make_shared<::streaming::blocking::tcp::stream>(std::move(client), std::move(executor))};
+            }
+        }
+        CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 #else
-        const int fd = connect_socket_blocking(endpoint, std::chrono::milliseconds(endpoint.connect_timeout));
-        if (fd < 0)
+        const auto timeout = std::chrono::milliseconds(endpoint.connect_timeout);
+        const auto resolved = canopy::dns_resolver::resolve_host_blocking(
+            endpoint.host, endpoint.port, canopy::dns_resolver::make_stream_resolve_options(endpoint.ipv6, timeout));
+        if (resolved.error_code != rpc::error::OK() || resolved.endpoints.empty())
             return rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
-        return rpc::stream_transport::stream_result{rpc::error::OK(),
-            std::make_shared<::streaming::blocking::tcp::stream>(::streaming::blocking::tcp::socket(fd))};
+
+        for (const auto& resolved_endpoint : resolved.endpoints)
+        {
+            const int fd = connect_socket_blocking(resolved_endpoint, timeout);
+            if (fd >= 0)
+            {
+                return rpc::stream_transport::stream_result{rpc::error::OK(),
+                    std::make_shared<::streaming::blocking::tcp::stream>(::streaming::blocking::tcp::socket(fd))};
+            }
+        }
+        return rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 #endif
     }
 

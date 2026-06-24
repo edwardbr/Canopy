@@ -435,6 +435,11 @@ namespace streaming::openssl_tls
         }
 
         SSL_CTX_set_min_proto_version(ctx_, TLS1_2_VERSION);
+        if (options.verify_peer && SSL_CTX_set_default_verify_paths(ctx_) != 1)
+        {
+            RPC_WARNING("Failed to load default TLS trust store paths");
+            log_ssl_errors();
+        }
 
         SSL_CTX_set_verify(ctx_, options.verify_peer ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, nullptr);
 

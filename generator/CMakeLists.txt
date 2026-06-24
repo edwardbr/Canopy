@@ -18,6 +18,7 @@ add_executable(
   src/nanopb_generator.cpp
   src/rust_generator.cpp
   src/rust_protobuf_generator.cpp
+  src/rest_generator.cpp
   src/javascript_generator.cpp
   src/main.cpp
   src/helpers.cpp

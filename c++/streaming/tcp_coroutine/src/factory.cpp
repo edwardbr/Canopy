@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <utility>
 
+#include <canopy/dns_resolver/resolver.h>
 #include <streaming/tcp_coroutine/connector.h>
 
 namespace rpc::tcp_coroutine
@@ -145,11 +146,34 @@ namespace rpc::tcp_coroutine
         if (options.port == 0)
             return rpc::error::INVALID_DATA();
 
-        const auto address = parse_endpoint_address(options);
-        if (address.error_code != rpc::error::OK())
-            return address.error_code;
-
         return rpc::error::OK();
+    }
+
+    CORO_TASK(rpc::stream_transport::stream_result)
+    connect_resolved_endpoint(
+        const canopy::dns_resolver::endpoint& endpoint,
+        const std::shared_ptr<rpc::io_uring::controller>& controller,
+        const tcp_coroutine_runtime_options& runtime_options,
+        rpc::executor_ptr scheduler)
+    {
+        ::streaming::coroutine::tcp::stream_result result;
+        if (endpoint.family == canopy::dns_resolver::address_family::ipv6)
+        {
+            result = CO_AWAIT ::streaming::coroutine::tcp::connect_ipv6(
+                controller, endpoint.ipv6, endpoint.port, runtime_options.stream_options, runtime_options.connect_timeout, scheduler);
+        }
+        else if (endpoint.family == canopy::dns_resolver::address_family::ipv4)
+        {
+            result = CO_AWAIT ::streaming::coroutine::tcp::connect_ipv4(
+                controller, endpoint.ipv4, endpoint.port, runtime_options.stream_options, runtime_options.connect_timeout, scheduler);
+        }
+        else
+        {
+            CO_RETURN rpc::stream_transport::stream_result{rpc::error::INVALID_DATA(), {}};
+        }
+
+        CO_RETURN rpc::stream_transport::stream_result{
+            result.error_code, std::move(result.connection), result.native_result};
     }
 
     CORO_TASK(listen_result)
@@ -282,33 +306,26 @@ namespace rpc::tcp_coroutine
         if (runtime.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::stream_result{runtime.error_code, {}};
 
-        const auto address = parse_endpoint_address(options);
-        ::streaming::coroutine::tcp::stream_result result;
-        if (options.ipv6)
+        const auto resolved = CO_AWAIT canopy::dns_resolver::resolve_host(
+            options.host,
+            runtime_options.port,
+            canopy::dns_resolver::make_stream_resolve_options(options.ipv6, runtime_options.connect_timeout));
+        if (resolved.error_code != rpc::error::OK() || resolved.endpoints.empty())
+            CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
+
+        rpc::stream_transport::stream_result result{rpc::error::TRANSPORT_ERROR(), {}};
+        for (const auto& endpoint : resolved.endpoints)
         {
-            result = CO_AWAIT ::streaming::coroutine::tcp::connect_ipv6(
-                runtime.controller,
-                address.ipv6,
-                runtime_options.port,
-                runtime_options.stream_options,
-                runtime_options.connect_timeout,
-                runtime.scheduler);
+            result = CO_AWAIT connect_resolved_endpoint(endpoint, runtime.controller, runtime_options, runtime.scheduler);
+            if (result.error_code == rpc::error::OK())
+                break;
         }
-        else
-        {
-            result = CO_AWAIT ::streaming::coroutine::tcp::connect_ipv4(
-                runtime.controller,
-                address.ipv4,
-                runtime_options.port,
-                runtime_options.stream_options,
-                runtime_options.connect_timeout,
-                runtime.scheduler);
-        }
+
         if (result.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::stream_result{result.error_code, {}, result.native_result};
 
         CO_RETURN rpc::stream_transport::stream_result{rpc::error::OK(),
-            rpc::stream_transport::keep_owner(std::move(result.connection), std::move(runtime.scheduler_owner)),
+            rpc::stream_transport::keep_owner(std::move(result.stream), std::move(runtime.scheduler_owner)),
             result.native_result};
     }
 

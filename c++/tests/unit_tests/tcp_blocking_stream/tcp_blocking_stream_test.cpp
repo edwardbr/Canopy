@@ -12,6 +12,7 @@
 #include <rpc/internal/executor/blocking_executor.h>
 
 #include <streaming/tcp_blocking/acceptor.h>
+#include <streaming/tcp_blocking/factory.h>
 #include <streaming/tcp_blocking/socket.h>
 #include <streaming/tcp_blocking/stream.h>
 
@@ -135,6 +136,62 @@ namespace
         server_stream->set_closed();
         acc->stop();
         ::close(client_fd);
+        exec->shutdown();
+    }
+
+    TEST(
+        TcpBlockingStream,
+        ConnectStreamResolvesHostnames)
+    {
+        auto port = pick_free_port();
+        ASSERT_NE(port, 0);
+
+        auto exec = std::make_shared<rpc::blocking_executor>();
+        streaming::blocking::tcp::endpoint listen_endpoint;
+        listen_endpoint.host = "127.0.0.1";
+        listen_endpoint.port = port;
+        auto acc = std::make_shared<streaming::blocking::tcp::acceptor>(listen_endpoint);
+        ASSERT_TRUE(acc->init(exec));
+
+        std::shared_ptr<streaming::stream> server_stream;
+        std::atomic<bool> got{false};
+        ASSERT_TRUE(exec->post(
+            [&]
+            {
+                auto maybe = acc->accept();
+                if (maybe)
+                    server_stream = std::move(*maybe);
+                got.store(true, std::memory_order_release);
+            }));
+
+        rpc::tcp_blocking_stream::endpoint connect_endpoint;
+        connect_endpoint.host = "localhost";
+        connect_endpoint.port = port;
+        connect_endpoint.connect_timeout = 1000;
+        auto connected = rpc::tcp_blocking::connect_stream(connect_endpoint);
+        ASSERT_EQ(connected.error_code, rpc::error::OK());
+        ASSERT_NE(connected.stream, nullptr);
+
+        for (int i = 0; i < 200 && !got.load(std::memory_order_acquire); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ASSERT_TRUE(got.load());
+        ASSERT_NE(server_stream, nullptr);
+
+        const char payload[] = "dns-resolved-hostname";
+        auto send_status
+            = connected.stream->send(rpc::byte_span(reinterpret_cast<const uint8_t*>(payload), sizeof(payload)));
+        ASSERT_TRUE(send_status.is_ok()) << "send status type=" << static_cast<int>(send_status.type);
+
+        std::vector<uint8_t> buf(64);
+        auto [receive_status, span]
+            = server_stream->receive(rpc::mutable_byte_span(buf.data(), buf.size()), std::chrono::milliseconds(1000));
+        ASSERT_TRUE(receive_status.is_ok()) << "receive status type=" << static_cast<int>(receive_status.type);
+        ASSERT_EQ(span.size(), sizeof(payload));
+        EXPECT_EQ(std::memcmp(span.data(), payload, sizeof(payload)), 0);
+
+        connected.stream->set_closed();
+        server_stream->set_closed();
+        acc->stop();
         exec->shutdown();
     }
 } // namespace

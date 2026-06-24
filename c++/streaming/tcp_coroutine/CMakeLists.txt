@@ -41,7 +41,7 @@ target_link_libraries(
          canopy_io_uring
          io_uring_config_idl
          tcp_coroutine_stream_config_idl
-  PRIVATE rpc libcoro)
+  PRIVATE rpc canopy_dns_resolver libcoro)
 
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_tcp_coroutine PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")

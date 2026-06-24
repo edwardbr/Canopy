@@ -356,6 +356,7 @@ if(NOT DEPENDENCIES_LOADED)
       message(STATUS "CANOPY_BUILD_WEBSOCKET: ${CANOPY_BUILD_WEBSOCKET}")
       message(STATUS "CANOPY_BUILD_COMPRESSION: ${CANOPY_BUILD_COMPRESSION}")
       message(STATUS "CANOPY_BUILD_DEMOS: ${CANOPY_BUILD_DEMOS}")
+      message(STATUS "CANOPY_BUILD_THIRD_PARTY_INTERFACES: ${CANOPY_BUILD_THIRD_PARTY_INTERFACES}")
       set(CANOPY_REQUIRED_SUBMODULES
           c++/submodules/yas
           c++/submodules/fmt
@@ -393,6 +394,9 @@ if(NOT DEPENDENCIES_LOADED)
         # libvpx is needed by the websocket video demo even when llama is disabled by
         # CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY.
         list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libvpx)
+      endif()
+      if(CANOPY_BUILD_THIRD_PARTY_INTERFACES)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES third_party_interfaces)
       endif()
 
       set(CANOPY_FULL_HISTORY_SUBMODULES c++/submodules/yas c++/submodules/fmt submodules/idlparser c++/submodules/args)
