@@ -8,13 +8,20 @@ set(binary_dir "@CMAKE_CURRENT_BINARY_DIR@/downstream_smoke_build")
 
 file(REMOVE_RECURSE "${binary_dir}")
 
+# This smoke only validates downstream add_subdirectory consumption of connection_factory.
+# Keep optional codecs/transports out so the CTest wrapper does not spend most of its
+# time building unrelated dependency graphs.
 execute_process(
   COMMAND
     "@CMAKE_COMMAND@" -S "${source_dir}" -B "${binary_dir}" -G "@CMAKE_GENERATOR@"
     "-DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@" "-DCMAKE_C_COMPILER=@CMAKE_C_COMPILER@"
     "-DCMAKE_CXX_COMPILER=@CMAKE_CXX_COMPILER@" "-DCANOPY_SOURCE_DIR=@CMAKE_SOURCE_DIR@"
     "-DCANOPY_BUILD_COROUTINE=@CANOPY_BUILD_COROUTINE@"
-    "-DCANOPY_BUILD_WEBSOCKET=@CANOPY_BUILD_WEBSOCKET@"
+    "-DCANOPY_BUILD_WEBSOCKET=OFF"
+    "-DCANOPY_BUILD_PROTOCOL_BUFFERS=OFF"
+    "-DCANOPY_BUILD_NANOPB=OFF"
+    "-DCANOPY_BUILD_HTTP_COMPRESSION=OFF"
+    "-DCANOPY_BUILD_THIRD_PARTY_INTERFACES=OFF"
   RESULT_VARIABLE configure_result
   OUTPUT_VARIABLE configure_output
   ERROR_VARIABLE configure_error)

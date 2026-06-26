@@ -121,6 +121,27 @@ namespace canopy::http_server
                 response.headers.erase(it);
         }
 
+        void normalise_no_body_content_length(response& response)
+        {
+            auto it = find_header(response.headers, "Content-Length");
+            if (it == response.headers.end())
+                return;
+
+            try
+            {
+                if (canopy::http_utils::parse_content_length(it->second) == 0)
+                {
+                    it->second = "0";
+                    return;
+                }
+            }
+            catch (...)
+            {
+            }
+
+            response.headers.erase(it);
+        }
+
         auto parse_qvalue(std::string_view input) -> int
         {
             input = trim_ascii(input);
@@ -745,7 +766,10 @@ namespace canopy::http_server
 
         erase_header(output, "Transfer-Encoding");
         if (!response_status_allows_body(output.status_code))
-            erase_header(output, "Content-Length");
+        {
+            output.body.clear();
+            normalise_no_body_content_length(output);
+        }
         else
             set_header(output, "Content-Length", std::to_string(output.body.size()));
 

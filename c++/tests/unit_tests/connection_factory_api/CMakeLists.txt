@@ -71,9 +71,11 @@ if(CANOPY_BUILD_TEST)
                  "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake" @ONLY)
   add_test(NAME connection_factory_downstream_smoke COMMAND ${CMAKE_COMMAND} -P
                                                             "${CMAKE_CURRENT_BINARY_DIR}/run_downstream_smoke.cmake")
+  set_tests_properties(connection_factory_downstream_smoke PROPERTIES TIMEOUT 180)
 
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/run_negative_typed_registration.cmake.in"
                  "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake" @ONLY)
   add_test(NAME connection_factory_negative_typed_registration
            COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_BINARY_DIR}/run_negative_typed_registration.cmake")
+  set_tests_properties(connection_factory_negative_typed_registration PROPERTIES TIMEOUT 180)
 endif()

@@ -15,6 +15,7 @@
                 "CANOPY_BUILD_DEMOS": "ON",
                 "CANOPY_BUILD_PROTOCOL_BUFFERS": "ON",
                 "CANOPY_BUILD_TEST": "ON",
+                "CANOPY_BUILD_THIRD_PARTY_INTERFACES": "OFF",
                 "CANOPY_DEBUG_ADDRESS": "OFF",
                 "CANOPY_DEBUG_ALL": "OFF",
                 "CANOPY_DEBUG_LEAK": "OFF",

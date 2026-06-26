@@ -189,7 +189,8 @@ namespace json
             [[nodiscard]] inline std::optional<object> collect_schema_defaults(
                 const object& root_schema,
                 const object& schema,
-                std::vector<const object*>& active_schemas)
+                std::vector<const object*>& active_schemas,
+                bool include_optional_properties)
             {
                 if (schema.get_type() != object::type::map_type)
                     return std::nullopt;
@@ -223,7 +224,8 @@ namespace json
                     if (!resolved)
                         throw config_error("JSON schema $ref could not be resolved: " + ref->get<std::string>());
 
-                    defaults = collect_schema_defaults(root_schema, *resolved, active_schemas);
+                    defaults
+                        = collect_schema_defaults(root_schema, *resolved, active_schemas, include_optional_properties);
                 }
 
                 if (const auto* all_of = map_find(schema_map, "allOf");
@@ -231,7 +233,8 @@ namespace json
                 {
                     for (const auto& child_schema : all_of->as_array())
                     {
-                        auto child_defaults = collect_schema_defaults(root_schema, child_schema, active_schemas);
+                        auto child_defaults = collect_schema_defaults(
+                            root_schema, child_schema, active_schemas, include_optional_properties);
                         if (child_defaults)
                             defaults = merge_default_value(std::move(defaults), *child_defaults);
                     }
@@ -254,14 +257,16 @@ namespace json
                     map property_defaults;
                     for (const auto& [property_name, property_schema] : properties->as_map())
                     {
-                        auto property_default = collect_schema_defaults(root_schema, property_schema, active_schemas);
+                        auto property_default = collect_schema_defaults(
+                            root_schema, property_schema, active_schemas, include_optional_properties);
                         const auto property_is_required
                             = std::find(required_properties.begin(), required_properties.end(), property_name)
                               != required_properties.end();
                         const auto property_has_explicit_default
                             = property_schema.get_type() == object::type::map_type
                               && map_find(property_schema.as_map(), "default") != nullptr;
-                        if (property_default && (property_is_required || property_has_explicit_default))
+                        if (property_default
+                            && (include_optional_properties || property_is_required || property_has_explicit_default))
                             property_defaults.emplace(property_name, *property_default);
                     }
                     if (!property_defaults.empty())
@@ -273,6 +278,133 @@ namespace json
 
                 return defaults;
             }
+
+            [[nodiscard]] inline const object* find_property_schema(
+                const object& root_schema,
+                const object& schema,
+                std::string_view property_name,
+                std::vector<const object*>& active_schemas)
+            {
+                if (schema.get_type() != object::type::map_type)
+                    return nullptr;
+
+                if (std::find(active_schemas.begin(), active_schemas.end(), &schema) != active_schemas.end())
+                    return nullptr;
+
+                active_schemas.push_back(&schema);
+                struct pop_guard
+                {
+                    explicit pop_guard(std::vector<const object*>& values)
+                        : values_(values)
+                    {
+                    }
+                    ~pop_guard() { values_.pop_back(); }
+                    std::vector<const object*>& values_;
+                } guard(active_schemas);
+
+                const auto& schema_map = schema.as_map();
+                if (const auto* ref = map_find(schema_map, "$ref"))
+                {
+                    if (ref->get_type() != object::type::string_type)
+                        throw config_error("JSON schema $ref must be a string");
+
+                    const auto* resolved = resolve_local_ref(root_schema, ref->get<std::string>());
+                    if (!resolved)
+                        throw config_error("JSON schema $ref could not be resolved: " + ref->get<std::string>());
+
+                    if (const auto* property = find_property_schema(root_schema, *resolved, property_name, active_schemas))
+                        return property;
+                }
+
+                if (const auto* all_of = map_find(schema_map, "allOf");
+                    all_of && all_of->get_type() == object::type::array_type)
+                {
+                    for (const auto& child_schema : all_of->as_array())
+                    {
+                        if (const auto* property
+                            = find_property_schema(root_schema, child_schema, property_name, active_schemas))
+                            return property;
+                    }
+                }
+
+                if (const auto* properties = map_find(schema_map, "properties");
+                    properties && properties->get_type() == object::type::map_type)
+                {
+                    return map_find(properties->as_map(), property_name);
+                }
+
+                return nullptr;
+            }
+
+            [[nodiscard]] inline object merge_overlay_with_present_schema_defaults(
+                const object& root_schema,
+                const object& schema,
+                const object& base_values,
+                const object& override_values,
+                overlay_options options)
+            {
+                if (override_values.get_type() == object::type::null_type
+                    && options.null_policy == overlay_null_policy::ignore)
+                {
+                    return base_values;
+                }
+
+                if (base_values.get_type() != object::type::map_type || override_values.get_type() != object::type::map_type)
+                {
+                    return override_values;
+                }
+
+                map merged = base_values.as_map();
+                for (const auto& [property_name, override_value] : override_values.as_map())
+                {
+                    if (override_value.get_type() == object::type::null_type)
+                    {
+                        if (options.null_policy == overlay_null_policy::ignore)
+                            continue;
+                        if (options.null_policy == overlay_null_policy::erase)
+                        {
+                            merged.erase(property_name);
+                            continue;
+                        }
+                    }
+
+                    std::vector<const object*> active_schemas;
+                    const auto* property_schema = find_property_schema(root_schema, schema, property_name, active_schemas);
+                    auto existing = merged.find(property_name);
+                    if (existing != merged.end())
+                    {
+                        if (property_schema && existing->second.get_type() == object::type::map_type
+                            && override_value.get_type() == object::type::map_type)
+                        {
+                            existing->second = merge_overlay_with_present_schema_defaults(
+                                root_schema, *property_schema, existing->second, override_value, options);
+                        }
+                        else
+                        {
+                            existing->second = merge_overlay(existing->second, override_value, options);
+                        }
+                        continue;
+                    }
+
+                    if (property_schema && override_value.get_type() == object::type::map_type)
+                    {
+                        active_schemas.clear();
+                        auto defaults = collect_schema_defaults(root_schema, *property_schema, active_schemas, true);
+                        merged.emplace(
+                            property_name,
+                            merge_overlay_with_present_schema_defaults(
+                                root_schema, *property_schema, defaults.value_or(object(map{})), override_value, options));
+                        continue;
+                    }
+
+                    if (override_value.get_type() == object::type::map_type)
+                        merged.emplace(property_name, merge_overlay(object(map{}), override_value, options));
+                    else
+                        merged.emplace(property_name, override_value);
+                }
+
+                return object(std::move(merged));
+            }
         } // namespace detail
 
         // Extract only the values declared by schema "default" annotations.
@@ -281,7 +413,7 @@ namespace json
         [[nodiscard]] inline object schema_default_values(const object& schema)
         {
             std::vector<const object*> active_schemas;
-            auto defaults = detail::collect_schema_defaults(schema, schema, active_schemas);
+            auto defaults = detail::collect_schema_defaults(schema, schema, active_schemas, false);
             if (defaults)
                 return *defaults;
             return object(map{});
@@ -297,8 +429,11 @@ namespace json
             const object& override_values,
             overlay_options options = {})
         {
-            auto effective_values = merge_overlay(schema_default_values(schema), default_values, options);
-            effective_values = merge_overlay(effective_values, override_values, options);
+            auto effective_values = schema_default_values(schema);
+            effective_values = detail::merge_overlay_with_present_schema_defaults(
+                schema, schema, effective_values, default_values, options);
+            effective_values = detail::merge_overlay_with_present_schema_defaults(
+                schema, schema, effective_values, override_values, options);
 
             if (options.validate_result)
                 schema::schema_validator(schema).validate_or_throw(effective_values);
@@ -315,9 +450,13 @@ namespace json
             const object& override_values,
             overlay_options options = {})
         {
-            auto effective_values = merge_overlay(schema_default_values(schema), default_values, options);
-            effective_values = merge_overlay(effective_values, config_values, options);
-            effective_values = merge_overlay(effective_values, override_values, options);
+            auto effective_values = schema_default_values(schema);
+            effective_values = detail::merge_overlay_with_present_schema_defaults(
+                schema, schema, effective_values, default_values, options);
+            effective_values = detail::merge_overlay_with_present_schema_defaults(
+                schema, schema, effective_values, config_values, options);
+            effective_values = detail::merge_overlay_with_present_schema_defaults(
+                schema, schema, effective_values, override_values, options);
 
             if (options.validate_result)
                 schema::schema_validator(schema).validate_or_throw(effective_values);
