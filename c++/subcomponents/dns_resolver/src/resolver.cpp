@@ -18,7 +18,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <sys/socket.h>
 
 namespace canopy::dns_resolver
@@ -102,9 +102,12 @@ namespace canopy::dns_resolver
 
                 if (options.timeout > std::chrono::milliseconds{0})
                 {
-                    const auto timeout_ms = clamp_to_int(options.timeout.count());
-                    ares_options.timeout = timeout_ms;
-                    ares_options.maxtimeout = timeout_ms;
+                    // Divide the total budget evenly across retries so c-ares can actually
+                    // fail over to a second nameserver before the outer deadline fires.
+                    const int tries = options.tries > 0 ? options.tries : 1;
+                    const auto per_attempt_ms = options.timeout.count() / tries;
+                    ares_options.timeout = clamp_to_int(per_attempt_ms > 0 ? per_attempt_ms : 1);
+                    ares_options.maxtimeout = clamp_to_int(options.timeout.count());
                     optmask |= ARES_OPT_TIMEOUTMS | ARES_OPT_MAXTIMEOUTMS;
                 }
 
@@ -337,7 +340,7 @@ namespace canopy::dns_resolver
             resolve_result result;
             result.error_code = rpc::error::NATIVE_IO_ERROR();
             result.native_error = native_error;
-            result.error_message = "DNS lookup select() failed: ";
+            result.error_message = "DNS lookup poll() failed: ";
             result.error_message += std::strerror(native_error);
             return result;
         }
@@ -499,36 +502,80 @@ namespace canopy::dns_resolver
                 return make_error(ARES_ETIMEOUT, "DNS lookup timed out");
             }
 
-            fd_set read_fds;
-            fd_set write_fds;
-            FD_ZERO(&read_fds);
-            FD_ZERO(&write_fds);
-
-            const auto nfds = ares_fds(resolver.get(), &read_fds, &write_fds);
-            if (nfds == 0)
+            ares_socket_t socks[ARES_GETSOCK_MAXNUM]{};
+            const int bitmask = ares_getsock(resolver.get(), socks, ARES_GETSOCK_MAXNUM);
+            if (bitmask == 0)
                 break;
 
-            timeval max_timeout{};
-            timeval* max_timeout_ptr = nullptr;
+            struct pollfd pfds[ARES_GETSOCK_MAXNUM]{};
+            int npfds = 0;
+            for (int i = 0; i < ARES_GETSOCK_MAXNUM; i++)
+            {
+                pfds[i].fd = -1;
+                if (ARES_GETSOCK_READABLE(bitmask, i) || ARES_GETSOCK_WRITABLE(bitmask, i))
+                {
+                    pfds[i].fd = socks[i];
+                    if (ARES_GETSOCK_READABLE(bitmask, i))
+                        pfds[i].events |= POLLIN;
+                    if (ARES_GETSOCK_WRITABLE(bitmask, i))
+                        pfds[i].events |= POLLOUT;
+                    npfds = i + 1;
+                }
+            }
+
+            int timeout_ms = -1;
             if (use_deadline)
             {
                 const auto remaining
                     = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-                max_timeout = milliseconds_to_timeval(remaining);
-                max_timeout_ptr = &max_timeout;
+                timeval max_tv = milliseconds_to_timeval(remaining);
+                timeval tv{};
+                if (const timeval* tp = ares_timeout(resolver.get(), &max_tv, &tv))
+                    timeout_ms = static_cast<int>(tp->tv_sec * 1000 + tp->tv_usec / 1000);
             }
 
-            timeval timeout_value{};
-            timeval* timeout_ptr = ares_timeout(resolver.get(), max_timeout_ptr, &timeout_value);
-            const int selected = ::select(nfds, &read_fds, &write_fds, nullptr, timeout_ptr);
-            if (selected < 0)
+            const int polled = ::poll(pfds, static_cast<nfds_t>(npfds), timeout_ms);
+            if (polled < 0)
             {
                 if (errno == EINTR)
                     continue;
                 return make_select_error(errno);
             }
 
-            ares_process(resolver.get(), &read_fds, &write_fds);
+            if (polled == 0)
+            {
+                // Poll timed out: drive c-ares internal timeout processing so it can
+                // schedule retries and fail over to the next nameserver.
+                const auto process_status = ares_process_fds(resolver.get(), nullptr, 0, ARES_PROCESS_FLAG_NONE);
+                if (process_status != ARES_SUCCESS)
+                    return make_error(process_status, "failed to process DNS timeout");
+                continue;
+            }
+
+            ares_fd_events_t events[ARES_GETSOCK_MAXNUM]{};
+            size_t nevents = 0;
+            for (int i = 0; i < npfds; i++)
+            {
+                if (pfds[i].fd < 0 || pfds[i].revents == 0)
+                    continue;
+
+                unsigned int event_mask = ARES_FD_EVENT_NONE;
+                if ((pfds[i].revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL)) != 0)
+                    event_mask |= ARES_FD_EVENT_READ;
+                if ((pfds[i].revents & POLLOUT) != 0)
+                    event_mask |= ARES_FD_EVENT_WRITE;
+                if (event_mask == ARES_FD_EVENT_NONE)
+                    continue;
+
+                events[nevents++] = ares_fd_events_t{pfds[i].fd, event_mask};
+            }
+
+            if (nevents != 0)
+            {
+                const auto process_status = ares_process_fds(resolver.get(), events, nevents, ARES_PROCESS_FLAG_NONE);
+                if (process_status != ARES_SUCCESS)
+                    return make_error(process_status, "failed to process DNS socket events");
+            }
         }
 
         if (!state.done)

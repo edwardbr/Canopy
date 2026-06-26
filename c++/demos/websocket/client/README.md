@@ -70,7 +70,7 @@ Tests include:
 - RPC framework integration
 
 ### 5. REST API Test Suite
-Runs a comprehensive REST API test suite:
+Runs the generated REST echo endpoint test suite:
 
 ```bash
 npm run test-rest
@@ -79,14 +79,10 @@ node test_rest.js
 ```
 
 Tests include:
-- GET /api/status (server status)
-- GET /api/resource/:id (retrieve resource)
-- POST /api/resource (create resource)
-- POST /api/* (generic POST with body)
-- PUT /api/resource/:id (update resource)
-- DELETE /api/resource/:id (delete resource)
-- Error handling (404, 405)
-- Large JSON payloads
+- POST /api/echo through the generated Canopy REST handler
+- Large JSON string payloads
+- Registry 404 handling
+- Generated-handler 405 handling
 
 ## Configuration
 
@@ -178,21 +174,21 @@ REST API Test Suite
 
 Testing API at http://localhost:8888
 
-Running: Test 1: GET /api/status
-  ✓ PASSED: Status: running, Version: 1.0
+Running: Test 1: POST /api/echo (generated REST)
+  ✓ PASSED: Echoed: Hello, REST API!
 
-Running: Test 2: GET /api/resource/123
-  ✓ PASSED: Got resource data: {"id":123,"name":"example","value":"data"}
+Running: Test 2: POST /api/echo (large generated REST request)
+  ✓ PASSED: Echoed 65536 bytes
 
-Running: Test 3: POST /api/resource (create)
-  ✓ PASSED: Resource created with ID: 456
+Running: Test 3: POST /api/nonexistent (404 error)
+  ✓ PASSED: Correct 404 error: REST endpoint not found
 
 [...]
 
 ===================
 Test Summary:
-  Total: 9
-  Passed: 9
+  Total: 4
+  Passed: 4
   Failed: 0
 ```
 

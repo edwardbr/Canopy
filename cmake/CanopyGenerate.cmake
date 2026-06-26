@@ -95,6 +95,11 @@ function(
         ON
         CACHE BOOL "Include Nanopb support")
   endif()
+  if(NOT DEFINED CANOPY_REDUCE_THIRD_PARTY_REST_DEBUG_INFO)
+    set(CANOPY_REDUCE_THIRD_PARTY_REST_DEBUG_INFO
+        ON
+        CACHE BOOL "Compile generated third-party REST sources with reduced debug info in Debug builds")
+  endif()
   if(NOT DEFINED CANOPY_BUILD_CANONICAL_CRYPTO)
     set(CANOPY_BUILD_CANONICAL_CRYPTO
         ON
@@ -152,6 +157,59 @@ function(
       idl)
   else()
     set(idl_relative_dir .)
+  endif()
+
+  set(_canopy_rest_generate_target "")
+  if(NOT "${params_rest_client}" STREQUAL "" AND "${params_rest_client}" MATCHES "\\.(openapi|swagger)\\.json$")
+    get_filename_component(_canopy_rest_converter "${_canopy_source_root}/tools/openapi_to_canopy_idl.py" ABSOLUTE)
+    find_package(
+      Python3
+      COMPONENTS Interpreter
+      REQUIRED)
+    get_filename_component(_canopy_generate_base_dir_abs "${base_dir}" ABSOLUTE)
+
+    cmake_path(IS_RELATIVE params_rest_client _canopy_rest_spec_is_relative)
+    if(_canopy_rest_spec_is_relative)
+      cmake_path(
+        APPEND
+        "${_canopy_generate_base_dir_abs}"
+        ${params_rest_client}
+        OUTPUT_VARIABLE
+        _canopy_rest_spec)
+    else()
+      set(_canopy_rest_spec "${params_rest_client}")
+    endif()
+    get_filename_component(_canopy_rest_spec_abs "${_canopy_rest_spec}" ABSOLUTE)
+    get_filename_component(_canopy_rest_spec_dir "${_canopy_rest_spec_abs}" DIRECTORY)
+    get_filename_component(_canopy_rest_spec_name "${_canopy_rest_spec_abs}" NAME)
+    string(REGEX REPLACE "\\.(openapi|swagger)\\.json$" "" _canopy_rest_spec_stem "${_canopy_rest_spec_name}")
+    set(_canopy_rest_binding_abs "${_canopy_rest_spec_dir}/${_canopy_rest_spec_stem}.rest.json")
+
+    set(_canopy_rest_overlay_args "")
+    set(_canopy_rest_overlay_deps "")
+    set(_canopy_rest_default_overlay "${_canopy_rest_spec_dir}/${_canopy_rest_spec_stem}.canopy.overlay.json")
+    if(EXISTS "${_canopy_rest_default_overlay}")
+      list(APPEND _canopy_rest_overlay_args --overlay "${_canopy_rest_default_overlay}")
+      list(APPEND _canopy_rest_overlay_deps "${_canopy_rest_default_overlay}")
+    endif()
+
+    add_custom_command(
+      OUTPUT "${idl}" "${_canopy_rest_binding_abs}"
+      COMMAND ${Python3_EXECUTABLE} "${_canopy_rest_converter}" --input "${_canopy_rest_spec_abs}"
+              ${_canopy_rest_overlay_args} --output "${idl}" --binding "${_canopy_rest_binding_abs}"
+      MAIN_DEPENDENCY "${_canopy_rest_spec_abs}"
+      DEPENDS "${_canopy_rest_converter}" ${_canopy_rest_overlay_deps}
+      COMMENT "Converting REST interface ${_canopy_rest_spec_abs}"
+      VERBATIM)
+    add_custom_target(${name}_rest_generate DEPENDS "${idl}" "${_canopy_rest_binding_abs}")
+    set_source_files_properties("${idl}" "${_canopy_rest_binding_abs}" PROPERTIES GENERATED TRUE)
+    set_property(
+      DIRECTORY
+      APPEND
+      PROPERTY CMAKE_CONFIGURE_DEPENDS "${_canopy_rest_spec_abs}" ${_canopy_rest_overlay_deps}
+               "${_canopy_rest_converter}")
+    set(params_rest_client "${_canopy_rest_binding_abs}")
+    set(_canopy_rest_generate_target "${name}_rest_generate")
   endif()
 
   # Construct individual paths for CMake dependency tracking
@@ -249,6 +307,17 @@ function(
     set(rest_metadata_path "")
     set(rest_path "")
     set(full_rest_path "")
+  endif()
+
+  set(reduce_generated_rest_debug_info FALSE)
+  if(CANOPY_REDUCE_THIRD_PARTY_REST_DEBUG_INFO AND generate_rest_client)
+    get_filename_component(canopy_third_party_interfaces_dir "${_canopy_source_root}/third_party_interfaces" ABSOLUTE)
+    get_filename_component(canopy_generate_base_dir "${base_dir}" ABSOLUTE)
+    file(RELATIVE_PATH canopy_generate_base_rel "${canopy_third_party_interfaces_dir}" "${canopy_generate_base_dir}")
+    cmake_path(IS_ABSOLUTE canopy_generate_base_rel canopy_generate_base_rel_is_absolute)
+    if(NOT canopy_generate_base_rel MATCHES "^\\.\\." AND NOT canopy_generate_base_rel_is_absolute)
+      set(reduce_generated_rest_debug_info TRUE)
+    endif()
   endif()
 
   if(generate_protobuf OR generate_nanopb)
@@ -454,6 +523,17 @@ function(
   endif()
 
   set_source_files_properties(${GENERATOR_OUTPUTS} PROPERTIES GENERATED TRUE)
+  if(reduce_generated_rest_debug_info)
+    set(canopy_third_party_rest_debug_options
+        "$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANG_AND_ID:CXX,Clang,AppleClang>>:-gline-tables-only>"
+        "$<$<AND:$<CONFIG:Debug>,$<COMPILE_LANG_AND_ID:CXX,GNU>>:-g1>")
+    set(canopy_third_party_rest_generated_sources ${full_proxy_path} ${full_stub_path} ${full_rest_path})
+    if(generate_yas)
+      list(APPEND canopy_third_party_rest_generated_sources ${full_yas_path})
+    endif()
+    set_source_files_properties(${canopy_third_party_rest_generated_sources}
+                                PROPERTIES COMPILE_OPTIONS "${canopy_third_party_rest_debug_options}")
+  endif()
 
   # Build generator command with conditional serialization flags
   set(SERIALIZATION_FLAGS "")
@@ -526,6 +606,9 @@ function(
   # consumers may provide only CANOPY_IDL_GENERATOR_EXECUTABLE.
   if(TARGET generator)
     add_dependencies(${name}_idl_generate generator)
+  endif()
+  if(NOT "${_canopy_rest_generate_target}" STREQUAL "")
+    add_dependencies(${name}_idl_generate ${_canopy_rest_generate_target})
   endif()
 
   set_target_properties(
@@ -790,6 +873,9 @@ function(
   # Create the host IDL library
   add_library(${name}_idl STATIC ${IDL_SOURCES})
   target_compile_definitions(${name}_idl PRIVATE ${CANOPY_DEFINES})
+  if(generate_yas)
+    target_compile_definitions(${name}_idl PUBLIC YAS_OBJECT_MAX_MEMBERS=256)
+  endif()
   target_include_directories(
     ${name}_idl SYSTEM PUBLIC "$<BUILD_INTERFACE:${output_path}>" "$<BUILD_INTERFACE:${output_path}/include>"
                               "$<INSTALL_INTERFACE:include>")
@@ -904,61 +990,87 @@ function(
 endfunction()
 
 function(
-  CanopyGenerateRest
+  CanopyGenerateRestOpenApi
   name
-  openapi_json
-  base_dir
-  output_path
-  namespace)
-  get_filename_component(_canopy_rest_converter "${_CANOPY_GENERATE_CMAKE_DIR}/../tools/openapi_to_canopy_idl.py"
-                         ABSOLUTE)
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
-  get_filename_component(_canopy_rest_base_dir_abs "${base_dir}" ABSOLUTE)
+  idl
+  rest_binding
+  output_json
+  base_dir)
+  set(options)
+  set(singleValueArgs title version scheme)
+  set(multiValueArgs)
+  cmake_parse_arguments(
+    params
+    "${options}"
+    "${singleValueArgs}"
+    "${multiValueArgs}"
+    ${ARGN})
 
-  cmake_path(IS_RELATIVE openapi_json _canopy_rest_spec_is_relative)
-  if(_canopy_rest_spec_is_relative)
+  get_filename_component(_canopy_openapi_exporter "${_CANOPY_GENERATE_CMAKE_DIR}/../tools/canopy_rest_to_openapi.py"
+                         ABSOLUTE)
+  find_package(
+    Python3
+    COMPONENTS Interpreter
+    REQUIRED)
+  get_filename_component(_canopy_openapi_base_dir_abs "${base_dir}" ABSOLUTE)
+
+  cmake_path(IS_RELATIVE idl _canopy_openapi_idl_is_relative)
+  if(_canopy_openapi_idl_is_relative)
     cmake_path(
       APPEND
-      "${_canopy_rest_base_dir_abs}"
-      ${openapi_json}
-      OUTPUT_VARIABLE _canopy_rest_spec)
+      "${_canopy_openapi_base_dir_abs}"
+      ${idl}
+      OUTPUT_VARIABLE
+      _canopy_openapi_idl_abs)
   else()
-    set(_canopy_rest_spec "${openapi_json}")
+    set(_canopy_openapi_idl_abs "${idl}")
   endif()
-  get_filename_component(_canopy_rest_spec_abs "${_canopy_rest_spec}" ABSOLUTE)
+  get_filename_component(_canopy_openapi_idl_abs "${_canopy_openapi_idl_abs}" ABSOLUTE)
 
-  get_filename_component(_canopy_rest_spec_dir "${_canopy_rest_spec_abs}" DIRECTORY)
-  get_filename_component(_canopy_rest_spec_name "${_canopy_rest_spec_abs}" NAME)
-  string(REGEX REPLACE "\\.(openapi|swagger)\\.json$" ".idl" _canopy_rest_idl_name
-                       "${_canopy_rest_spec_name}")
-  if("${_canopy_rest_idl_name}" STREQUAL "${_canopy_rest_spec_name}")
-    string(REGEX REPLACE "\\.json$" ".idl" _canopy_rest_idl_name "${_canopy_rest_spec_name}")
+  cmake_path(IS_RELATIVE rest_binding _canopy_openapi_binding_is_relative)
+  if(_canopy_openapi_binding_is_relative)
+    cmake_path(
+      APPEND
+      "${_canopy_openapi_base_dir_abs}"
+      ${rest_binding}
+      OUTPUT_VARIABLE
+      _canopy_openapi_binding_abs)
+  else()
+    set(_canopy_openapi_binding_abs "${rest_binding}")
   endif()
-  get_filename_component(_canopy_rest_idl_stem "${_canopy_rest_idl_name}" NAME_WE)
-  set(_canopy_rest_idl_abs "${_canopy_rest_spec_dir}/${_canopy_rest_idl_name}")
-  set(_canopy_rest_metadata_abs "${_canopy_rest_spec_dir}/${_canopy_rest_idl_stem}.rest.meta")
-  file(RELATIVE_PATH _canopy_rest_idl "${_canopy_rest_base_dir_abs}" "${_canopy_rest_idl_abs}")
+  get_filename_component(_canopy_openapi_binding_abs "${_canopy_openapi_binding_abs}" ABSOLUTE)
 
-  execute_process(
-    COMMAND ${Python3_EXECUTABLE} "${_canopy_rest_converter}" --input "${_canopy_rest_spec_abs}" --output
-            "${_canopy_rest_idl_abs}" --metadata "${_canopy_rest_metadata_abs}"
-    RESULT_VARIABLE _canopy_rest_convert_result
-    OUTPUT_VARIABLE _canopy_rest_convert_stdout
-    ERROR_VARIABLE _canopy_rest_convert_stderr)
-  if(NOT _canopy_rest_convert_result EQUAL 0)
-    message(FATAL_ERROR "OpenAPI/Swagger conversion failed for ${_canopy_rest_spec_abs}:\n"
-                        "${_canopy_rest_convert_stdout}${_canopy_rest_convert_stderr}")
+  cmake_path(IS_RELATIVE output_json _canopy_openapi_output_is_relative)
+  if(_canopy_openapi_output_is_relative)
+    cmake_path(
+      APPEND
+      "${_canopy_openapi_base_dir_abs}"
+      ${output_json}
+      OUTPUT_VARIABLE
+      _canopy_openapi_output_abs)
+  else()
+    set(_canopy_openapi_output_abs "${output_json}")
+  endif()
+  get_filename_component(_canopy_openapi_output_abs "${_canopy_openapi_output_abs}" ABSOLUTE)
+
+  if("${params_title}" STREQUAL "")
+    get_filename_component(params_title "${_canopy_openapi_idl_abs}" NAME_WE)
+  endif()
+  if("${params_version}" STREQUAL "")
+    set(params_version "1.0.0")
+  endif()
+  if("${params_scheme}" STREQUAL "")
+    set(params_scheme "https")
   endif()
 
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_canopy_rest_spec_abs}" "${_canopy_rest_converter}")
-
-  CanopyGenerate(
-    ${name}
-    ${_canopy_rest_idl}
-    ${base_dir}
-    ${output_path}
-    "${namespace}"
-    ${ARGN}
-    yas_json
-    rest_client "${_canopy_rest_metadata_abs}")
+  add_custom_command(
+    OUTPUT "${_canopy_openapi_output_abs}"
+    COMMAND
+      ${Python3_EXECUTABLE} "${_canopy_openapi_exporter}" --idl "${_canopy_openapi_idl_abs}" --binding
+      "${_canopy_openapi_binding_abs}" --output "${_canopy_openapi_output_abs}" --title "${params_title}" --version
+      "${params_version}" --scheme "${params_scheme}"
+    MAIN_DEPENDENCY "${_canopy_openapi_idl_abs}"
+    DEPENDS "${_canopy_openapi_binding_abs}" "${_canopy_openapi_exporter}"
+    COMMENT "Generating OpenAPI ${_canopy_openapi_output_abs}")
+  add_custom_target(${name} DEPENDS "${_canopy_openapi_output_abs}")
 endfunction()

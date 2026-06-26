@@ -728,6 +728,8 @@ namespace interface_declaration_generator
         {
             header("using rest_settings = ::canopy::rest::connection_settings;");
             header("class rest_caller;");
+            header("class rest_handler;");
+            header("struct rest_handler_info;");
         }
         header("");
         header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
@@ -1018,6 +1020,30 @@ namespace interface_declaration_generator
             header("private:");
             header("std::shared_ptr<::streaming::stream> stream_;");
             header("rest_settings settings_;");
+            header("}};");
+            header("");
+
+            header("class {0}::rest_handler", interface_name);
+            header("{{");
+            header("public:");
+            header("explicit rest_handler(rpc::shared_ptr<{0}> object, std::string base_path = {{}});", interface_name);
+            header("[[nodiscard]] std::string_view base_path() const noexcept;");
+            header(
+                "CORO_TASK(std::optional<::canopy::rest::server_response>) handle(const "
+                "::canopy::rest::server_request& request) const;");
+            header("");
+            header("private:");
+            header("rpc::shared_ptr<{0}> object_;", interface_name);
+            header("std::string base_path_;");
+            header("}};");
+            header("");
+
+            header("struct {0}::rest_handler_info", interface_name);
+            header("{{");
+            header("using interface_type = {0};", interface_name);
+            header("[[nodiscard]] static std::string_view default_name() noexcept;");
+            header("[[nodiscard]] static std::string_view default_host() noexcept;");
+            header("[[nodiscard]] static std::string_view default_base_path() noexcept;");
             header("}};");
             header("");
         }

@@ -129,8 +129,7 @@ target_link_libraries(canopy_cares INTERFACE c-ares::cares)
 set(CANOPY_CARES_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/canopy-cares-config")
 file(MAKE_DIRECTORY "${CANOPY_CARES_CONFIG_DIR}")
 file(WRITE "${CANOPY_CARES_CONFIG_DIR}/c-ares-config.cmake"
-     "if(NOT TARGET c-ares::cares)\n" "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n"
-     "endif()\n")
+     "if(NOT TARGET c-ares::cares)\n" "  message(FATAL_ERROR \"Canopy c-ares target is not available\")\n" "endif()\n")
 set(c-ares_DIR
     "${CANOPY_CARES_CONFIG_DIR}"
     CACHE PATH "Canopy c-ares package shim for libcoro" FORCE)

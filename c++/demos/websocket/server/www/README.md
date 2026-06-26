@@ -62,7 +62,7 @@ Browser-based test client with HTTP Echo and WebSocket RPC Calculator modes.
 
 - `GET /` or `GET /index.html` - Main web interface
 - `GET /client.js` - JavaScript client code
-- `POST /api/echo` - HTTP echo endpoint
+- `POST /api/echo` - HTTP echo endpoint backed by generated REST handler code
 - `WebSocket ws://localhost:8888` - WebSocket endpoint for binary RPC
 
 ## Technical Details
@@ -79,8 +79,8 @@ Browser-based test client with HTTP Echo and WebSocket RPC Calculator modes.
 
 ### Echo Mode
 - **Transport**: HTTP POST
-- **Format**: Plain request body, JSON response
-- **Flow**: Client posts text to `/api/echo` → Server responds with the same text in `data.echo`
+- **Format**: JSON request body and JSON response
+- **Flow**: Client posts a JSON string to `/api/echo` → generated REST handler dispatches to the injected Canopy `i_echo` object → server responds with the same JSON string
 
 ### Calculator Mode
 - **Transport**: Binary WebSocket frames (`WSLAY_BINARY_FRAME`)

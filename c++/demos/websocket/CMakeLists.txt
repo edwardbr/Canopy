@@ -7,3 +7,6 @@ cmake_minimum_required(VERSION 3.24)
 # Add server
 add_subdirectory(idl)
 add_subdirectory(server)
+if(CANOPY_BUILD_TEST)
+  add_subdirectory(tests)
+endif()

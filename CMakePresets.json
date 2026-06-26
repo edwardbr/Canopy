@@ -116,6 +116,13 @@
             }
         },
         {
+            "name": "Debug_Coroutine_ThirdPartyInterfaces",
+            "inherits": "Debug_Coroutine",
+            "cacheVariables": {
+                "CANOPY_BUILD_THIRD_PARTY_INTERFACES": "ON"
+            }
+        },
+        {
             "name": "Debug_Coroutine_ASAN",
             "inherits": "Debug_Coroutine",
             "cacheVariables": {

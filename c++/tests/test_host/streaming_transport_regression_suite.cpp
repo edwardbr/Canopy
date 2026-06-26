@@ -28,6 +28,7 @@
 #  endif
 #  ifdef CANOPY_BUILD_WEBSOCKET
 #    ifdef CANOPY_BUILD_HTTP_SERVER
+#      include <canopy/http_utils/http.h>
 #      include <canopy/http_server/http_client_connection.h>
 #      include <canopy/http_server/static_webpage_delivery.h>
 #    endif
@@ -420,8 +421,10 @@ namespace
         canopy::http_server::response response) -> std::vector<std::vector<uint8_t>>
     {
         canopy::http_server::handler_set handlers;
-        handlers.rest_handler = [response = std::move(response)](const canopy::http_server::request&)
-        { return std::optional<canopy::http_server::response>{response}; };
+        handlers.rest_handler
+            = [response = std::move(response)](
+                  const canopy::http_server::request&) -> CORO_TASK(std::optional<canopy::http_server::response>)
+        { CO_RETURN std::optional<canopy::http_server::response>{response}; };
         return run_http_request(wire_request, std::move(handlers));
     }
 
@@ -942,6 +945,132 @@ TEST(
 }
 
 #    ifdef CANOPY_BUILD_HTTP_SERVER
+TEST(
+    HttpStaticWebpageDelivery,
+    HandlerConfigCanDisableCacheForSelectedRequests)
+{
+    class test_file_system_manager final : public rpc::base<test_file_system_manager, rpc::file_system::i_manager>
+    {
+    public:
+        CORO_TASK(int)
+        list_files(
+            std::string,
+            std::vector<rpc::file_system::file_info>&) override
+        {
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+        }
+
+        CORO_TASK(int)
+        read_file(
+            std::string file_path,
+            std::vector<uint8_t>& data) override
+        {
+            EXPECT_EQ(file_path, "/static/index.html");
+            const std::string body = "<!doctype html><html></html>";
+            data.assign(body.begin(), body.end());
+            CO_RETURN rpc::error::OK();
+        }
+
+        CORO_TASK(int)
+        write_file(
+            std::string,
+            const std::vector<uint8_t>&) override
+        {
+            CO_RETURN rpc::error::NOT_IMPLEMENTED();
+        }
+    };
+
+    canopy::http_server::static_webpage_handler_config config;
+    config.root_path = "/static";
+    config.file_system = rpc::shared_ptr<rpc::file_system::i_manager>(new test_file_system_manager());
+    config.disable_cache_for_request = [](const canopy::http_server::request& request)
+    { return canopy::http_utils::request_path(request.url, "") == "/"; };
+
+    canopy::http_server::handler_set handlers;
+    handlers.webpage_handler = canopy::http_server::make_static_webpage_handler(std::move(config));
+
+    auto response = sent_http_text(run_http_request(http_request("/"), std::move(handlers)));
+
+    EXPECT_NE(response.find("HTTP/1.1 200 OK\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Pragma: no-cache\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Expires: 0\r\n"), std::string::npos);
+}
+
+TEST(
+    HttpStaticWebpageDelivery,
+    RejectsPercentEncodedTraversalBeforeFileRead)
+{
+    auto file_reader_called = std::make_shared<std::atomic_bool>(false);
+    auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
+        "/static",
+        [file_reader_called](std::string, std::vector<uint8_t>&) -> CORO_TASK(int)
+        {
+            file_reader_called->store(true, std::memory_order_release);
+            CO_RETURN rpc::error::OK();
+        });
+
+    canopy::http_server::handler_set handlers;
+    handlers.webpage_handler
+        = [webpage_delivery](
+              const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
+    { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+
+    auto response = sent_http_text(run_http_request(http_request("/%2e%2e/secret.txt"), std::move(handlers)));
+
+    EXPECT_FALSE(file_reader_called->load(std::memory_order_acquire));
+    EXPECT_EQ(response.find("HTTP/1.1 403 Forbidden\r\n"), size_t{0});
+}
+
+TEST(
+    HttpServerHardening,
+    SkipsUnsafeResponseHeadersAndOwnsFramingHeaders)
+{
+    auto app_response = canopy::http_server::make_text_response(200, "OK");
+    app_response.headers["X-Good"] = "safe";
+    app_response.headers["X-Bad\r\nInjected"] = "unsafe";
+    app_response.headers["X-Injected"] = "safe\r\nInjected: yes";
+    app_response.headers["Content-Length"] = "999";
+    app_response.headers["Transfer-Encoding"] = "chunked";
+
+    auto response = sent_http_text(run_http_rest_response(http_request("/api/status"), std::move(app_response)));
+
+    EXPECT_EQ(response.find("Injected: yes\r\n"), std::string::npos);
+    EXPECT_EQ(response.find("Transfer-Encoding: chunked\r\n"), std::string::npos);
+    EXPECT_EQ(response.find("Content-Length: 999\r\n"), std::string::npos);
+    EXPECT_NE(response.find("X-Good: safe\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Length: 2\r\n"), std::string::npos);
+    EXPECT_EQ(http_body(response), "OK");
+}
+
+TEST(
+    HttpServerHardening,
+    DropsInvalidEmptyBodyContentLengthButPreservesZero)
+{
+    canopy::http_server::response invalid_length;
+    invalid_length.status_code = 204;
+    invalid_length.status_text = "No Content";
+    invalid_length.headers["Content-Length"] = "999";
+
+    auto response = sent_http_text(run_http_rest_response(http_request("/api/empty"), std::move(invalid_length)));
+
+    EXPECT_NE(response.find("HTTP/1.1 204 No Content\r\n"), std::string::npos);
+    EXPECT_EQ(response.find("Content-Length: 999\r\n"), std::string::npos);
+    EXPECT_EQ(response.find("Content-Length:"), std::string::npos);
+    EXPECT_EQ(http_body(response), "");
+
+    canopy::http_server::response zero_length;
+    zero_length.status_code = 204;
+    zero_length.status_text = "No Content";
+    zero_length.headers["Content-Length"] = "0";
+
+    response = sent_http_text(run_http_rest_response(http_request("/api/empty"), std::move(zero_length)));
+
+    EXPECT_NE(response.find("HTTP/1.1 204 No Content\r\n"), std::string::npos);
+    EXPECT_NE(response.find("Content-Length: 0\r\n"), std::string::npos);
+    EXPECT_EQ(http_body(response), "");
+}
+
 #      ifdef CANOPY_HTTP_HAS_GZIP
 TEST(
     HttpCompression,

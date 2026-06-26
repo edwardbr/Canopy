@@ -352,15 +352,15 @@ async function sendMessage() {
 
         const response = await fetch('/api/echo', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: message,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message),
         });
         const payload = await response.json();
-        if (!response.ok || !payload.success) {
+        if (!response.ok) {
             throw new Error(payload.error || `HTTP ${response.status}`);
         }
 
-        const echoed = payload.data && typeof payload.data.echo === 'string' ? payload.data.echo : '';
+        const echoed = typeof payload === 'string' ? payload : '';
         echoResult.textContent = echoed;
         addMessage('received', `HTTP echo: ${echoed}`);
         receivedCount++;

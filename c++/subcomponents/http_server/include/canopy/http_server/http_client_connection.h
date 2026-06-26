@@ -48,7 +48,7 @@ namespace canopy::http_server
     struct handler_set
     {
         coroutine_request_handler webpage_handler;
-        request_handler rest_handler;
+        coroutine_request_handler rest_handler;
         websocket_handler websocket_upgrade_handler;
         rest_request_selector is_rest_request;
     };
@@ -121,7 +121,6 @@ namespace canopy::http_server
     };
 
     auto status_text(int status_code) -> std::string;
-    auto request_path(std::string_view target) -> std::string;
     auto make_text_response(
         int status_code,
         std::string body,

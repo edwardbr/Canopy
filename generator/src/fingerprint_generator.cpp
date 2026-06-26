@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <sstream>
 
 #include "attributes.h"
@@ -21,6 +22,12 @@ namespace fingerprint
 {
     namespace
     {
+        using fingerprint_cache_key = std::pair<const class_entity*, uint64_t>;
+        using type_lookup_cache_key = std::pair<const class_entity*, std::string>;
+
+        thread_local std::map<fingerprint_cache_key, uint64_t> fingerprint_cache;
+        thread_local std::map<type_lookup_cache_key, const class_entity*> type_lookup_cache;
+
         uint64_t truncate_sha3_hash(const void* hash)
         {
             assert(hash);
@@ -36,9 +43,13 @@ namespace fingerprint
     }
 
     const class_entity* find_type(
-        std::string type_name,
+        const std::string& type_name,
         const class_entity& cls)
     {
+        auto cached = type_lookup_cache.find({&cls, type_name});
+        if (cached != type_lookup_cache.end())
+            return cached->second;
+
         auto type_namespace = split_namespaces(type_name);
 
         const auto* current_namespace = &cls;
@@ -55,9 +66,12 @@ namespace fingerprint
             {
                 for (const auto& ns : type_namespace)
                 {
-                    std::shared_ptr<class_entity> subcls = nullptr;
-                    for (const auto& tmp1 : candidate_namespace->get_classes())
+                    const class_entity* subcls = nullptr;
+                    for (const auto& element : candidate_namespace->get_elements(entity_type::NAMESPACE_MEMBERS))
                     {
+                        if (element->get_entity_type() >= entity_type::FUNCTION_METHOD)
+                            continue;
+                        const auto* tmp1 = static_cast<class_entity*>(element.get());
                         if (tmp1->get_name() == ns)
                         {
                             subcls = tmp1;
@@ -66,7 +80,7 @@ namespace fingerprint
                     }
                     if (subcls)
                     {
-                        candidate_namespace = subcls.get();
+                        candidate_namespace = subcls;
                     }
                     else
                     {
@@ -76,12 +90,14 @@ namespace fingerprint
                 }
                 if (candidate_namespace)
                 {
+                    type_lookup_cache[{&cls, type_name}] = candidate_namespace;
                     return candidate_namespace;
                 }
             }
             current_namespace = current_namespace->get_owner();
         } while (current_namespace);
 
+        type_lookup_cache[{&cls, type_name}] = nullptr;
         return nullptr;
     }
 
@@ -193,6 +209,14 @@ namespace fingerprint
                 return 0;
             }
         }
+
+        if (!comment)
+        {
+            auto cached = fingerprint_cache.find({&cls, rpc_version});
+            if (cached != fingerprint_cache.end())
+                return cached->second;
+        }
+
         entity_stack.push_back(&cls);
 
         std::string status_attr = "status";
@@ -440,7 +464,11 @@ namespace fingerprint
         entity_stack.pop_back();
 
         if (cls.get_entity_type() == entity_type::ERROR && seed.empty())
+        {
+            if (!comment)
+                fingerprint_cache[{&cls, rpc_version}] = 0;
             return 0;
+        }
 
         // convert to sha3 hash
         sha3_context c;
@@ -448,6 +476,9 @@ namespace fingerprint
         sha3_Update(&c, seed.data(), seed.length());
         const auto* hash = sha3_Finalize(&c);
         // truncate and return generated hash
-        return truncate_sha3_hash(hash);
+        const auto fingerprint = truncate_sha3_hash(hash);
+        if (!comment)
+            fingerprint_cache[{&cls, rpc_version}] = fingerprint;
+        return fingerprint;
     }
 }

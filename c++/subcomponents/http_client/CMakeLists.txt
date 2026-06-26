@@ -13,7 +13,10 @@ target_include_directories(
 target_compile_definitions(streaming_http_client PRIVATE ${CANOPY_DEFINES})
 target_compile_options(streaming_http_client PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(streaming_http_client PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(streaming_http_client PUBLIC streaming PRIVATE rpc)
+target_link_libraries(
+  streaming_http_client
+  PUBLIC streaming
+  PRIVATE rpc canopy_http_utils)
 if(CANOPY_ENABLE_CLANG_TIDY)
   set_target_properties(streaming_http_client PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
 endif()

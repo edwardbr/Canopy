@@ -14,7 +14,9 @@
 #ifdef CANOPY_BUILD_COROUTINE
 #  include <coro/net/tcp/client.hpp>
 #else
+#  include <algorithm>
 #  include <cerrno>
+#  include <climits>
 #  include <fcntl.h>
 #  include <netinet/in.h>
 #  include <poll.h>
@@ -60,7 +62,9 @@ namespace rpc::tcp_blocking
             pollfd pfd{};
             pfd.fd = fd;
             pfd.events = POLLOUT;
-            const int timeout_ms = timeout.count() > 0 ? static_cast<int>(timeout.count()) : -1;
+            const auto raw_ms = timeout.count();
+            const int timeout_ms
+                = raw_ms > 0 ? static_cast<int>(std::min(raw_ms, static_cast<decltype(raw_ms)>(INT_MAX))) : -1;
             result = ::poll(&pfd, 1, timeout_ms);
             if (result <= 0)
             {

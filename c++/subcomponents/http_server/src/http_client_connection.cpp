@@ -3,6 +3,8 @@
 
 #include <canopy/http_server/http_client_connection.h>
 
+#include <canopy/http_utils/http.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -37,6 +39,15 @@ namespace canopy::http_server
 {
     namespace
     {
+        using canopy::http_utils::ascii_iequals;
+        using canopy::http_utils::header_contains_token;
+        using canopy::http_utils::is_header_safe;
+        using canopy::http_utils::is_status_text_safe;
+        using canopy::http_utils::trim_ascii;
+
+        constexpr auto map_header_name = [](const auto& header) -> std::string_view { return header.first; };
+        constexpr auto map_header_value = [](const auto& header) -> std::string_view { return header.second; };
+
         constexpr size_t websocket_client_key_bytes = 16;
 
         bool exceeds_limit(
@@ -59,42 +70,11 @@ namespace canopy::http_server
             return std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(std::min(value, max_value))};
         }
 
-        char ascii_lower(char value)
-        {
-            return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
-        }
-
-        auto trim_ascii(std::string_view input) -> std::string_view
-        {
-            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.front())))
-                input.remove_prefix(1);
-            while (!input.empty() && std::isspace(static_cast<unsigned char>(input.back())))
-                input.remove_suffix(1);
-            return input;
-        }
-
-        bool ascii_iequals(
-            std::string_view lhs,
-            std::string_view rhs)
-        {
-            return lhs.size() == rhs.size()
-                   && std::equal(
-                       lhs.begin(),
-                       lhs.end(),
-                       rhs.begin(),
-                       [](char left, char right) { return ascii_lower(left) == ascii_lower(right); });
-        }
-
         auto find_header(
             const request& request,
             std::string_view name) -> std::optional<std::string_view>
         {
-            for (const auto& [field, value] : request.headers)
-            {
-                if (ascii_iequals(field, name))
-                    return value;
-            }
-            return std::nullopt;
+            return canopy::http_utils::find_header_value(request.headers, name, map_header_name, map_header_value);
         }
 
         auto find_header(
@@ -103,12 +83,7 @@ namespace canopy::http_server
                 std::string>& headers,
             std::string_view name) -> std::optional<std::string_view>
         {
-            for (const auto& [field, value] : headers)
-            {
-                if (ascii_iequals(field, name))
-                    return value;
-            }
-            return std::nullopt;
+            return canopy::http_utils::find_header_value(headers, name, map_header_name, map_header_value);
         }
 
         auto find_header(
@@ -120,8 +95,7 @@ namespace canopy::http_server
                 std::string,
                 std::string>::iterator
         {
-            return std::find_if(
-                headers.begin(), headers.end(), [name](const auto& header) { return ascii_iequals(header.first, name); });
+            return canopy::http_utils::find_header(headers, name, map_header_name);
         }
 
         void set_header(
@@ -147,21 +121,20 @@ namespace canopy::http_server
                 response.headers.erase(it);
         }
 
-        bool header_contains_token(
-            std::string_view value,
-            std::string_view token)
+        bool has_zero_content_length(const response& response)
         {
-            while (!value.empty())
+            auto value = find_header(response.headers, "Content-Length");
+            if (!value)
+                return false;
+
+            try
             {
-                const auto comma = value.find(',');
-                auto part = trim_ascii(value.substr(0, comma));
-                if (ascii_iequals(part, token))
-                    return true;
-                if (comma == std::string_view::npos)
-                    break;
-                value.remove_prefix(comma + 1);
+                return canopy::http_utils::parse_content_length(*value) == 0;
             }
-            return false;
+            catch (...)
+            {
+                return false;
+            }
         }
 
         auto parse_qvalue(std::string_view input) -> int
@@ -618,7 +591,7 @@ namespace canopy::http_server
 
         auto default_is_rest_request(const request& request) -> bool
         {
-            auto path = request_path(request.url);
+            auto path = canopy::http_utils::request_path(request.url, "");
             return path.size() >= 5 && path.compare(0, 5, "/api/") == 0;
         }
     } // namespace
@@ -761,8 +734,18 @@ namespace canopy::http_server
     {
         response output = input;
         output = apply_http_compression(request, std::move(output));
+        if (output.status_code < 100 || output.status_code > 999)
+        {
+            RPC_WARNING("HTTP response status code {} is invalid; sending 500", output.status_code);
+            output.status_code = 500;
+        }
         if (output.status_text.empty())
         {
+            output.status_text = status_text(output.status_code);
+        }
+        else if (!is_status_text_safe(output.status_text))
+        {
+            RPC_WARNING("HTTP response status text contained control characters; replacing it");
             output.status_text = status_text(output.status_code);
         }
 
@@ -771,14 +754,24 @@ namespace canopy::http_server
             output.headers["Connection"] = keep_alive ? "keep-alive" : "close";
         }
 
-        if (!output.body.empty() && output.headers.find("Content-Length") == output.headers.end())
+        erase_header(output, "Transfer-Encoding");
+        if (!output.body.empty())
         {
-            output.headers["Content-Length"] = std::to_string(output.body.size());
+            set_header(output, "Content-Length", std::to_string(output.body.size()));
+        }
+        else if (find_header(output.headers, "Content-Length") != output.headers.end() && !has_zero_content_length(output))
+        {
+            erase_header(output, "Content-Length");
         }
 
         std::string wire_response = fmt::format("HTTP/1.1 {} {}\r\n", output.status_code, output.status_text);
         for (const auto& [key, value] : output.headers)
         {
+            if (!is_header_safe(key, value))
+            {
+                RPC_WARNING("Skipping unsafe HTTP response header '{}'", key);
+                continue;
+            }
             wire_response += fmt::format("{}: {}\r\n", key, value);
         }
 
@@ -809,7 +802,7 @@ namespace canopy::http_server
         {
             if (handlers_.rest_handler)
             {
-                CO_RETURN handlers_.rest_handler(request);
+                CO_RETURN CO_AWAIT handlers_.rest_handler(request);
             }
             CO_RETURN make_text_response(404, "Not Found");
         }
@@ -1007,7 +1000,7 @@ namespace canopy::http_server
                     ctx.parsed_request.method = method_name;
                 }
 
-                const auto path = request_path(ctx.parsed_request.url);
+                const auto path = canopy::http_utils::request_path(ctx.parsed_request.url, "");
                 RPC_INFO("HTTP {} request for: {}", ctx.parsed_request.method, path);
 
                 auto response
@@ -1060,12 +1053,6 @@ namespace canopy::http_server
         default:
             return "OK";
         }
-    }
-
-    auto request_path(std::string_view target) -> std::string
-    {
-        const auto separator = target.find_first_of("?#");
-        return std::string(target.substr(0, separator));
     }
 
     auto make_text_response(

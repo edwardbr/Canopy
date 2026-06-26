@@ -8,6 +8,7 @@
 #include <sstream>
 #include <tuple>
 #include <unordered_set>
+#include <vector>
 
 // Other headers
 extern "C"
@@ -405,6 +406,38 @@ namespace yas_generator
             r, static_cast<int>(option), from_host, lib, name, type, attribs, count, output);
     }
 
+    struct yas_mapping_field
+    {
+        std::string name;
+        std::string expression;
+    };
+
+    void emit_yas_mapping(
+        writer& output,
+        const std::string& object_name,
+        const std::vector<yas_mapping_field>& fields)
+    {
+        output("using __yas_kvi = typename ::yas::detail::mergesort<");
+        output("    ::yas::detail::predic_less,");
+        output("    std::tuple<");
+        for (size_t index = 0; index < fields.size(); ++index)
+        {
+            output(
+                "        std::pair<"
+                "std::integral_constant<std::uint32_t, ::yas::detail::fnv1a({0})>, "
+                "std::integral_constant<std::uint8_t, {1}>>{2}",
+                cpp_string_literal(fields[index].name),
+                index,
+                index + 1 == fields.size() ? "" : ",");
+        }
+        output("    >>::type;");
+        output("auto __yas_mapping = ::yas::make_object<__yas_kvi>(");
+        output("  {}", cpp_string_literal(object_name));
+        for (const auto& field : fields)
+            output("  , ::yas::make_val({}, {})", cpp_string_literal(field.name), field.expression);
+        output("  );");
+    }
+
     void build_fully_scoped_name(
         const class_entity* entity,
         std::string& name)
@@ -479,24 +512,20 @@ namespace yas_generator
 
         if (has_inparams)
         {
-            proxy("auto __yas_mapping = YAS_OBJECT_NVP(");
-            proxy("  \"in\"");
+            std::vector<yas_mapping_field> fields;
 
             uint64_t count = 1;
             for (auto& parameter : function->get_parameters())
             {
                 std::string output;
-                {
-                    if (!do_in_param(
-                            PROXY_MARSHALL_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
-                        continue;
-
-                    proxy(output);
-                }
+                if (!do_in_param(
+                        PROXY_MARSHALL_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                fields.push_back({parameter.get_name(), parameter.get_name()});
                 count++;
             }
 
-            proxy("  );");
+            emit_yas_mapping(proxy, "in", fields);
 
             proxy(
                 "__buffer.clear(); // this does not change the capacity of the vector so this is a low cost "
@@ -586,8 +615,7 @@ namespace yas_generator
             proxy("}}");
             proxy("try");
             proxy("{{");
-            proxy("auto __yas_mapping = YAS_OBJECT_NVP(");
-            proxy("  \"out\"");
+            std::vector<yas_mapping_field> fields;
 
             uint64_t count = 1;
             for (auto& parameter : function->get_parameters())
@@ -597,9 +625,9 @@ namespace yas_generator
                 if (!do_out_param(
                         PROXY_MARSHALL_OUT, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
                     continue;
-                proxy(output);
+                fields.push_back({parameter.get_name(), parameter.get_name()});
             }
-            proxy("  );");
+            emit_yas_mapping(proxy, "out", fields);
             proxy("switch(__rpc_enc)");
             proxy("{{");
             if (yas_options.compressed_binary)
@@ -698,8 +726,7 @@ namespace yas_generator
             stub("    return rpc::error::STUB_DESERIALISATION_ERROR();");
             stub("try");
             stub("{{");
-            stub("auto __yas_mapping = YAS_OBJECT_NVP(");
-            stub("  \"out\"");
+            std::vector<yas_mapping_field> fields;
 
             uint64_t count = 1;
             for (auto& parameter : function->get_parameters())
@@ -709,9 +736,9 @@ namespace yas_generator
                 if (!do_in_param(
                         STUB_MARSHALL_IN, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
                     continue;
-                stub(output);
+                fields.push_back({parameter.get_name(), parameter.get_name()});
             }
-            stub("  );");
+            emit_yas_mapping(stub, "out", fields);
 
             stub("switch(__rpc_enc)");
             stub("{{");
@@ -805,24 +832,20 @@ namespace yas_generator
 
         if (has_outparams)
         {
-            stub("auto __yas_mapping = YAS_OBJECT_NVP(");
-            stub("  \"out\"");
+            std::vector<yas_mapping_field> fields;
 
             uint64_t count = 1;
             for (auto& parameter : function->get_parameters())
             {
                 std::string output;
-                {
-                    if (!do_out_param(
-                            STUB_MARSHALL_OUT, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
-                        continue;
-
-                    stub(output);
-                }
+                if (!do_out_param(
+                        STUB_MARSHALL_OUT, from_host, m_ob, parameter.get_name(), parameter.get_type(), parameter, count, output))
+                    continue;
+                fields.push_back({parameter.get_name(), parameter.get_name()});
                 count++;
             }
 
-            stub("  );");
+            emit_yas_mapping(stub, "out", fields);
 
             stub(
                 "__buffer.clear(); // this does not change the capacity of the vector so this is a low cost reset "

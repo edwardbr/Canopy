@@ -79,136 +79,41 @@ async function runTest(name, testFn) {
 }
 
 async function runAllTests() {
-    // Test 1: GET /api/status
-    await runTest('Test 1: GET /api/status', async () => {
-        const response = await makeRequest('GET', '/api/status');
-
-        if (response.statusCode !== 200) {
-            return { success: false, message: `Expected status 200, got ${response.statusCode}` };
-        }
-
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
-        }
-
-        if (!response.body.data || !response.body.data.status) {
-            return { success: false, message: 'Response missing status data' };
-        }
-
-        return {
-            success: true,
-            message: `Status: ${response.body.data.status}, Version: ${response.body.data.version}`
-        };
-    });
-
-    // Test 2: GET /api/resource/123
-    await runTest('Test 2: GET /api/resource/123', async () => {
-        const response = await makeRequest('GET', '/api/resource/123');
-
-        if (response.statusCode !== 200) {
-            return { success: false, message: `Expected status 200, got ${response.statusCode}` };
-        }
-
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
-        }
-
-        if (!response.body.data) {
-            return { success: false, message: 'Response missing data field' };
-        }
-
-        return { success: true, message: `Got resource data: ${JSON.stringify(response.body.data)}` };
-    });
-
-    // Test 3: POST /api/resource
-    await runTest('Test 3: POST /api/resource (create)', async () => {
-        const requestBody = { name: 'Test Resource', value: 42 };
-        const response = await makeRequest('POST', '/api/resource', requestBody);
-
-        if (response.statusCode !== 200) {
-            return { success: false, message: `Expected status 200, got ${response.statusCode}` };
-        }
-
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
-        }
-
-        if (!response.body.data || !response.body.data.created) {
-            return { success: false, message: 'Response missing created confirmation' };
-        }
-
-        return {
-            success: true,
-            message: `Resource created with ID: ${response.body.data.id}`
-        };
-    });
-
-    // Test 4: POST /api/echo (generic endpoint)
-    await runTest('Test 4: POST /api/echo (generic)', async () => {
-        const requestBody = { message: 'Hello, REST API!', timestamp: Date.now() };
+    // Test 1: POST /api/echo (generated REST endpoint)
+    await runTest('Test 1: POST /api/echo (generated REST)', async () => {
+        const requestBody = 'Hello, REST API!';
         const response = await makeRequest('POST', '/api/echo', requestBody);
 
         if (response.statusCode !== 200) {
             return { success: false, message: `Expected status 200, got ${response.statusCode}` };
         }
 
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
+        if (response.body !== requestBody) {
+            return { success: false, message: `Echo mismatch: expected ${requestBody}, got ${response.body}` };
         }
 
-        const bodyLength = JSON.stringify(requestBody).length;
-        if (response.body.data.body_length !== bodyLength) {
-            return {
-                success: false,
-                message: `Body length mismatch: expected ${bodyLength}, got ${response.body.data.body_length}`
-            };
-        }
-
-        return { success: true, message: `Body length correctly reported: ${bodyLength} bytes` };
+        return { success: true, message: `Echoed: ${response.body}` };
     });
 
-    // Test 5: PUT /api/resource/123 (update)
-    await runTest('Test 5: PUT /api/resource/123 (update)', async () => {
-        const requestBody = { name: 'Updated Resource', value: 99 };
-        const response = await makeRequest('PUT', '/api/resource/123', requestBody);
+    // Test 2: POST /api/echo with a larger JSON string
+    await runTest('Test 2: POST /api/echo (large generated REST request)', async () => {
+        const requestBody = 'A'.repeat(64 * 1024);
+        const response = await makeRequest('POST', '/api/echo', requestBody);
 
         if (response.statusCode !== 200) {
             return { success: false, message: `Expected status 200, got ${response.statusCode}` };
         }
 
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
+        if (response.body !== requestBody) {
+            return { success: false, message: `Echo mismatch: got ${response.body ? response.body.length : 0} bytes` };
         }
 
-        if (!response.body.data || !response.body.data.updated) {
-            return { success: false, message: 'Response missing updated confirmation' };
-        }
-
-        return { success: true, message: 'Resource updated successfully' };
+        return { success: true, message: `Echoed ${response.body.length} bytes` };
     });
 
-    // Test 6: DELETE /api/resource/123
-    await runTest('Test 6: DELETE /api/resource/123', async () => {
-        const response = await makeRequest('DELETE', '/api/resource/123');
-
-        if (response.statusCode !== 200) {
-            return { success: false, message: `Expected status 200, got ${response.statusCode}` };
-        }
-
-        if (!response.body || !response.body.success) {
-            return { success: false, message: 'Response missing success field' };
-        }
-
-        if (!response.body.data || !response.body.data.deleted) {
-            return { success: false, message: 'Response missing deleted confirmation' };
-        }
-
-        return { success: true, message: 'Resource deleted successfully' };
-    });
-
-    // Test 7: GET /api/nonexistent (404 error)
-    await runTest('Test 7: GET /api/nonexistent (404 error)', async () => {
-        const response = await makeRequest('GET', '/api/nonexistent');
+    // Test 3: POST /api/nonexistent (404 from REST registry)
+    await runTest('Test 3: POST /api/nonexistent (404 error)', async () => {
+        const response = await makeRequest('POST', '/api/nonexistent', 'ignored');
 
         if (response.statusCode !== 404) {
             return { success: false, message: `Expected status 404, got ${response.statusCode}` };
@@ -221,10 +126,10 @@ async function runAllTests() {
         return { success: true, message: `Correct 404 error: ${response.body.error}` };
     });
 
-    // Test 8: PATCH /api/resource (405 method not allowed)
-    await runTest('Test 8: PATCH /api/resource (405 method not allowed)', async () => {
+    // Test 4: GET /api/echo (405 method not allowed from generated handler)
+    await runTest('Test 4: GET /api/echo (405 method not allowed)', async () => {
         try {
-            const response = await makeRequest('PATCH', '/api/resource', { test: 'data' });
+            const response = await makeRequest('GET', '/api/echo');
 
             if (response.statusCode !== 405) {
                 return { success: false, message: `Expected status 405, got ${response.statusCode}` };
@@ -239,26 +144,6 @@ async function runAllTests() {
             // Some servers might close connection for unsupported methods
             return { success: true, message: 'Unsupported method rejected (connection closed)' };
         }
-    });
-
-    // Test 9: Large JSON POST
-    await runTest('Test 9: Large JSON POST (1KB)', async () => {
-        const largeData = {
-            items: Array.from({ length: 5000 }, (_, i) => ({
-                id: i,
-                name: `Item ${i}`,
-                description: 'A'.repeat(10)
-            }))
-        };
-
-        const response = await makeRequest('POST', '/api/bulk', largeData);
-
-        if (response.statusCode !== 200) {
-            return { success: false, message: `Expected status 200, got ${response.statusCode}` };
-        }
-
-        const bodyLength = JSON.stringify(largeData).length;
-        return { success: true, message: `Large payload (${bodyLength} bytes) handled successfully` };
     });
 
     // Print summary

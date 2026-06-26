@@ -9,6 +9,7 @@
 #include <tuple>
 #include <type_traits>
 #include <unordered_set>
+#include <vector>
 
 // Other headers
 extern "C"
@@ -1160,6 +1161,8 @@ namespace synchronous_generator
 
             std::string scoped_namespace;
             interface_declaration_generator::build_scoped_name(&m_ob, scoped_namespace);
+            if (!scoped_namespace.empty() && scoped_namespace.rfind("::", 0) != 0)
+                scoped_namespace = "::" + scoped_namespace;
 
             stub("case {}:", function_count);
             stub("{{");
@@ -2345,6 +2348,8 @@ namespace synchronous_generator
 
                 std::string scoped_namespace;
                 interface_declaration_generator::build_scoped_name(&m_ob, scoped_namespace);
+                if (!scoped_namespace.empty() && scoped_namespace.rfind("::", 0) != 0)
+                    scoped_namespace = "::" + scoped_namespace;
 
                 proxy.print_tabs();
                 proxy.raw("CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
@@ -2938,6 +2943,12 @@ namespace synchronous_generator
             }
             if (has_fields)
             {
+                struct yas_serialized_field
+                {
+                    std::string name;
+                    std::string expression;
+                };
+                std::vector<yas_serialized_field> yas_fields;
                 for (auto& field : m_ob.get_functions())
                 {
                     if (field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
@@ -2952,31 +2963,46 @@ namespace synchronous_generator
                         field->get_name());
                 }
 
-                header("YAS_WARNINGS_PUSH");
-                header("ar & YAS_OBJECT_NVP(\"{}\"", m_ob.get_name());
-
                 for (auto& field : m_ob.get_functions())
                 {
                     auto type = field->get_entity_type();
-                    if (type != entity_type::CPPQUOTE && type != entity_type::RUSTQUOTE && type != entity_type::FUNCTION_PUBLIC
-                        && type != entity_type::FUNCTION_PRIVATE && type != entity_type::CONSTEXPR)
+                    if (type == entity_type::CPPQUOTE || type == entity_type::RUSTQUOTE || type == entity_type::FUNCTION_PUBLIC
+                        || type == entity_type::FUNCTION_PRIVATE || type == entity_type::CONSTEXPR)
+                        continue;
+
+                    if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
                     {
-                        if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
+                        auto* function_variable = static_cast<const function_entity*>(field.get());
+                        if (function_variable->is_static())
+                            continue;
+                        if (is_serialized_pointer_field(*function_variable))
                         {
-                            auto* function_variable = static_cast<const function_entity*>(field.get());
-                            if (function_variable->is_static())
-                            {
-                                continue;
-                            }
-                            if (is_serialized_pointer_field(*function_variable))
-                            {
-                                header("  ,(\"{0}\", __yas_{0}_address)", field->get_name());
-                                continue;
-                            }
+                            yas_fields.push_back({field->get_name(), "__yas_" + field->get_name() + "_address"});
+                            continue;
                         }
-                        header("  ,(\"{0}\", {0})", field->get_name());
                     }
+                    yas_fields.push_back({field->get_name(), field->get_name()});
                 }
+
+                header("YAS_WARNINGS_PUSH");
+                header("using __yas_kvi = typename ::yas::detail::mergesort<");
+                header("    ::yas::detail::predic_less,");
+                header("    std::tuple<");
+                for (size_t index = 0; index < yas_fields.size(); ++index)
+                {
+                    header(
+                        "        std::pair<"
+                        "std::integral_constant<std::uint32_t, ::yas::detail::fnv1a({0})>, "
+                        "std::integral_constant<std::uint8_t, {1}>>{2}",
+                        cpp_string_literal(yas_fields[index].name),
+                        index,
+                        index + 1 == yas_fields.size() ? "" : ",");
+                }
+                header("    >>::type;");
+                header("ar & ::yas::make_object<__yas_kvi>(");
+                header("    {}", cpp_string_literal(m_ob.get_name()));
+                for (const auto& field : yas_fields)
+                    header("    , ::yas::make_val({}, {})", cpp_string_literal(field.name), field.expression);
                 header(");");
                 header("YAS_WARNINGS_POP");
 
@@ -3026,10 +3052,10 @@ namespace synchronous_generator
         if (json_schema::struct_will_have_converter(m_ob))
         {
             header("");
-            header("friend {} from_json_object(", m_ob.get_name());
-            header("    ::json::v1::convert::tag<{}>,", m_ob.get_name());
+            header("friend struct {} from_json_object(", m_ob.get_name());
+            header("    ::json::v1::convert::tag<struct {}>,", m_ob.get_name());
             header("    const ::json::v1::object& __value);");
-            header("friend ::json::v1::object to_json_object(const {}& __value);", m_ob.get_name());
+            header("friend ::json::v1::object to_json_object(const struct {}& __value);", m_ob.get_name());
         }
 
         header("}};");
@@ -3502,6 +3528,7 @@ namespace synchronous_generator
         if (enable_rest_client)
         {
             header("#include <canopy/rest/connection.h>");
+            header("#include <canopy/rest/server.h>");
         }
         if (enable_canonical_crypto)
         {

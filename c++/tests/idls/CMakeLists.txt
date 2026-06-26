@@ -124,12 +124,15 @@ CanopyGenerate(
   protocol_buffers
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.)
 
-CanopyGenerateRest(
+CanopyGenerate(
   rest_fixture
-  rest_fixture/rest_fixture.openapi.json
+  rest_fixture/rest_fixture.idl
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_BINARY_DIR}/generated
   ""
+  yas_json
+  rest_client
+  ${CMAKE_CURRENT_SOURCE_DIR}/rest_fixture/rest_fixture.openapi.json
   dependencies rpc_types_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_INTERFACE_SOURCE_DIR}
   install_dir ${GENERATED_INSTALL_DIR})

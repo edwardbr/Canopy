@@ -70,11 +70,13 @@ target_link_libraries(
   canopy_http_server
   PUBLIC streaming
          http_server_config_idl
+         file_system_idl
          ${CANOPY_HTTP_SERVER_SECURE_STREAM_TARGET}
          transport_streaming
          llhttp_static
          rpc
   PRIVATE ${CANOPY_HTTP_SERVER_TCP_TARGET}
+          canopy_http_utils
           streaming_websocket
           ${CANOPY_HTTP_SERVER_CRYPTO_LIBS}
           ${CANOPY_FMT_LIB}

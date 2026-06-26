@@ -16,6 +16,7 @@ add_subdirectory(subcomponents/json)
 add_subdirectory(subcomponents/modules)
 add_subdirectory(subcomponents/io_uring_config)
 add_subdirectory(subcomponents/dns_resolver)
+add_subdirectory(subcomponents/http_utils)
 
 # The abstract streaming::stream interface is dual-mode; concrete impls inside c++/streaming (tcp_blocking, openssl_tls,
 # mbedtls, spsc, attestation, websocket, compression) gate themselves on build options in their own CMakeLists.

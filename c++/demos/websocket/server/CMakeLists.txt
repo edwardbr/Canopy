@@ -88,12 +88,25 @@ if(CANOPY_BUILD_COROUTINE)
   list(APPEND WEBSOCKET_DEMO_VIDEO_DEFINES CANOPY_WEBSOCKET_DEMO_ENABLE_VIDEO)
 endif()
 
+add_library(websocket_server_rest STATIC rest_echo_service.cpp)
+target_compile_definitions(websocket_server_rest PRIVATE ${CANOPY_DEFINES})
+target_include_directories(
+  websocket_server_rest
+  PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+  PRIVATE ${CANOPY_INCLUDES})
+target_compile_options(websocket_server_rest PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_link_options(websocket_server_rest PRIVATE ${CANOPY_LINK_OPTIONS})
+target_link_libraries(websocket_server_rest PUBLIC websocket_rest_idl rest rpc rpc_log)
+
+if(CANOPY_ENABLE_CLANG_TIDY)
+  set_target_properties(websocket_server_rest PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+endif()
+
 add_executable(
   websocket_server
   main.cpp
   demo.cpp
   http_client_connection.cpp
-  rest_handler.cpp
   websocket_handler.cpp
   demo_zone.cpp
   ${WEBSOCKET_DEMO_VIDEO_SRCS}
@@ -117,6 +130,7 @@ target_link_libraries(
          streaming_transport_idl
          transport_untrusted_web
          websocket_demo_idl
+         websocket_server_rest
          ${WEBSOCKET_DEMO_OPTIONAL_LIBS}
          rpc
          canopy_file_system

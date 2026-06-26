@@ -3,7 +3,11 @@
 
 #include <canopy/http_server/static_webpage_delivery.h>
 
+#include <canopy/http_utils/http.h>
+
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -32,11 +36,16 @@ namespace canopy::http_server
                 return std::nullopt;
             }
 
-            auto relative_path = request_path(request.url);
+            auto relative_path = canopy::http_utils::request_path(request.url, "");
             if (relative_path.empty() || relative_path == "/")
             {
                 relative_path = "/index.html";
             }
+
+            auto decoded_path = canopy::http_utils::percent_decode_strict(relative_path);
+            if (!decoded_path)
+                return std::nullopt;
+            relative_path = *decoded_path;
 
             std::string path{root_path};
             bool appended = false;
@@ -110,7 +119,7 @@ namespace canopy::http_server
         const auto read_error = CO_AWAIT file_reader_(*candidate, data);
         if (read_error != rpc::error::OK())
         {
-            const auto path = request_path(request.url);
+            const auto path = canopy::http_utils::request_path(request.url, "");
             if (is_optional_browser_probe(path))
             {
                 RPC_INFO(
@@ -182,5 +191,30 @@ namespace canopy::http_server
             return "image/gif";
         }
         return "text/plain";
+    }
+
+    auto make_static_webpage_handler(static_webpage_handler_config config) -> coroutine_request_handler
+    {
+        auto file_system = std::move(config.file_system);
+        auto webpage_delivery = std::make_shared<static_webpage_delivery>(
+            std::move(config.root_path),
+            [file_system = std::move(file_system)](std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
+            {
+                if (!file_system)
+                {
+                    CO_RETURN rpc::error::INVALID_DATA();
+                }
+                CO_RETURN CO_AWAIT file_system->read_file(std::move(file_path), data);
+            });
+        return [webpage_delivery, config = std::move(config)](const request& request) -> CORO_TASK(std::optional<response>)
+        {
+            auto output = CO_AWAIT webpage_delivery->handle(request);
+            if (output && config.disable_cache_for_request && config.disable_cache_for_request(request))
+            {
+                for (const auto& [name, value] : config.disabled_cache_headers)
+                    output->headers[name] = value;
+            }
+            CO_RETURN output;
+        };
     }
 } // namespace canopy::http_server

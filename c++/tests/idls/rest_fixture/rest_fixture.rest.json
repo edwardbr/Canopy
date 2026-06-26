@@ -1,0 +1,317 @@
+{
+  "interfaces": [
+    {
+      "base_path": "",
+      "host": "example.test",
+      "methods": [
+        {
+          "constants": [],
+          "http_method": "GET",
+          "name": "get_todo",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            },
+            {
+              "location": "query",
+              "name": "include_notes",
+              "required": false,
+              "wire_name": "include_notes"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "PUT",
+          "name": "put_replace_todo",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}",
+          "request": {
+            "body_param": "request"
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "PATCH",
+          "name": "patch_todo",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}",
+          "request": {
+            "body_param": "request"
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "DELETE",
+          "name": "delete_todo",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [],
+            "has_body": false,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "HEAD",
+          "name": "head_todo",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [],
+            "has_body": false,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "POST",
+          "name": "post_create_todo",
+          "parameters": [],
+          "path": "/todoapi/v1/todos",
+          "request": {
+            "body_param": "request"
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "OPTIONS",
+          "name": "options_todos",
+          "parameters": [],
+          "path": "/todoapi/v1/todos/options",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "action",
+                "required": true,
+                "wire_name": "action"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "GET",
+          "name": "get_todo_audit",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}/audit",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [
+              {
+                "name": "id",
+                "required": true,
+                "wire_name": "id"
+              },
+              {
+                "name": "source",
+                "required": true,
+                "wire_name": "source"
+              },
+              {
+                "name": "changes",
+                "required": false,
+                "wire_name": "changes"
+              }
+            ],
+            "has_body": true,
+            "out_param": ""
+          }
+        },
+        {
+          "constants": [],
+          "http_method": "GET",
+          "name": "get_todo_state",
+          "parameters": [
+            {
+              "location": "path",
+              "name": "todo_id",
+              "required": true,
+              "wire_name": "todo_id"
+            }
+          ],
+          "path": "/todoapi/v1/todos/{todo_id}/state",
+          "request": {
+            "body_param": ""
+          },
+          "response": {
+            "fields": [],
+            "has_body": true,
+            "out_param": "response"
+          }
+        }
+      ],
+      "qualified_name": "todoapi::v1::todos::i_todos"
+    }
+  ],
+  "schema": "canopy.rest.binding.v1",
+  "source": {
+    "openapi": "rest_fixture.openapi.json",
+    "overlays": []
+  }
+}

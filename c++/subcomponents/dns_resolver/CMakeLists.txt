@@ -15,7 +15,10 @@ target_include_directories(
 target_compile_definitions(canopy_dns_resolver PRIVATE ${CANOPY_DEFINES})
 target_compile_options(canopy_dns_resolver PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(canopy_dns_resolver PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(canopy_dns_resolver PUBLIC rpc PRIVATE canopy_cares)
+target_link_libraries(
+  canopy_dns_resolver
+  PUBLIC rpc
+  PRIVATE canopy_cares)
 
 set_property(TARGET canopy_dns_resolver PROPERTY COMPILE_PDB_NAME canopy_dns_resolver)
 

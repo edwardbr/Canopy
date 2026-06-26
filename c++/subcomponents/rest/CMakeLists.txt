@@ -5,7 +5,13 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-add_library(rest STATIC src/helpers.cpp src/connection.cpp)
+set(CANOPY_REST_SRCS src/helpers.cpp src/connection.cpp src/server.cpp)
+
+if(TARGET canopy_http_server)
+  list(APPEND CANOPY_REST_SRCS src/http_server_adapter.cpp)
+endif()
+
+add_library(rest STATIC ${CANOPY_REST_SRCS})
 
 target_include_directories(
   rest
@@ -15,7 +21,11 @@ target_include_directories(
 target_compile_definitions(rest PRIVATE ${CANOPY_DEFINES})
 target_compile_options(rest PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
 target_link_options(rest PRIVATE ${CANOPY_LINK_OPTIONS})
-target_link_libraries(rest PUBLIC json streaming_http_client connection_factory)
+target_link_libraries(rest PUBLIC json streaming_http_client connection_factory canopy_http_utils)
+
+if(TARGET canopy_http_server)
+  target_link_libraries(rest PUBLIC canopy_http_server)
+endif()
 
 if(TARGET streaming_tcp_blocking)
   target_link_libraries(rest PUBLIC tcp_blocking_stream_config_idl)

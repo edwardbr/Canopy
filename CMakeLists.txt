@@ -52,10 +52,8 @@ if(CANOPY_BUILD_THIRD_PARTY_INTERFACES)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party_interfaces/CMakeLists.txt")
     add_subdirectory(third_party_interfaces)
   else()
-    message(
-      FATAL_ERROR
-        "CANOPY_BUILD_THIRD_PARTY_INTERFACES is ON, but third_party_interfaces is not available. "
-        "Run: git submodule update --init third_party_interfaces")
+    message(FATAL_ERROR "CANOPY_BUILD_THIRD_PARTY_INTERFACES is ON, but third_party_interfaces is not available. "
+                        "Run: git submodule update --init third_party_interfaces")
   endif()
 endif()
 if(CANOPY_BUILD_TEST)

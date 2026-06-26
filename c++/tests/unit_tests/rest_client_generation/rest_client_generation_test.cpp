@@ -8,9 +8,11 @@
 #include <gtest/gtest.h>
 
 #include <canopy/rest/connection.h>
+#include <canopy/rest/server.h>
 #include <connection_factory/connection_factory.h>
 #include <json/config.h>
 #include <rpc/rpc.h>
+#include <streaming/http_client/client.h>
 #include <streaming/stream.h>
 
 #include <algorithm>
@@ -50,6 +52,7 @@ namespace
             if (responses_.empty())
                 CO_RETURN std::make_pair(rpc::io_status{FLD(type) rpc::io_status::kind::closed}, rpc::mutable_byte_span{});
 
+            ++receive_count_;
             auto response = std::move(responses_.front());
             responses_.erase(responses_.begin());
             const auto byte_count = std::min(buffer.size(), response.size());
@@ -75,10 +78,12 @@ namespace
         [[nodiscard]] streaming::peer_info get_peer_info() const override { return {}; }
 
         [[nodiscard]] const std::vector<std::string>& requests() const { return requests_; }
+        [[nodiscard]] size_t receive_count() const { return receive_count_; }
 
     private:
         std::vector<std::string> responses_;
         std::vector<std::string> requests_;
+        size_t receive_count_{0};
         bool closed_{false};
     };
 
@@ -186,6 +191,105 @@ TEST(
 }
 
 TEST(
+    RestHttpClient,
+    RejectsHeaderInjectionWhenBuildingRequests)
+{
+    streaming::http_client::request request;
+    request.method = "GET";
+    request.target = "/";
+    request.host = "example.test";
+    request.headers.push_back({"X-Test", "safe\r\nInjected: yes"});
+
+    EXPECT_THROW((void)streaming::http_client::build_request(request), std::runtime_error);
+}
+
+TEST(
+    RestHttpClient,
+    RejectsCompleteResponseThatExceedsMaxResponseBytes)
+{
+    const auto response = http_response(200, "OK", R"({"ok":true})");
+    auto stream = std::make_shared<scripted_stream>(std::vector<std::string>{response});
+
+    streaming::http_client::request request;
+    request.host = "example.test";
+    request.target = "/status";
+
+    auto result = SYNC_WAIT(
+        streaming::http_client::send_request(
+            std::move(stream), request, std::chrono::milliseconds{10000}, response.size() - 1));
+
+    EXPECT_EQ(result.error_code, rpc::error::INVALID_DATA());
+    EXPECT_NE(result.error_message.find("exceeded maximum size"), std::string::npos);
+}
+
+TEST(
+    RestHttpClient,
+    AcceptsCompleteResponseAtExactMaxResponseBytes)
+{
+    const auto response = http_response(200, "OK", R"({"ok":true})");
+    auto stream = std::make_shared<scripted_stream>(std::vector<std::string>{response});
+
+    streaming::http_client::request request;
+    request.host = "example.test";
+    request.target = "/status";
+
+    auto result = SYNC_WAIT(
+        streaming::http_client::send_request(std::move(stream), request, std::chrono::milliseconds{10000}, response.size()));
+
+    EXPECT_EQ(result.error_code, rpc::error::OK());
+    EXPECT_EQ(result.value.body, R"({"ok":true})");
+}
+
+TEST(
+    RestHttpClient,
+    WaitsForCompleteChunkedBodyBeforeParsing)
+{
+    auto stream = std::make_shared<scripted_stream>(std::vector<std::string>{
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "4\r\n"
+        "Wiki\r\n"
+        "0\r\n",
+        "\r\n",
+    });
+
+    streaming::http_client::request request;
+    request.host = "example.test";
+    request.target = "/chunked";
+
+    auto result = SYNC_WAIT(streaming::http_client::send_request(stream, request, std::chrono::milliseconds{10000}, 1024));
+
+    EXPECT_EQ(result.error_code, rpc::error::OK());
+    EXPECT_EQ(result.value.body, "Wiki");
+    EXPECT_EQ(stream->receive_count(), size_t{2});
+}
+
+TEST(
+    RestServerPathMatching,
+    MatchesEmbeddedPathParameters)
+{
+    const auto package = canopy::rest::match_path_template(
+        "/etc/packages/group/name-version.zip", "/etc/packages/{group}/{name}-{version}.zip");
+    ASSERT_TRUE(package.matched);
+    EXPECT_EQ(package.parameters.at("group"), "group");
+    EXPECT_EQ(package.parameters.at("name"), "name");
+    EXPECT_EQ(package.parameters.at("version"), "version");
+
+    const auto nested = canopy::rest::match_path_template(
+        "/etc/packages/group/name-version.zip/jcr:content/vlt:definition/filter.tidy.2.json",
+        "/etc/packages/{group}/{name}-{version}.zip/jcr:content/vlt:definition/filter.tidy.2.json");
+    ASSERT_TRUE(nested.matched);
+    EXPECT_EQ(nested.parameters.at("group"), "group");
+    EXPECT_EQ(nested.parameters.at("name"), "name");
+    EXPECT_EQ(nested.parameters.at("version"), "version");
+
+    EXPECT_FALSE(
+        canopy::rest::match_path_template("/etc/packages/group/name-version.tar", "/etc/packages/{group}/{name}-{version}.zip")
+            .matched);
+}
+
+TEST(
     RestClientGeneration,
     GeneratedCallerBuildsHttpAndDeserializesResponses)
 {
@@ -217,39 +321,51 @@ TEST(
     EXPECT_TRUE(caller->__rpc_is_local());
     EXPECT_NE(caller->__rpc_query_interface(todos::i_todos::get_id(rpc::get_version())), nullptr);
 
-    todos::todo_item fetched;
-    const auto get_error = SYNC_WAIT(caller->get_todo("abc 1", rpc::optional<bool>{true}, fetched));
+    std::string fetched_id;
+    std::string fetched_title;
+    bool fetched_completed{};
+    rpc::optional<std::string> fetched_notes;
+    const auto get_error = SYNC_WAIT(caller->get_todo(
+        "abc 1", rpc::optional<bool>{true}, fetched_id, fetched_title, fetched_completed, fetched_notes));
     EXPECT_EQ(get_error, rpc::error::OK());
-    EXPECT_EQ(fetched.id, "abc 1");
-    EXPECT_EQ(fetched.title, "Write tests");
-    EXPECT_FALSE(fetched.completed);
-    ASSERT_TRUE(fetched.notes.has_value());
-    EXPECT_EQ(fetched.notes.value(), "hello");
+    EXPECT_EQ(fetched_id, "abc 1");
+    EXPECT_EQ(fetched_title, "Write tests");
+    EXPECT_FALSE(fetched_completed);
+    ASSERT_TRUE(fetched_notes.has_value());
+    EXPECT_EQ(fetched_notes.value(), "hello");
 
     todos::todo_create replacement;
     replacement.title = "Replace item";
     replacement.completed = true;
     replacement.notes = std::string("replace note");
 
-    todos::todo_item replaced;
-    const auto put_error = SYNC_WAIT(caller->put_replace_todo("abc 1", replacement, replaced));
+    std::string replaced_id;
+    std::string replaced_title;
+    bool replaced_completed{};
+    rpc::optional<std::string> replaced_notes;
+    const auto put_error = SYNC_WAIT(
+        caller->put_replace_todo("abc 1", replacement, replaced_id, replaced_title, replaced_completed, replaced_notes));
     EXPECT_EQ(put_error, rpc::error::OK());
-    EXPECT_EQ(replaced.id, "abc 1");
-    EXPECT_EQ(replaced.title, "Replace item");
-    EXPECT_TRUE(replaced.completed);
-    ASSERT_TRUE(replaced.notes.has_value());
-    EXPECT_EQ(replaced.notes.value(), "replace note");
+    EXPECT_EQ(replaced_id, "abc 1");
+    EXPECT_EQ(replaced_title, "Replace item");
+    EXPECT_TRUE(replaced_completed);
+    ASSERT_TRUE(replaced_notes.has_value());
+    EXPECT_EQ(replaced_notes.value(), "replace note");
 
     todos::todo_patch patch;
     patch.title = std::string("Patched item");
     patch.completed = true;
 
-    todos::todo_item patched;
-    const auto patch_error = SYNC_WAIT(caller->patch_todo("abc 1", patch, patched));
+    std::string patched_id;
+    std::string patched_title;
+    bool patched_completed{};
+    rpc::optional<std::string> patched_notes;
+    const auto patch_error
+        = SYNC_WAIT(caller->patch_todo("abc 1", patch, patched_id, patched_title, patched_completed, patched_notes));
     EXPECT_EQ(patch_error, rpc::error::OK());
-    EXPECT_EQ(patched.id, "abc 1");
-    EXPECT_EQ(patched.title, "Patched item");
-    EXPECT_TRUE(patched.completed);
+    EXPECT_EQ(patched_id, "abc 1");
+    EXPECT_EQ(patched_title, "Patched item");
+    EXPECT_TRUE(patched_completed);
 
     const auto delete_error = SYNC_WAIT(caller->delete_todo("abc 1"));
     EXPECT_EQ(delete_error, rpc::error::OK());
@@ -262,30 +378,37 @@ TEST(
     create.completed = false;
     create.notes = std::string("draft");
 
-    todos::todo_item created;
-    const auto post_error = SYNC_WAIT(caller->post_create_todo(create, created));
+    std::string created_id;
+    std::string created_title;
+    bool created_completed{};
+    rpc::optional<std::string> created_notes;
+    const auto post_error
+        = SYNC_WAIT(caller->post_create_todo(create, created_id, created_title, created_completed, created_notes));
     EXPECT_EQ(post_error, rpc::error::OK());
-    EXPECT_EQ(created.id, "new-1");
-    EXPECT_EQ(created.title, "New item");
-    EXPECT_FALSE(created.completed);
-    ASSERT_TRUE(created.notes.has_value());
-    EXPECT_EQ(created.notes.value(), "draft");
+    EXPECT_EQ(created_id, "new-1");
+    EXPECT_EQ(created_title, "New item");
+    EXPECT_FALSE(created_completed);
+    ASSERT_TRUE(created_notes.has_value());
+    EXPECT_EQ(created_notes.value(), "draft");
 
-    todos::todo_operation_status options;
-    const auto options_error = SYNC_WAIT(caller->options_todos(options));
+    std::string options_id;
+    std::string options_action;
+    const auto options_error = SYNC_WAIT(caller->options_todos(options_id, options_action));
     EXPECT_EQ(options_error, rpc::error::OK());
-    EXPECT_EQ(options.id, "todos");
-    EXPECT_EQ(options.action, "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS");
+    EXPECT_EQ(options_id, "todos");
+    EXPECT_EQ(options_action, "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS");
 
-    todos::todo_audit audit;
-    const auto audit_error = SYNC_WAIT(caller->get_todo_audit("abc 1", audit));
+    std::string audit_id;
+    std::string audit_source;
+    rpc::optional<std::vector<std::string>> audit_changes;
+    const auto audit_error = SYNC_WAIT(caller->get_todo_audit("abc 1", audit_id, audit_source, audit_changes));
     EXPECT_EQ(audit_error, rpc::error::OK());
-    EXPECT_EQ(audit.id, "abc 1");
-    EXPECT_EQ(audit.source, "fixture");
-    ASSERT_TRUE(audit.changes.has_value());
-    ASSERT_EQ(audit.changes.value().size(), 2U);
-    EXPECT_EQ(audit.changes.value()[0], "created");
-    EXPECT_EQ(audit.changes.value()[1], "updated");
+    EXPECT_EQ(audit_id, "abc 1");
+    EXPECT_EQ(audit_source, "fixture");
+    ASSERT_TRUE(audit_changes.has_value());
+    ASSERT_EQ(audit_changes.value().size(), 2U);
+    EXPECT_EQ(audit_changes.value()[0], "created");
+    EXPECT_EQ(audit_changes.value()[1], "updated");
 
     json::v1::object state;
     const auto state_error = SYNC_WAIT(caller->get_todo_state("abc 1", state));
@@ -443,13 +566,17 @@ TEST(
     ASSERT_EQ(connected.error_code, rpc::error::OK());
     ASSERT_TRUE(connected.object);
 
-    todos::todo_item fetched;
-    const auto get_error = SYNC_WAIT(connected.object->get_todo("factory", {}, fetched));
+    std::string fetched_id;
+    std::string fetched_title;
+    bool fetched_completed{};
+    rpc::optional<std::string> fetched_notes;
+    const auto get_error = SYNC_WAIT(
+        connected.object->get_todo("factory", {}, fetched_id, fetched_title, fetched_completed, fetched_notes));
     EXPECT_EQ(get_error, rpc::error::OK());
-    EXPECT_EQ(fetched.id, "factory");
-    EXPECT_EQ(fetched.title, "Factory stream");
-    EXPECT_TRUE(fetched.completed);
-    EXPECT_FALSE(fetched.notes.has_value());
+    EXPECT_EQ(fetched_id, "factory");
+    EXPECT_EQ(fetched_title, "Factory stream");
+    EXPECT_TRUE(fetched_completed);
+    EXPECT_FALSE(fetched_notes.has_value());
 
     ASSERT_EQ(stream->requests().size(), 1U);
     EXPECT_EQ(

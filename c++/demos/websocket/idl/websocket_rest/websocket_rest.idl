@@ -1,0 +1,25 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+#import "rpc/rpc_types.idl"
+
+typedef int error_code;
+
+namespace websocket_demo
+{
+    namespace rest
+    {
+        namespace v1
+        {
+            interface i_echo
+            {
+                error_code echo(
+                    [in] const std::string& message,
+                    [out] std::string& response
+                );
+            };
+        } // namespace v1
+    } // namespace rest
+} // namespace websocket_demo

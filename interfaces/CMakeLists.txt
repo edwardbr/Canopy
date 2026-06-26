@@ -18,8 +18,7 @@ CanopyGenerate(
   canonical_crypto
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
   install_dir ${GENERATED_INSTALL_DIR}
-  additional_headers stdint.h
-  no_include_rpc_headers)
+  additional_headers stdint.h no_include_rpc_headers)
 
 CanopyGenerate(
   json
@@ -89,8 +88,7 @@ CanopyGenerate(
   yas_binary
   dependencies rpc_types_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  install_dir ${GENERATED_INSTALL_DIR}
-  no_include_rpc_headers)
+  install_dir ${GENERATED_INSTALL_DIR} no_include_rpc_headers)
 
 CanopyGenerate(
   telemetry_types
@@ -101,8 +99,7 @@ CanopyGenerate(
   yas_binary
   dependencies rpc_types_idl logging_idl
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/.
-  install_dir ${GENERATED_INSTALL_DIR}
-  no_include_rpc_headers)
+  install_dir ${GENERATED_INSTALL_DIR} no_include_rpc_headers)
 
 CanopyGenerate(
   streaming_transport

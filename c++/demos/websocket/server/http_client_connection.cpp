@@ -8,7 +8,9 @@
 #include <utility>
 #include <vector>
 
+#include <canopy/http_utils/http.h>
 #include <canopy/http_server/static_webpage_delivery.h>
+#include <canopy/rest/http_server_adapter.h>
 
 namespace websocket_demo
 {
@@ -25,7 +27,7 @@ namespace websocket_demo
 
             auto should_disable_static_cache(const canopy::http_server::request& request) -> bool
             {
-                const auto path = canopy::http_server::request_path(request.url);
+                const auto path = canopy::http_utils::request_path(request.url, "");
                 if (path.empty() || path == "/" || path == "/index.html" || path == "/client.js")
                 {
                     return true;
@@ -34,80 +36,43 @@ namespace websocket_demo
                 return path.rfind("/generated/", 0) == 0 && has_suffix(path, ".js");
             }
 
-            auto disable_static_cache(canopy::http_server::response& response) -> void
-            {
-                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
-                response.headers["Pragma"] = "no-cache";
-                response.headers["Expires"] = "0";
-            }
         }
-
-#ifndef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-        http_client_connection::http_client_connection(
-            std::shared_ptr<streaming::stream> stream,
-            std::shared_ptr<websocket_service> service,
-            file_system_manager file_system_manager,
-            std::string static_root_path)
-            : http_client_connection(
-                  std::move(stream),
-                  service,
-                  [service] { return service ? service->get_demo_instance() : nullptr; },
-                  std::move(file_system_manager),
-                  std::move(static_root_path))
-        {
-        }
-#endif
 
         http_client_connection::http_client_connection(
             std::shared_ptr<streaming::stream> stream,
-            std::shared_ptr<rpc::service> service,
-            calculator_factory factory,
+            websocket_upgrade_handler websocket_handler,
             file_system_manager file_system_manager,
-            std::string static_root_path)
+            std::string static_root_path,
+            canopy::rest::endpoint_registry rest_handlers)
             : stream_(std::move(stream))
-            , service_(std::move(service))
-            , calculator_factory_(std::move(factory))
+            , websocket_handler_(std::move(websocket_handler))
             , file_system_manager_(std::move(file_system_manager))
             , static_root_path_(std::move(static_root_path))
+            , rest_handlers_(std::move(rest_handlers))
         {
+            // rest_handlers_ and websocket_handler_ are both injected at the application boundary. This HTTP session
+            // owns protocol wiring, not the concrete RPC object factories behind those handlers.
         }
 
         CORO_TASK(std::shared_ptr<rpc::transport>)
         http_client_connection::handle()
         {
-            auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
-                static_root_path_,
-                [file_system_manager = file_system_manager_](
-                    std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
-                {
-                    if (!file_system_manager)
-                    {
-                        CO_RETURN rpc::error::INVALID_DATA();
-                    }
-                    CO_RETURN CO_AWAIT file_system_manager->read_file(std::move(file_path), data);
-                });
-
             canopy::http_server::handler_set handlers;
-            handlers.webpage_handler
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                = [webpage_delivery](
-                      const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
-            {
-                auto response = CO_AWAIT webpage_delivery->handle(request);
-                if (response && should_disable_static_cache(request))
-                {
-                    disable_static_cache(*response);
-                }
-                CO_RETURN response;
-            };
+            canopy::http_server::static_webpage_handler_config webpage_config;
+            webpage_config.root_path = static_root_path_;
+            webpage_config.file_system = file_system_manager_;
+            webpage_config.disable_cache_for_request = should_disable_static_cache;
+            handlers.webpage_handler = canopy::http_server::make_static_webpage_handler(std::move(webpage_config));
+
+            // REST dependency injection point. rest_handlers_ is populated by the application from generated
+            // Interface::rest_handler_info metadata, then these two callbacks expose that registry to the HTTP server.
             handlers.rest_handler
-                = [this](const canopy::http_server::request& request) { return handle_rest_request(request); };
-            handlers.websocket_upgrade_handler
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                = [this](
-                      const canopy::http_server::request& request,
-                      std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-            { CO_RETURN CO_AWAIT handle_websocket_upgrade(request, websocket_stream); };
+                = [this](const canopy::http_server::request& request) -> CORO_TASK(
+                                                                          std::optional<canopy::http_server::response>)
+            { CO_RETURN CO_AWAIT canopy::rest::handle_http_request(request, rest_handlers_); };
+            handlers.is_rest_request = [this](const canopy::http_server::request& request)
+            { return rest_handlers_.may_handle(request.url); };
+            handlers.websocket_upgrade_handler = websocket_handler_;
 
             canopy::http_server::client_connection connection(stream_, std::move(handlers));
             CO_RETURN CO_AWAIT connection.handle();

@@ -1,0 +1,30 @@
+{
+  "interfaces": [
+    {
+      "base_path": "/canopy",
+      "host": "localhost",
+      "methods": [
+        {
+          "constants": [],
+          "http_method": "POST",
+          "name": "echo",
+          "parameters": [],
+          "path": "/echo",
+          "request": {
+            "body_param": "message"
+          },
+          "response": {
+            "fields": [],
+            "has_body": true,
+            "out_param": "response"
+          }
+        }
+      ],
+      "qualified_name": "websocket_demo::rest::v1::i_echo"
+    }
+  ],
+  "schema": "canopy.rest.binding.v1",
+  "source": {
+    "idl": "websocket_rest.idl"
+  }
+}

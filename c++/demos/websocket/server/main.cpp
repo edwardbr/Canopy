@@ -3,6 +3,8 @@
 
 #include "demo_zone.h"
 #include "http_client_connection.h"
+#include "rest_echo_service.h"
+#include "websocket_handler.h"
 
 #include <csignal>
 #include <cstdlib>
@@ -15,6 +17,7 @@
 #include <canopy/network_config/cli_args.h>
 #include <canopy/network_config/zone.h>
 #include <canopy/http_server/http_acceptor.h>
+#include <canopy/rest/server.h>
 #include <file_system/file_system_manager.h>
 #include <rpc/rpc.h>
 #include <streaming/secure_stream.h>
@@ -131,7 +134,7 @@ namespace
                 },
                 FLD(execution_strategy) coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));
-// clang-format on
+// clang-format onc++/demos/websocket/server/demo_zone.h
 #else
         return std::make_shared<rpc::blocking_executor>();
 #endif
@@ -178,22 +181,23 @@ auto run_http_server(
     canopy::http_server::endpoint ep,
     std::shared_ptr<websocket_demo::v1::websocket_service> service,
     rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager,
+    canopy::rest::endpoint_registry rest_handlers,
     std::string static_root_path,
     std::shared_ptr<streaming::secure::context> tls_ctx) -> CORO_TASK(void)
 {
-    auto stream_handler = [service, file_system_manager, static_root_path = std::move(static_root_path)](
+    // when a new client connection is made this is called
+    auto stream_handler = [service,
+                              file_system_manager,
+                              rest_handlers = std::move(rest_handlers),
+                              static_root_path = std::move(static_root_path)](
                               std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
-#ifdef CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY
-        // Calculator-only build path uses the 5-arg constructor with an
-        // explicit calculator factory pulled from the websocket service.
-        auto factory = [service]() { return service->get_demo_instance(); };
+        // The demo-specific factory is bound here; http_client_connection only sees the generic upgrade callback.
+        auto websocket_handler = websocket_demo::v1::make_websocket_upgrade_handler(service);
         websocket_demo::v1::http_client_connection connection(
-            std::move(stream), service, factory, file_system_manager, static_root_path);
-#else
-        websocket_demo::v1::http_client_connection connection(
-            std::move(stream), service, file_system_manager, static_root_path);
-#endif
+            std::move(stream), std::move(websocket_handler), file_system_manager, static_root_path, rest_handlers);
+
+        // service this call
         CO_RETURN CO_AWAIT connection.handle();
     };
 
@@ -296,6 +300,8 @@ auto main(
     std::ignore = address.set_subnet(1);
 
     auto root_service = std::make_shared<websocket_demo::v1::websocket_service>("demo", address, executor);
+    canopy::rest::endpoint_registry rest_handlers;
+    rest_handlers.add_object("echo", websocket_demo::v1::make_echo_service(), "/api");
 
     canopy::http_server::endpoint http_ep;
     http_ep.host = listen_ep.to_string();
@@ -305,7 +311,8 @@ auto main(
     // SYNC_WAIT collapses to coro::sync_wait in coroutine builds and to the
     // raw expression in blocking builds (where run_http_server returns void
     // and runs the accept loop synchronously on this thread).
-    SYNC_WAIT(run_http_server(executor, http_ep, root_service, file_system_manager, static_root_path, tls_ctx));
+    SYNC_WAIT(run_http_server(
+        executor, http_ep, root_service, file_system_manager, std::move(rest_handlers), static_root_path, tls_ctx));
     root_service.reset();
     executor->shutdown();
     return 0;

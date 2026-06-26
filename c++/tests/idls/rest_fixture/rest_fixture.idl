@@ -59,28 +59,45 @@ namespace todoapi
                 error_code get_todo(
                     [in] const std::string& todo_id,
                     [in] rpc::optional<bool> include_notes,
-                    [out] todo_item& response
+                    [out] std::string& id,
+                    [out] std::string& title,
+                    [out] bool& completed,
+                    [out] rpc::optional<std::string>& notes
                 );
                 error_code put_replace_todo(
                     [in] const std::string& todo_id,
                     [in] const todo_create& request,
-                    [out] todo_item& response
+                    [out] std::string& id,
+                    [out] std::string& title,
+                    [out] bool& completed,
+                    [out] rpc::optional<std::string>& notes
                 );
                 error_code patch_todo(
                     [in] const std::string& todo_id,
                     [in] const todo_patch& request,
-                    [out] todo_item& response
+                    [out] std::string& id,
+                    [out] std::string& title,
+                    [out] bool& completed,
+                    [out] rpc::optional<std::string>& notes
                 );
                 error_code delete_todo([in] const std::string& todo_id);
                 error_code head_todo([in] const std::string& todo_id);
                 error_code post_create_todo(
                     [in] const todo_create& request,
-                    [out] todo_item& response
+                    [out] std::string& id,
+                    [out] std::string& title,
+                    [out] bool& completed,
+                    [out] rpc::optional<std::string>& notes
                 );
-                error_code options_todos([out] todo_operation_status& response);
+                error_code options_todos(
+                    [out] std::string& id,
+                    [out] std::string& action
+                );
                 error_code get_todo_audit(
                     [in] const std::string& todo_id,
-                    [out] todo_audit& response
+                    [out] std::string& id,
+                    [out] std::string& source,
+                    [out] rpc::optional<std::vector<std::string>>& changes
                 );
                 error_code get_todo_state(
                     [in] const std::string& todo_id,

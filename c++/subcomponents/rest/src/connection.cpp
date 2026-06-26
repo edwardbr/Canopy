@@ -5,6 +5,7 @@
 
 #include <canopy/rest/connection.h>
 
+#include <canopy/http_utils/http.h>
 #include <canopy/rest/helpers.h>
 #include <json/convert.h>
 
@@ -30,21 +31,8 @@ namespace canopy::rest
 {
     namespace
     {
-        bool ascii_equals_ignore_case(
-            std::string_view lhs,
-            std::string_view rhs)
-        {
-            if (lhs.size() != rhs.size())
-                return false;
-            for (size_t index = 0; index < lhs.size(); ++index)
-            {
-                const auto lhs_ch = static_cast<unsigned char>(lhs[index]);
-                const auto rhs_ch = static_cast<unsigned char>(rhs[index]);
-                if (std::tolower(lhs_ch) != std::tolower(rhs_ch))
-                    return false;
-            }
-            return true;
-        }
+        constexpr auto header_name
+            = [](const streaming::http_client::header& header) -> std::string_view { return header.name; };
 
         bool is_cookie_control(unsigned char ch)
         {
@@ -88,18 +76,6 @@ namespace canopy::rest
             return rpc::error::OK();
         }
 
-        auto find_header(
-            std::vector<streaming::http_client::header>& headers,
-            std::string_view name) -> streaming::http_client::header*
-        {
-            for (auto& header : headers)
-            {
-                if (ascii_equals_ignore_case(header.name, name))
-                    return &header;
-            }
-            return nullptr;
-        }
-
         void append_cookie_header(
             std::vector<streaming::http_client::header>& headers,
             const std::vector<cookie>& cookies)
@@ -122,7 +98,8 @@ namespace canopy::rest
             if (value.empty())
                 return;
 
-            if (auto* existing = find_header(headers, "Cookie"))
+            auto existing = canopy::http_utils::find_header(headers, "Cookie", header_name);
+            if (existing != headers.end())
             {
                 if (!existing->value.empty())
                     existing->value += "; ";
@@ -139,7 +116,7 @@ namespace canopy::rest
         {
             for (const auto& header : defaults)
             {
-                if (!find_header(headers, header.name))
+                if (!canopy::http_utils::has_header(headers, header.name, header_name))
                     headers.push_back(header);
             }
         }
@@ -231,7 +208,7 @@ namespace canopy::rest
 
     bool uses_tls(const authority& endpoint) noexcept
     {
-        return ascii_equals_ignore_case(endpoint.scheme, "https");
+        return canopy::http_utils::ascii_iequals(endpoint.scheme, "https");
     }
 
     uint16_t effective_port(const authority& endpoint) noexcept
@@ -243,10 +220,16 @@ namespace canopy::rest
 
     std::string http_host(const authority& endpoint)
     {
-        std::string host = endpoint.host;
         const auto port = effective_port(endpoint);
-        const bool default_port
-            = (uses_tls(endpoint) && port == 443) || (ascii_equals_ignore_case(endpoint.scheme, "http") && port == 80);
+        const bool default_port = (uses_tls(endpoint) && port == 443)
+                                  || (canopy::http_utils::ascii_iequals(endpoint.scheme, "http") && port == 80);
+
+        std::string host;
+        if (endpoint.ipv6)
+            host = '[' + endpoint.host + ']';
+        else
+            host = endpoint.host;
+
         if (!default_port)
         {
             host.push_back(':');

@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 
 set(transport_js "${CANOPY_CPP_SOURCE_DIR}/transports/untrusted_web/js/untrusted_web_transport.js")
 set(demo_idl websocket_demo/websocket_demo.idl)
+set(rest_demo_idl websocket_rest/websocket_rest.idl)
 
 set(CANOPY_WEBSOCKET_DEMO_ENCODING
     "AUTO"
@@ -80,6 +81,32 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR}
   include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_INTERFACE_SOURCE_DIR}
                 ${CANOPY_CPP_SOURCE_DIR}/subcomponents/network_config/interfaces)
+
+CanopyGenerate(
+  websocket_rest
+  ${rest_demo_idl}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_BINARY_DIR}/generated
+  ""
+  yas_json
+  rest_client
+  ${CMAKE_CURRENT_SOURCE_DIR}/websocket_rest/websocket_rest.rest.json
+  dependencies rpc_types_idl
+  install_dir ${GENERATED_INSTALL_DIR}
+  include_paths ${CMAKE_CURRENT_SOURCE_DIR}/. ${CANOPY_INTERFACE_SOURCE_DIR})
+
+canopygeneraterestopenapi(
+  websocket_rest_openapi
+  ${rest_demo_idl}
+  ${CMAKE_CURRENT_SOURCE_DIR}/websocket_rest/websocket_rest.rest.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/websocket_rest/websocket_rest.openapi.json
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  title
+  websocket_rest
+  scheme
+  http)
+
+add_dependencies(websocket_rest_idl_generate websocket_rest_openapi)
 
 canopyjavascriptgenerate(
   websocket_demo_client
