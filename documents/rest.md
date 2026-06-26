@@ -14,6 +14,35 @@ Scope note:
 - generated REST handlers expose a local Canopy object through HTTP/JSON
   request cracking
 
+## Why REST Integration Matters
+
+REST integration is not just a convenience wrapper around HTTP. The generated
+REST caller and handler path gives Canopy a typed bridge between provider
+Swagger/OpenAPI contracts and normal C++ RPC interfaces.
+
+The practical benefits are:
+
+- Direct C++ bindings to REST services. Application code can call a generated
+  Canopy interface instead of hand-building URLs, headers, JSON bodies, and
+  response parsers.
+- Replication of remote services from Swagger/OpenAPI files. A provider
+  specification can generate both a REST-backed caller and a loopback/local
+  handler, which is useful for gateways, tests, local substitutes, and offline
+  development.
+- Network boundary control. A component without direct network access can call a
+  local Canopy interface while a gateway component owns the outbound REST stream,
+  credentials, policy, and lifecycle.
+- Deep packet inspection, routing, and request parsing. Generated REST handlers
+  crack HTTP method, path, query, header, cookie, and body data into a typed
+  Canopy call boundary, so policy or routing layers can inspect structured
+  operations instead of raw HTTP text.
+- Protocol upgrade paths. Once an external REST service is represented as a
+  Canopy interface, the same typed contract can be exported over other Canopy
+  transports and can later be mapped to protocols such as gRPC.
+- Serialization translation. REST JSON can be converted at the boundary into
+  Canopy's internal representations and then moved through YAS, Protocol
+  Buffers, nanopb, or other supported formats where those formats are enabled.
+
 ## REST JSON Wire Contract
 
 The HTTP/JSON wire shape is defined by the provider Swagger/OpenAPI
@@ -94,6 +123,23 @@ Missing, `null`, and default handling follows the provider schema:
   sending: if the provider schema permits omission, optional/defaulted values
   may be omitted on the HTTP wire even though generated deserialisation resolves
   missing defaulted values for local typed use
+
+The current IDL type mapping for JSON presence and nullability is:
+
+- `T`: required and not nullable
+- `rpc::optional<T>`: optional and not nullable; the member may be absent but
+  explicit JSON `null` is not a separate provider value
+- `rpc::nullable<T>`: present but nullable; the containing object or parameter
+  supplies presence, and the value itself is either JSON `null` or `T`
+- `rpc::nullable_optional<T>`: optional and nullable; the value can be absent,
+  present as JSON `null`, or present as `T`
+
+Do not model optional nullable REST fields as
+`rpc::optional<rpc::nullable<T>>`. That nested representation loses portability
+across generated serialisation formats such as Protocol Buffers and nanopb.
+Use the single tri-state `rpc::nullable_optional<T>` type instead.
+`rpc::nullable<T>` remains useful for required nullable fields and should not
+be removed.
 
 OpenAPI `style` and `explode` settings are part of the binding for path, query,
 header, and cookie parameters. Generated endpoint code should not hand-roll URL
@@ -215,8 +261,11 @@ struct i_service::rest_handler_info
 
 `CanopyGenerate(... rest_client <openapi.json> ...)` derives the IDL and
 `.rest.json` binding from an OpenAPI/Swagger JSON file before calling the same
-generator. For an IDL-led server surface, `CanopyGenerateRestOpenApi(...)`
-publishes an OpenAPI document from the IDL plus the REST binding.
+generator. The normal IDL path is still the second `CanopyGenerate` argument;
+`rest_client` is the OpenAPI input only when it points at a `.openapi.json` or
+`.swagger.json` file. For an IDL-led server surface,
+`CanopyGenerateRestOpenApi(...)` publishes an OpenAPI document from the IDL plus
+the REST binding.
 
 The generated methods:
 
@@ -398,8 +447,10 @@ Rules of thumb:
 - Use no out parameter for no-body responses.
 - Use `json::v1::object` only when the REST response is too loose to model
   safely yet.
-- Model optional REST inputs as optional IDL inputs only when the IDL supports
-  the optional shape you need; otherwise start with the required subset.
+- Model optional REST inputs as `rpc::optional<T>` when omission is the only
+  extra state, `rpc::nullable<T>` when a present value may be JSON `null`, and
+  `rpc::nullable_optional<T>` when the provider distinguishes absent, explicit
+  `null`, and concrete values.
 
 ### OpenAPI Composition Policy
 
@@ -584,6 +635,11 @@ already-generated binding and does not trigger OpenAPI conversion. The JSON spec
 and converter script are build dependencies, so changing either input
 regenerates the IDL and binding before the generated C++ is compiled.
 
+If the Swagger/OpenAPI document does not provide enough stable identity for a
+namespace, the converter falls back to the source directory name. This keeps
+generated third-party interfaces deterministic even when provider metadata is
+generic, missing, or reused across many operations.
+
 ### Provider Specs, Overlays, And Committed IDL
 
 The usual source inputs for an OpenAPI-backed endpoint are:
@@ -591,12 +647,13 @@ The usual source inputs for an OpenAPI-backed endpoint are:
 - the provider OpenAPI/Swagger JSON, kept unchanged where practical
 - an optional Canopy overlay JSON for Canopy-specific details such as namespace,
   interface name, endpoint correction, or generated-client schema hints
-- the generated `.idl` and `.rest.json` files
+- optional generated `.idl` and `.rest.json` snapshots
 
-For third-party interfaces it is reasonable to commit the generated `.idl` and
-`.rest.json` files. They are generated artifacts, but they are also the Canopy
-ABI that other zones or offline clients need in order to call the REST-backed
-object without direct internet access to the provider service.
+For third-party interfaces it is reasonable to commit generated `.idl` and
+`.rest.json` snapshots when they are useful for review, offline clients, or ABI
+inspection. They are not the primary source of truth. When the provider JSON and
+any Canopy overlays are available, the CMake path can regenerate the IDL and
+binding from scratch.
 
 The source-of-truth relationship is still the provider JSON plus any Canopy
 overlay. Regenerate the IDL and binding when either input changes. The
@@ -613,6 +670,11 @@ python3 tools/openapi_to_canopy_idl.py \
 If an endpoint needs an overlay, keep the overlay beside the OpenAPI file. The
 CMake path automatically applies a same-stem `.canopy.overlay.json` file when it
 exists.
+
+If the OpenAPI snapshot itself is not committed, the build needs some other
+local or network step to obtain the provider spec before `CanopyGenerate` runs.
+The `source.json` records in the third-party corpus are provenance metadata, not
+compiled REST bindings.
 
 ### Publishing OpenAPI From IDL
 
@@ -668,15 +730,7 @@ closed explicitly during shutdown.
 
 `.rest.json` is the supported REST binding format. The older tab-separated
 `.rest.meta` format is no longer generated or consumed by the current REST
-generation tools.
-
-Example from `third_party_interfaces/rest/airportsapi`:
-
-```text
-interface	third_party_interfaces::airportsapi::v1::i_airportsapi	airport-web.appspot.com	/_ah/api
-method	third_party_interfaces::airportsapi::v1::i_airportsapi	get_airport	GET	/airportsapi/v1/airports/{icao_code}		airport
-param	third_party_interfaces::airportsapi::v1::i_airportsapi	get_airport	icao_code	path	icao_code	true
-```
+generation tools. Do not add `.rest.meta` files to new REST targets.
 
 ## CMake
 
@@ -797,6 +851,39 @@ Important fields:
 
 `settings` is runtime connection configuration. It is not the same thing as
 `rpc::connection_factory::context`.
+
+## JSON Conversion And Schema Processing
+
+Generated REST code uses the normal YAS JSON path internally, but it must still
+preserve the provider HTTP/JSON shape at the REST boundary. The shared JSON
+conversion helpers support the IDL-facing REST types used by the generator:
+
+- scalar JSON values, `std::string`, integral and floating-point types
+- `std::vector`, `std::list`, `std::deque`, fixed-size `std::array`
+- `std::set` and `std::unordered_set`; duplicate JSON array items are rejected
+  on input rather than silently deduplicated
+- `std::map<std::string, T>` and `std::unordered_map<std::string, T>` for JSON
+  object maps; JSON object keys are strings, so other key types are not
+  generated for JSON map bindings
+- `rpc::optional<T>`, `rpc::nullable<T>`, and
+  `rpc::nullable_optional<T>` for absence/null/value modelling
+- `rpc::variant<Ts...>` for Canopy tagged unions
+- `json::v1::object` as the escape hatch for schemas that are intentionally
+  loose, ambiguous, or deferred to runtime
+
+`rpc::variant` has a Canopy tagged-object JSON representation. That is correct
+for internal YAS JSON, but a REST `oneOf` body may have a different provider
+wire shape. When the REST binding represents a provider `oneOf` as a variant,
+the generated REST caller/handler must still emit and accept the provider shape
+rather than leaking the internal tagged wrapper onto the HTTP wire.
+
+Schema defaults are materialised by the JSON overlay helpers, not by the
+validator itself. JSON Schema `default` is an annotation; Canopy applies defaults
+at the configuration or REST conversion boundary when that is the selected
+policy, then validates the effective object. Schema-aware overlays only seed
+defaults into child objects that are actually present or required by the
+effective schema, so optional nested objects are not accidentally created just
+because their children have defaults.
 
 ## Connection Factory Context
 
@@ -979,14 +1066,48 @@ local Canopy object exported across a transport.
 - Authentication is configured through `default_headers`,
   `default_query_parameters`, `default_cookies`, or `before_send`; there is not
   yet a first-class auth-schema generator.
+- Generated REST and Schemathesis loopback tests deliberately strip or bypass
+  authentication by default. Real provider authentication, licensing, quota, and
+  side-effect control remain application responsibilities.
+
+## Schema Validation And Loopback Tests
+
+The third-party REST tests use local loopback services rather than commercial
+provider endpoints. The normal generated test shape is:
+
+```text
+generated rest_caller
+  -> loopback HTTP request
+  -> generated rest_handler
+  -> local rpc::base implementation
+```
+
+The generated roundtrip tests exercise Canopy's own caller, HTTP request
+construction, handler route matching, path/query/header/body cracking, YAS JSON
+conversion, RPC dispatch, output marshalling, and no-body handling. They also
+validate generated JSON request and response bodies against the schema metadata
+embedded in the generated test where that schema is available.
+
+`tools/run_rest_schemathesis.py` provides a black-box OpenAPI validation layer
+for the same loopback executables. It builds an effective OpenAPI document from
+the provider spec plus any Canopy overlays, strips security requirements by
+default, filters unsupported request media unless requested otherwise, launches
+the generated loopback server, and runs Schemathesis against it. The default
+mode is intentionally light: positive examples/fuzzing, one example per
+operation, no coverage phase, and authentication out of scope.
+
+Use Schemathesis failures as evidence that the generated loopback HTTP contract
+does not satisfy the effective OpenAPI document. They do not prove that live
+commercial endpoints work, because those endpoints usually require credentials,
+licenses, quota, provider-specific test data, and side-effect controls.
 
 ## REST Plan And To-Do
 
 - Keep the provider OpenAPI/Swagger JSON unchanged where practical. Use Canopy
   overlay JSON only for Canopy-specific namespace, interface, endpoint, or
   schema-hint decisions. The generated `.idl` and `.rest.json` may still be
-  committed because they are the shareable Canopy ABI for zones that cannot
-  reach the provider documentation or the internet.
+  committed as review/ABI snapshots, but provider JSON plus overlays are the
+  reproducible source of truth.
 - Continue expanding generated caller and generated handler roundtrip coverage.
   The primary test shape is:
   generated `rest_caller` -> loopback HTTP request -> generated
@@ -1005,12 +1126,11 @@ local Canopy object exported across a transport.
 - Treat fixed operation selectors as REST binding constants, not IDL
   parameters. The caller should emit them, and the inbound handler should use
   them for dispatch before deserialising a body.
-- Add an optional black-box OpenAPI validation layer later. A
-  `swagger-tester`-style tool or modern equivalent can send generated example
-  requests to a local generated REST handler and check request/response shapes
-  against the provider schema. This should supplement, not replace, the C++
-  caller-handler roundtrip tests because external validators bypass Canopy's
-  generated caller, YAS serialisation, and RPC dispatch.
+- Continue using Schemathesis as the optional black-box OpenAPI validation
+  layer. It should supplement, not replace, the C++ caller-handler roundtrip
+  tests because external validators bypass Canopy's generated caller, YAS
+  serialisation, and RPC dispatch when they drive the loopback HTTP server
+  directly.
 - Add runtime validation against the provider OpenAPI schema later where it is
   useful for layer-7 inspection or firewall proof-of-concept work. The first
   target should be local handler validation with deterministic examples; live

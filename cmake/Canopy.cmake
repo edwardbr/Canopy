@@ -362,10 +362,11 @@ if(NOT DEPENDENCIES_LOADED)
           c++/submodules/fmt
           submodules/idlparser
           c++/submodules/spdlog
-          c++/submodules/args)
+          c++/submodules/args
+          c++/submodules/c-ares)
 
       if(CANOPY_BUILD_COROUTINE)
-        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro c++/submodules/c-ares)
+        list(APPEND CANOPY_REQUIRED_SUBMODULES c++/submodules/libcoro)
       endif()
       if(CANOPY_BUILD_PROTOCOL_BUFFERS OR CANOPY_BUILD_NANOPB)
         list(APPEND CANOPY_REQUIRED_SUBMODULES submodules/protobuf c++/submodules/nanopb)

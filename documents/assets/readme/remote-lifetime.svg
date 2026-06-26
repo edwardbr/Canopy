@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="440" viewBox="0 0 760 440" role="img" aria-labelledby="title">
+<title id="title">Remote shared pointer lifetime sequence</title>
+<defs>
+  <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+    <path class="arrow-head" d="M 0 0 L 10 4 L 0 8 z" />
+  </marker>
+  <style>
+    .bg { fill: #ffffff; }
+    .participant { fill: #f6f8fa; stroke: #57606a; stroke-width: 1.6; rx: 8; }
+    .event { fill: #f6f8fa; stroke: #8c959f; stroke-width: 1.3; rx: 7; }
+    .label { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; text-anchor: middle; dominant-baseline: middle; }
+    .small { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; text-anchor: middle; dominant-baseline: middle; }
+    .title { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+    .arrow { stroke: #0969da; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    .arrow-head { fill: #0969da; }
+    .event-arrow { stroke: #57606a; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    .dashed { stroke-dasharray: 6 5; }
+    .lifeline { stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 5 5; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .participant, .event { fill: #161b22; stroke: #8b949e; }
+      .label, .small, .title { fill: #f0f6fc; }
+      .arrow { stroke: #58a6ff; }
+      .event-arrow, .lifeline { stroke: #8b949e; }
+      .arrow-head { fill: #58a6ff; }
+    }
+  </style>
+</defs>
+<rect class="bg" x="0" y="0" width="760" height="440" />
+
+<rect class="participant" x="60" y="22" width="140" height="44" />
+<text class="title" x="130" y="44">Machine A</text>
+<rect class="participant" x="310" y="22" width="140" height="44" />
+<text class="title" x="380" y="44">Machine B</text>
+<rect class="participant" x="560" y="22" width="140" height="44" />
+<text class="title" x="630" y="44">Machine C</text>
+
+<line class="lifeline" x1="130" y1="66" x2="130" y2="410" />
+<line class="lifeline" x1="380" y1="66" x2="380" y2="410" />
+<line class="lifeline" x1="630" y1="66" x2="630" y2="410" />
+
+<rect class="event" x="158" y="86" width="130" height="34" />
+<path class="event-arrow" d="M 130 103 L 158 103" />
+<text class="small" x="223" y="103">Owns Object</text>
+
+<path class="arrow" d="M 130 145 L 380 145" />
+<text class="small" x="255" y="128">shared_ptr</text>
+
+<rect class="event" x="408" y="164" width="130" height="34" />
+<path class="event-arrow" d="M 380 181 L 408 181" />
+<text class="small" x="473" y="181">Receives Ref</text>
+
+<path class="arrow" d="M 380 223 L 630 223" />
+<text class="small" x="505" y="206">shared_ptr</text>
+
+<rect class="event" x="492" y="242" width="130" height="34" />
+<path class="event-arrow" d="M 630 259 L 622 259" />
+<text class="small" x="557" y="259">Receives Ref</text>
+
+<rect class="event" x="408" y="298" width="130" height="34" />
+<path class="event-arrow" d="M 380 315 L 408 315" />
+<text class="small" x="473" y="315">B can drop Ref</text>
+
+<path class="arrow dashed" d="M 630 360 L 130 360" />
+<text class="small" x="380" y="342">active ref keeps object alive</text>
+
+<rect class="event" x="158" y="386" width="150" height="34" />
+<path class="event-arrow" d="M 130 403 L 158 403" />
+<text class="small" x="233" y="403">Object Kept Alive</text>
+</svg>

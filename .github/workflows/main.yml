@@ -90,7 +90,7 @@ jobs:
     steps:
       - name: Install system and C++ dependencies
         run: |
-          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl cmake nasm
+          dnf install -y gcc gcc-c++ clang openssl-devel wget make zlib-devel ninja-build nodejs gdb liburing-devel git xz curl cmake nasm diffutils
       - name: Install Rust toolchain
         run: |
           curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain none

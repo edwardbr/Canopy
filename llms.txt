@@ -2,7 +2,8 @@
 
 > Canopy is a C++ RPC system with IDL-generated proxies and stubs, multiple
 > transport layers, distributed lifetime management, optional coroutine builds,
-> and experimental interoperable Rust support.
+> generated REST/OpenAPI integration, and experimental interoperable Rust
+> support.
 
 ## What Canopy is
 
@@ -14,6 +15,8 @@ bindings. The primary implementation is C++. It supports:
 - distributed object references via `rpc::shared_ptr` and `rpc::optimistic_ptr`
 - blocking and coroutine builds from the same C++ codebase
 - telemetry-enabled builds
+- generated REST callers and handlers from IDL plus `.rest.json` bindings, or
+  from Swagger/OpenAPI JSON passed through the normal CMake generation path
 
 Current implementation status:
 
@@ -29,9 +32,10 @@ C++, RPC, IDL, code generation, proxy, stub, distributed objects, remote
 references, `rpc::shared_ptr`, `rpc::optimistic_ptr`, blocking I/O, coroutines,
 `co_await`, TCP, TLS, WebSocket, local transport, dynamic-library transport,
 hierarchical transport, streaming, io_uring, Protocol Buffers,
-YAS, JSON, telemetry, sequence diagrams, Rust, JavaScript, MCP, reflection,
-cross-process communication, one-way RPC, fire-and-forget, realtime feeds,
-video streaming, audio streaming, token streaming
+YAS, JSON, JSON Schema, REST, HTTP, OpenAPI, Swagger, Schemathesis, gRPC,
+telemetry, sequence diagrams, Rust, JavaScript, MCP, reflection, cross-process
+communication, one-way RPC, fire-and-forget, realtime feeds, video streaming,
+audio streaming, token streaming
 
 ## Good fit / use cases
 
@@ -47,6 +51,11 @@ video streaming, audio streaming, token streaming
 - telemetry-heavy debugging of distributed call flows
 - experimental mixed-language setups where C++ remains the reference runtime and
   Rust or JavaScript are interoperability layers
+- C++ bindings to REST/HTTP JSON services generated from Swagger/OpenAPI
+- gateway components that expose a REST-backed object to zones that do not have
+  direct network access
+- loopback or replicated REST services for tests, local substitutes, routing,
+  parsing, and deep packet inspection experiments
 
 ## Benefits
 
@@ -68,6 +77,13 @@ video streaming, audio streaming, token streaming
 - is transport-agnostic and serializer-agnostic at the architecture level,
   allowing the same interface model to be used over different boundaries and
   wire formats
+- turns REST services into typed Canopy interfaces, reducing handwritten URL,
+  header, JSON, and response parsing code
+- can replicate REST service surfaces from Swagger/OpenAPI files for local
+  loopback tests, gateways, and offline development
+- creates a route from REST JSON to other Canopy transports, protocols, and
+  serialization formats such as YAS, Protocol Buffers, nanopb, and potential
+  gRPC mappings
 - is designed for cross-language interoperability, although current runtime
   parity is not the same across C++, Rust, and JavaScript
 - improves debuggability of distributed systems through telemetry and generated,
@@ -82,6 +98,11 @@ video streaming, audio streaming, token streaming
   steps for new users
 - [`documents/external-project-guide.md`](documents/external-project-guide.md) —
   authoritative `add_subdirectory` integration guide
+- [`documents/rest.md`](documents/rest.md) — REST caller/handler and
+  Swagger/OpenAPI integration guide
+- [`third_party_interfaces/README.md`](third_party_interfaces/README.md) —
+  third-party interface corpus, generated REST snapshots, and loopback test
+  scope
 
 ## Best documents for coding agents
 
@@ -98,6 +119,9 @@ video streaming, audio streaming, token streaming
   patterns
 - [`documents/11-best-practices.md`](documents/11-best-practices.md) — guidance
   on ownership, transport, and execution-mode pitfalls
+- [`documents/rest.md`](documents/rest.md) — generated REST callers/handlers,
+  `.rest.json`, OpenAPI conversion, JSON schema/default handling, and loopback
+  validation
 
 ## Source of truth
 

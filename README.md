@@ -112,19 +112,7 @@ Current caveat:
 
 <div align="center">
 
-```mermaid
-flowchart TD
-    IDL[".idl"]
-    Proxy["proxy"]
-    Stub["stub"]
-    Caller["caller"]
-    Callee["callee"]
-
-    IDL --> Proxy
-    IDL --> Stub
-    Proxy --> Caller
-    Stub --> Callee
-```
+<img src="documents/assets/readme/idl-proxy-stub.svg" alt="IDL generates proxy and stub code" width="640">
 
 </div>
 
@@ -134,11 +122,7 @@ flowchart TD
 
 <div align="center">
 
-```mermaid
-flowchart TB
-    Interface["same generated interface"]
-    Interface --> Boundaries["direct | DLL | SPSC | TCP | TLS | IPC"]
-```
+<img src="documents/assets/readme/generated-interface-boundaries.svg" alt="Same generated interface across boundaries" width="640">
 
 </div>
 
@@ -148,16 +132,7 @@ flowchart TB
 
 <div align="center">
 
-```mermaid
-flowchart TB
-    subgraph TLS["TLS"]
-        subgraph TCP["TCP"]
-            subgraph SPSC["SPSC"]
-                Stream["streaming::stream"]
-            end
-        end
-    end
-```
+<img src="documents/assets/readme/stream-composition.svg" alt="Composable stream layers" width="640">
 
 </div>
 
@@ -167,12 +142,7 @@ flowchart TB
 
 <div align="center">
 
-```mermaid
-flowchart TD
-    Source["same source code"] --> Flag["build flag"]
-    Flag --> Blocking["blocking<br/>A -> B -> C -> D"]
-    Flag --> Coroutine["co_await<br/>A -> B -> C -> D"]
-```
+<img src="documents/assets/readme/blocking-coroutine-modes.svg" alt="Blocking and coroutine modes from the same source" width="640">
 
 </div>
 
@@ -182,15 +152,7 @@ flowchart TD
 
 <div align="center">
 
-```mermaid
-flowchart TD
-    Root["root zone"] --> ZoneA["zone A"]
-    Root --> ZoneB["zone B"]
-    Root --> ZoneC["zone C"]
-    ZoneA --> ZoneDFromA["zone D"]
-    ZoneC --> ZoneDFromC["zone D"]
-    ZoneC --> ZoneEFromC["zone E"]
-```
+<img src="documents/assets/readme/zone-routing.svg" alt="Zone routing tree" width="680">
 
 </div>
 
@@ -200,11 +162,7 @@ flowchart TD
 
 <div align="center">
 
-```mermaid
-flowchart TB
-    Dial["per-connection dial"]
-    Dial --> Formats["BINARY | PROTO | YAS | JSON"]
-```
+<img src="documents/assets/readme/serialization-formats.svg" alt="Per-connection serialization format choice" width="640">
 
 </div>
 
@@ -214,21 +172,7 @@ flowchart TB
 
 <div align="center">
 
-```mermaid
-sequenceDiagram
-    participant A as Machine A
-    participant B as Machine B
-    participant C as Machine C
-
-    A->>A: Owns Object
-    A->>B: shared_ptr
-    B->>B: Receives Ref
-    B->>C: shared_ptr
-    C->>C: Receives Ref
-    B-->>B: B can drop Ref
-    C-->>A: Active Ref keeps object alive
-    A->>A: Object Kept Alive
-```
+<img src="documents/assets/readme/remote-lifetime.svg" alt="Remote shared pointer lifetime sequence" width="680">
 
 </div>
   
@@ -241,15 +185,7 @@ sequenceDiagram
 
 <div align="center">
 
-```mermaid
-sequenceDiagram
-    participant Caller as caller
-    participant Callee as callee
-
-    Caller->>Callee: [post]
-    Caller->>Caller: continues immediately
-    Note over Caller,Callee: no reply needed
-```
+<img src="documents/assets/readme/post-call.svg" alt="One-way post call sequence" width="640">
 
 </div>
 
@@ -259,13 +195,7 @@ sequenceDiagram
 
 <div align="center">
 
-```mermaid
-flowchart TB
-    Remote["remote object"]
-    Remote --> Interfaces["i_foo<br/>i_bar<br/>i_baz"]
-    Interfaces --> ClassX["class X&lt;i_foo, i_bar, i_baz&gt;"]
-    Cast["cast performed against live object"] -.-> Remote
-```
+<img src="documents/assets/readme/polymorphism.svg" alt="Polymorphism and multiple interfaces" width="640">
 
 </div>
 
@@ -275,12 +205,7 @@ flowchart TB
 
 <div align="center">
 
-```mermaid
-flowchart TB
-    Zone["zone"] -->|"discover"| Interfaces["i_calculator<br/>i_logger<br/>i_storage"]
-    Unknown["?"] -.-> Zone
-    Interfaces --> MCP["MCP"]
-```
+<img src="documents/assets/readme/remote-reflection.svg" alt="Remote reflection exposes interfaces to MCP" width="640">
 
 </div>
 

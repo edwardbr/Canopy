@@ -23,6 +23,8 @@ The primary implementation is C++. It supports:
   streamed, and networked transports
 - distributed strong and weak remote object references
 - telemetry and debugging support for distributed call flows
+- generated REST/OpenAPI caller and handler support that maps HTTP/JSON service
+  contracts onto normal Canopy interfaces
 
 Other implementations:
 
@@ -111,6 +113,11 @@ The main advantages are:
 - transport and serializer flexibility:
   Canopy is architected to avoid locking the developer into one transport or one
   wire format.
+
+- REST service integration:
+  generated REST callers and handlers can turn Swagger/OpenAPI HTTP services
+  into typed C++ interfaces, local loopback services, and gateways to other
+  Canopy transports.
 
 - better support for AI-assisted development:
   because interface definitions, generation rules, and transport boundaries are
@@ -279,6 +286,9 @@ Important terms:
 - Protocol Buffers
 - YAS
 - JSON metadata / schema support
+- REST / HTTP JSON
+- OpenAPI / Swagger
+- Schemathesis loopback validation
 
 Plain-language meaning:
 
@@ -294,6 +304,79 @@ Current reality:
 - the current Rust implementation is Protocol Buffers only
 - the overall project is designed for cross-language interoperability, but
   full runtime parity does not currently exist across C++, Rust, and JavaScript
+
+## REST, OpenAPI, and schema integration
+
+Canopy can generate REST callers and handlers so external HTTP/JSON services
+can be represented as normal typed Canopy interfaces.
+
+The current REST path supports:
+
+- direct C++ bindings to REST services, avoiding handwritten URL, header, JSON
+  body, and response parsing code
+- generated REST callers that are also `rpc::base` objects and can therefore be
+  exported through ordinary Canopy transports
+- generated REST handlers that crack HTTP method, path, query, header, cookie,
+  and body data before dispatching to a local `rpc::base` implementation
+- replication of remote service surfaces from Swagger/OpenAPI files for
+  gateways, local substitutes, offline development, and tests
+- gatewaying for components that should call a typed interface but should not
+  have direct network access
+- structured parsing, routing, and deep packet inspection experiments over REST
+  traffic
+- a path to translate REST JSON service contracts onto other Canopy transports,
+  protocols, or serialization formats such as YAS, Protocol Buffers, nanopb, and
+  potential gRPC mappings
+
+The supported binding format is `.rest.json`. The old `.rest.meta` format is no
+longer generated or consumed.
+
+There are two generation shapes:
+
+- IDL-led generation:
+  `CanopyGenerate(... <idl> ... yas_json rest_client <binding.rest.json> ...)`
+  consumes an IDL file and a `.rest.json` binding.
+
+- OpenAPI-led generation:
+  `CanopyGenerate(... <idl> ... yas_json rest_client <spec.openapi.json> ...)`
+  keeps the IDL path as the second `CanopyGenerate` argument, but uses the
+  OpenAPI/Swagger JSON passed to `rest_client` to regenerate the derived `.idl`
+  and `.rest.json` before the normal generator runs.
+
+For OpenAPI-backed third-party interfaces, the reproducible source is the
+provider OpenAPI/Swagger JSON plus any same-stem `.canopy.overlay.json` file.
+Checked-in `.openapi.json`, generated `.idl`, and generated `.rest.json` files
+are useful review and ABI snapshots, but the build can regenerate the IDL and
+REST binding when the source OpenAPI inputs are present. If provider metadata is
+too generic for a stable namespace, the converter falls back to the source
+directory name.
+
+JSON presence and nullability are modelled explicitly:
+
+- `T`: required and not nullable
+- `rpc::optional<T>`: optional and not nullable
+- `rpc::nullable<T>`: present but may be JSON `null`
+- `rpc::nullable_optional<T>`: absent, explicit JSON `null`, or concrete value
+
+Do not generate `rpc::optional<rpc::nullable<T>>` for optional nullable REST
+fields; use `rpc::nullable_optional<T>` so the type remains portable across
+Protocol Buffers and nanopb.
+
+The third-party REST tests are loopback tests, not proof that commercial
+upstream endpoints were called. Generated roundtrip tests exercise Canopy's
+caller, HTTP request construction, handler dispatch, JSON conversion, and
+selected request/response schema validation against local loopback services.
+`tools/run_rest_schemathesis.py` can also run Schemathesis against those
+loopback HTTP servers using the effective OpenAPI document. By default,
+authentication and security requirements are stripped because credentials,
+licenses, quota, provider accounts, and live side effects are outside the
+corpus test scope.
+
+Relevant documents:
+
+- [`documents/rest.md`](documents/rest.md)
+- `documents/proposals/openapi-swagger-rest-caller-generation.md`
+- [`third_party_interfaces/README.md`](third_party_interfaces/README.md)
 
 ## Good fit / use cases
 
@@ -461,6 +544,30 @@ Retrieval keywords:
 - console telemetry
 - animation telemetry
 
+### 10. REST/OpenAPI gatewaying and service replication
+
+Examples:
+
+- direct C++ clients for provider REST APIs generated from Swagger/OpenAPI
+- local loopback implementations of remote HTTP/JSON services
+- a networked gateway that owns REST credentials and exposes a typed Canopy
+  interface to components without network access
+- routing or deep packet inspection components that need parsed HTTP operation
+  data rather than raw request text
+- migration or translation paths from REST JSON to other protocols or
+  serialization formats
+
+Retrieval keywords:
+
+- REST client generation
+- OpenAPI to IDL
+- Swagger conversion
+- REST gateway
+- `.rest.json`
+- `rpc::nullable_optional`
+- Schemathesis
+- gRPC migration
+
 ## Notable limits and scope notes
 
 - When documentation states Canopy behavior without qualification, read it as
@@ -501,6 +608,12 @@ Retrieval keywords:
 - [`documents/transports/dynamic_library.md`](documents/transports/dynamic_library.md)
 - [`documents/transports/hierarchical.md`](documents/transports/hierarchical.md)
 - [`documents/transports/custom.md`](documents/transports/custom.md)
+
+### For REST, OpenAPI, Swagger, and JSON schema work
+
+- [`documents/rest.md`](documents/rest.md)
+- `documents/proposals/openapi-swagger-rest-caller-generation.md`
+- [`third_party_interfaces/README.md`](third_party_interfaces/README.md)
 
 ### For API and usage patterns
 

@@ -8,8 +8,12 @@ documentation is now:
 The implemented path is:
 
 - structured `.rest.json` REST binding files as the canonical binding IR
-- `CanopyGenerate(... yas_json rest_client <binding-file> ...)`; `rest_client`
-  is the single current CMake keyword for REST caller/handler binding data
+- `CanopyGenerate(... <idl> ... yas_json rest_client <file> ...)`;
+  `rest_client` is the single current CMake keyword for REST caller/handler
+  binding data
+- OpenAPI/Swagger JSON inputs passed to `rest_client` regenerate the derived
+  `.idl` and `.rest.json` before the normal generator runs; the IDL path remains
+  the second `CanopyGenerate` argument
 - generated `Interface::rest_caller`
 - common `canopy::rest::connection_settings`
 - common REST connection factory support for TCP/TLS stream construction
@@ -23,8 +27,20 @@ The implemented path is:
   out of the IDL method signature
 - TLS peer verification defaults to enabled for REST connection settings
 - provider OpenAPI/Swagger JSON can be combined with Canopy overlay JSON during
-  conversion, while generated `.idl` and `.rest.json` files may be committed as
-  the shareable Canopy ABI for offline clients
+  conversion, while generated `.idl` and `.rest.json` files may be kept as
+  optional review/ABI snapshots for offline clients
+- deterministic namespace generation from provider identity, OpenAPI paths, or
+  the source directory name when provider metadata is too generic
+- `rpc::nullable_optional<T>` for optional nullable JSON fields that need to
+  preserve absent versus explicit `null` versus concrete value
+- generated caller-handler roundtrip tests and a Schemathesis loopback runner
+  for black-box OpenAPI validation without live provider credentials
+
+The motivation is to make REST services first-class typed Canopy interfaces:
+direct C++ bindings for HTTP/JSON APIs, local replication of Swagger/OpenAPI
+services, gatewaying for components without direct network access, structured
+inspection/routing of REST calls, and future translation to other protocols or
+serialisation formats such as gRPC, YAS, Protocol Buffers, and nanopb.
 
 Hard requirement: the HTTP/JSON wire shape must match the provider
 Swagger/OpenAPI specification. Generated REST code must not add Canopy RPC
@@ -53,6 +69,12 @@ REST boundary before entering or leaving the canonical IDL/YAS JSON form.
 Missing required values without defaults are errors, optional missing values
 without defaults remain unset/omitted, and explicit JSON `null` is accepted
 only when the schema or IDL type is nullable/optional.
+
+The generated IDL mapping distinguishes the common JSON presence cases:
+`rpc::optional<T>` for optional non-nullable values, `rpc::nullable<T>` for
+present nullable values, and `rpc::nullable_optional<T>` for optional nullable
+values. The nested spelling `rpc::optional<rpc::nullable<T>>` should not be
+generated because it is not portable across all Canopy serialisation formats.
 
 Path, query, header, and cookie values should be decoded by common REST runtime
 logic using binding-provided OpenAPI `style`, `explode`, and schema metadata.
@@ -93,15 +115,17 @@ not be required for normal production use.
 Remaining proposal items include fuller OpenAPI/Swagger conversion coverage,
 YAML/external `$ref` handling, auth-schema generation, multipart upload,
 runtime OpenAPI validation for layer-7 inspection experiments, broader
-caller-handler roundtrip coverage across the third-party corpus, generated-name
-rationalisation for operation-selector-heavy specs, and more complete
-polymorphic schema support.
+Schemathesis and caller-handler roundtrip coverage across the third-party
+corpus, generated-name rationalisation for operation-selector-heavy specs, and
+more complete polymorphic schema support.
 
 The current test direction is generated caller to loopback HTTP request to
 generated handler to local `rpc::base` implementation. That tests outgoing and
 incoming bindings together without depending on live third-party credentials or
-side effects. Optional black-box OpenAPI validators can be added later, but
-they should supplement the C++ roundtrip tests rather than replace them.
+side effects. Schemathesis can also drive the loopback HTTP server from the
+effective OpenAPI document. That black-box validation supplements the C++
+roundtrip tests rather than replacing them, because it bypasses Canopy's
+generated caller and RPC dispatch.
 
 The current composition decision is documented in `documents/rest.md`:
 multi-interface REST callers should use `rpc::base` and normal Canopy interface

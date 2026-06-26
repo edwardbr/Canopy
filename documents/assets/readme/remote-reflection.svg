@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="390" viewBox="0 0 640 390" role="img" aria-labelledby="title">
+<title id="title">Remote reflection exposes interfaces to MCP</title>
+<defs>
+  <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+    <path class="arrow-head" d="M 0 0 L 10 4 L 0 8 z" />
+  </marker>
+  <style>
+  .bg { fill: #ffffff; }
+  .box { fill: #f6f8fa; stroke: #57606a; stroke-width: 1.6; rx: 8; }
+  .group { fill: none; stroke: #57606a; stroke-width: 1.8; rx: 10; }
+  .label { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; text-anchor: middle; dominant-baseline: middle; }
+  .small { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; text-anchor: middle; dominant-baseline: middle; }
+  .title { fill: #24292f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; font-weight: 600; text-anchor: middle; dominant-baseline: middle; }
+  .arrow { stroke: #0969da; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+  .arrow-head { fill: #0969da; }
+  .dashed { stroke-dasharray: 6 5; }
+  .lifeline { stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .note { fill: #fff8c5; stroke: #9a6700; stroke-width: 1.3; rx: 6; }
+  @media (prefers-color-scheme: dark) {
+    .bg { fill: #0d1117; }
+    .box, .participant, .event { fill: #161b22; stroke: #8b949e; }
+    .group { stroke: #8b949e; }
+    .label, .small, .title { fill: #f0f6fc; }
+    .arrow { stroke: #58a6ff; }
+    .event-arrow, .lifeline { stroke: #8b949e; }
+    .note { fill: #2d2a13; stroke: #d29922; }
+    .arrow-head { fill: #58a6ff; }
+  }
+</style>
+</defs>
+<rect class="bg" x="0" y="0" width="640" height="390" />
+<rect class="box" x="250" y="34" width="140" height="48" />
+<text class="label" x="320.0" y="58.0">zone</text>
+<rect class="box" x="220" y="150" width="200" height="86" />
+<text class="label"><tspan x="320.0" y="173.0">i_calculator</tspan><tspan x="320.0" y="193.0">i_logger</tspan><tspan x="320.0" y="213.0">i_storage</tspan></text>
+<rect class="box" x="260" y="300" width="120" height="48" />
+<text class="label" x="320.0" y="324.0">MCP</text>
+<rect class="box" x="70" y="42" width="70" height="44" />
+<text class="label" x="105.0" y="64.0">?</text>
+<path class="arrow" d="M 320 82 L 320 150" />
+<text class="small" x="355" y="118">discover</text>
+<path class="arrow" d="M 320 236 L 320 300" />
+<path class="arrow dashed" d="M 140 64 L 250 58" />
+</svg>
