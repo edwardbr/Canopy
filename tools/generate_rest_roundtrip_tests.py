@@ -15,6 +15,7 @@ incoming URL cracking, body marshalling, and RPC dispatch.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 from collections import Counter
@@ -31,12 +32,26 @@ ROUNDTRIP_NS = "canopy::third_party_rest::roundtrip"
 
 
 @dataclass
+class RestField:
+    name: str
+    wire_name: str
+    required: bool
+
+
+@dataclass
 class RestMethod:
     name: str
     http_method: str
     path: str
     body_param: str
     out_param: str
+    request_schema_json: str = ""
+    request_value_schema_json: str = ""
+    response_schema_json: str = ""
+    response_value_schema_json: str = ""
+    source_response_schema_json: str = ""
+    response_content_type: str = ""
+    response_fields: list[RestField] = field(default_factory=list)
 
 
 @dataclass
@@ -187,8 +202,100 @@ def collect_idl_type_names(idl_path: Path) -> tuple[set[str], set[str]]:
     return defined_types, global_types
 
 
+def resolve_local_ref(document: dict, ref: str) -> object:
+    if not ref.startswith("#/"):
+        raise KeyError(ref)
+    value: object = document
+    for part in ref[2:].split("/"):
+        part = part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(value, dict):
+            raise KeyError(ref)
+        value = value[part]
+    return value
+
+
+def source_openapi_path(binding_path: Path, binding: dict) -> Path | None:
+    source = binding.get("source")
+    if not isinstance(source, dict):
+        return None
+    openapi = source.get("openapi")
+    if not isinstance(openapi, str) or not openapi:
+        return None
+    path = Path(openapi)
+    if not path.is_absolute():
+        path = binding_path.parent / path
+    return path if path.exists() else None
+
+
+def load_source_spec(binding_path: Path, binding: dict) -> dict:
+    path = source_openapi_path(binding_path, binding)
+    if path is None:
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def response_schema_from_content(content: object) -> dict | None:
+    if not isinstance(content, dict):
+        return None
+    for media_type in ("application/json", "application/*+json", "*/*"):
+        media = content.get(media_type)
+        if isinstance(media, dict) and isinstance(media.get("schema"), dict):
+            return media["schema"]
+    for media in content.values():
+        if isinstance(media, dict) and isinstance(media.get("schema"), dict):
+            return media["schema"]
+    return None
+
+
+def source_response_schema(source_spec: dict, http_method: str, path: str) -> dict | None:
+    paths = source_spec.get("paths")
+    if not isinstance(paths, dict):
+        return None
+    path_item = paths.get(path)
+    if not isinstance(path_item, dict):
+        return None
+    operation = path_item.get(http_method.lower())
+    if not isinstance(operation, dict):
+        return None
+    responses = operation.get("responses")
+    if not isinstance(responses, dict):
+        return None
+
+    for status, response in sorted(responses.items(), key=lambda item: (0 if str(item[0]).startswith("2") else 1, str(item[0]))):
+        status_text = str(status)
+        if not status_text.startswith("2") or status_text in {"204", "205"}:
+            continue
+        if isinstance(response, dict) and isinstance(response.get("$ref"), str):
+            try:
+                response = resolve_local_ref(source_spec, response["$ref"])
+            except (KeyError, TypeError):
+                return None
+        if not isinstance(response, dict):
+            return None
+        if isinstance(response.get("schema"), dict):
+            return response["schema"]
+        schema = response_schema_from_content(response.get("content"))
+        if schema is not None:
+            return schema
+    return None
+
+
+def schema_document_with_refs(source_spec: dict, schema: dict) -> dict:
+    document = copy.deepcopy(schema)
+    for key in ("components", "definitions"):
+        value = source_spec.get(key)
+        if isinstance(value, dict) and key not in document:
+            document[key] = copy.deepcopy(value)
+    return document
+
+
 def parse_json_binding(path: Path) -> RestMetadata:
     value = json.loads(path.read_text(encoding="utf-8"))
+    source_spec = load_source_spec(path, value)
     interfaces = value.get("interfaces")
     if not isinstance(interfaces, list) or not interfaces:
         raise ValueError(f"REST binding has no interfaces: {path}")
@@ -204,12 +311,45 @@ def parse_json_binding(path: Path) -> RestMetadata:
         name = method.get("name", "")
         if not name:
             continue
+        request_schema = request.get("body_schema")
+        response_schema = response.get("body_schema")
+        original_response_schema = source_response_schema(source_spec, method.get("http_method", ""), method.get("path", ""))
+        request_field_map = parse_body_field_map(request.get("body_field_map"))
+        response_field_map = parse_body_field_map(response.get("body_field_map"))
+        response_fields = [
+            RestField(
+                name=field.get("name", ""),
+                wire_name=field.get("wire_name", field.get("name", "")),
+                required=bool(field.get("required", True)),
+            )
+            for field in response.get("fields", [])
+            if isinstance(field, dict) and field.get("name")
+        ]
         result.methods[name] = RestMethod(
             name=name,
             http_method=method.get("http_method", ""),
             path=method.get("path", ""),
             body_param=request.get("body_param", ""),
             out_param=response.get("out_param", ""),
+            request_schema_json=json.dumps(request_schema, separators=(",", ":")) if isinstance(request_schema, dict) else "",
+            request_value_schema_json=json.dumps(
+                transform_schema_for_value(request_schema, request_field_map), separators=(",", ":")
+            )
+            if isinstance(request_schema, dict)
+            else "",
+            response_schema_json=json.dumps(response_schema, separators=(",", ":")) if isinstance(response_schema, dict) else "",
+            response_value_schema_json=json.dumps(
+                transform_schema_for_value(response_schema, response_field_map), separators=(",", ":")
+            )
+            if isinstance(response_schema, dict)
+            else "",
+            source_response_schema_json=json.dumps(
+                schema_document_with_refs(source_spec, original_response_schema), separators=(",", ":")
+            )
+            if isinstance(original_response_schema, dict)
+            else "",
+            response_content_type=response.get("content_type", ""),
+            response_fields=response_fields,
         )
     if not result.qualified_interface:
         raise ValueError(f"REST binding has no interface name: {path}")
@@ -260,6 +400,78 @@ def cxx_string(value: str) -> str:
     return json.dumps(value)
 
 
+def is_json_content_type(content_type: str) -> bool:
+    if not content_type:
+        return True
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type in {"application/json", "application/*+json", "*/*"} or media_type.endswith("+json")
+
+
+def parse_body_field_map(value: object) -> dict:
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def transform_schema_for_value(schema: object, field_map: dict) -> object:
+    if isinstance(schema, list):
+        return [transform_schema_for_value(item, field_map) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    result = {key: transform_schema_for_value(value, field_map) for key, value in schema.items()}
+
+    if "items" in field_map and isinstance(result.get("items"), dict):
+        result["items"] = transform_schema_for_value(result["items"], field_map["items"])
+
+    if "additionalProperties" in field_map and isinstance(result.get("additionalProperties"), dict):
+        result["additionalProperties"] = transform_schema_for_value(
+            result["additionalProperties"], field_map["additionalProperties"]
+        )
+
+    fields = field_map.get("fields")
+    properties = result.get("properties")
+    if isinstance(fields, list) and isinstance(properties, dict):
+        by_wire_name = {
+            field.get("wire_name", field.get("name")): field
+            for field in fields
+            if isinstance(field, dict) and field.get("name")
+        }
+        renamed_properties = {}
+        for property_name, property_schema in properties.items():
+            field = by_wire_name.get(property_name)
+            if not field:
+                renamed_properties[property_name] = property_schema
+                continue
+            nested_map = field.get("map")
+            renamed_properties[field["name"]] = (
+                transform_schema_for_value(property_schema, nested_map)
+                if isinstance(nested_map, dict)
+                else property_schema
+            )
+        result["properties"] = renamed_properties
+
+        required = result.get("required")
+        if isinstance(required, list):
+            result["required"] = [
+                by_wire_name[item]["name"]
+                if isinstance(item, str) and item in by_wire_name
+                else item
+                for item in required
+            ]
+
+    for composition in ("allOf", "anyOf", "oneOf"):
+        values = result.get(composition)
+        if isinstance(values, list):
+            result[composition] = [transform_schema_for_value(value, field_map) for value in values]
+
+    return result
+
+
 def write_if_different(path: Path, content: str) -> None:
     old = None
     try:
@@ -270,6 +482,14 @@ def write_if_different(path: Path, content: str) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def schema_include_path(include_path: str) -> str:
+    path = Path(include_path)
+    schema_name = f"{path.stem}_schema.h"
+    if path.parent == Path("."):
+        return schema_name
+    return str(path.parent / schema_name).replace("\\", "/")
 
 
 def namespace_parts(qualified_interface: str) -> list[str]:
@@ -322,14 +542,24 @@ def qualify_generated_type(
 
 
 def method_argument_setup_for_main(
-    method: IdlMethod, namespace_prefix: str, defined_types: set[str], global_types: set[str]
+    method: IdlMethod,
+    metadata: RestMethod | None,
+    namespace_prefix: str,
+    defined_types: set[str],
+    global_types: set[str],
 ) -> tuple[list[str], list[str]]:
     lines: list[str] = []
     args: list[str] = []
     for parameter in method.parameters:
         value_type = qualify_generated_type(parameter.value_type, namespace_prefix, defined_types, global_types)
         if parameter.direction == "in":
-            lines.append(f"        auto {parameter.name} = {ROUNDTRIP_NS}::sample_value<{value_type}>();")
+            if metadata and metadata.request_value_schema_json and metadata.body_param == parameter.name:
+                lines.append(
+                    f"        auto {parameter.name} = {ROUNDTRIP_NS}::sample_value_from_schema<{value_type}>("
+                    f"{cxx_string(metadata.request_value_schema_json)});"
+                )
+            else:
+                lines.append(f"        auto {parameter.name} = {ROUNDTRIP_NS}::sample_value<{value_type}>();")
         else:
             lines.append(f"        {value_type} {parameter.name}{{}};")
         args.append(parameter.name)
@@ -345,6 +575,130 @@ def unique_local_name(base_name: str, method: IdlMethod) -> str:
     while f"{base_name}_{suffix}" in used_names:
         suffix += 1
     return f"{base_name}_{suffix}"
+
+
+def schema_validation_block(info: EndpointInfo, method: IdlMethod) -> str:
+    metadata = info.metadata.methods.get(method.name)
+    if metadata is None:
+        return ""
+
+    out_parameters = [parameter for parameter in method.parameters if parameter.direction == "out"]
+    needs_function_info = (
+        (bool(metadata.body_param) and not metadata.request_schema_json)
+        or (bool(metadata.out_param) and not metadata.response_schema_json)
+        or (bool(out_parameters) and not metadata.out_param and not metadata.response_schema_json)
+    )
+
+    lines: list[str] = []
+    if needs_function_info:
+        lines.extend(
+            [
+                f"        const auto* __function_info = {ROUNDTRIP_NS}::find_function_info<interface_type>({cxx_string(method.name)});",
+                "        if (!__function_info)",
+                "        {",
+                f"            std::cerr << {cxx_string(method.name)} << \" schema metadata missing\\n\";",
+                "            return 6;",
+                "        }",
+            ]
+        )
+
+    if metadata.body_param:
+        if metadata.request_schema_json:
+            lines.extend(
+                [
+                    f"        if (!{ROUNDTRIP_NS}::validate_json_body_against_schema(",
+                    f"                {cxx_string(metadata.request_schema_json)}, client.stream->last_request().body,",
+                    f"                {cxx_string(method.name + ' request body')}, std::cerr))",
+                    "        {",
+                    "            if (client.stream)",
+                    f"                {ROUNDTRIP_NS}::print_last_exchange(std::cerr, *client.stream);",
+                    "            return 6;",
+                    "        }",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    f"        if (!{ROUNDTRIP_NS}::validate_json_body_as_method_property(",
+                    f"                __function_info->in_json_schema, {cxx_string(metadata.body_param)}, client.stream->last_request().body,",
+                    f"                {cxx_string(method.name + ' request body')}, std::cerr))",
+                    "        {",
+                    "            if (client.stream)",
+                    f"                {ROUNDTRIP_NS}::print_last_exchange(std::cerr, *client.stream);",
+                    "            return 6;",
+                    "        }",
+                ]
+            )
+
+    if metadata.response_schema_json and is_json_content_type(metadata.response_content_type):
+        lines.extend(
+            [
+                f"        if (!{ROUNDTRIP_NS}::validate_json_body_against_schema(",
+                f"                {cxx_string(metadata.response_schema_json)}, client.stream->last_response_body(),",
+                f"                {cxx_string(method.name + ' response body')}, std::cerr))",
+                "        {",
+                "            if (client.stream)",
+                f"                {ROUNDTRIP_NS}::print_last_exchange(std::cerr, *client.stream);",
+                "            return 6;",
+                "        }",
+            ]
+        )
+    elif metadata.out_param and is_json_content_type(metadata.response_content_type):
+        lines.extend(
+            [
+                f"        if (!{ROUNDTRIP_NS}::validate_json_body_as_method_property(",
+                f"                __function_info->out_json_schema, {cxx_string(metadata.out_param)}, client.stream->last_response_body(),",
+                f"                {cxx_string(method.name + ' response body')}, std::cerr))",
+                "        {",
+                "            if (client.stream)",
+                f"                {ROUNDTRIP_NS}::print_last_exchange(std::cerr, *client.stream);",
+                "            return 6;",
+                "        }",
+            ]
+        )
+    elif out_parameters and is_json_content_type(metadata.response_content_type):
+        lines.extend(
+            [
+                f"        if (!{ROUNDTRIP_NS}::validate_json_body_against_schema(",
+                f"                __function_info->out_json_schema, client.stream->last_response_body(),",
+                f"                {cxx_string(method.name + ' response body')}, std::cerr))",
+                "        {",
+                "            if (client.stream)",
+                f"                {ROUNDTRIP_NS}::print_last_exchange(std::cerr, *client.stream);",
+                "            return 6;",
+                "        }",
+            ]
+        )
+
+    return "\n".join(lines)
+
+
+def response_field_for_parameter(metadata: RestMethod, parameter_name: str) -> RestField | None:
+    for field in metadata.response_fields:
+        if field.name == parameter_name:
+            return field
+    return None
+
+
+def output_sample_expression(metadata: RestMethod | None, parameter: IdlParameter, value_type: str) -> str:
+    if metadata and metadata.source_response_schema_json and "json::v1::object" in value_type:
+        return (
+            f"{ROUNDTRIP_NS}::sample_value_from_schema<{value_type}>("
+            f"{cxx_string(metadata.source_response_schema_json)})"
+        )
+    if metadata and metadata.response_value_schema_json:
+        if metadata.out_param == parameter.name:
+            return (
+                f"{ROUNDTRIP_NS}::sample_value_from_schema<{value_type}>("
+                f"{cxx_string(metadata.response_value_schema_json)})"
+            )
+        field = response_field_for_parameter(metadata, parameter.name)
+        if field is not None:
+            return (
+                f"{ROUNDTRIP_NS}::sample_value_from_schema_property<{value_type}>("
+                f"{cxx_string(metadata.response_value_schema_json)}, {cxx_string(field.name)})"
+            )
+    return f"{ROUNDTRIP_NS}::sample_value<{value_type}>()"
 
 
 def write_source(info: EndpointInfo, output_path: Path) -> None:
@@ -363,6 +717,7 @@ def write_source(info: EndpointInfo, output_path: Path) -> None:
 
     service_methods: list[str] = []
     for method in info.methods:
+        metadata = info.metadata.methods.get(method.name)
         params = parameter_list(method)
         const_suffix = " const" if method.const_suffix else ""
         body: list[str] = []
@@ -370,7 +725,9 @@ def write_source(info: EndpointInfo, output_path: Path) -> None:
             body.append(f"        recorded_methods.push_back({cxx_string(method.name)});")
         for parameter in method.parameters:
             if parameter.direction == "out":
-                body.append(f"        {parameter.name} = {ROUNDTRIP_NS}::sample_value<{parameter.value_type}>();")
+                value_type = qualify_generated_type(
+                    parameter.value_type, namespace_prefix, info.defined_types, info.global_types)
+                body.append(f"        {parameter.name} = {output_sample_expression(metadata, parameter, value_type)};")
             else:
                 body.append(f"        (void){parameter.name};")
         if method.return_type == "void":
@@ -388,8 +745,9 @@ def write_source(info: EndpointInfo, output_path: Path) -> None:
     call_blocks: list[str] = []
     expected_calls: list[str] = []
     for method in callable_methods:
+        metadata = info.metadata.methods.get(method.name)
         setup_lines, args = method_argument_setup_for_main(
-            method, namespace_prefix, info.defined_types, info.global_types
+            method, metadata, namespace_prefix, info.defined_types, info.global_types
         )
         call_result_name = unique_local_name("call_result", method)
         result_check = (
@@ -404,10 +762,12 @@ def write_source(info: EndpointInfo, output_path: Path) -> None:
             if method.return_type != "void"
             else f"        SYNC_WAIT(connected.object->{method.name}({', '.join(args)}));"
         )
+        validation_check = schema_validation_block(info, method)
         call_blocks.append(
             "    {\n"
             + ("\n".join(setup_lines) + "\n" if setup_lines else "")
             + result_check
+            + ("\n" + validation_check if validation_check else "")
             + "\n    }\n"
         )
         expected_calls.append(method.name)
@@ -424,6 +784,7 @@ def write_source(info: EndpointInfo, output_path: Path) -> None:
 #include <rpc/rpc.h>
 
 #include <{info.include_path}>
+#include <{schema_include_path(info.include_path)}>
 
 {open_namespaces(ns_parts)}
 class roundtrip_recording_service final : public rpc::base<roundtrip_recording_service, {interface_simple}>
@@ -435,7 +796,7 @@ public:
 }};
 {close_namespaces(ns_parts)}
 
-int main()
+int main(int argc, char* argv[])
 {{
     using interface_type = {interface_type};
     using service_type = {service_type};
@@ -444,6 +805,9 @@ int main()
 
     canopy::rest::endpoint_registry registry;
     registry.add_object<interface_type>("roundtrip", object);
+    if ({ROUNDTRIP_NS}::wants_http_server(argc, argv))
+        return {ROUNDTRIP_NS}::serve_http_registry_from_cli(std::move(registry), argc, argv, {cxx_string(info.slug)});
+
     auto client = {ROUNDTRIP_NS}::make_loopback_client<interface_type>(
         std::move(registry), {cxx_string(info.target + "_roundtrip_loopback")});
 

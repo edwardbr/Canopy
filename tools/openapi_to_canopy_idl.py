@@ -46,6 +46,22 @@ JSON_SCHEMA_METADATA_KEYS = {
     "externalDocs",
     "xml",
 }
+JSON_SCHEMA_VALIDATION_KEYS = {
+    "const",
+    "enum",
+    "exclusiveMaximum",
+    "exclusiveMinimum",
+    "format",
+    "maxItems",
+    "maxLength",
+    "maximum",
+    "minItems",
+    "minLength",
+    "minimum",
+    "multipleOf",
+    "pattern",
+    "uniqueItems",
+}
 CPP_KEYWORDS = {
     "alignas",
     "alignof",
@@ -218,24 +234,85 @@ def resolve_ref(document: dict[str, Any], schema: dict[str, Any]) -> dict[str, A
     return resolved
 
 
+def schema_allows_null(schema: dict[str, Any]) -> bool:
+    schema_type = schema.get("type")
+    return schema.get("nullable") is True or (isinstance(schema_type, list) and "null" in schema_type)
+
+
+def schema_without_nullability(schema: dict[str, Any]) -> dict[str, Any]:
+    if not schema_allows_null(schema):
+        return schema
+
+    output = copy.deepcopy(schema)
+    output.pop("nullable", None)
+    schema_type = output.get("type")
+    if isinstance(schema_type, list):
+        non_null = [item for item in schema_type if item != "null"]
+        if len(non_null) == 1:
+            output["type"] = non_null[0]
+        else:
+            output["type"] = non_null
+    return output
+
+
+def maybe_nullable_cpp_type(cpp_type: str, nullable: bool) -> str:
+    if not nullable or cpp_type.startswith("rpc::nullable<"):
+        return cpp_type
+    return f"rpc::nullable<{cpp_type}>"
+
+
+def unwrap_rpc_template(cpp_type: str, template_name: str) -> str | None:
+    prefix = f"{template_name}<"
+    if cpp_type.startswith(prefix) and cpp_type.endswith(">"):
+        return cpp_type[len(prefix) : -1].strip()
+    return None
+
+
+def maybe_optional_cpp_type(cpp_type: str) -> str:
+    nullable_inner = unwrap_rpc_template(cpp_type, "rpc::nullable")
+    if nullable_inner is not None:
+        return f"rpc::nullable_optional<{nullable_inner}>"
+    if cpp_type.startswith("rpc::nullable_optional<"):
+        return cpp_type
+    return f"rpc::optional<{cpp_type}>"
+
+
 def schema_map(spec: dict[str, Any]) -> dict[str, Any]:
     if "swagger" in spec:
         return spec.get("definitions", {})
     return spec.get("components", {}).get("schemas", {})
 
 
-def first_json_schema(content: dict[str, Any]) -> dict[str, Any] | None:
+def first_content_schema(content: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
     for media_type in ("application/json", "application/*+json", "*/*"):
         media = content.get(media_type)
         if isinstance(media, dict) and isinstance(media.get("schema"), dict):
-            return media["schema"]
-    for media in content.values():
+            return media["schema"], media_type
+    for media_type, media in content.items():
         if isinstance(media, dict) and isinstance(media.get("schema"), dict):
-            return media["schema"]
-    return None
+            return media["schema"], str(media_type)
+    return None, ""
 
 
-def response_schema(spec: dict[str, Any], operation: dict[str, Any]) -> dict[str, Any] | None:
+def first_json_schema(content: dict[str, Any]) -> dict[str, Any] | None:
+    return first_content_schema(content)[0]
+
+
+def first_produced_media_type(spec: dict[str, Any], operation: dict[str, Any]) -> str:
+    produces = operation.get("produces") or spec.get("produces") or []
+    if isinstance(produces, list) and produces and isinstance(produces[0], str):
+        return produces[0]
+    return "application/json"
+
+
+def response_status_code(status: str) -> int:
+    status_text = str(status)
+    if status_text.isdigit():
+        return int(status_text)
+    return 200
+
+
+def response_body_schema(spec: dict[str, Any], operation: dict[str, Any]) -> tuple[dict[str, Any] | None, str, int]:
     responses = operation.get("responses", {})
     ordered = sorted(
         responses.items(),
@@ -245,18 +322,20 @@ def response_schema(spec: dict[str, Any], operation: dict[str, Any]) -> dict[str
         status_text = str(status)
         if not (status_text.startswith("2") or status_text == "default"):
             continue
+        status_code = response_status_code(status_text)
         if status_text in HTTP_NO_RESPONSE_BODY_STATUSES:
-            return None
+            return None, "", status_code
         if "$ref" in response:
             response = resolve_ref(spec, response)
         if "schema" in response:
-            return response["schema"]
+            return response["schema"], first_produced_media_type(spec, operation), status_code
         content = response.get("content")
         if isinstance(content, dict):
-            schema = first_json_schema(content)
+            schema, media_type = first_content_schema(content)
             if schema is not None:
-                return schema
-    return None
+                return schema, media_type, status_code
+        return None, "", status_code
+    return None, "", 204
 
 
 def request_body_schema(spec: dict[str, Any], operation: dict[str, Any]) -> dict[str, Any] | None:
@@ -433,6 +512,150 @@ def response_object_fields_schema(
     return schema
 
 
+def relaxed_validation_schema(
+    spec: dict[str, Any],
+    schema: dict[str, Any],
+    fallback_name: str,
+    options: ConvertOptions,
+    active_refs: set[str] | None = None,
+    depth: int = 0,
+) -> dict[str, Any]:
+    if depth > 16:
+        return {}
+
+    active_refs = set(active_refs or ())
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        if ref in active_refs:
+            return {}
+        active_refs = active_refs | {ref}
+        schema = resolve_ref(spec, schema)
+
+    if "allOf" in schema:
+        flattened = flatten_allof_schema(spec, schema, fallback_name, options)
+        if flattened is None:
+            return {}
+        schema = flattened
+
+    if "oneOf" in schema or "anyOf" in schema:
+        return {}
+
+    allows_null = schema_allows_null(schema)
+    schema = schema_without_nullability(schema)
+    schema_type = schema.get("type")
+    if isinstance(schema_type, list):
+        non_null = [item for item in schema_type if item != "null"]
+        schema_type = non_null[0] if len(non_null) == 1 else schema_type
+
+    properties = schema.get("properties")
+    output: dict[str, Any] = {}
+    if isinstance(schema_type, str):
+        output["type"] = [schema_type, "null"] if allows_null else schema_type
+    elif isinstance(properties, dict):
+        output["type"] = ["object", "null"] if allows_null else "object"
+
+    for key in JSON_SCHEMA_VALIDATION_KEYS:
+        if key in schema:
+            output[key] = copy.deepcopy(schema[key])
+
+    if isinstance(properties, dict):
+        output["type"] = ["object", "null"] if allows_null else "object"
+        output["properties"] = {
+            name: relaxed_validation_schema(spec, child_schema, f"{fallback_name}_{name}", options, active_refs, depth + 1)
+            for name, child_schema in properties.items()
+            if isinstance(child_schema, dict)
+        }
+        required = [name for name in schema.get("required", []) if isinstance(name, str)]
+        if required:
+            output["required"] = required
+        output["additionalProperties"] = False
+
+    if schema_type == "array" and isinstance(schema.get("items"), dict):
+        output["items"] = relaxed_validation_schema(
+            spec, schema["items"], f"{fallback_name}_item", options, active_refs, depth + 1)
+
+    additional = schema.get("additionalProperties")
+    if isinstance(additional, dict):
+        output["additionalProperties"] = relaxed_validation_schema(
+            spec, additional, f"{fallback_name}_value", options, active_refs, depth + 1)
+    elif additional is False:
+        output["additionalProperties"] = False
+
+    return output
+
+
+def schema_field_map(
+    spec: dict[str, Any],
+    schema: dict[str, Any],
+    fallback_name: str,
+    options: ConvertOptions,
+    name_overrides: dict[str, str] | None = None,
+    active_refs: set[str] | None = None,
+    depth: int = 0,
+) -> dict[str, Any] | None:
+    if depth > 16:
+        return None
+
+    active_refs = set(active_refs or ())
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        if ref in active_refs:
+            return None
+        active_refs = active_refs | {ref}
+        schema = resolve_ref(spec, schema)
+
+    if "allOf" in schema:
+        flattened = flatten_allof_schema(spec, schema, fallback_name, options)
+        if flattened is None:
+            return None
+        schema = flattened
+
+    if "oneOf" in schema or "anyOf" in schema:
+        return None
+
+    schema_type = schema.get("type")
+    if isinstance(schema_type, list):
+        non_null = [item for item in schema_type if item != "null"]
+        schema_type = non_null[0] if len(non_null) == 1 else schema_type
+
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and properties:
+        fields: list[dict[str, Any]] = []
+        overrides = name_overrides or {}
+        for raw_field_name, field_schema in properties.items():
+            if not isinstance(field_schema, dict):
+                continue
+            field_map = {
+                "name": overrides.get(raw_field_name, snake_case(raw_field_name)),
+                "wire_name": raw_field_name,
+            }
+            nested = schema_field_map(
+                spec,
+                field_schema,
+                f"{fallback_name}_{raw_field_name}",
+                options,
+                active_refs=active_refs,
+                depth=depth + 1,
+            )
+            if nested:
+                field_map["map"] = nested
+            fields.append(field_map)
+        return {"fields": fields} if fields else None
+
+    if schema_type == "array" and isinstance(schema.get("items"), dict):
+        items = schema_field_map(
+            spec, schema["items"], f"{fallback_name}_item", options, active_refs=active_refs, depth=depth + 1)
+        return {"items": items} if items else None
+
+    additional = schema.get("additionalProperties")
+    if isinstance(additional, dict):
+        values = schema_field_map(
+            spec, additional, f"{fallback_name}_value", options, active_refs=active_refs, depth=depth + 1)
+        return {"additionalProperties": values} if values else None
+
+    return None
+
+
 def object_schema_has_duplicate_cpp_fields(schema: dict[str, Any]) -> bool:
     properties = schema.get("properties")
     if not isinstance(properties, dict):
@@ -456,6 +679,7 @@ def schema_to_cpp_type(
 ) -> str:
     active_structs = active_structs or set()
     if "$ref" in schema:
+        nullable = schema_allows_null(schema)
         ref_name = local_ref_name(schema["$ref"])
         cpp_ref_name = type_name(ref_name)
         if cpp_ref_name in active_structs:
@@ -465,10 +689,14 @@ def schema_to_cpp_type(
                 options,
             )
         resolved = resolve_ref(spec, schema)
+        nullable = nullable or schema_allows_null(resolved)
         if schema_is_named_struct_candidate(spec, resolved, ref_name, options):
-            return cpp_ref_name
-        return schema_to_cpp_type(spec, resolved, ref_name, extra_structs, options, active_structs)
+            return maybe_nullable_cpp_type(cpp_ref_name, nullable)
+        cpp_type = schema_to_cpp_type(spec, resolved, ref_name, extra_structs, options, active_structs)
+        return maybe_nullable_cpp_type(cpp_type, nullable)
     schema = resolve_ref(spec, schema)
+    nullable = schema_allows_null(schema)
+    schema = schema_without_nullability(schema)
     if "oneOf" in schema:
         return schema_fallback_or_raise(fallback_name, "oneOf is not representable as a strong Canopy type", options)
     if "anyOf" in schema:
@@ -476,7 +704,8 @@ def schema_to_cpp_type(
     if "allOf" in schema:
         wrapped = single_schema_allof_branch(schema)
         if wrapped is not None:
-            return schema_to_cpp_type(spec, wrapped, fallback_name, extra_structs, options, active_structs)
+            cpp_type = schema_to_cpp_type(spec, wrapped, fallback_name, extra_structs, options, active_structs)
+            return maybe_nullable_cpp_type(cpp_type, nullable)
         flattened = flatten_allof_schema(spec, schema, fallback_name, options)
         if flattened is None:
             return schema_fallback_or_raise(fallback_name, "allOf cannot be safely flattened", options)
@@ -490,47 +719,47 @@ def schema_to_cpp_type(
         else:
             raise ValueError(f"{fallback_name}: union JSON schema types are not supported")
     if schema_type == "string" or "enum" in schema:
-        return "std::string"
+        return maybe_nullable_cpp_type("std::string", nullable)
     if schema_type is None and "additionalProperties" in schema:
         additional = schema.get("additionalProperties")
         if isinstance(additional, dict):
             value_type = schema_to_cpp_type(
                 spec, additional, f"{fallback_name}_value", extra_structs, options, active_structs)
-            return f"std::map<std::string, {value_type}>"
-        return "std::map<std::string, json::v1::object>"
+            return maybe_nullable_cpp_type(f"std::map<std::string, {value_type}>", nullable)
+        return maybe_nullable_cpp_type("std::map<std::string, json::v1::object>", nullable)
     if schema_type is None and "properties" not in schema:
-        return "json::v1::object"
+        return maybe_nullable_cpp_type("json::v1::object", nullable)
     if schema_type == "boolean":
-        return "bool"
+        return maybe_nullable_cpp_type("bool", nullable)
     if schema_type == "integer":
         if schema_format == "int64":
-            return "int64_t"
+            return maybe_nullable_cpp_type("int64_t", nullable)
         if schema_format == "uint64":
-            return "uint64_t"
+            return maybe_nullable_cpp_type("uint64_t", nullable)
         if schema_format in {"uint32", "uint"}:
-            return "uint32_t"
-        return "int32_t"
+            return maybe_nullable_cpp_type("uint32_t", nullable)
+        return maybe_nullable_cpp_type("int32_t", nullable)
     if schema_type == "number":
-        return "float" if schema_format == "float" else "double"
+        return maybe_nullable_cpp_type("float" if schema_format == "float" else "double", nullable)
     if schema_type == "array":
         item_schema = schema.get("items")
         if not isinstance(item_schema, dict):
             raise ValueError(f"{fallback_name}: array schema is missing items")
         item_type = schema_to_cpp_type(spec, item_schema, f"{fallback_name}_item", extra_structs, options, active_structs)
-        return f"std::vector<{item_type}>"
+        return maybe_nullable_cpp_type(f"std::vector<{item_type}>", nullable)
     if schema_type == "object" or "properties" in schema:
         if not schema.get("properties"):
             additional = schema.get("additionalProperties")
             if isinstance(additional, dict):
                 value_type = schema_to_cpp_type(
                     spec, additional, f"{fallback_name}_value", extra_structs, options, active_structs)
-                return f"std::map<std::string, {value_type}>"
-            return "json::v1::object"
+                return maybe_nullable_cpp_type(f"std::map<std::string, {value_type}>", nullable)
+            return maybe_nullable_cpp_type("json::v1::object", nullable)
         if object_schema_has_duplicate_cpp_fields(schema):
-            return "json::v1::object"
+            return maybe_nullable_cpp_type("json::v1::object", nullable)
         generated_name = type_name(fallback_name)
         extra_structs.setdefault(generated_name, schema)
-        return generated_name
+        return maybe_nullable_cpp_type(generated_name, nullable)
     raise ValueError(f"{fallback_name}: unsupported schema type {schema_type!r}")
 
 
@@ -579,9 +808,16 @@ class Method:
     constants: list[Constant] = field(default_factory=list)
     body_param: str = ""
     body_type: str = ""
+    body_fields: list[ResponseField] = field(default_factory=list)
+    body_schema: dict[str, Any] | None = None
+    body_field_map: dict[str, Any] | None = None
     response_type: str = ""
     out_param: str = ""
     response_fields: list[ResponseField] = field(default_factory=list)
+    response_schema: dict[str, Any] | None = None
+    response_field_map: dict[str, Any] | None = None
+    response_content_type: str = ""
+    response_status_code: int = 0
 
 
 @dataclass
@@ -706,7 +942,45 @@ def common_namespace(spec: dict[str, Any]) -> list[str]:
     return prefix or literal_paths[0]
 
 
-def configured_namespace(spec: dict[str, Any]) -> list[str]:
+def swagger_identity_namespace(spec: dict[str, Any]) -> list[str]:
+    info = spec.get("info")
+    if isinstance(info, dict):
+        title = info.get("title")
+        if isinstance(title, str) and title.strip():
+            return [snake_case(title)]
+
+    host, _ = server_defaults(spec)
+    if host:
+        host = re.sub(r"\{[^}]*\}", "", host)
+        host_parts = [part for part in host.split(".") if part and part != "www"]
+        if host_parts:
+            return [snake_case("_".join(reversed(host_parts)))]
+
+    return []
+
+
+def source_directory_namespace(source_path: str | None) -> list[str]:
+    if not source_path:
+        return []
+    directory = os.path.basename(os.path.dirname(source_path))
+    if directory == "idl":
+        directory = os.path.basename(os.path.dirname(os.path.dirname(source_path)))
+    return [snake_case(directory)] if directory else []
+
+
+def automatic_namespace(spec: dict[str, Any], source_path: str | None = None) -> list[str]:
+    path_namespace = common_namespace(spec)
+    identity_namespace = swagger_identity_namespace(spec)
+    if not identity_namespace:
+        return source_directory_namespace(source_path) or path_namespace
+    if path_namespace == ["rest"]:
+        return identity_namespace
+    if path_namespace == identity_namespace or path_namespace[: len(identity_namespace)] == identity_namespace:
+        return path_namespace
+    return [*identity_namespace, *path_namespace]
+
+
+def configured_namespace(spec: dict[str, Any], source_path: str | None = None) -> list[str]:
     raw_namespace = spec.get("x-canopy-namespace")
     if isinstance(raw_namespace, str):
         namespaces = [part for part in re.split(r"::|[./]", raw_namespace) if part]
@@ -714,7 +988,7 @@ def configured_namespace(spec: dict[str, Any]) -> list[str]:
         namespaces = [part for part in raw_namespace if isinstance(part, str) and part]
     else:
         namespaces = []
-    return [snake_case(namespace) for namespace in namespaces] or common_namespace(spec)
+    return [snake_case(namespace) for namespace in namespaces] or automatic_namespace(spec, source_path)
 
 
 def configured_interface_name(spec: dict[str, Any], namespaces: list[str]) -> str:
@@ -759,7 +1033,7 @@ def build_struct(
         cpp_type = schema_to_cpp_type(
             spec, field_schema, f"{name}_{field_name}", extra_structs, options, active_structs)
         if raw_field_name not in required:
-            cpp_type = f"rpc::optional<{cpp_type}>"
+            cpp_type = maybe_optional_cpp_type(cpp_type)
         fields.append(Field(field_name, cpp_type))
 
     type_identifiers = {identifier for field in fields for identifier in cpp_type_identifiers(field.cpp_type)}
@@ -899,7 +1173,10 @@ def collapse_cyclic_structs(structs: list[Struct], methods: list[Method]) -> lis
                 parameter.cpp_type = replace_type_identifiers(parameter.cpp_type, cyclic)
 
 
-def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()) -> Model:
+def build_model(
+    spec: dict[str, Any],
+    options: ConvertOptions = ConvertOptions(),
+    source_path: str | None = None) -> Model:
     if "swagger" not in spec and "openapi" not in spec:
         raise ValueError("input is neither Swagger 2.0 nor OpenAPI 3.x JSON")
     if "openapi" in spec and not str(spec["openapi"]).startswith("3."):
@@ -951,7 +1228,7 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
                     continue
                 parameter_schema = parameter.get("schema") or {
                     key: parameter[key]
-                    for key in ("type", "format", "items", "enum")
+                    for key in ("type", "format", "items", "enum", "nullable")
                     if key in parameter
                 }
                 if not isinstance(parameter_schema, dict):
@@ -960,7 +1237,7 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
                 cpp_type = schema_to_cpp_type(
                     spec, parameter_schema, f"{method.name}_{parameter['name']}", extra_structs, options)
                 if not required:
-                    cpp_type = f"rpc::optional<{cpp_type}>"
+                    cpp_type = maybe_optional_cpp_type(cpp_type)
                 method.parameters.append(
                     Parameter(
                         name=unique_identifier(snake_case(parameter["name"]), used_parameters),
@@ -974,19 +1251,46 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
             if body_schema is not None:
                 method.body_type = schema_to_cpp_type(spec, body_schema, f"{method.name}_request", extra_structs, options)
                 method.body_param = unique_identifier("request", used_parameters)
-            raw_response_schema = response_schema(spec, operation)
+                body_fields_schema = response_object_fields_schema(
+                    spec, body_schema, f"{method.name}_request", options)
+                if body_fields_schema is not None and method.body_type != "json::v1::object":
+                    required_body_fields = set(body_fields_schema.get("required", []))
+                    body_name_overrides: dict[str, str] = {}
+                    for raw_field_name in body_fields_schema.get("properties", {}):
+                        field = ResponseField(
+                            name=snake_case(raw_field_name),
+                            wire_name=raw_field_name,
+                            cpp_type="",
+                            required=raw_field_name in required_body_fields,
+                        )
+                        method.body_fields.append(field)
+                        body_name_overrides[raw_field_name] = field.name
+                    method.body_schema = relaxed_validation_schema(
+                        spec, body_fields_schema, f"{method.name}_request", options)
+                    method.body_field_map = schema_field_map(
+                        spec,
+                        body_fields_schema,
+                        f"{method.name}_request",
+                        options,
+                        name_overrides=body_name_overrides)
+            raw_response_schema, response_content_type, response_status_code = response_body_schema(spec, operation)
+            method.response_status_code = response_status_code
             if raw_response_schema is not None:
+                method.response_content_type = response_content_type
                 response_fields_schema = response_object_fields_schema(
                     spec, raw_response_schema, f"{method.name}_response", options)
                 if response_fields_schema is not None:
+                    method.response_schema = relaxed_validation_schema(
+                        spec, response_fields_schema, f"{method.name}_response", options)
                     required_response_fields = set(response_fields_schema.get("required", []))
+                    response_name_overrides: dict[str, str] = {}
                     for raw_field_name, field_schema in response_fields_schema.get("properties", {}).items():
                         field_name = unique_identifier(snake_case(raw_field_name), used_parameters)
                         cpp_type = schema_to_cpp_type(
                             spec, field_schema, f"{method.name}_{field_name}", extra_structs, options)
                         required = raw_field_name in required_response_fields
                         if not required:
-                            cpp_type = f"rpc::optional<{cpp_type}>"
+                            cpp_type = maybe_optional_cpp_type(cpp_type)
                         method.response_fields.append(
                             ResponseField(
                                 name=field_name,
@@ -995,7 +1299,16 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
                                 required=required,
                             )
                         )
+                        response_name_overrides[raw_field_name] = field_name
+                    method.response_field_map = schema_field_map(
+                        spec,
+                        response_fields_schema,
+                        f"{method.name}_response",
+                        options,
+                        name_overrides=response_name_overrides)
                 else:
+                    method.response_schema = relaxed_validation_schema(
+                        spec, raw_response_schema, f"{method.name}_response", options)
                     method.response_type = schema_to_cpp_type(
                         spec, raw_response_schema, f"{method.name}_response", extra_structs, options)
                     method.out_param = unique_identifier("response", used_parameters)
@@ -1008,7 +1321,7 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
             if name not in structs_by_name:
                 structs_by_name[name] = build_struct(spec, name, schema, extra_structs, options)
 
-    namespaces = configured_namespace(spec)
+    namespaces = configured_namespace(spec, source_path)
     host, base_path = server_defaults(spec)
     structs = avoid_struct_method_name_collisions(list(structs_by_name.values()), methods)
     structs = collapse_cyclic_structs(structs, methods)
@@ -1023,7 +1336,7 @@ def build_model(spec: dict[str, Any], options: ConvertOptions = ConvertOptions()
 
 
 def parameter_idl(parameter: Parameter) -> str:
-    if parameter.cpp_type.startswith("rpc::optional<") or parameter.cpp_type in {
+    scalar_types = {
         "bool",
         "int32_t",
         "int64_t",
@@ -1031,7 +1344,13 @@ def parameter_idl(parameter: Parameter) -> str:
         "uint64_t",
         "float",
         "double",
-    }:
+    }
+    if (
+        parameter.cpp_type.startswith("rpc::optional<")
+        or parameter.cpp_type.startswith("rpc::nullable<")
+        or parameter.cpp_type.startswith("rpc::nullable_optional<")
+        or parameter.cpp_type in scalar_types
+    ):
         return f"[in] {parameter.cpp_type} {parameter.name}"
     return f"[in] const {parameter.cpp_type}& {parameter.name}"
 
@@ -1124,6 +1443,64 @@ def output_binding_path(output_path: str) -> str:
     return output_path + ".rest.json"
 
 
+def binding_field(field: ResponseField) -> dict[str, Any]:
+    return {
+        "name": field.name,
+        "wire_name": field.wire_name,
+        "required": field.required,
+    }
+
+
+def binding_method(method: Method) -> dict[str, Any]:
+    request: dict[str, Any] = {
+        "body_param": method.body_param,
+        "fields": [binding_field(field) for field in method.body_fields],
+    }
+    if method.body_schema is not None:
+        request["body_schema"] = method.body_schema
+    if method.body_field_map is not None:
+        request["body_field_map"] = json.dumps(method.body_field_map, separators=(",", ":"), sort_keys=True)
+
+    response: dict[str, Any] = {
+        "out_param": method.out_param,
+        "has_body": bool(method.out_param or method.response_fields),
+        "fields": [binding_field(field) for field in method.response_fields],
+    }
+    if method.response_schema is not None:
+        response["body_schema"] = method.response_schema
+    if method.response_field_map is not None:
+        response["body_field_map"] = json.dumps(method.response_field_map, separators=(",", ":"), sort_keys=True)
+    if method.response_content_type:
+        response["content_type"] = method.response_content_type
+    if method.response_status_code:
+        response["status_code"] = method.response_status_code
+
+    return {
+        "name": method.name,
+        "http_method": method.http_method,
+        "path": method.path,
+        "request": request,
+        "response": response,
+        "parameters": [
+            {
+                "name": parameter.name,
+                "location": parameter.location,
+                "wire_name": parameter.wire_name,
+                "required": parameter.required,
+            }
+            for parameter in method.parameters
+        ],
+        "constants": [
+            {
+                "location": constant.location,
+                "wire_name": constant.wire_name,
+                "value": constant.value,
+            }
+            for constant in method.constants
+        ],
+    }
+
+
 def write_binding(model: Model, source_path: str, overlay_paths: list[str] | None = None) -> str:
     binding = {
         "schema": "canopy.rest.binding.v1",
@@ -1136,46 +1513,7 @@ def write_binding(model: Model, source_path: str, overlay_paths: list[str] | Non
                 "qualified_name": model.qualified_interface,
                 "host": model.host,
                 "base_path": model.base_path,
-                "methods": [
-                    {
-                        "name": method.name,
-                        "http_method": method.http_method,
-                        "path": method.path,
-                        "request": {
-                            "body_param": method.body_param,
-                        },
-                        "response": {
-                            "out_param": method.out_param,
-                            "has_body": bool(method.out_param or method.response_fields),
-                            "fields": [
-                                {
-                                    "name": field.name,
-                                    "wire_name": field.wire_name,
-                                    "required": field.required,
-                                }
-                                for field in method.response_fields
-                            ],
-                        },
-                        "parameters": [
-                            {
-                                "name": parameter.name,
-                                "location": parameter.location,
-                                "wire_name": parameter.wire_name,
-                                "required": parameter.required,
-                            }
-                            for parameter in method.parameters
-                        ],
-                        "constants": [
-                            {
-                                "location": constant.location,
-                                "wire_name": constant.wire_name,
-                                "value": constant.value,
-                            }
-                            for constant in method.constants
-                        ],
-                    }
-                    for method in model.methods
-                ],
+                "methods": [binding_method(method) for method in model.methods],
             }
         ],
     }
@@ -1227,7 +1565,7 @@ def main() -> int:
     for overlay_path in args.overlay:
         with open(overlay_path, "r", encoding="utf-8") as stream:
             spec = deep_merge_json(spec, json.load(stream))
-    model = build_model(spec, ConvertOptions(strict_composition=args.strict_composition))
+    model = build_model(spec, ConvertOptions(strict_composition=args.strict_composition), args.input)
     write_if_different(args.output, write_idl(model, args.input, args.overlay))
     binding_path = args.binding or output_binding_path(args.output)
     write_if_different(binding_path, write_binding(model, args.input, args.overlay))

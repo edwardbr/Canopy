@@ -128,8 +128,10 @@ namespace json_schema
         {
             return "array";
         }
-        // RPC optional/variant types (treat as objects for now)
-        else if (clean_type.find("rpc::optional") != std::string::npos || clean_type.find("rpc::variant") != std::string::npos
+        // RPC optional/nullable/variant types (treat as objects for now)
+        else if (clean_type.find("rpc::optional") != std::string::npos
+                 || clean_type.find("rpc::nullable") != std::string::npos
+                 || clean_type.find("rpc::variant") != std::string::npos
                  || clean_type.find("std::any") != std::string::npos)
         {
             return "object";
@@ -249,7 +251,7 @@ namespace json_schema
         std::string& inner_type)
     {
         const auto container_name = template_container_name(type_name);
-        if (container_name != "rpc::optional")
+        if (container_name != "rpc::optional" && container_name != "rpc::nullable_optional")
             return false;
 
         auto args = parse_template_arguments(normalize_schema_type(type_name));
@@ -266,6 +268,38 @@ namespace json_schema
     {
         const auto container_name = template_container_name(type_name);
         if (container_name != "rpc::optional")
+            return false;
+
+        auto args = parse_template_arguments(normalize_schema_type(type_name));
+        if (args.size() != 1)
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_nullable_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        const auto container_name = template_container_name(type_name);
+        if (container_name != "rpc::nullable")
+            return false;
+
+        auto args = parse_template_arguments(normalize_schema_type(type_name));
+        if (args.size() != 1)
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_nullable_optional_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        const auto container_name = template_container_name(type_name);
+        if (container_name != "rpc::nullable_optional")
             return false;
 
         auto args = parse_template_arguments(normalize_schema_type(type_name));
@@ -438,6 +472,18 @@ namespace json_schema
         std::set<std::string>& visited_types);
 
     void generate_rpc_optional_type_schema(
+        const std::string& inner_type,
+        const class_entity& root,
+        json_writer& writer,
+        std::set<std::string>& visited_types)
+    {
+        if (is_json_dom_schema_any_type(inner_type))
+            return;
+
+        generate_type_schema_recursive(inner_type, root, writer, visited_types);
+    }
+
+    void generate_rpc_nullable_type_schema(
         const std::string& inner_type,
         const class_entity& root,
         json_writer& writer,
@@ -675,6 +721,17 @@ namespace json_schema
                             {
                                 generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
                             }
+                            else if (std::string nullable_optional_inner_type;
+                                is_rpc_nullable_optional_schema_type(raw_type_name, nullable_optional_inner_type))
+                            {
+                                generate_rpc_nullable_type_schema(
+                                    nullable_optional_inner_type, root, writer, visited_types);
+                            }
+                            else if (std::string nullable_inner_type;
+                                is_rpc_nullable_schema_type(raw_type_name, nullable_inner_type))
+                            {
+                                generate_rpc_nullable_type_schema(nullable_inner_type, root, writer, visited_types);
+                            }
                             else if (is_rpc_variant_schema_type(raw_type_name, variant_alternative_types))
                             {
                                 generate_rpc_variant_type_schema(variant_alternative_types, root, writer, visited_types);
@@ -827,6 +884,20 @@ namespace json_schema
         if (is_rpc_optional_schema_type(type_name, optional_inner_type))
         {
             generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
+            return;
+        }
+
+        std::string nullable_optional_inner_type;
+        if (is_rpc_nullable_optional_schema_type(type_name, nullable_optional_inner_type))
+        {
+            generate_rpc_nullable_type_schema(nullable_optional_inner_type, root, writer, visited_types);
+            return;
+        }
+
+        std::string nullable_inner_type;
+        if (is_rpc_nullable_schema_type(type_name, nullable_inner_type))
+        {
+            generate_rpc_nullable_type_schema(nullable_inner_type, root, writer, visited_types);
             return;
         }
 
@@ -1105,6 +1176,34 @@ namespace json_schema
             if (attribs.has_value("deprecated"))
                 writer.write_raw_property("deprecated", "true");
             generate_rpc_optional_type_schema(optional_inner_type, root, writer, visited_types);
+            writer.close_object();
+            return;
+        }
+
+        std::string nullable_optional_inner_type;
+        if (is_rpc_nullable_optional_schema_type(idl_type_name_cleaned, nullable_optional_inner_type))
+        {
+            writer.open_object();
+            const auto description = attribs.get_value("description");
+            if (!description.empty())
+                writer.write_string_property("description", description);
+            if (attribs.has_value("deprecated"))
+                writer.write_raw_property("deprecated", "true");
+            generate_rpc_nullable_type_schema(nullable_optional_inner_type, root, writer, visited_types);
+            writer.close_object();
+            return;
+        }
+
+        std::string nullable_inner_type;
+        if (is_rpc_nullable_schema_type(idl_type_name_cleaned, nullable_inner_type))
+        {
+            writer.open_object();
+            const auto description = attribs.get_value("description");
+            if (!description.empty())
+                writer.write_string_property("description", description);
+            if (attribs.has_value("deprecated"))
+                writer.write_raw_property("deprecated", "true");
+            generate_rpc_nullable_type_schema(nullable_inner_type, root, writer, visited_types);
             writer.close_object();
             return;
         }

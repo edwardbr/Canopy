@@ -25,6 +25,7 @@
 #include <example_shared/example_shared.h>
 #include <example_shared/example_shared_schema.h>
 #include <gtest/gtest.h>
+#include <nullable_fixture/nullable_fixture_schema.h>
 #include <schema_cycle/schema_cycle_schema.h>
 
 namespace
@@ -153,6 +154,14 @@ namespace
         }
     }
 
+    void expect_invalid_schema_instance(
+        const json::v1::object& schema,
+        const json::v1::object& instance)
+    {
+        const auto result = json::v1::schema::schema_validator(schema).validate(instance);
+        EXPECT_FALSE(result);
+    }
+
     std::string specialization_signature_from_line(std::string line)
     {
         const auto id_pos = line.find("class id<");
@@ -188,6 +197,16 @@ TEST(
         if (!entry.is_regular_file() || entry.path().extension() != ".h")
             continue;
 
+        const auto relative_header = entry.path().lexically_relative(include_root);
+        const auto relative_begin = relative_header.begin();
+        if (relative_begin != relative_header.end())
+        {
+            const auto third_party_source_dir = std::filesystem::path(CANOPY_TEST_SOURCE_DIR) / "third_party_interfaces"
+                                                / "rest" / relative_begin->string();
+            if (std::filesystem::exists(third_party_source_dir))
+                continue;
+        }
+
         std::ifstream input(entry.path());
         ASSERT_TRUE(input.good()) << entry.path().string();
 
@@ -198,7 +217,7 @@ TEST(
             if (signature.empty())
                 continue;
 
-            const auto header = entry.path().lexically_relative(include_root).generic_string();
+            const auto header = relative_header.generic_string();
             const auto [owner, inserted] = owner_by_specialization.emplace(signature, header);
             if (!inserted && owner->second != header)
             {
@@ -357,8 +376,8 @@ TEST(
 
     const auto* optional_int = find_member(*properties, "optional_int");
     ASSERT_NE(optional_int, nullptr);
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int, "integer"));
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int, "null"));
+    EXPECT_TRUE(has_schema_type(*optional_int, "integer"));
+    EXPECT_FALSE(has_member(*optional_int, "oneOf"));
     EXPECT_FALSE(required_contains(schema_json, "optional_int"));
 
     const auto* variant_value = find_member(*properties, "variant_value");
@@ -390,8 +409,8 @@ TEST(
 
     const auto* optional_int_out = find_member(*out_properties, "optional_int_out");
     ASSERT_NE(optional_int_out, nullptr);
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int_out, "integer"));
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int_out, "null"));
+    EXPECT_TRUE(has_schema_type(*optional_int_out, "integer"));
+    EXPECT_FALSE(has_member(*optional_int_out, "oneOf"));
     EXPECT_FALSE(required_contains(out_schema_json, "optional_int_out"));
 
     const auto* variant_value_out = find_member(*out_properties, "variant_value_out");
@@ -413,6 +432,52 @@ TEST(
     ASSERT_NE(optional_json_value_out, nullptr);
     EXPECT_FALSE(has_member(*optional_json_value_out, "type"));
     EXPECT_FALSE(required_contains(out_schema_json, "optional_json_value_out"));
+}
+
+TEST(
+    JSONSchemaValidationTest,
+    OptionalAndNullableSchemaMappings)
+{
+    json::v1::object schema_json;
+    ASSERT_NO_THROW(schema_json = json::v1::parse(nullable_fixture::payload::get_schema()));
+
+    const auto* definitions = find_member(schema_json, "definitions");
+    ASSERT_NE(definitions, nullptr);
+    const auto* payload_schema = find_member(*definitions, "nullable_fixture_payload");
+    ASSERT_NE(payload_schema, nullptr);
+
+    const auto* properties = find_member(*payload_schema, "properties");
+    ASSERT_NE(properties, nullptr);
+    ASSERT_EQ(properties->get_type(), json::v1::object::type::map_type);
+
+    const auto* optional_string = find_member(*properties, "optional_string");
+    ASSERT_NE(optional_string, nullptr);
+    EXPECT_TRUE(has_schema_type(*optional_string, "string"));
+    EXPECT_FALSE(has_member(*optional_string, "oneOf"));
+    EXPECT_FALSE(required_contains(*payload_schema, "optional_string"));
+
+    const auto* nullable_string = find_member(*properties, "nullable_string");
+    ASSERT_NE(nullable_string, nullptr);
+    EXPECT_TRUE(one_of_contains_schema_type(*nullable_string, "string"));
+    EXPECT_TRUE(one_of_contains_schema_type(*nullable_string, "null"));
+    EXPECT_TRUE(required_contains(*payload_schema, "nullable_string"));
+
+    const auto* optional_nullable_string = find_member(*properties, "optional_nullable_string");
+    ASSERT_NE(optional_nullable_string, nullptr);
+    EXPECT_TRUE(one_of_contains_schema_type(*optional_nullable_string, "string"));
+    EXPECT_TRUE(one_of_contains_schema_type(*optional_nullable_string, "null"));
+    EXPECT_FALSE(required_contains(*payload_schema, "optional_nullable_string"));
+
+    expect_valid_schema_instance(
+        schema_json, json::v1::parse(R"json({"required_string":"present","nullable_string":null})json"));
+    expect_valid_schema_instance(
+        schema_json,
+        json::v1::parse(
+            R"json({"required_string":"present","optional_string":"optional","nullable_string":"nullable","optional_nullable_string":null})json"));
+    expect_invalid_schema_instance(
+        schema_json,
+        json::v1::parse(R"json({"required_string":"present","optional_string":null,"nullable_string":null})json"));
+    expect_invalid_schema_instance(schema_json, json::v1::parse(R"json({"required_string":"present"})json"));
 }
 
 TEST(
@@ -517,10 +582,14 @@ TEST(
 
     expect_valid_schema_instance(
         schema_json, json::v1::parse(R"json({"in_val":{"required_int":7,"required_string":"required"}})json"));
-    expect_valid_schema_instance(
+    expect_invalid_schema_instance(
         schema_json,
         json::v1::parse(
             R"json({"in_val":{"required_int":7,"required_string":"required","optional_int":null,"optional_string":null,"optional_json_value":null}})json"));
+    expect_valid_schema_instance(
+        schema_json,
+        json::v1::parse(
+            R"json({"in_val":{"required_int":7,"required_string":"required","optional_int":4,"optional_string":"present","optional_json_value":null}})json"));
 
     const std::string missing_nested_optionals_payload
         = R"json({"in_val":{"required_int":7,"required_string":"required"}})json";
@@ -542,8 +611,8 @@ TEST(
 
     const auto* optional_int = find_member(*properties, "optional_int");
     ASSERT_NE(optional_int, nullptr);
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int, "integer"));
-    EXPECT_TRUE(one_of_contains_schema_type(*optional_int, "null"));
+    EXPECT_TRUE(has_schema_type(*optional_int, "integer"));
+    EXPECT_FALSE(has_member(*optional_int, "oneOf"));
     EXPECT_FALSE(required_contains(schema_json, "optional_int"));
 
     const auto* optional_json_value = find_member(*properties, "optional_json_value");
@@ -552,8 +621,9 @@ TEST(
     EXPECT_FALSE(required_contains(schema_json, "optional_json_value"));
 
     expect_valid_schema_instance(schema_json, json::v1::parse(R"json({})json"));
-    expect_valid_schema_instance(
+    expect_invalid_schema_instance(
         schema_json, json::v1::parse(R"json({"optional_int":null,"optional_json_value":null})json"));
+    expect_valid_schema_instance(schema_json, json::v1::parse(R"json({"optional_int":4,"optional_json_value":null})json"));
 
     const std::string missing_top_level_optionals_payload = R"json({})json";
     rpc::optional<int32_t> decoded_optional_int;

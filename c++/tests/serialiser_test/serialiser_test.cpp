@@ -17,6 +17,7 @@
 #include <example_shared/example_shared.h>
 #include <serialiser_test/test_types.h>
 #include <json/json_dom.h>
+#include <nullable_fixture/nullable_fixture.h>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -784,6 +785,38 @@ xxx::rpc_optional_holder make_rpc_optional_holder(bool with_optionals)
     return obj;
 }
 
+nullable_fixture::payload make_nullable_payload(
+    bool optional_present,
+    bool nullable_present,
+    bool optional_nullable_present,
+    bool optional_nullable_inner_present)
+{
+    nullable_fixture::payload obj;
+    obj.required_string = "required";
+
+    if (optional_present)
+        obj.optional_string = std::string("optional");
+
+    if (nullable_present)
+        obj.nullable_string = std::string("nullable");
+    else
+        obj.nullable_string.reset();
+
+    if (optional_nullable_present)
+    {
+        if (optional_nullable_inner_present)
+            obj.optional_nullable_string = std::string("optional-nullable");
+        else
+            obj.optional_nullable_string.set_null();
+    }
+    else
+    {
+        obj.optional_nullable_string.reset();
+    }
+
+    return obj;
+}
+
 template<typename T>
 void expect_yas_family_roundtrip(
     const T& original,
@@ -933,6 +966,9 @@ TEST_F(
     expect_yas_family_roundtrip(make_optional_variant_json_holder(false, false), "optional/variant/json empty optionals");
     expect_yas_family_roundtrip(make_rpc_optional_holder(true), "rpc optional populated");
     expect_yas_family_roundtrip(make_rpc_optional_holder(false), "rpc optional empty");
+    expect_yas_family_roundtrip(make_nullable_payload(false, false, false, false), "nullable fixture null/absent");
+    expect_yas_family_roundtrip(make_nullable_payload(true, true, true, false), "nullable fixture inner null");
+    expect_yas_family_roundtrip(make_nullable_payload(true, true, true, true), "nullable fixture populated");
 }
 
 TEST_F(
@@ -1434,6 +1470,9 @@ TEST_F(
         make_optional_variant_json_holder(false, false), "optional/variant/json empty optionals");
     expect_google_nanopb_compatible(make_rpc_optional_holder(true), "rpc optional populated");
     expect_google_nanopb_compatible(make_rpc_optional_holder(false), "rpc optional empty");
+    expect_google_nanopb_compatible(make_nullable_payload(false, false, false, false), "nullable fixture null/absent");
+    expect_google_nanopb_compatible(make_nullable_payload(true, true, true, false), "nullable fixture inner null");
+    expect_google_nanopb_compatible(make_nullable_payload(true, true, true, true), "nullable fixture populated");
 }
 
 TEST_F(

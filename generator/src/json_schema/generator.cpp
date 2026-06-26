@@ -176,7 +176,7 @@ namespace json_schema
 
         if (container_name.rfind("::", 0) == 0)
             container_name.erase(0, 2);
-        if (container_name != "rpc::optional")
+        if (container_name != "rpc::optional" && container_name != "rpc::nullable_optional")
             return false;
 
         inner_type = args.front();
@@ -195,6 +195,42 @@ namespace json_schema
         if (container_name.rfind("::", 0) == 0)
             container_name.erase(0, 2);
         if (container_name != "rpc::optional")
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_nullable_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        std::string container_name;
+        std::vector<std::string> args;
+        if (!parse_template_args(type_name, container_name, args) || args.size() != 1)
+            return false;
+
+        if (container_name.rfind("::", 0) == 0)
+            container_name.erase(0, 2);
+        if (container_name != "rpc::nullable")
+            return false;
+
+        inner_type = args.front();
+        return !inner_type.empty();
+    }
+
+    static bool is_rpc_nullable_optional_schema_type(
+        const std::string& type_name,
+        std::string& inner_type)
+    {
+        std::string container_name;
+        std::vector<std::string> args;
+        if (!parse_template_args(type_name, container_name, args) || args.size() != 1)
+            return false;
+
+        if (container_name.rfind("::", 0) == 0)
+            container_name.erase(0, 2);
+        if (container_name != "rpc::nullable_optional")
             return false;
 
         inner_type = args.front();
@@ -1290,6 +1326,34 @@ namespace json_schema
                 return;
             }
 
+            map_idl_type_to_json_schema(
+                root,
+                current_context,
+                optional_inner_type,
+                attribs,
+                writer,
+                definitions_needed,
+                definitions_written,
+                currently_processing,
+                definition_info_map);
+            return;
+        }
+
+        std::string nullable_optional_inner_type;
+        if (is_rpc_nullable_optional_schema_type(idl_type_name_cleaned, nullable_optional_inner_type))
+        {
+            if (is_json_dom_schema_any_type(nullable_optional_inner_type))
+            {
+                writer.open_object();
+                if (attribs.get_value("description").empty())
+                    writer.write_string_property(
+                        "description",
+                        "optional nullable, any JSON value (rpc::nullable_optional<json::v1::object> passthrough)");
+                write_schema_metadata(attribs, writer);
+                writer.close_object();
+                return;
+            }
+
             writer.open_object();
             write_schema_metadata(attribs, writer);
             writer.write_key("oneOf");
@@ -1297,7 +1361,43 @@ namespace json_schema
             map_idl_type_to_json_schema(
                 root,
                 current_context,
-                optional_inner_type,
+                nullable_optional_inner_type,
+                {},
+                writer,
+                definitions_needed,
+                definitions_written,
+                currently_processing,
+                definition_info_map);
+            writer.open_object();
+            writer.write_string_property("type", "null");
+            writer.close_object();
+            writer.close_array();
+            writer.close_object();
+            return;
+        }
+
+        std::string nullable_inner_type;
+        if (is_rpc_nullable_schema_type(idl_type_name_cleaned, nullable_inner_type))
+        {
+            if (is_json_dom_schema_any_type(nullable_inner_type))
+            {
+                writer.open_object();
+                if (attribs.get_value("description").empty())
+                    writer.write_string_property(
+                        "description", "nullable, any JSON value (rpc::nullable<json::v1::object> passthrough)");
+                write_schema_metadata(attribs, writer);
+                writer.close_object();
+                return;
+            }
+
+            writer.open_object();
+            write_schema_metadata(attribs, writer);
+            writer.write_key("oneOf");
+            writer.open_array();
+            map_idl_type_to_json_schema(
+                root,
+                current_context,
+                nullable_inner_type,
                 {},
                 writer,
                 definitions_needed,
@@ -2507,7 +2607,10 @@ namespace json_schema
             std::string default_value;  // verbatim text after `=` in the IDL; empty if none.
             bool is_optional = false;   // true iff raw_type is rpc::optional<...>.
             std::string optional_inner; // inner T when is_optional, raw form.
-            bool is_raw_json = false;   // true iff raw_type is json::v1::object (passthrough).
+            bool optional_inner_is_nullable = false;
+            bool is_nullable = false;          // true iff raw_type is rpc::nullable<...>.
+            bool is_nullable_optional = false; // true iff raw_type is rpc::nullable_optional<...>.
+            bool is_raw_json = false;          // true iff raw_type is json::v1::object (passthrough).
         };
 
         inline std::string strip_outer_braces(std::string value)
@@ -2524,7 +2627,7 @@ namespace json_schema
         // wrote. parse_template_args strips whitespace through clean_type_name,
         // which is fine for classification but loses the verbatim form needed
         // for pasting into the generated C++.
-        inline bool split_optional_raw(
+        inline bool split_single_template_raw(
             const std::string& raw_type,
             std::string& inner_raw)
         {
@@ -2551,6 +2654,12 @@ namespace json_schema
             const std::string& cleaned_type,
             const taggable_idl_type_set& taggable_idl_types)
         {
+            std::string container_name;
+            std::vector<std::string> args;
+            const auto is_template_type = parse_template_args(cleaned_type, container_name, args);
+            if (container_name.rfind("::", 0) == 0)
+                container_name.erase(0, 2);
+
             // Raw pointers and references can't carry through JSON.
             if (cleaned_type.find('*') != std::string::npos)
                 return false;
@@ -2580,24 +2689,46 @@ namespace json_schema
                 std::vector<std::string> tags;
                 if (!variant_alternatives_have_unique_tags(variant_alts, taggable_idl_types, tags))
                     return false;
+                for (const auto& alternative : variant_alts)
+                {
+                    if (!field_type_is_supportable(alternative, taggable_idl_types))
+                        return false;
+                }
+                return true;
+            }
+
+            if (!is_template_type)
+                return true;
+
+            if (container_name == "rpc::optional" || container_name == "rpc::nullable"
+                || container_name == "rpc::nullable_optional")
+            {
+                return args.size() == 1 && field_type_is_supportable(args.front(), taggable_idl_types);
+            }
+
+            if (container_name == "std::vector" || container_name == "std::list" || container_name == "std::deque"
+                || container_name == "std::set" || container_name == "std::unordered_set")
+            {
+                return args.size() == 1 && field_type_is_supportable(args.front(), taggable_idl_types);
+            }
+
+            if (container_name == "std::array")
+            {
+                return !args.empty() && field_type_is_supportable(args.front(), taggable_idl_types);
             }
 
             // std::map / std::unordered_map are only supported with string
-            // keys (JSON limitation). Inspect the first template arg.
-            for (const auto* needle : {"std::map<", "std::unordered_map<"})
+            // keys (JSON limitation).
+            if (container_name == "std::map" || container_name == "std::unordered_map")
             {
-                const auto pos = cleaned_type.find(needle);
-                if (pos == std::string::npos)
-                    continue;
-                std::string container;
-                std::vector<std::string> args;
-                if (!parse_template_args(cleaned_type.substr(pos), container, args) || args.empty())
+                if (args.size() != 2)
                     return false;
                 auto key_type = args.front();
                 if (key_type.rfind("::", 0) == 0)
                     key_type.erase(0, 2);
                 if (key_type != "std::string" && key_type != "string")
                     return false;
+                return field_type_is_supportable(args[1], taggable_idl_types);
             }
 
             return true;
@@ -2651,12 +2782,26 @@ namespace json_schema
                     return result;
                 }
 
-                std::string optional_inner_cleaned;
-                if (is_optional_schema_type(info.cleaned_type, optional_inner_cleaned))
+                if (std::string nullable_optional_inner_cleaned;
+                    is_rpc_nullable_optional_schema_type(info.cleaned_type, nullable_optional_inner_cleaned))
+                {
+                    info.is_nullable_optional = true;
+                }
+                else if (std::string optional_inner_cleaned;
+                    is_optional_schema_type(info.cleaned_type, optional_inner_cleaned))
                 {
                     info.is_optional = true;
-                    if (!split_optional_raw(info.raw_type, info.optional_inner))
+                    if (!split_single_template_raw(info.raw_type, info.optional_inner))
                         info.optional_inner = optional_inner_cleaned;
+
+                    std::string nullable_inner_type;
+                    info.optional_inner_is_nullable
+                        = is_rpc_nullable_schema_type(optional_inner_cleaned, nullable_inner_type);
+                }
+                else if (std::string nullable_inner_cleaned;
+                    is_rpc_nullable_schema_type(info.cleaned_type, nullable_inner_cleaned))
+                {
+                    info.is_nullable = true;
                 }
                 else if (is_json_dom_schema_any_type(info.cleaned_type))
                 {
@@ -2680,6 +2825,7 @@ namespace json_schema
             // emitted at the top, so ADL finds converters defined in the IDL's
             // own namespace alongside the primitives in json::v1::convert.
             const auto value_var = "__it->second";
+            const auto key_present_check = std::string("__it != __map.end()");
             const auto present_check = std::string("__it != __map.end() && ") + value_var
                                        + ".get_type() != ::json::v1::object::type::null_type";
 
@@ -2690,7 +2836,8 @@ namespace json_schema
             {
                 if (field.default_value.empty())
                 {
-                    os << indent << "    if (" << present_check << ")\n";
+                    os << indent << "    if (" << (field.optional_inner_is_nullable ? key_present_check : present_check)
+                       << ")\n";
                     os << indent << "        __result." << field.name << " = from_json_object<" << field.optional_inner
                        << ">(" << value_var << ");\n";
                 }
@@ -2699,16 +2846,48 @@ namespace json_schema
                     os << indent << "    if (__it == __map.end())\n";
                     os << indent << "        __result." << field.name << " = " << field.optional_inner << "{"
                        << strip_outer_braces(field.default_value) << "};\n";
-                    os << indent << "    else if (" << value_var << ".get_type() != ::json::v1::object::type::null_type)\n";
+                    if (field.optional_inner_is_nullable)
+                        os << indent << "    else\n";
+                    else
+                        os << indent << "    else if (" << value_var
+                           << ".get_type() != ::json::v1::object::type::null_type)\n";
                     os << indent << "        __result." << field.name << " = from_json_object<" << field.optional_inner
                        << ">(" << value_var << ");\n";
                 }
+            }
+            else if (field.is_nullable_optional)
+            {
+                os << indent << "    if (" << key_present_check << ")\n";
+                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type << ">("
+                   << value_var << ");\n";
+                os << indent << "    else\n";
+                if (field.default_value.empty())
+                    os << indent << "        __result." << field.name << ".reset();\n";
+                else
+                    os << indent << "        __result." << field.name << " = " << field.default_value << ";\n";
             }
             else if (field.is_raw_json)
             {
                 // json::v1::object accepts any JSON value including null, so
                 // key presence is the only signal of "user supplied this".
                 os << indent << "    if (__it != __map.end())\n";
+                os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type << ">("
+                   << value_var << ");\n";
+                if (field.default_value.empty())
+                {
+                    os << indent << "    else\n";
+                    os << indent << "        throw ::json::v1::config_error("
+                       << cpp_string_literal(struct_label + ": required field '" + field.name + "' is missing") << ");\n";
+                }
+                else
+                {
+                    os << indent << "    else\n";
+                    os << indent << "        __result." << field.name << " = " << field.default_value << ";\n";
+                }
+            }
+            else if (field.is_nullable)
+            {
+                os << indent << "    if (" << key_present_check << ")\n";
                 os << indent << "        __result." << field.name << " = from_json_object<" << field.raw_type << ">("
                    << value_var << ");\n";
                 if (field.default_value.empty())
@@ -2752,6 +2931,12 @@ namespace json_schema
             {
                 os << indent << "if (__value." << field.name << ".has_value())\n";
                 os << indent << "    __map.emplace(\"" << field.name << "\", to_json_object(*__value." << field.name
+                   << "));\n";
+            }
+            else if (field.is_nullable_optional)
+            {
+                os << indent << "if (__value." << field.name << ".is_present())\n";
+                os << indent << "    __map.emplace(\"" << field.name << "\", to_json_object(__value." << field.name
                    << "));\n";
             }
             else

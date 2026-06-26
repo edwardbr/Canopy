@@ -54,9 +54,14 @@ namespace rest_generator
             std::string http_method;
             std::string path;
             std::string body_param;
+            std::string body_field_map;
             std::string out_param;
+            std::string response_field_map;
+            std::string response_content_type;
+            int response_status_code{0};
             std::vector<rest_parameter> parameters;
             std::vector<rest_constant> constants;
+            std::vector<rest_response_field> request_fields;
             std::vector<rest_response_field> response_fields;
         };
 
@@ -74,6 +79,7 @@ namespace rest_generator
             {
                 null_value,
                 bool_value,
+                number_value,
                 string_value,
                 array_value,
                 object_value,
@@ -84,6 +90,7 @@ namespace rest_generator
 
             type kind{type::null_value};
             bool boolean{false};
+            std::string number;
             std::string string;
             array array_items;
             object object_items;
@@ -95,6 +102,14 @@ namespace rest_generator
                 binding_json_value output;
                 output.kind = type::bool_value;
                 output.boolean = value;
+                return output;
+            }
+
+            static binding_json_value make_number(std::string value)
+            {
+                binding_json_value output;
+                output.kind = type::number_value;
+                output.number = std::move(value);
                 return output;
             }
 
@@ -207,8 +222,50 @@ namespace rest_generator
                 if (consume_literal("null"))
                     return binding_json_value::make_null();
                 if (value == '-' || std::isdigit(static_cast<unsigned char>(value)))
-                    fail("numbers are not supported in REST binding JSON");
+                    return binding_json_value::make_number(parse_number());
                 fail("expected object, array, string, boolean, or null");
+            }
+
+            std::string parse_number()
+            {
+                skip_whitespace();
+                const auto start = offset_;
+                if (!at_end() && input_[offset_] == '-')
+                    ++offset_;
+                if (at_end())
+                    fail("incomplete number");
+                if (input_[offset_] == '0')
+                {
+                    ++offset_;
+                }
+                else if (std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                {
+                    while (!at_end() && std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                        ++offset_;
+                }
+                else
+                {
+                    fail("invalid number");
+                }
+                if (!at_end() && input_[offset_] == '.')
+                {
+                    ++offset_;
+                    if (at_end() || !std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                        fail("invalid fractional number");
+                    while (!at_end() && std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                        ++offset_;
+                }
+                if (!at_end() && (input_[offset_] == 'e' || input_[offset_] == 'E'))
+                {
+                    ++offset_;
+                    if (!at_end() && (input_[offset_] == '+' || input_[offset_] == '-'))
+                        ++offset_;
+                    if (at_end() || !std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                        fail("invalid exponent");
+                    while (!at_end() && std::isdigit(static_cast<unsigned char>(input_[offset_])))
+                        ++offset_;
+                }
+                return std::string(input_.substr(start, offset_ - start));
             }
 
             binding_json_value parse_object()
@@ -539,6 +596,27 @@ namespace rest_generator
             return value->boolean;
         }
 
+        int optional_json_int(
+            const binding_json_value::object& object,
+            const std::string& key,
+            const std::string& path,
+            int default_value = 0)
+        {
+            const auto* value = find_json_member(object, key);
+            if (!value || value->kind == binding_json_value::type::null_value)
+                return default_value;
+            if (value->kind != binding_json_value::type::number_value)
+                throw std::runtime_error("REST binding JSON field is not a number: " + path + "." + key);
+            const auto& text = value->number;
+            if (text.empty() || text.find_first_of(".eE") != std::string::npos)
+                throw std::runtime_error("REST binding JSON field is not an integer: " + path + "." + key);
+            size_t parsed = 0;
+            const auto output = std::stoi(text, &parsed);
+            if (parsed != text.size())
+                throw std::runtime_error("REST binding JSON field is not an integer: " + path + "." + key);
+            return output;
+        }
+
         std::map<
             std::string,
             rest_interface>
@@ -735,11 +813,24 @@ namespace rest_generator
                     {
                         const auto& request_map = require_json_map(*request_value, method_path + ".request");
                         method.body_param = optional_json_string(request_map, "body_param", method_path + ".request");
+                        method.body_field_map
+                            = optional_json_string(request_map, "body_field_map", method_path + ".request");
+                        method.request_fields = read_json_response_fields(request_map, method_path + ".request");
                     }
                     if (const auto* response_value = find_json_member(method_map, "response"))
                     {
                         const auto& response_map = require_json_map(*response_value, method_path + ".response");
                         method.out_param = optional_json_string(response_map, "out_param", method_path + ".response");
+                        method.response_field_map
+                            = optional_json_string(response_map, "body_field_map", method_path + ".response");
+                        method.response_content_type
+                            = optional_json_string(response_map, "content_type", method_path + ".response");
+                        method.response_status_code
+                            = optional_json_int(response_map, "status_code", method_path + ".response");
+                        if (method.response_status_code
+                            && (method.response_status_code < 100 || method.response_status_code > 599))
+                            throw std::runtime_error(
+                                method_path + ".response.status_code must be a valid HTTP status code");
                         method.response_fields = read_json_response_fields(response_map, method_path + ".response");
                     }
                     method.parameters = read_json_parameters(method_map, method_path);
@@ -761,6 +852,15 @@ namespace rest_generator
             if (path.extension() == ".json")
                 return read_json_metadata(path);
             return read_tab_metadata(path);
+        }
+
+        std::string schema_header_filename(std::string header_filename)
+        {
+            const auto extension = header_filename.rfind(".h");
+            if (extension == std::string::npos)
+                return header_filename;
+            header_filename.insert(extension, "_schema");
+            return header_filename;
         }
 
         std::string qualified_name(const class_entity& interface_entity)
@@ -796,22 +896,6 @@ namespace rest_generator
             throw std::runtime_error("REST metadata references unknown parameter: " + name);
         }
 
-        uint64_t method_ordinal(
-            const class_entity& interface_entity,
-            const std::string& name)
-        {
-            uint64_t ordinal = 0;
-            for (const auto& function : interface_entity.get_functions())
-            {
-                if (function->get_entity_type() != entity_type::FUNCTION_METHOD)
-                    continue;
-                ++ordinal;
-                if (function->get_name() == name)
-                    return ordinal;
-            }
-            throw std::runtime_error("REST metadata references unknown method: " + name);
-        }
-
         std::string rest_component_type(
             const class_entity& interface_entity,
             const parameter_entity& parameter)
@@ -826,6 +910,56 @@ namespace rest_generator
             while (!type.empty() && std::isspace(static_cast<unsigned char>(type.back())))
                 type.pop_back();
             return type;
+        }
+
+        std::string lower_ascii(std::string value)
+        {
+            for (auto& ch : value)
+                ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            return value;
+        }
+
+        std::string media_type_without_parameters(std::string content_type)
+        {
+            const auto semicolon = content_type.find(';');
+            if (semicolon != std::string::npos)
+                content_type.erase(semicolon);
+            while (!content_type.empty() && std::isspace(static_cast<unsigned char>(content_type.front())))
+                content_type.erase(content_type.begin());
+            while (!content_type.empty() && std::isspace(static_cast<unsigned char>(content_type.back())))
+                content_type.pop_back();
+            return lower_ascii(std::move(content_type));
+        }
+
+        bool is_json_media_type(const std::string& content_type)
+        {
+            if (content_type.empty())
+                return true;
+            const auto media_type = media_type_without_parameters(content_type);
+            return media_type == "application/json" || media_type == "application/*+json" || media_type == "*/*"
+                   || (media_type.size() > 5 && media_type.compare(media_type.size() - 5, 5, "+json") == 0);
+        }
+
+        std::string response_content_type(const rest_method& method)
+        {
+            return method.response_content_type.empty() ? "application/json" : method.response_content_type;
+        }
+
+        int response_status_code(const rest_method& method)
+        {
+            if (method.response_status_code)
+                return method.response_status_code;
+            if (method.out_param.empty() && method.response_fields.empty())
+                return 204;
+            return 200;
+        }
+
+        bool is_raw_string_response(
+            const rest_method& method,
+            std::string_view out_type)
+        {
+            return !is_json_media_type(method.response_content_type) && method.response_field_map.empty()
+                   && out_type == "std::string";
         }
 
         std::string render_parameter_list(
@@ -845,18 +979,16 @@ namespace rest_generator
             return stream.str();
         }
 
-        std::string render_argument_list(const function_entity& function)
+        std::string render_rest_local_argument_list(const function_entity& function)
         {
             std::string output;
             bool has_parameter = false;
             for (const auto& parameter : function.get_parameters())
             {
-                if (!is_in_param(parameter))
-                    continue;
                 if (has_parameter)
                     output += ", ";
                 has_parameter = true;
-                output += parameter.get_name();
+                output += "__rest_" + parameter.get_name();
             }
             return output;
         }
@@ -911,19 +1043,6 @@ namespace rest_generator
             return names;
         }
 
-        std::string render_rest_output_argument_list(const rest_method& method)
-        {
-            const auto outputs = rest_output_names(method);
-            std::string result;
-            for (const auto& output : outputs)
-            {
-                if (!result.empty())
-                    result += ", ";
-                result += output;
-            }
-            return result;
-        }
-
         void validate_rest_outputs(
             const function_entity& function,
             const rest_method& method)
@@ -959,11 +1078,11 @@ namespace rest_generator
             }
         }
 
-        std::string response_fields_initializer(const rest_method& method)
+        std::string field_bindings_initializer(const std::vector<rest_response_field>& fields)
         {
             std::string output = "{";
             bool first = true;
-            for (const auto& field : method.response_fields)
+            for (const auto& field : fields)
             {
                 if (!first)
                     output += ", ";
@@ -980,6 +1099,16 @@ namespace rest_generator
             return output;
         }
 
+        std::string request_fields_initializer(const rest_method& method)
+        {
+            return field_bindings_initializer(method.request_fields);
+        }
+
+        std::string response_fields_initializer(const rest_method& method)
+        {
+            return field_bindings_initializer(method.response_fields);
+        }
+
         void write_request_parameter(
             writer& output,
             const rest_parameter& parameter)
@@ -987,22 +1116,8 @@ namespace rest_generator
             if (parameter.location == "body")
                 return;
 
-            const auto parameter_name = cpp_string_literal(parameter.name);
             const auto wire_name = cpp_string_literal(parameter.wire_name);
-            if (parameter.required)
-            {
-                output(
-                    "const auto& __rest_{0} = ::canopy::rest::required_input(__rest_input, {1});",
-                    parameter.name,
-                    parameter_name);
-            }
-            else
-            {
-                output(
-                    "const auto* __rest_{0} = ::canopy::rest::optional_input(__rest_input, {1});",
-                    parameter.name,
-                    parameter_name);
-            }
+            output("const auto __rest_{0} = ::canopy::rest::to_json_value({0});", parameter.name);
 
             if (parameter.location == "path")
             {
@@ -1024,11 +1139,11 @@ namespace rest_generator
                 }
                 else
                 {
-                    output("if (__rest_{0} && !::canopy::rest::is_null(*__rest_{0}))", parameter.name);
+                    output("if (!::canopy::rest::is_null(__rest_{0}))", parameter.name);
                     output("{{");
                     output(
                         "canopy::rest::append_query_parameter(__request.target, {0}, "
-                        "::canopy::rest::component_string(*__rest_{1}));",
+                        "::canopy::rest::component_string(__rest_{1}));",
                         wire_name,
                         parameter.name);
                     output("}}");
@@ -1045,10 +1160,10 @@ namespace rest_generator
                 }
                 else
                 {
-                    output("if (__rest_{0} && !::canopy::rest::is_null(*__rest_{0}))", parameter.name);
+                    output("if (!::canopy::rest::is_null(__rest_{0}))", parameter.name);
                     output("{{");
                     output(
-                        "__request.headers.push_back({{ {0}, ::canopy::rest::component_string(*__rest_{1}) }});",
+                        "__request.headers.push_back({{ {0}, ::canopy::rest::component_string(__rest_{1}) }});",
                         wire_name,
                         parameter.name);
                     output("}}");
@@ -1085,11 +1200,7 @@ namespace rest_generator
             const auto interface_name = interface_entity.get_name();
             const auto return_type = render_cpp_type(interface_entity, function.get_return_type());
             const auto parameter_list = render_parameter_list(interface_entity, function);
-            const auto argument_list = render_argument_list(function);
-            const auto output_argument_list = render_rest_output_argument_list(method);
             const auto const_suffix = method_is_const(function) ? " const" : "";
-            const auto body_param = cpp_string_literal(method.body_param);
-            const auto out_param = cpp_string_literal(method.out_param);
             validate_rest_outputs(function, method);
 
             output.print_tabs();
@@ -1098,19 +1209,6 @@ namespace rest_generator
             output("{{");
             output("try");
             output("{{");
-            output("std::vector<char> __rpc_in_buf;");
-            output(
-                "auto __rpc_ret = {0}::proxy_serialiser<rpc::serialiser::yas, rpc::encoding>::{1}({2}{3}__rpc_in_buf, "
-                "rpc::encoding::yas_json);",
-                interface_name,
-                method.name,
-                argument_list,
-                argument_list.empty() ? "" : ", ");
-            output("if (rpc::error::is_error(__rpc_ret))");
-            output("{{");
-            output("CO_RETURN __rpc_ret;");
-            output("}}");
-            output("const auto __rest_input = ::canopy::rest::rpc_input_map(__rpc_in_buf);");
             output("streaming::http_client::request __request;");
             output("__request.method = {};", cpp_string_literal(method.http_method));
             output(
@@ -1124,7 +1222,24 @@ namespace rest_generator
 
             if (!method.body_param.empty())
             {
-                output("__request.body = ::canopy::rest::body_from_rpc_input(__rest_input, {});", body_param);
+                if (!method.body_field_map.empty())
+                {
+                    output(
+                        "__request.body = ::canopy::rest::body_from_value({0}, {1});",
+                        method.body_param,
+                        cpp_string_literal(method.body_field_map));
+                }
+                else if (method.request_fields.empty())
+                {
+                    output("__request.body = ::canopy::rest::body_from_value({});", method.body_param);
+                }
+                else
+                {
+                    output(
+                        "__request.body = ::canopy::rest::body_from_value({0}, {1});",
+                        method.body_param,
+                        request_fields_initializer(method));
+                }
                 output("::canopy::rest::add_json_headers(__request.headers, true);");
             }
             else
@@ -1156,30 +1271,54 @@ namespace rest_generator
                 }
                 else
                 {
-                    output(
-                        "auto __wrapped_response = ::canopy::rest::wrap_response_body({}, __http.value.body);",
-                        response_fields_initializer(method));
-                    output("std::vector<char> __rpc_out_buf(__wrapped_response.begin(), __wrapped_response.end());");
-                    output(
-                        "__rpc_ret = {0}::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{1}({2}, "
-                        "rpc::byte_span(__rpc_out_buf), rpc::encoding::yas_json);",
-                        interface_name,
-                        method.name,
-                        output_argument_list);
-                    output("CO_RETURN __rpc_ret;");
+                    if (method.response_field_map.empty())
+                    {
+                        output(
+                            "const auto __rest_response = ::canopy::rest::response_fields_from_body({}, "
+                            "__http.value.body);",
+                            response_fields_initializer(method));
+                    }
+                    else
+                    {
+                        output(
+                            "const auto __rest_response = ::canopy::rest::response_fields_from_body({}, "
+                            "__http.value.body, {});",
+                            response_fields_initializer(method),
+                            cpp_string_literal(method.response_field_map));
+                    }
+                    for (const auto& field : method.response_fields)
+                    {
+                        const auto type = rest_component_type(interface_entity, find_parameter(function, field.name));
+                        output(
+                            "::canopy::rest::assign_response_field<{1}>({0}, __rest_response, {2}, {3});",
+                            field.name,
+                            type,
+                            cpp_string_literal(field.name),
+                            field.required ? "true" : "false");
+                    }
+                    output("CO_RETURN rpc::error::OK();");
                 }
             }
             else
             {
-                output("auto __wrapped_response = ::canopy::rest::wrap_response_body({}, __http.value.body);", out_param);
-                output("std::vector<char> __rpc_out_buf(__wrapped_response.begin(), __wrapped_response.end());");
-                output(
-                    "__rpc_ret = {0}::proxy_deserialiser<rpc::serialiser::yas, rpc::encoding>::{1}({2}, "
-                    "rpc::byte_span(__rpc_out_buf), rpc::encoding::yas_json);",
-                    interface_name,
-                    method.name,
-                    output_argument_list);
-                output("CO_RETURN __rpc_ret;");
+                const auto out_type = rest_component_type(interface_entity, find_parameter(function, method.out_param));
+                if (is_raw_string_response(method, out_type))
+                {
+                    output("{0} = std::move(__http.value.body);", method.out_param);
+                }
+                else if (method.response_field_map.empty())
+                {
+                    output("{0} = ::canopy::rest::body_to_value<{1}>(__http.value.body);", method.out_param, out_type);
+                }
+                else
+                {
+                    output(
+                        "{0} = ::canopy::rest::body_to_value<{1}>(__http.value.body, {2});",
+                        method.out_param,
+                        out_type,
+                        cpp_string_literal(method.response_field_map));
+                }
+                output("CO_RETURN rpc::error::OK();");
             }
             output("}}");
             output("catch (const std::exception&)");
@@ -1199,15 +1338,14 @@ namespace rest_generator
             if (parameter.location == "body")
                 return;
 
-            const auto parameter_name = cpp_string_literal(parameter.name);
             const auto wire_name = cpp_string_literal(parameter.wire_name);
             const auto type = rest_component_type(interface_entity, find_parameter(function, parameter.name));
 
             if (parameter.location == "path")
             {
                 output(
-                    "::canopy::rest::add_path_input<{1}>(__rest_inputs, {0}, __path, {2}, {3});",
-                    parameter_name,
+                    "auto __rest_{0} = ::canopy::rest::path_input_value<{1}>(__path, {2}, {3});",
+                    parameter.name,
                     type,
                     wire_name,
                     parameter.required ? "true" : "false");
@@ -1215,8 +1353,8 @@ namespace rest_generator
             else if (parameter.location == "query")
             {
                 output(
-                    "::canopy::rest::add_query_input<{1}>(__rest_inputs, {0}, request.target, {2}, {3});",
-                    parameter_name,
+                    "auto __rest_{0} = ::canopy::rest::query_input_value<{1}>(request.target, {2}, {3});",
+                    parameter.name,
                     type,
                     wire_name,
                     parameter.required ? "true" : "false");
@@ -1224,8 +1362,8 @@ namespace rest_generator
             else if (parameter.location == "header")
             {
                 output(
-                    "::canopy::rest::add_header_input<{1}>(__rest_inputs, {0}, request.headers, {2}, {3});",
-                    parameter_name,
+                    "auto __rest_{0} = ::canopy::rest::header_input_value<{1}>(request.headers, {2}, {3});",
+                    parameter.name,
                     type,
                     wire_name,
                     parameter.required ? "true" : "false");
@@ -1271,9 +1409,7 @@ namespace rest_generator
             const rest_method& method)
         {
             const auto& function = find_function(interface_entity, method.name);
-            const auto interface_name = interface_entity.get_name();
-            const auto out_param = cpp_string_literal(method.out_param);
-            const auto method_id = method_ordinal(interface_entity, method.name);
+            const auto argument_list = render_rest_local_argument_list(function);
             validate_rest_outputs(function, method);
 
             output("{{");
@@ -1296,36 +1432,125 @@ namespace rest_generator
             output("{{");
             output("CO_RETURN ::canopy::rest::error_response(503, \"REST implementation is not configured\");");
             output("}}");
-            output("json::v1::map __rest_inputs;");
             for (const auto& parameter : method.parameters)
                 write_rest_handler_parameter(output, interface_entity, function, parameter);
             if (!method.body_param.empty())
             {
-                output(
-                    "::canopy::rest::add_body_input(__rest_inputs, {}, request.body);",
-                    cpp_string_literal(method.body_param));
+                const auto body_type = rest_component_type(interface_entity, find_parameter(function, method.body_param));
+                if (!method.body_field_map.empty())
+                {
+                    output(
+                        "auto __rest_{0} = ::canopy::rest::body_to_value<{1}>(request.body, {2});",
+                        method.body_param,
+                        body_type,
+                        cpp_string_literal(method.body_field_map));
+                }
+                else if (method.request_fields.empty())
+                {
+                    output("auto __rest_{0} = ::canopy::rest::body_to_value<{1}>(request.body);", method.body_param, body_type);
+                }
+                else
+                {
+                    output(
+                        "auto __rest_{0} = ::canopy::rest::body_to_value<{1}>(request.body, {2});",
+                        method.body_param,
+                        body_type,
+                        request_fields_initializer(method));
+                }
             }
-            output(
-                "auto __rpc_result = CO_AWAIT ::canopy::rest::call_rpc_object(*object_, "
-                "{0}::get_id(rpc::get_version()), "
-                "rpc::method{{{1}ull}}, std::move(__rest_inputs));",
-                interface_name,
-                method_id);
-            if (method.response_fields.empty())
+            for (const auto& parameter : function.get_parameters())
             {
-                output("CO_RETURN ::canopy::rest::response_from_rpc_result(__rpc_result, {});", out_param);
+                if (!is_out_param(parameter))
+                    continue;
+                const auto type = rest_component_type(interface_entity, parameter);
+                output("{0} __rest_{1}{{}};", type, parameter.get_name());
+            }
+            output("auto __canopy_rest_call_result = CO_AWAIT object_->{0}({1});", method.name, argument_list);
+            output("if (rpc::error::is_error(__canopy_rest_call_result))");
+            output("{{");
+            output("CO_RETURN ::canopy::rest::error_response(500, \"REST RPC call failed\");");
+            output("}}");
+            if (method.out_param.empty())
+            {
+                if (method.response_fields.empty())
+                {
+                    output(
+                        "CO_RETURN ::canopy::rest::server_response{{{}, \"application/json\", {{}}, {{}}}};",
+                        response_status_code(method));
+                }
+                else
+                {
+                    output("json::v1::map __rest_response_fields;");
+                    for (const auto& field : method.response_fields)
+                    {
+                        output(
+                            "::canopy::rest::add_response_field(__rest_response_fields, {0}, __rest_{1}, {2});",
+                            cpp_string_literal(field.name),
+                            field.name,
+                            field.required ? "true" : "false");
+                    }
+                    if (method.response_field_map.empty())
+                    {
+                        output(
+                            "CO_RETURN ::canopy::rest::server_response{{{0}, {1}, "
+                            "::canopy::rest::response_body_from_fields(std::move(__rest_response_fields), {2}), "
+                            "{{}}}};",
+                            response_status_code(method),
+                            cpp_string_literal(response_content_type(method)),
+                            response_fields_initializer(method));
+                    }
+                    else
+                    {
+                        output(
+                            "CO_RETURN ::canopy::rest::server_response{{{0}, {1}, "
+                            "::canopy::rest::response_body_from_fields(std::move(__rest_response_fields), {2}, {3}), "
+                            "{{}}}};",
+                            response_status_code(method),
+                            cpp_string_literal(response_content_type(method)),
+                            response_fields_initializer(method),
+                            cpp_string_literal(method.response_field_map));
+                    }
+                }
             }
             else
             {
-                output(
-                    "CO_RETURN ::canopy::rest::response_from_rpc_result(__rpc_result, {});",
-                    response_fields_initializer(method));
+                const auto out_type = rest_component_type(interface_entity, find_parameter(function, method.out_param));
+                if (is_raw_string_response(method, out_type))
+                {
+                    output(
+                        "CO_RETURN ::canopy::rest::server_response{{{0}, {1}, __rest_{2}, {{}}}};",
+                        response_status_code(method),
+                        cpp_string_literal(response_content_type(method)),
+                        method.out_param);
+                }
+                else if (method.response_field_map.empty())
+                {
+                    output(
+                        "CO_RETURN ::canopy::rest::server_response{{{0}, {1}, "
+                        "::canopy::rest::body_from_value(__rest_{2}), {{}}}};",
+                        response_status_code(method),
+                        cpp_string_literal(response_content_type(method)),
+                        method.out_param);
+                }
+                else
+                {
+                    output(
+                        "CO_RETURN ::canopy::rest::server_response{{{0}, {1}, "
+                        "::canopy::rest::body_from_value(__rest_{2}, {3}), {{}}}};",
+                        response_status_code(method),
+                        cpp_string_literal(response_content_type(method)),
+                        method.out_param,
+                        cpp_string_literal(method.response_field_map));
+                }
             }
             output("}}");
             output("}}");
             output("else");
             output("{{");
             output("__canopy_rest_path_matched = true;");
+            output(
+                "::canopy::rest::append_allowed_method(__canopy_rest_allowed_methods, {});",
+                cpp_string_literal(method.http_method));
             output("}}");
             output("}}");
             output("}}");
@@ -1429,11 +1654,12 @@ namespace rest_generator
             output("try");
             output("{{");
             output("bool __canopy_rest_path_matched = false;");
+            output("std::string __canopy_rest_allowed_methods;");
             for (const auto* method : ordered_rest_handler_methods(metadata))
                 write_rest_handler_method(output, interface_entity, *method);
             output("if (__canopy_rest_path_matched)");
             output("{{");
-            output("CO_RETURN ::canopy::rest::error_response(405, \"Method not allowed\");");
+            output("CO_RETURN ::canopy::rest::method_not_allowed_response(std::move(__canopy_rest_allowed_methods));");
             output("}}");
             output("CO_RETURN std::nullopt;");
             output("}}");
@@ -1483,6 +1709,7 @@ namespace rest_generator
         const std::filesystem::path& metadata_path)
     {
         const auto metadata = read_metadata(metadata_path);
+        const auto schema_header = schema_header_filename(header_filename);
         writer output(output_stream);
 
         output("#include <algorithm>");
@@ -1502,6 +1729,7 @@ namespace rest_generator
         output("#include <rpc/rpc.h>");
         output("#include <streaming/http_client/client.h>");
         output("#include \"{}\"", header_filename);
+        output("#include \"{}\"", schema_header);
         output("");
         output("// NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters)");
 

@@ -1,0 +1,16 @@
+/*
+ *   Copyright (c) 2026 Edward Boggis-Rolfe
+ *   All rights reserved.
+ */
+
+namespace nullable_fixture
+{
+    [status=demo]
+    struct payload
+    {
+        std::string required_string;
+        rpc::optional<std::string> optional_string;
+        rpc::nullable<std::string> nullable_string;
+        rpc::nullable_optional<std::string> optional_nullable_string;
+    };
+}

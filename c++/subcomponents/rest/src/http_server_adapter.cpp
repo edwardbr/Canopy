@@ -27,6 +27,8 @@ namespace canopy::rest
         response.status_code = rest_response.status_code;
         response.status_text = http_server::status_text(rest_response.status_code);
         response.headers.emplace("Content-Type", std::move(rest_response.content_type));
+        for (auto& header : rest_response.headers)
+            response.headers.emplace(std::move(header.name), std::move(header.value));
         response.body = std::move(rest_response.body);
         return response;
     }

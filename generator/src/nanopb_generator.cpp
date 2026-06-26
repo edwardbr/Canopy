@@ -150,6 +150,17 @@ namespace nanopb_generator
         return proto_generator::optional_inner_type(normalize_type(type));
     }
 
+    bool is_nullable_optional_type(const std::string& type)
+    {
+        std::string inner_type;
+        return proto_generator::is_nullable_optional_type(normalize_type(type), inner_type);
+    }
+
+    std::string nullable_optional_inner_type(const std::string& type)
+    {
+        return proto_generator::nullable_optional_inner_type(normalize_type(type));
+    }
+
     bool is_variant_type(
         const std::string& type,
         std::vector<std::string>& alternative_types)
@@ -281,6 +292,8 @@ namespace nanopb_generator
 
     bool is_unsupported_nanopb_field_type(const std::string& type)
     {
+        if (is_nullable_optional_type(type))
+            return is_unsupported_nanopb_field_type(nullable_optional_inner_type(type));
         if (is_optional_type(type))
             return is_unsupported_nanopb_field_type(optional_inner_type(type));
         std::vector<std::string> variant_alternatives;
@@ -680,6 +693,9 @@ namespace nanopb_generator
     {
         const auto normalized = normalize_type(inner_type);
 
+        if (is_optional_type(normalized) || is_nullable_optional_type(normalized))
+            return false;
+
         if (is_scalar_type(normalized) || is_string_type(normalized) || is_byte_vector_type(normalized)
             || is_json_dom_type(normalized) || is_pointer_type(normalized) || is_interface_type(normalized)
             || is_enum_type(lib, normalized) || is_error_type(lib, normalized))
@@ -946,7 +962,16 @@ namespace nanopb_generator
         const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_string_type(field_type))
+        if (is_nullable_optional_type(field_type))
+        {
+            write_optional_nanopb_encode_state_storage(
+                nullable_optional_inner_type(field_type), state_prefix + "_value", cpp);
+        }
+        else if (is_optional_type(field_type))
+        {
+            write_optional_nanopb_encode_state_storage(optional_inner_type(field_type), state_prefix + "_value", cpp);
+        }
+        else if (is_string_type(field_type))
         {
             cpp("rpc::serialization::nanopb::string_encode_state {}_state;", state_prefix);
         }
@@ -969,9 +994,86 @@ namespace nanopb_generator
         const std::string& source_value_expr,
         const std::string& target_expr,
         const std::string& state_prefix,
+        writer& cpp);
+
+    void write_nullable_optional_cpp_value_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& inner_type,
+        const std::string& source_value_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_string_type(field_type))
+        write_optional_nanopb_encode_state_storage(inner_type, state_prefix + "_value", cpp);
+        cpp("if ({}.is_present())", source_value_expr);
+        cpp("{{");
+        cpp("{}.{}.is_null = {}.is_null();", target_expr, field_name, source_value_expr);
+        cpp("if ({}.has_value())", source_value_expr);
+        cpp("{{");
+        write_optional_cpp_value_to_nanopb_field(
+            lib,
+            package_name,
+            "value",
+            inner_type,
+            source_value_expr + ".value()",
+            target_expr + "." + field_name,
+            state_prefix + "_value",
+            cpp);
+        cpp("}}");
+        cpp("{}.has_{} = true;", target_expr, field_name);
+        cpp("}}");
+        cpp("else");
+        cpp("{{");
+        cpp("{}.has_{} = false;", target_expr, field_name);
+        cpp("}}");
+    }
+
+    void write_optional_cpp_value_to_nanopb_field(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& source_value_expr,
+        const std::string& target_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        if (is_nullable_optional_type(field_type))
+        {
+            write_nullable_optional_cpp_value_to_nanopb_field(
+                lib,
+                package_name,
+                field_name,
+                nullable_optional_inner_type(field_type),
+                source_value_expr,
+                target_expr,
+                state_prefix,
+                cpp);
+        }
+        else if (is_optional_type(field_type))
+        {
+            const auto inner_type = optional_inner_type(field_type);
+            cpp("if ({}.has_value())", source_value_expr);
+            cpp("{{");
+            write_optional_cpp_value_to_nanopb_field(
+                lib,
+                package_name,
+                "value",
+                inner_type,
+                source_value_expr + ".value()",
+                target_expr + "." + field_name,
+                state_prefix + "_value",
+                cpp);
+            cpp("{}.has_{} = true;", target_expr, field_name);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("{}.has_{} = false;", target_expr, field_name);
+            cpp("}}");
+        }
+        else if (is_string_type(field_type))
         {
             cpp("{}_state = rpc::serialization::nanopb::string_encode_state {{ &{} }};", state_prefix, source_value_expr);
             cpp("{}.{}.funcs.encode = rpc::serialization::nanopb::encode_string;", target_expr, field_name);
@@ -1012,7 +1114,29 @@ namespace nanopb_generator
         const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_string_type(field_type))
+        if (is_nullable_optional_type(field_type))
+        {
+            write_prepare_nanopb_field_decode(
+                lib,
+                package_name,
+                "value",
+                nullable_optional_inner_type(field_type),
+                target_expr + "." + field_name,
+                state_prefix + "_value",
+                cpp);
+        }
+        else if (is_optional_type(field_type))
+        {
+            write_prepare_nanopb_field_decode(
+                lib,
+                package_name,
+                "value",
+                optional_inner_type(field_type),
+                target_expr + "." + field_name,
+                state_prefix + "_value",
+                cpp);
+        }
+        else if (is_string_type(field_type))
         {
             cpp("std::string {}_decoded;", state_prefix);
             cpp("rpc::serialization::nanopb::string_decode_state {}_state {{ &{}_decoded }};", state_prefix, state_prefix);
@@ -1094,6 +1218,62 @@ namespace nanopb_generator
         const std::string& source_expr,
         const std::string& dest_expr,
         const std::string& state_prefix,
+        writer& cpp);
+
+    void write_nanopb_field_to_nullable_optional(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& inner_type,
+        const std::string& source_expr,
+        const std::string& dest_expr,
+        const std::string& state_prefix,
+        writer& cpp)
+    {
+        cpp("if ({}.has_{})", source_expr, field_name);
+        cpp("{{");
+        cpp("if ({}.{}.is_null)", source_expr, field_name);
+        cpp("{{");
+        cpp("{}.set_null();", dest_expr);
+        cpp("}}");
+        cpp("else");
+        cpp("{{");
+        if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+        {
+            cpp("if (!{}.{}.has_value)", source_expr, field_name);
+            cpp("{{");
+            cpp("throw std::runtime_error(\"Malformed nanopb nullable optional field {}: wrapper is present without "
+                "value\");",
+                field_name);
+            cpp("}}");
+        }
+        cpp("{} {}_value {{}};", normalize_type(inner_type), state_prefix);
+        write_nanopb_field_to_cpp_value(
+            lib,
+            package_name,
+            "value",
+            inner_type,
+            source_expr + "." + field_name,
+            state_prefix + "_value",
+            state_prefix + "_value",
+            cpp);
+        cpp("{} = {}_value;", dest_expr, state_prefix);
+        cpp("}}");
+        cpp("}}");
+        cpp("else");
+        cpp("{{");
+        cpp("{}.reset();", dest_expr);
+        cpp("}}");
+    }
+
+    void write_nanopb_field_to_cpp_value(
+        const class_entity& lib,
+        const std::string& package_name,
+        const std::string& field_name,
+        const std::string& field_type,
+        const std::string& source_expr,
+        const std::string& dest_expr,
+        const std::string& state_prefix,
         writer& cpp)
     {
         if (is_pointer_type(field_type))
@@ -1116,6 +1296,42 @@ namespace nanopb_generator
         else if (is_error_type(lib, field_type))
         {
             cpp("{} = static_cast<int>({}.{});", dest_expr, source_expr, field_name);
+        }
+        else if (is_nullable_optional_type(field_type))
+        {
+            write_nanopb_field_to_nullable_optional(
+                lib, package_name, field_name, nullable_optional_inner_type(field_type), source_expr, dest_expr, state_prefix, cpp);
+        }
+        else if (is_optional_type(field_type))
+        {
+            const auto inner_type = optional_inner_type(field_type);
+            cpp("if ({}.has_{})", source_expr, field_name);
+            cpp("{{");
+            if (optional_wrapper_value_has_nanopb_presence(lib, inner_type))
+            {
+                cpp("if (!{}.{}.has_value)", source_expr, field_name);
+                cpp("{{");
+                cpp("throw std::runtime_error(\"Malformed nanopb optional field {}: wrapper is present without "
+                    "value\");",
+                    field_name);
+                cpp("}}");
+            }
+            cpp("{} {}_value {{}};", normalize_type(inner_type), state_prefix);
+            write_nanopb_field_to_cpp_value(
+                lib,
+                package_name,
+                "value",
+                inner_type,
+                source_expr + "." + field_name,
+                state_prefix + "_value",
+                state_prefix + "_value",
+                cpp);
+            cpp("{} = {}_value;", dest_expr, state_prefix);
+            cpp("}}");
+            cpp("else");
+            cpp("{{");
+            cpp("{}.reset();", dest_expr);
+            cpp("}}");
         }
         else if (is_scalar_type(field_type))
         {
@@ -1351,7 +1567,19 @@ namespace nanopb_generator
         const std::string& state_prefix,
         writer& cpp)
     {
-        if (is_optional_type(member_type))
+        if (is_nullable_optional_type(member_type))
+        {
+            write_nullable_optional_cpp_value_to_nanopb_field(
+                lib,
+                package_name,
+                member_name,
+                nullable_optional_inner_type(member_type),
+                source_expr + "." + member_name,
+                target_expr,
+                state_prefix,
+                cpp);
+        }
+        else if (is_optional_type(member_type))
         {
             const auto inner_type = optional_inner_type(member_type);
             write_optional_nanopb_encode_state_storage(inner_type, state_prefix + "_value", cpp);
@@ -1642,7 +1870,18 @@ namespace nanopb_generator
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
             const auto current_prefix = state_prefix + "_" + member_name;
 
-            if (is_optional_type(member_type))
+            if (is_nullable_optional_type(member_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib,
+                    package_name,
+                    "value",
+                    nullable_optional_inner_type(member_type),
+                    target_expr + "." + member_name,
+                    current_prefix + "_value",
+                    cpp);
+            }
+            else if (is_optional_type(member_type))
             {
                 write_prepare_nanopb_field_decode(
                     lib,
@@ -1770,7 +2009,19 @@ namespace nanopb_generator
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
             const auto current_prefix = state_prefix + "_" + member_name;
 
-            if (is_optional_type(member_type))
+            if (is_nullable_optional_type(member_type))
+            {
+                write_nanopb_field_to_nullable_optional(
+                    lib,
+                    package_name,
+                    member_name,
+                    nullable_optional_inner_type(member_type),
+                    source_expr,
+                    target_expr + "." + member_name,
+                    current_prefix,
+                    cpp);
+            }
+            else if (is_optional_type(member_type))
             {
                 const auto inner_type = optional_inner_type(member_type);
                 cpp("if ({}.has_{})", source_expr, member_name);
@@ -2036,7 +2287,12 @@ namespace nanopb_generator
             const auto member_type
                 = substitute_single_template_parameter(template_entity, inst.template_param, field->get_return_type());
 
-            if (is_optional_type(member_type))
+            if (is_nullable_optional_type(member_type))
+            {
+                write_nanopb_field_to_nullable_optional(
+                    lib, package_name, field_name, nullable_optional_inner_type(member_type), "msg", member_name, field_name, cpp);
+            }
+            else if (is_optional_type(member_type))
             {
                 const auto inner_type = optional_inner_type(member_type);
                 cpp("if (msg.has_{})", field_name);
@@ -2146,7 +2402,18 @@ namespace nanopb_generator
             const auto field_name = proto_generator::sanitize_field_name(member_name);
             const auto member_type = field->get_return_type();
 
-            if (is_optional_type(member_type))
+            if (is_nullable_optional_type(member_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib,
+                    package_name,
+                    "value",
+                    nullable_optional_inner_type(member_type),
+                    "msg." + field_name,
+                    field_name + "_value",
+                    cpp);
+            }
+            else if (is_optional_type(member_type))
             {
                 write_prepare_nanopb_field_decode(
                     lib, package_name, "value", optional_inner_type(member_type), "msg." + field_name, field_name + "_value", cpp);
@@ -2240,7 +2507,12 @@ namespace nanopb_generator
             const auto field_name = proto_generator::sanitize_field_name(member_name);
             const auto member_type = field->get_return_type();
 
-            if (is_optional_type(member_type))
+            if (is_nullable_optional_type(member_type))
+            {
+                write_nanopb_field_to_nullable_optional(
+                    lib, package_name, field_name, nullable_optional_inner_type(member_type), "msg", member_name, field_name, cpp);
+            }
+            else if (is_optional_type(member_type))
             {
                 const auto inner_type = optional_inner_type(member_type);
                 cpp("if (msg.has_{})", field_name);
@@ -2385,7 +2657,18 @@ namespace nanopb_generator
         {
             const auto field_name = proto_generator::sanitize_field_name(parameter->get_name());
             const auto param_type = parameter->get_type();
-            if (is_optional_type(param_type))
+            if (is_nullable_optional_type(param_type))
+            {
+                write_prepare_nanopb_field_decode(
+                    lib,
+                    package_name,
+                    "value",
+                    nullable_optional_inner_type(param_type),
+                    "__message." + field_name,
+                    field_name + "_value",
+                    cpp);
+            }
+            else if (is_optional_type(param_type))
             {
                 write_prepare_nanopb_field_decode(
                     lib,
@@ -2503,7 +2786,12 @@ namespace nanopb_generator
         const auto field_name = proto_generator::sanitize_field_name(parameter.get_name());
         const auto param_type = parameter.get_type();
 
-        if (is_optional_type(param_type))
+        if (is_nullable_optional_type(param_type))
+        {
+            write_nullable_optional_cpp_value_to_nanopb_field(
+                lib, package_name, field_name, nullable_optional_inner_type(param_type), source_name, "__message", field_name, cpp);
+        }
+        else if (is_optional_type(param_type))
         {
             const auto inner_type = optional_inner_type(param_type);
             write_optional_nanopb_encode_state_storage(inner_type, field_name + "_value", cpp);
@@ -2671,7 +2959,19 @@ namespace nanopb_generator
         const auto field_name = proto_generator::sanitize_field_name(parameter.get_name());
         const auto param_type = parameter.get_type();
 
-        if (is_optional_type(param_type))
+        if (is_nullable_optional_type(param_type))
+        {
+            write_nanopb_field_to_nullable_optional(
+                lib,
+                package_name,
+                field_name,
+                nullable_optional_inner_type(param_type),
+                "__message",
+                destination_name,
+                field_name,
+                cpp);
+        }
+        else if (is_optional_type(param_type))
         {
             const auto inner_type = optional_inner_type(param_type);
             cpp("if (__message.has_{})", field_name);

@@ -90,6 +90,7 @@ class RestMethod:
     path: str
     body_param: str = ""
     out_param: str = ""
+    response_status_code: int = 0
     parameters: list[RestParameter] = field(default_factory=list)
 
 
@@ -357,6 +358,7 @@ def read_json_rest_binding(path: Path) -> dict[str, RestInterface]:
                 path=method_value.get("path", "") or "/",
                 body_param=request_value.get("body_param", ""),
                 out_param=response_value.get("out_param", ""),
+                response_status_code=int(response_value.get("status_code", 0) or 0),
             )
             if not method.name:
                 raise ValueError(f"REST binding method missing name: {path}")
@@ -564,9 +566,10 @@ def generate_openapi(
                     },
                 }
 
+            response_status = str(rest_method.response_status_code or (200 if rest_method.out_param else 204))
             if rest_method.out_param:
                 idl_parameter = method_parameter(idl_method, rest_method.out_param)
-                operation["responses"]["200"] = {
+                operation["responses"][response_status] = {
                     "description": "Successful response",
                     "content": {
                         "application/json": {
@@ -579,7 +582,7 @@ def generate_openapi(
                     },
                 }
             else:
-                operation["responses"]["204"] = {"description": "No content"}
+                operation["responses"][response_status] = {"description": "No content"}
 
             path = rest_method.path if rest_method.path.startswith("/") else f"/{rest_method.path}"
             paths.setdefault(path, {})[rest_method.http_method.lower()] = operation

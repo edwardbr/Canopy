@@ -67,6 +67,7 @@ Canopy is a modern C++ RPC library with generated proxy/stub code from IDL files
 
 - Build outputs are preset-specific. Do not assume a single `build/` directory.
 - Generated files appear under the active binary directory, typically in `<binaryDir>/generated/`.
+- When being asked question, it does not mean I want you to change source code or action a rebuild, if you think you need to do something and it will take a long time to revert please ask first
 
 ## Build System
 

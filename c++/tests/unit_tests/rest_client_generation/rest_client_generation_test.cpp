@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-namespace todos = todoapi::v1::todos;
+namespace todos = canopy_rest_fixture::todoapi::v1::todos;
 
 namespace
 {

@@ -32,6 +32,7 @@
 #include <tcp_blocking_stream/tcp_blocking_stream_config_schema.h>
 #include <tcp_coroutine_stream/tcp_coroutine_stream_config_schema.h>
 #include <network_config/network_config_schema.h>
+#include <nullable_fixture/nullable_fixture_schema.h>
 #include <rpc/rpc_types_schema.h>
 #include <schema_cycle/schema_cycle_schema.h>
 #include <set_fixture/set_fixture_schema.h>
@@ -151,6 +152,32 @@ namespace
         named.name = "listener_transport";
         ASSERT_TRUE(named.name.has_value());
         EXPECT_EQ(named.name.value(), "listener_transport");
+    }
+
+    TEST(
+        JsonConvert,
+        NullableFieldsPreserveExplicitNull)
+    {
+        const auto input = parse(R"json({
+            "required_string": "required",
+            "nullable_string": null,
+            "optional_nullable_string": null
+        })json");
+
+        const auto typed = from_json_object<nullable_fixture::payload>(input);
+        EXPECT_EQ(typed.required_string, "required");
+        EXPECT_FALSE(typed.optional_string.has_value());
+        EXPECT_FALSE(typed.nullable_string.has_value());
+        EXPECT_TRUE(typed.optional_nullable_string.is_null());
+
+        const auto serialised = to_json_object(typed);
+        ASSERT_EQ(serialised.get_type(), json::v1::object::type::map_type);
+        const auto& map = serialised.as_map();
+
+        EXPECT_EQ(map.at("nullable_string").get_type(), json::v1::object::type::null_type);
+        ASSERT_NE(map.find("optional_nullable_string"), map.end());
+        EXPECT_EQ(map.at("optional_nullable_string").get_type(), json::v1::object::type::null_type);
+        EXPECT_EQ(map.find("optional_string"), map.end());
     }
 
     TEST(

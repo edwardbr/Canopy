@@ -41,6 +41,32 @@ namespace json
             };
 
             template<typename T> [[nodiscard]] T from_json_object(const json::v1::object& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::optional<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::nullable<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::nullable_optional<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::vector<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::list<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::deque<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::set<T>& value);
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const std::unordered_set<T>& value);
+            template<typename V>
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::map<
+                    std::string,
+                    V>& value);
+            template<typename V>
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::unordered_map<
+                    std::string,
+                    V>& value);
+            template<
+                typename T,
+                std::size_t N>
+            [[nodiscard]] json::v1::object to_json_object(
+                const std::array<
+                    T,
+                    N>& value);
+            template<typename... Ts> [[nodiscard]] json::v1::object to_json_object(const rpc::variant<Ts...>& value);
 
             // ---- primitive readers ------------------------------------------------
 
@@ -110,6 +136,26 @@ namespace json
                 if (value.get_type() == object::type::null_type)
                     return {};
                 return rpc::optional<T>(from_json_object<T>(value));
+            }
+
+            template<typename T>
+            [[nodiscard]] rpc::nullable<T> from_json_object(
+                tag<rpc::nullable<T>>,
+                const json::v1::object& value)
+            {
+                if (value.get_type() == object::type::null_type)
+                    return {};
+                return rpc::nullable<T>(from_json_object<T>(value));
+            }
+
+            template<typename T>
+            [[nodiscard]] rpc::nullable_optional<T> from_json_object(
+                tag<rpc::nullable_optional<T>>,
+                const json::v1::object& value)
+            {
+                if (value.get_type() == object::type::null_type)
+                    return rpc::nullable_optional<T>(rpc::null);
+                return rpc::nullable_optional<T>(from_json_object<T>(value));
             }
 
             template<
@@ -364,6 +410,20 @@ namespace json
             }
 
             template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::optional<T>& value)
+            {
+                if (!value.has_value())
+                    return json::v1::object(nullptr);
+                return to_json_object(*value);
+            }
+
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::nullable<T>& value)
+            {
+                if (!value.has_value())
+                    return json::v1::object(nullptr);
+                return to_json_object(*value);
+            }
+
+            template<typename T> [[nodiscard]] json::v1::object to_json_object(const rpc::nullable_optional<T>& value)
             {
                 if (!value.has_value())
                     return json::v1::object(nullptr);

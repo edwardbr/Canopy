@@ -170,7 +170,8 @@ namespace proto_generator
     {
         const auto normalized = normalise_cpp_type(type);
         const bool is_rpc_optional = normalized.find("rpc::optional<") == 0 || normalized.find("::rpc::optional<") == 0;
-        if (!is_rpc_optional)
+        const bool is_rpc_nullable = normalized.find("rpc::nullable<") == 0 || normalized.find("::rpc::nullable<") == 0;
+        if (!is_rpc_optional && !is_rpc_nullable)
             return false;
 
         const auto template_start = normalized.find('<');
@@ -186,6 +187,32 @@ namespace proto_generator
     {
         std::string inner_type;
         is_optional_type(type, inner_type);
+        return inner_type;
+    }
+
+    bool is_nullable_optional_type(
+        const std::string& type,
+        std::string& inner_type)
+    {
+        const auto normalized = normalise_cpp_type(type);
+        const bool is_rpc_nullable_optional
+            = normalized.find("rpc::nullable_optional<") == 0 || normalized.find("::rpc::nullable_optional<") == 0;
+        if (!is_rpc_nullable_optional)
+            return false;
+
+        const auto template_start = normalized.find('<');
+        std::string content;
+        if (extract_template_content(normalized, template_start, content) == std::string::npos)
+            return false;
+
+        inner_type = trim_copy(content);
+        return !inner_type.empty();
+    }
+
+    std::string nullable_optional_inner_type(const std::string& type)
+    {
+        std::string inner_type;
+        is_nullable_optional_type(type, inner_type);
         return inner_type;
     }
 

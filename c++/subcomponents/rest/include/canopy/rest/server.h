@@ -36,6 +36,7 @@ namespace canopy::rest
         int status_code{200};
         std::string content_type{"application/json"};
         std::string body;
+        std::vector<streaming::http_client::header> headers;
     };
 
     struct path_match
@@ -60,17 +61,46 @@ namespace canopy::rest
         std::string_view out_param);
     [[nodiscard]] std::string response_body_from_rpc_output(
         std::string_view out_buf,
+        std::string_view out_param,
+        std::string_view field_map_json);
+    [[nodiscard]] std::string response_body_from_rpc_output(
+        std::string_view out_buf,
         std::initializer_list<response_field_binding> fields);
+    [[nodiscard]] std::string response_body_from_rpc_output(
+        std::string_view out_buf,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json);
+    [[nodiscard]] std::string response_body_from_fields(
+        json::v1::map output_values,
+        std::initializer_list<response_field_binding> fields);
+    [[nodiscard]] std::string response_body_from_fields(
+        json::v1::map output_values,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json);
     [[nodiscard]] server_response json_response(
         int status_code,
         std::string body);
     [[nodiscard]] server_response error_response(
         int status_code,
         std::string message);
+    void append_allowed_method(
+        std::string& allowed_methods,
+        std::string_view method);
+    [[nodiscard]] server_response method_not_allowed_response(std::string allowed_methods);
     void add_body_input(
         json::v1::map& inputs,
         std::string_view name,
         std::string_view body);
+    void add_body_input(
+        json::v1::map& inputs,
+        std::string_view name,
+        std::string_view body,
+        std::initializer_list<response_field_binding> fields);
+    void add_body_input(
+        json::v1::map& inputs,
+        std::string_view name,
+        std::string_view body,
+        std::string_view field_map_json);
     [[nodiscard]] CORO_TASK(rpc::send_result) call_rpc_object(
         const rpc::casting_interface& object,
         rpc::interface_ordinal interface_id,
@@ -81,7 +111,15 @@ namespace canopy::rest
         std::string_view out_param);
     [[nodiscard]] server_response response_from_rpc_result(
         const rpc::send_result& result,
+        std::string_view out_param,
+        std::string_view field_map_json);
+    [[nodiscard]] server_response response_from_rpc_result(
+        const rpc::send_result& result,
         std::initializer_list<response_field_binding> fields);
+    [[nodiscard]] server_response response_from_rpc_result(
+        const rpc::send_result& result,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json);
 
     using server_handler = std::function<CORO_TASK(std::optional<server_response>)(const server_request&)>;
 
@@ -162,6 +200,18 @@ namespace canopy::rest
             using value_type = T;
         };
 
+        template<typename T> struct rpc_optional_traits<rpc::nullable<T>>
+        {
+            static constexpr bool value = true;
+            using value_type = T;
+        };
+
+        template<typename T> struct rpc_optional_traits<rpc::nullable_optional<T>>
+        {
+            static constexpr bool value = true;
+            using value_type = T;
+        };
+
         [[nodiscard]] json::v1::object bool_component_to_json(std::string_view value);
         [[nodiscard]] json::v1::object signed_component_to_json(std::string_view value);
         [[nodiscard]] json::v1::object unsigned_component_to_json(std::string_view value);
@@ -210,7 +260,23 @@ namespace canopy::rest
 
     template<typename T> [[nodiscard]] T body_to_value(std::string_view body)
     {
-        return from_json_string<T>(body.empty() ? "null" : body);
+        return value_from_body<T>(body);
+    }
+
+    template<typename T>
+    [[nodiscard]] T body_to_value(
+        std::string_view body,
+        std::initializer_list<response_field_binding> fields)
+    {
+        return value_from_body<T>(body, fields);
+    }
+
+    template<typename T>
+    [[nodiscard]] T body_to_value(
+        std::string_view body,
+        std::string_view field_map_json)
+    {
+        return value_from_body<T>(body, field_map_json);
     }
 
     template<typename T>

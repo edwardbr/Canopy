@@ -281,6 +281,17 @@ namespace canopy::rest
 
     std::string response_body_from_rpc_output(
         std::string_view out_buf,
+        std::string_view out_param,
+        std::string_view field_map_json)
+    {
+        const auto body = response_body_from_rpc_output(out_buf, out_param);
+        json::v1::map wrapper;
+        wrapper.emplace("__body", json::v1::parse(body.empty() ? "{}" : body));
+        return body_from_rpc_input(wrapper, "__body", field_map_json);
+    }
+
+    std::string response_body_from_rpc_output(
+        std::string_view out_buf,
         std::initializer_list<response_field_binding> fields)
     {
         if (fields.size() == 0)
@@ -313,11 +324,98 @@ namespace canopy::rest
         return json::v1::dump(json::v1::object(std::move(response_fields)));
     }
 
+    std::string response_body_from_rpc_output(
+        std::string_view out_buf,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json)
+    {
+        if (fields.size() == 0)
+            return {};
+        if (out_buf.empty())
+            return "{}";
+
+        const std::string out_text(out_buf);
+        const auto output = json::v1::parse(out_text);
+        const auto& output_map = output.as_map();
+        const auto out_item = output_map.find("out");
+        if (out_item != output_map.end() && out_item->second.get_type() != json::v1::object::type::map_type)
+            return "{}";
+        const auto& values = out_item == output_map.end() ? output_map : out_item->second.as_map();
+
+        json::v1::map response_fields;
+        for (const auto& field : fields)
+        {
+            const auto value = values.find(std::string(field.output_name));
+            if (value == values.end())
+            {
+                if (field.required)
+                    return "{}";
+                continue;
+            }
+            if (!field.required && is_null(value->second))
+                continue;
+            response_fields.emplace(std::string(field.output_name), value->second);
+        }
+
+        json::v1::map wrapper;
+        wrapper.emplace("__body", json::v1::object(std::move(response_fields)));
+        return body_from_rpc_input(wrapper, "__body", field_map_json);
+    }
+
+    std::string response_body_from_fields(
+        json::v1::map output_values,
+        std::initializer_list<response_field_binding> fields)
+    {
+        if (fields.size() == 0)
+            return {};
+
+        json::v1::map response_fields;
+        for (const auto& field : fields)
+        {
+            const auto value = output_values.find(std::string(field.output_name));
+            if (value == output_values.end())
+            {
+                if (field.required)
+                    return "{}";
+                continue;
+            }
+            if (!field.required && is_null(value->second))
+                continue;
+            response_fields.emplace(std::string(field.wire_name), value->second);
+        }
+        return json::v1::dump(json::v1::object(std::move(response_fields)));
+    }
+
+    std::string response_body_from_fields(
+        json::v1::map output_values,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json)
+    {
+        if (fields.size() == 0)
+            return {};
+
+        json::v1::map response_fields;
+        for (const auto& field : fields)
+        {
+            const auto value = output_values.find(std::string(field.output_name));
+            if (value == output_values.end())
+            {
+                if (field.required)
+                    return "{}";
+                continue;
+            }
+            if (!field.required && is_null(value->second))
+                continue;
+            response_fields.emplace(std::string(field.output_name), value->second);
+        }
+        return transform_body_to_wire(json::v1::dump(json::v1::object(std::move(response_fields))), field_map_json);
+    }
+
     server_response json_response(
         int status_code,
         std::string body)
     {
-        return server_response{status_code, "application/json", std::move(body)};
+        return server_response{status_code, "application/json", std::move(body), {}};
     }
 
     server_response error_response(
@@ -330,12 +428,95 @@ namespace canopy::rest
         return json_response(status_code, json::v1::dump(json::v1::object(std::move(body))));
     }
 
+    void append_allowed_method(
+        std::string& allowed_methods,
+        std::string_view method)
+    {
+        if (method.empty())
+            return;
+
+        size_t offset = 0;
+        while (offset < allowed_methods.size())
+        {
+            const auto comma = allowed_methods.find(',', offset);
+            auto token = std::string_view(allowed_methods)
+                             .substr(offset, comma == std::string::npos ? std::string::npos : comma - offset);
+            while (!token.empty() && token.front() == ' ')
+                token.remove_prefix(1);
+            while (!token.empty() && token.back() == ' ')
+                token.remove_suffix(1);
+            if (canopy::http_utils::ascii_iequals(token, method))
+                return;
+            if (comma == std::string::npos)
+                break;
+            offset = comma + 1;
+        }
+
+        if (!allowed_methods.empty())
+            allowed_methods += ", ";
+        allowed_methods += method;
+    }
+
+    server_response method_not_allowed_response(std::string allowed_methods)
+    {
+        auto response = error_response(405, "Method not allowed");
+        response.headers.push_back({"Allow", std::move(allowed_methods)});
+        return response;
+    }
+
     void add_body_input(
         json::v1::map& inputs,
         std::string_view name,
         std::string_view body)
     {
         inputs.emplace(std::string(name), json::v1::parse(body.empty() ? "null" : body));
+    }
+
+    void add_body_input(
+        json::v1::map& inputs,
+        std::string_view name,
+        std::string_view body,
+        std::initializer_list<response_field_binding> fields)
+    {
+        if (fields.size() == 0)
+        {
+            add_body_input(inputs, name, body);
+            return;
+        }
+
+        const auto request_body = json::v1::parse(body.empty() ? "{}" : body);
+        if (request_body.get_type() != json::v1::object::type::map_type)
+            throw std::runtime_error("REST request body is not an object");
+
+        const auto& wire_fields = request_body.as_map();
+        json::v1::map rpc_fields;
+        for (const auto& field : fields)
+        {
+            const auto item = wire_fields.find(std::string(field.wire_name));
+            if (item == wire_fields.end())
+            {
+                if (field.required)
+                    throw std::runtime_error("required REST request field is missing");
+                continue;
+            }
+            rpc_fields.emplace(std::string(field.output_name), item->second);
+        }
+
+        inputs.emplace(std::string(name), json::v1::object(std::move(rpc_fields)));
+    }
+
+    void add_body_input(
+        json::v1::map& inputs,
+        std::string_view name,
+        std::string_view body,
+        std::string_view field_map_json)
+    {
+        const auto wrapped = json::v1::parse(wrap_response_body("__body", body, field_map_json));
+        const auto& wrapped_fields = wrapped.as_map();
+        const auto item = wrapped_fields.find("__body");
+        if (item == wrapped_fields.end())
+            throw std::runtime_error("REST request body mapping failed");
+        inputs.emplace(std::string(name), item->second);
     }
 
     CORO_TASK(rpc::send_result)
@@ -366,13 +547,41 @@ namespace canopy::rest
         }
 
         if (out_param.empty())
-            return server_response{204, "application/json", {}};
+            return server_response{204, "application/json", {}, {}};
 
         try
         {
             return json_response(
                 200,
                 response_body_from_rpc_output(std::string_view(result.out_buf.data(), result.out_buf.size()), out_param));
+        }
+        catch (const std::exception&)
+        {
+            return error_response(500, "Invalid REST RPC response");
+        }
+    }
+
+    server_response response_from_rpc_result(
+        const rpc::send_result& result,
+        std::string_view out_param,
+        std::string_view field_map_json)
+    {
+        if (result.error_code != rpc::error::OK())
+        {
+            if (result.error_code == rpc::error::STUB_DESERIALISATION_ERROR())
+                return error_response(400, "Invalid REST request body");
+            return error_response(500, "REST RPC call failed");
+        }
+
+        if (out_param.empty())
+            return server_response{204, "application/json", {}, {}};
+
+        try
+        {
+            return json_response(
+                200,
+                response_body_from_rpc_output(
+                    std::string_view(result.out_buf.data(), result.out_buf.size()), out_param, field_map_json));
         }
         catch (const std::exception&)
         {
@@ -392,12 +601,40 @@ namespace canopy::rest
         }
 
         if (fields.size() == 0)
-            return server_response{204, "application/json", {}};
+            return server_response{204, "application/json", {}, {}};
 
         try
         {
             return json_response(
                 200, response_body_from_rpc_output(std::string_view(result.out_buf.data(), result.out_buf.size()), fields));
+        }
+        catch (const std::exception&)
+        {
+            return error_response(500, "Invalid REST RPC response");
+        }
+    }
+
+    server_response response_from_rpc_result(
+        const rpc::send_result& result,
+        std::initializer_list<response_field_binding> fields,
+        std::string_view field_map_json)
+    {
+        if (result.error_code != rpc::error::OK())
+        {
+            if (result.error_code == rpc::error::STUB_DESERIALISATION_ERROR())
+                return error_response(400, "Invalid REST request body");
+            return error_response(500, "REST RPC call failed");
+        }
+
+        if (fields.size() == 0)
+            return server_response{204, "application/json", {}, {}};
+
+        try
+        {
+            return json_response(
+                200,
+                response_body_from_rpc_output(
+                    std::string_view(result.out_buf.data(), result.out_buf.size()), fields, field_map_json));
         }
         catch (const std::exception&)
         {

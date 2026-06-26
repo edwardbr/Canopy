@@ -240,11 +240,28 @@ namespace json
                 if (const auto* properties = map_find(schema_map, "properties");
                     properties && properties->get_type() == object::type::map_type)
                 {
+                    std::vector<std::string> required_properties;
+                    if (const auto* required = map_find(schema_map, "required");
+                        required && required->get_type() == object::type::array_type)
+                    {
+                        for (const auto& required_value : required->as_array())
+                        {
+                            if (required_value.get_type() == object::type::string_type)
+                                required_properties.push_back(required_value.get<std::string>());
+                        }
+                    }
+
                     map property_defaults;
                     for (const auto& [property_name, property_schema] : properties->as_map())
                     {
                         auto property_default = collect_schema_defaults(root_schema, property_schema, active_schemas);
-                        if (property_default)
+                        const auto property_is_required
+                            = std::find(required_properties.begin(), required_properties.end(), property_name)
+                              != required_properties.end();
+                        const auto property_has_explicit_default
+                            = property_schema.get_type() == object::type::map_type
+                              && map_find(property_schema.as_map(), "default") != nullptr;
+                        if (property_default && (property_is_required || property_has_explicit_default))
                             property_defaults.emplace(property_name, *property_default);
                     }
                     if (!property_defaults.empty())

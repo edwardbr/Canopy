@@ -357,6 +357,13 @@ namespace protobuf_generator
         return sanitize_type_name(owning_message_name) + "_" + field_name + "_optional";
     }
 
+    std::string nullable_optional_wrapper_message_name(
+        const std::string& owning_message_name,
+        const std::string& field_name)
+    {
+        return sanitize_type_name(owning_message_name) + "_" + field_name + "_nullable_optional";
+    }
+
     std::string variant_wrapper_message_name(
         const std::string& owning_message_name,
         const std::string& field_name)
@@ -375,12 +382,51 @@ namespace protobuf_generator
         const std::string& inner_type,
         writer& proto)
     {
+        std::string nested_optional_inner_type;
         proto("message {} {{", wrapper_name);
-        auto value_type = cpp_type_to_proto_type(current_scope, inner_type);
+        auto value_type = proto_generator::is_optional_type(inner_type, nested_optional_inner_type)
+                              ? optional_wrapper_message_name(wrapper_name, "value")
+                              : cpp_type_to_proto_type(current_scope, inner_type);
         value_type = sanitize_scoped_proto_field_type(std::move(value_type));
         proto("{} value = 1;", value_type);
         proto("}}");
         proto("");
+
+        if (!nested_optional_inner_type.empty())
+        {
+            write_optional_wrapper_message_definition(current_scope, value_type, nested_optional_inner_type, proto);
+        }
+    }
+
+    void write_nullable_optional_wrapper_message_definition(
+        const class_entity& current_scope,
+        const std::string& wrapper_name,
+        const std::string& inner_type,
+        writer& proto)
+    {
+        std::string nested_nullable_optional_inner_type;
+        std::string nested_optional_inner_type;
+        auto value_type = proto_generator::is_nullable_optional_type(inner_type, nested_nullable_optional_inner_type)
+                              ? nullable_optional_wrapper_message_name(wrapper_name, "value")
+                              : (proto_generator::is_optional_type(inner_type, nested_optional_inner_type)
+                                        ? optional_wrapper_message_name(wrapper_name, "value")
+                                        : cpp_type_to_proto_type(current_scope, inner_type));
+        value_type = sanitize_scoped_proto_field_type(std::move(value_type));
+        proto("message {} {{", wrapper_name);
+        proto("bool is_null = 1;");
+        proto("{} value = 2;", value_type);
+        proto("}}");
+        proto("");
+
+        if (!nested_nullable_optional_inner_type.empty())
+        {
+            write_nullable_optional_wrapper_message_definition(
+                current_scope, value_type, nested_nullable_optional_inner_type, proto);
+        }
+        if (!nested_optional_inner_type.empty())
+        {
+            write_optional_wrapper_message_definition(current_scope, value_type, nested_optional_inner_type, proto);
+        }
     }
 
     void write_variant_wrapper_message_definition(
@@ -441,10 +487,13 @@ namespace protobuf_generator
                 // For struct fields, the return type is the field type and the name is the field name
                 std::string field_name = sanitize_field_name(func_entity->get_name());
                 const auto member_type = func_entity->get_return_type();
+                std::string nullable_optional_inner;
                 std::string optional_inner;
                 std::vector<std::string> variant_alternatives;
                 std::string field_type;
-                if (proto_generator::is_optional_type(member_type, optional_inner))
+                if (proto_generator::is_nullable_optional_type(member_type, nullable_optional_inner))
+                    field_type = nullable_optional_wrapper_message_name(entity.get_name(), field_name);
+                else if (proto_generator::is_optional_type(member_type, optional_inner))
                     field_type = optional_wrapper_message_name(entity.get_name(), field_name);
                 else if (proto_generator::is_variant_type(member_type, variant_alternatives))
                     field_type = variant_wrapper_message_name(entity.get_name(), field_name);
@@ -466,6 +515,24 @@ namespace protobuf_generator
         // Close the message definition
         proto("}}");
         proto("");
+
+        for (auto& member : entity.get_elements(entity_type::STRUCTURE_MEMBERS))
+        {
+            if (member->get_entity_type() != entity_type::FUNCTION_VARIABLE)
+                continue;
+
+            auto func_entity = std::static_pointer_cast<function_entity>(member);
+            if (func_entity->is_static())
+                continue;
+
+            std::string nullable_optional_inner;
+            if (!proto_generator::is_nullable_optional_type(func_entity->get_return_type(), nullable_optional_inner))
+                continue;
+
+            const auto field_name = sanitize_field_name(func_entity->get_name());
+            write_nullable_optional_wrapper_message_definition(
+                entity, nullable_optional_wrapper_message_name(entity.get_name(), field_name), nullable_optional_inner, proto);
+        }
 
         for (auto& member : entity.get_elements(entity_type::STRUCTURE_MEMBERS))
         {
@@ -530,10 +597,14 @@ namespace protobuf_generator
                     field_type = template_param;
                 }
 
+                std::string nullable_optional_inner;
                 std::string optional_inner;
-                field_type = proto_generator::is_optional_type(field_type, optional_inner)
-                                 ? optional_wrapper_message_name(concrete_name, field_name)
-                                 : cpp_type_to_proto_type(template_entity, field_type);
+                if (proto_generator::is_nullable_optional_type(field_type, nullable_optional_inner))
+                    field_type = nullable_optional_wrapper_message_name(concrete_name, field_name);
+                else
+                    field_type = proto_generator::is_optional_type(field_type, optional_inner)
+                                     ? optional_wrapper_message_name(concrete_name, field_name)
+                                     : cpp_type_to_proto_type(template_entity, field_type);
 
                 field_type = sanitize_scoped_proto_field_type(std::move(field_type));
 
@@ -558,6 +629,18 @@ namespace protobuf_generator
             std::string field_type = func_entity->get_return_type();
             if (field_type == "T")
                 field_type = template_param;
+
+            std::string nullable_optional_inner;
+            if (proto_generator::is_nullable_optional_type(field_type, nullable_optional_inner))
+            {
+                const auto field_name = sanitize_field_name(func_entity->get_name());
+                write_nullable_optional_wrapper_message_definition(
+                    template_entity,
+                    nullable_optional_wrapper_message_name(concrete_name, field_name),
+                    nullable_optional_inner,
+                    proto);
+                continue;
+            }
 
             std::string optional_inner;
             if (!proto_generator::is_optional_type(field_type, optional_inner))
@@ -1343,6 +1426,7 @@ namespace protobuf_generator
                 // Write request message
                 proto("message {} {{", input_type);
                 int field_number = 0;
+                std::vector<std::pair<std::string, std::string>> request_nullable_optional_wrappers;
                 std::vector<std::pair<std::string, std::string>> request_optional_wrappers;
                 std::vector<std::pair<std::string, std::vector<std::string>>> request_variant_wrappers;
                 for (auto& parameter : function->get_parameters())
@@ -1363,9 +1447,15 @@ namespace protobuf_generator
                         }
                         else
                         {
+                            std::string nullable_optional_inner;
                             std::string optional_inner;
                             std::vector<std::string> variant_alternatives;
-                            if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
+                            if (proto_generator::is_nullable_optional_type(parameter.get_type(), nullable_optional_inner))
+                            {
+                                param_type = nullable_optional_wrapper_message_name(input_type, param_name);
+                                request_nullable_optional_wrappers.push_back({param_type, nullable_optional_inner});
+                            }
+                            else if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
                             {
                                 param_type = optional_wrapper_message_name(input_type, param_name);
                                 request_optional_wrappers.push_back({param_type, optional_inner});
@@ -1388,6 +1478,8 @@ namespace protobuf_generator
                 }
                 proto("}}");
                 proto("");
+                for (const auto& [wrapper_name, inner_type] : request_nullable_optional_wrappers)
+                    write_nullable_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
                 for (const auto& [wrapper_name, inner_type] : request_optional_wrappers)
                     write_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
                 for (const auto& [wrapper_name, alternatives] : request_variant_wrappers)
@@ -1396,6 +1488,7 @@ namespace protobuf_generator
                 // Write response message
                 proto("message {} {{", output_type);
                 field_number = 0;
+                std::vector<std::pair<std::string, std::string>> response_nullable_optional_wrappers;
                 std::vector<std::pair<std::string, std::string>> response_optional_wrappers;
                 std::vector<std::pair<std::string, std::vector<std::string>>> response_variant_wrappers;
                 for (auto& parameter : function->get_parameters())
@@ -1414,9 +1507,15 @@ namespace protobuf_generator
                         }
                         else
                         {
+                            std::string nullable_optional_inner;
                             std::string optional_inner;
                             std::vector<std::string> variant_alternatives;
-                            if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
+                            if (proto_generator::is_nullable_optional_type(parameter.get_type(), nullable_optional_inner))
+                            {
+                                param_type = nullable_optional_wrapper_message_name(output_type, param_name);
+                                response_nullable_optional_wrappers.push_back({param_type, nullable_optional_inner});
+                            }
+                            else if (proto_generator::is_optional_type(parameter.get_type(), optional_inner))
                             {
                                 param_type = optional_wrapper_message_name(output_type, param_name);
                                 response_optional_wrappers.push_back({param_type, optional_inner});
@@ -1450,6 +1549,8 @@ namespace protobuf_generator
 
                 proto("}}");
                 proto("");
+                for (const auto& [wrapper_name, inner_type] : response_nullable_optional_wrappers)
+                    write_nullable_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
                 for (const auto& [wrapper_name, inner_type] : response_optional_wrappers)
                     write_optional_wrapper_message_definition(*interface_entity, wrapper_name, inner_type, proto);
                 for (const auto& [wrapper_name, alternatives] : response_variant_wrappers)
@@ -1879,6 +1980,25 @@ namespace protobuf_generator
         writer& cpp,
         const std::string& indent);
 
+    void write_nullable_optional_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& inner_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent);
+
+    void write_proto_field_to_nullable_optional(
+        const class_entity& root_entity,
+        const std::string& inner_type,
+        const std::string& proto_var,
+        const std::string& field_accessor,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent);
+
     void write_variant_to_proto_field(
         const class_entity& root_entity,
         const std::string& package_name,
@@ -2023,6 +2143,18 @@ namespace protobuf_generator
             {
                 // Pointer types marshal the address only (uint64_t)
                 cpp("__request.set_{}({});", param_accessor, param_name);
+            }
+            else if (std::string nullable_optional_inner;
+                proto_generator::is_nullable_optional_type(param_type, nullable_optional_inner))
+            {
+                write_nullable_optional_to_proto_field(
+                    lib,
+                    package_name,
+                    nullable_optional_inner,
+                    param_name,
+                    "(*__request.mutable_" + param_accessor + "())",
+                    cpp,
+                    "");
             }
             else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
             {
@@ -2242,6 +2374,12 @@ namespace protobuf_generator
             {
                 // Pointer types marshal the address only (uint64_t)
                 cpp("{} = __response.{}();", param_name, param_accessor);
+            }
+            else if (std::string nullable_optional_inner;
+                proto_generator::is_nullable_optional_type(param_type, nullable_optional_inner))
+            {
+                write_proto_field_to_nullable_optional(
+                    lib, nullable_optional_inner, "__response", param_accessor, param_name, nullable_optional_inner, cpp, "");
             }
             else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
             {
@@ -2473,6 +2611,12 @@ namespace protobuf_generator
                 // Pointer types marshal the address only (uint64_t)
                 cpp("{} = __request.{}();", param_name, param_accessor);
             }
+            else if (std::string nullable_optional_inner;
+                proto_generator::is_nullable_optional_type(param_type, nullable_optional_inner))
+            {
+                write_proto_field_to_nullable_optional(
+                    lib, nullable_optional_inner, "__request", param_accessor, param_name, nullable_optional_inner, cpp, "");
+            }
             else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
             {
                 write_proto_field_to_optional(
@@ -2688,6 +2832,18 @@ namespace protobuf_generator
                 // Pointer types marshal the address only (uint64_t)
                 cpp("__response.set_{}({});", param_accessor, param_name);
             }
+            else if (std::string nullable_optional_inner;
+                proto_generator::is_nullable_optional_type(param_type, nullable_optional_inner))
+            {
+                write_nullable_optional_to_proto_field(
+                    lib,
+                    package_name,
+                    nullable_optional_inner,
+                    param_name,
+                    "(*__response.mutable_" + param_accessor + "())",
+                    cpp,
+                    "");
+            }
             else if (std::string optional_inner; proto_generator::is_optional_type(param_type, optional_inner))
             {
                 write_optional_to_proto_field(
@@ -2849,6 +3005,17 @@ namespace protobuf_generator
         return proto_generator::optional_inner_type(type_str);
     }
 
+    bool is_rpc_nullable_optional(const std::string& type_str)
+    {
+        std::string inner_type;
+        return proto_generator::is_nullable_optional_type(type_str, inner_type);
+    }
+
+    std::string extract_nullable_optional_inner_type(const std::string& type_str)
+    {
+        return proto_generator::nullable_optional_inner_type(type_str);
+    }
+
     // Helper to check if a type is a std::array
     bool is_std_array(const std::string& type_str)
     {
@@ -2889,6 +3056,9 @@ namespace protobuf_generator
         const std::string& inner_type)
     {
         const auto normalized = proto_generator::normalise_cpp_type(inner_type);
+
+        if (is_rpc_optional(normalized) || is_rpc_nullable_optional(normalized))
+            return false;
 
         if (is_primitive_type(normalized) || normalized == "std::string" || normalized == "string"
             || is_json_dom_type(normalized) || is_pointer_type(normalized) || is_enum_type(root_entity, normalized)
@@ -3205,6 +3375,94 @@ namespace protobuf_generator
         const std::string& proto_var,
         const std::string& field_name,
         writer& cpp,
+        const std::string& indent);
+
+    void write_proto_field_to_value(
+        const class_entity& root_entity,
+        const std::string& field_type,
+        const std::string& proto_var,
+        const std::string& field_name,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent);
+
+    void write_nullable_optional_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& inner_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        writer& cpp,
+        const std::string& indent)
+    {
+        cpp("{}if ({}.is_present())", indent, source_expr);
+        cpp("{}{{", indent);
+        cpp("{}(void){};", indent + "    ", proto_var);
+        cpp("{}{}.set_is_null({}.is_null());", indent + "    ", proto_var, source_expr);
+        cpp("{}if ({}.has_value())", indent + "    ", source_expr);
+        cpp("{}{{", indent + "    ");
+        write_value_to_proto_field(
+            root_entity, package_name, inner_type, source_expr + ".value()", proto_var, "value", cpp, indent + "        ");
+        cpp("{}}}", indent + "    ");
+        cpp("{}}}", indent);
+    }
+
+    void write_proto_field_to_nullable_optional(
+        const class_entity& root_entity,
+        const std::string& inner_type,
+        const std::string& proto_var,
+        const std::string& field_accessor,
+        const std::string& dest_expr,
+        const std::string& qualified_dest_type,
+        writer& cpp,
+        const std::string& indent)
+    {
+        cpp("{}if ({}.has_{}())", indent, proto_var, field_accessor);
+        cpp("{}{{", indent);
+        cpp("{}if ({}.{}().is_null())", indent + "    ", proto_var, field_accessor);
+        cpp("{}{{", indent + "    ");
+        cpp("{}{}.set_null();", indent + "        ", dest_expr);
+        cpp("{}}}", indent + "    ");
+        cpp("{}else", indent + "    ");
+        cpp("{}{{", indent + "    ");
+        if (optional_wrapper_value_has_protobuf_presence(root_entity, inner_type))
+        {
+            cpp("{}if (!{}.{}().has_value())", indent + "        ", proto_var, field_accessor);
+            cpp("{}{{", indent + "        ");
+            cpp("{}throw std::runtime_error(\"Malformed protobuf nullable optional field {}: wrapper is present "
+                "without value\");",
+                indent + "            ",
+                field_accessor);
+            cpp("{}}}", indent + "        ");
+        }
+        cpp("{}{} {}_value {{}};", indent + "        ", inner_type, field_accessor);
+        write_proto_field_to_value(
+            root_entity,
+            inner_type,
+            proto_var + "." + field_accessor + "()",
+            "value",
+            field_accessor + "_value",
+            qualified_dest_type,
+            cpp,
+            indent + "        ");
+        cpp("{}{} = {}_value;", indent + "        ", dest_expr, field_accessor);
+        cpp("{}}}", indent + "    ");
+        cpp("{}}}", indent);
+        cpp("{}else", indent);
+        cpp("{}{{", indent);
+        cpp("{}{}.reset();", indent + "    ", dest_expr);
+        cpp("{}}}", indent);
+    }
+
+    void write_value_to_proto_field(
+        const class_entity& root_entity,
+        const std::string& package_name,
+        const std::string& field_type,
+        const std::string& source_expr,
+        const std::string& proto_var,
+        const std::string& field_name,
+        writer& cpp,
         const std::string& indent)
     {
         const auto field_accessor = cpp_accessor_name_for_proto_field(field_name);
@@ -3229,6 +3487,34 @@ namespace protobuf_generator
         else if (is_error_type(root_entity, field_type))
         {
             cpp("{}{}.set_{}(static_cast<int>({}));", indent, proto_var, field_accessor, source_expr);
+        }
+        else if (is_rpc_nullable_optional(field_type))
+        {
+            write_nullable_optional_to_proto_field(
+                root_entity,
+                package_name,
+                extract_nullable_optional_inner_type(field_type),
+                source_expr,
+                "(*" + proto_var + ".mutable_" + field_accessor + "())",
+                cpp,
+                indent);
+        }
+        else if (is_rpc_optional(field_type))
+        {
+            const auto inner_type = extract_optional_inner_type(field_type);
+            cpp("{}if ({}.has_value())", indent, source_expr);
+            cpp("{}{{", indent);
+            cpp("{}(void)*{}.mutable_{}();", indent + "    ", proto_var, field_accessor);
+            write_value_to_proto_field(
+                root_entity,
+                package_name,
+                inner_type,
+                source_expr + ".value()",
+                "(*" + proto_var + ".mutable_" + field_accessor + "())",
+                "value",
+                cpp,
+                indent + "    ");
+            cpp("{}}}", indent);
         }
         else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
         {
@@ -3394,6 +3680,50 @@ namespace protobuf_generator
         {
             cpp("{}{} = static_cast<int>({}.{}());", indent, dest_expr, proto_var, field_accessor);
         }
+        else if (is_rpc_nullable_optional(field_type))
+        {
+            write_proto_field_to_nullable_optional(
+                root_entity,
+                extract_nullable_optional_inner_type(field_type),
+                proto_var,
+                field_accessor,
+                dest_expr,
+                extract_nullable_optional_inner_type(field_type),
+                cpp,
+                indent);
+        }
+        else if (is_rpc_optional(field_type))
+        {
+            const auto inner_type = extract_optional_inner_type(field_type);
+            cpp("{}if ({}.has_{}())", indent, proto_var, field_accessor);
+            cpp("{}{{", indent);
+            if (optional_wrapper_value_has_protobuf_presence(root_entity, inner_type))
+            {
+                cpp("{}if (!{}.{}().has_value())", indent + "    ", proto_var, field_accessor);
+                cpp("{}{{", indent + "    ");
+                cpp("{}throw std::runtime_error(\"Malformed protobuf optional field {}: wrapper is present "
+                    "without value\");",
+                    indent + "        ",
+                    field_name);
+                cpp("{}}}", indent + "    ");
+            }
+            cpp("{}{} {}_value {{}};", indent + "    ", inner_type, field_accessor);
+            write_proto_field_to_value(
+                root_entity,
+                inner_type,
+                proto_var + "." + field_accessor + "()",
+                "value",
+                field_accessor + "_value",
+                inner_type,
+                cpp,
+                indent + "    ");
+            cpp("{}{} = {}_value;", indent + "    ", dest_expr, field_accessor);
+            cpp("{}}}", indent);
+            cpp("{}else", indent);
+            cpp("{}{{", indent);
+            cpp("{}{}.reset();", indent + "    ", dest_expr);
+            cpp("{}}}", indent);
+        }
         else if (field_type == "std::vector<uint8_t>" || field_type == "std::vector<char>")
         {
             cpp("{}rpc::serialization::protobuf::deserialize_bytes({}.{}(), {});", indent, proto_var, field_accessor, dest_expr);
@@ -3532,6 +3862,7 @@ namespace protobuf_generator
     {
         cpp("{}if ({}.has_value())", indent, source_expr);
         cpp("{}{{", indent);
+        cpp("{}(void){};", indent + "    ", proto_var);
         write_value_to_proto_field(
             root_entity, package_name, inner_type, source_expr + ".value()", proto_var, "value", cpp, indent + "    ");
         cpp("{}}}", indent);
@@ -3718,12 +4049,24 @@ namespace protobuf_generator
                     // Simple primitive types
                     cpp("msg.set_{}({});", field_accessor, member_name);
                 }
+                else if (is_rpc_nullable_optional(field_type))
+                {
+                    write_nullable_optional_to_proto_field(
+                        root_entity,
+                        package_name,
+                        extract_nullable_optional_inner_type(field_type),
+                        member_name,
+                        "(*msg.mutable_" + field_accessor + "())",
+                        cpp,
+                        "");
+                }
                 else if (is_rpc_optional(field_type))
                 {
                     const auto inner_type = extract_optional_inner_type(field_type);
                     cpp("// Serialize rpc::optional<{}>", inner_type);
                     cpp("if ({}.has_value())", member_name);
                     cpp("{{");
+                    cpp("    (void)*msg.mutable_{}();", field_accessor);
                     write_value_to_proto_field(
                         root_entity,
                         package_name,
@@ -4001,6 +4344,20 @@ namespace protobuf_generator
                 {
                     // Simple primitive types
                     cpp("{} = msg.{}();", member_name, field_accessor);
+                }
+                else if (is_rpc_nullable_optional(field_type))
+                {
+                    const auto inner_type = extract_nullable_optional_inner_type(field_type);
+                    std::string qualified_inner_type = inner_type;
+                    if (is_enum_type(root_entity, inner_type))
+                    {
+                        if (inner_type.find("::") != std::string::npos)
+                            qualified_inner_type = "::" + inner_type;
+                        else if (!struct_cpp_ns.empty())
+                            qualified_inner_type = struct_cpp_ns + "::" + inner_type;
+                    }
+                    write_proto_field_to_nullable_optional(
+                        root_entity, inner_type, "msg", field_accessor, member_name, qualified_inner_type, cpp, "");
                 }
                 else if (is_rpc_optional(field_type))
                 {

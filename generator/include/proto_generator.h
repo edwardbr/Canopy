@@ -44,6 +44,12 @@ namespace proto_generator
 
     std::string optional_inner_type(const std::string& type);
 
+    bool is_nullable_optional_type(
+        const std::string& type,
+        std::string& inner_type);
+
+    std::string nullable_optional_inner_type(const std::string& type);
+
     bool is_variant_type(
         const std::string& type,
         std::vector<std::string>& alternative_types);

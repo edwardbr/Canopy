@@ -121,22 +121,6 @@ namespace canopy::http_server
                 response.headers.erase(it);
         }
 
-        bool has_zero_content_length(const response& response)
-        {
-            auto value = find_header(response.headers, "Content-Length");
-            if (!value)
-                return false;
-
-            try
-            {
-                return canopy::http_utils::parse_content_length(*value) == 0;
-            }
-            catch (...)
-            {
-                return false;
-            }
-        }
-
         auto parse_qvalue(std::string_view input) -> int
         {
             input = trim_ascii(input);
@@ -291,6 +275,11 @@ namespace canopy::http_server
 
             auto content_type = find_header(response.headers, "Content-Type");
             return !content_type || content_type_allows_http_compression(*content_type);
+        }
+
+        bool response_status_allows_body(int status_code)
+        {
+            return status_code >= 200 && status_code != 204 && status_code != 304;
         }
 
         void add_vary_accept_encoding(response& response)
@@ -755,14 +744,10 @@ namespace canopy::http_server
         }
 
         erase_header(output, "Transfer-Encoding");
-        if (!output.body.empty())
-        {
-            set_header(output, "Content-Length", std::to_string(output.body.size()));
-        }
-        else if (find_header(output.headers, "Content-Length") != output.headers.end() && !has_zero_content_length(output))
-        {
+        if (!response_status_allows_body(output.status_code))
             erase_header(output, "Content-Length");
-        }
+        else
+            set_header(output, "Content-Length", std::to_string(output.body.size()));
 
         std::string wire_response = fmt::format("HTTP/1.1 {} {}\r\n", output.status_code, output.status_text);
         for (const auto& [key, value] : output.headers)

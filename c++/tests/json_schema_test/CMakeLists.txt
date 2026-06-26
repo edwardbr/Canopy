@@ -12,6 +12,7 @@ add_executable(json_schema_metadata_test json_schema_metadata_test.cpp i_foo_sch
 # Add compile definitions like test
 target_compile_definitions(json_schema_metadata_test PRIVATE ${CANOPY_DEFINES})
 target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_TEST_BINARY_DIR=\"${CMAKE_BINARY_DIR}\")
+target_compile_definitions(json_schema_metadata_test PRIVATE CANOPY_TEST_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\")
 
 # Add include directories to match test structure
 target_include_directories(
@@ -27,6 +28,7 @@ target_link_libraries(
          example_shared_idl
          schema_cycle_idl
          set_fixture_idl
+         nullable_fixture_idl
          connection_factory_config_idl
          connection_factory
          network_config_idl

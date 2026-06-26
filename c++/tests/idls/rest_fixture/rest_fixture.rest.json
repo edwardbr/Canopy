@@ -24,9 +24,35 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -50,7 +76,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -67,9 +94,71 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}",
           "request": {
-            "body_param": "request"
+            "body_field_map": "{\"fields\":[{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_param": "request",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "fields": [
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ]
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -93,7 +182,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -110,9 +200,67 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}",
           "request": {
-            "body_param": "request"
+            "body_field_map": "{\"fields\":[{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_param": "request",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "fields": [
+              {
+                "name": "title",
+                "required": false,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": false,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ]
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -136,7 +284,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -153,12 +302,14 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
             "fields": [],
             "has_body": false,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 204
           }
         },
         {
@@ -175,12 +326,14 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
             "fields": [],
             "has_body": false,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -190,9 +343,71 @@
           "parameters": [],
           "path": "/todoapi/v1/todos",
           "request": {
-            "body_param": "request"
+            "body_field_map": "{\"fields\":[{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_param": "request",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "fields": [
+              {
+                "name": "title",
+                "required": true,
+                "wire_name": "title"
+              },
+              {
+                "name": "completed",
+                "required": true,
+                "wire_name": "completed"
+              },
+              {
+                "name": "notes",
+                "required": false,
+                "wire_name": "notes"
+              }
+            ]
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"title\",\"wire_name\":\"title\"},{\"name\":\"completed\",\"wire_name\":\"completed\"},{\"name\":\"notes\",\"wire_name\":\"notes\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "completed": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "completed"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -216,7 +431,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 201
           }
         },
         {
@@ -226,9 +442,28 @@
           "parameters": [],
           "path": "/todoapi/v1/todos/options",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"action\",\"wire_name\":\"action\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "action"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -242,7 +477,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -259,9 +495,34 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}/audit",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
+            "body_field_map": "{\"fields\":[{\"name\":\"id\",\"wire_name\":\"id\"},{\"name\":\"source\",\"wire_name\":\"source\"},{\"name\":\"changes\",\"wire_name\":\"changes\"}]}",
+            "body_schema": {
+              "additionalProperties": false,
+              "properties": {
+                "changes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "source"
+              ],
+              "type": "object"
+            },
+            "content_type": "application/json",
             "fields": [
               {
                 "name": "id",
@@ -280,7 +541,8 @@
               }
             ],
             "has_body": true,
-            "out_param": ""
+            "out_param": "",
+            "status_code": 200
           }
         },
         {
@@ -297,16 +559,20 @@
           ],
           "path": "/todoapi/v1/todos/{todo_id}/state",
           "request": {
-            "body_param": ""
+            "body_param": "",
+            "fields": []
           },
           "response": {
+            "body_schema": {},
+            "content_type": "application/json",
             "fields": [],
             "has_body": true,
-            "out_param": "response"
+            "out_param": "response",
+            "status_code": 200
           }
         }
       ],
-      "qualified_name": "todoapi::v1::todos::i_todos"
+      "qualified_name": "canopy_rest_fixture::todoapi::v1::todos::i_todos"
     }
   ],
   "schema": "canopy.rest.binding.v1",

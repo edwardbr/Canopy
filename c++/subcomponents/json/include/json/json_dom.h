@@ -1023,7 +1023,17 @@ namespace yas
                 switch (object.get_type())
                 {
                 case json::v1::object::type::string_type:
-                    ar & object.get<std::string>();
+                    if constexpr (F & yas::json)
+                    {
+                        const auto& value = object.get<std::string>();
+                        ar.write("\"", 1);
+                        save_string(ar, value.data(), value.size());
+                        ar.write("\"", 1);
+                    }
+                    else
+                    {
+                        ar & object.get<std::string>();
+                    }
                     break;
                 case json::v1::object::type::number_type:
                     ar & object.get<json::v1::number>();
