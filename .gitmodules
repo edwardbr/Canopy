@@ -78,3 +78,4 @@
 	path = third_party_interfaces
 	url = https://gitlab.com/edwardbr/CanopyThirdPartyInterfaces.git
 	branch = main
+	update = none
