@@ -3,7 +3,8 @@
 # format-cpp.sh - Run clang-format across project C/C++ files
 #
 # Formats all C/C++ source and header files in-place, excluding submodules
-# and build output directories.
+# and build output directories.  Files are processed in parallel across all
+# available CPU cores.
 
 set -e
 
@@ -41,29 +42,60 @@ fi
 export CLANG_FORMAT_BIN
 
 python3 - <<'PY'
+import multiprocessing
 import os
 import subprocess
-from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
-root = Path(os.environ['REPO_ROOT'])
-clang_format = os.environ['CLANG_FORMAT_BIN']
-extensions = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.ipp', '.tpp'}
-excluded = {'.git', 'submodules'}
+root      = os.environ['REPO_ROOT']
+clang_fmt = os.environ['CLANG_FORMAT_BIN']
+
+EXTENSIONS = frozenset({
+    '.c', '.cc', '.cpp', '.cxx',
+    '.h', '.hh', '.hpp', '.hxx',
+    '.ipp', '.tpp',
+})
+
+# Read every submodule path from .gitmodules so we never descend into one.
+submodule_dirs = set()
+gitmodules = os.path.join(root, '.gitmodules')
+if os.path.isfile(gitmodules):
+    with open(gitmodules) as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith('path ='):
+                submodule_dirs.add(line.split('=', 1)[1].strip())
 
 files = []
-for path in root.rglob('*'):
-    if not path.is_file():
-        continue
+for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    rel = os.path.relpath(dirpath, root)
 
-    parts = path.relative_to(root).parts
-    if any(part in excluded for part in parts):
-        continue
-    if any(part.startswith('build_') for part in parts):
-        continue
-    if path.suffix.lower() in extensions:
-        files.append(str(path))
+    # Prune directories in-place so os.walk never descends into them.
+    keep = []
+    for d in dirnames:
+        if d.startswith('.') or d.startswith('build_'):
+            continue
+        child_rel = d if rel == '.' else os.path.join(rel, d)
+        if child_rel in submodule_dirs:
+            continue
+        keep.append(d)
+    dirnames[:] = keep
+
+    for name in filenames:
+        if os.path.splitext(name)[1].lower() in EXTENSIONS:
+            files.append(os.path.join(dirpath, name))
 
 files.sort()
-if files:
-    subprocess.run([clang_format, '-i', *files], check=True)
+
+BATCH   = 8
+workers = multiprocessing.cpu_count()
+
+def fmt(batch):
+    subprocess.run([clang_fmt, '-i', *batch], check=True)
+
+with ThreadPoolExecutor(max_workers=workers) as pool:
+    batches  = [files[i:i + BATCH] for i in range(0, len(files), BATCH)]
+    futures  = [pool.submit(fmt, b) for b in batches]
+    for fut in futures:
+        fut.result()   # re-raises on non-zero clang-format exit
 PY
