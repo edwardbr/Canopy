@@ -38,11 +38,9 @@
 
 // #include <secret_llama/llm_engine.h>
 
+#include <json/json_dom.h>
 #include <secret_llama/secret_llama.h>
 #include "llama_server_engine.h"
-
-// TODO: restore json-based config overrides once CanopyJSON is integrated as a dependency
-// #include <json/json.h>
 
 #define POOL_THREADS 4
 
@@ -92,7 +90,7 @@ namespace secret_llama
         struct llama_cpp_context : public context
         {
             uint64_t seed_ = 0;
-            // json::v1::map config_; // TODO: restore when CanopyJSON is integrated
+            json::v1::map config_;
 
             std::shared_ptr<llama_cpp_loaded_model> model_;
             std::unique_ptr<llama_context, context_deleter> ctx_;
@@ -141,8 +139,26 @@ namespace secret_llama
                 // Initialize stop strings based on chat template
                 stop_strs_ = {"<|im_end|>", "</s>", "<|endoftext|>"};
 
-                // TODO: parse overrides into config_ once CanopyJSON is integrated
-                (void)overrides;
+                if (!overrides.empty())
+                {
+                    try
+                    {
+                        auto parsed = json::v1::parse(overrides);
+                        if (parsed.get_type() == json::v1::object::type::map_type)
+                        {
+                            config_ = parsed.as_map();
+                        }
+                        else
+                        {
+                            RPC_WARNING("[CTX {}] ignoring non-object llama override JSON", std::to_string(context_id_));
+                        }
+                    }
+                    catch (const std::exception& e)
+                    {
+                        RPC_WARNING(
+                            "[CTX {}] ignoring invalid llama override JSON: {}", std::to_string(context_id_), e.what());
+                    }
+                }
             }
 
             ~llama_cpp_context() override
@@ -188,7 +204,7 @@ namespace secret_llama
 
                     llama_sampler_chain_add(sampler_.get(), llama_sampler_init_dist(seed_));
 
-                    // TODO: restore min_p, topp, temperature, template overrides once CanopyJSON is integrated
+                    // TODO: apply min_p, topp, temperature, and template values from config_.
 
                     std::string chat_template_str;
 
@@ -483,7 +499,7 @@ namespace secret_llama
                         }
                     }
 
-                    // TODO: restore system_prompt from config_ once CanopyJSON is integrated
+                    // TODO: apply system_prompt from config_.
 
                     std::string prompt_str(prompt.begin(), prompt.end());
                     RPC_DEBUG("[CTX {}] Adding user message: \"{}\"", std::to_string(context_id_), prompt_str.c_str());

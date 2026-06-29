@@ -4,7 +4,11 @@
  */
 #pragma once
 
+#include <cerrno>
 #include <cstdint>
+#include <linux/io_uring.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 #include <streaming/tcp_coroutine/factory.h>
 #include <transport/tests/streaming_setup_base.h>
@@ -82,6 +86,24 @@ protected:
 
 public:
     ~streaming_tcp_coroutine_setup() override = default;
+
+    void set_up() override
+    {
+        // Probe io_uring availability before starting the coroutine machinery.
+        // A null params pointer gives EFAULT before the permission check, so we
+        // must pass a valid (zeroed) params struct.  With flags=0 and entries=2:
+        //   fd >= 0  → io_uring is available; close the probe fd and proceed.
+        //   EPERM    → io_uring disabled by policy (io_uring_disabled sysctl or
+        //              seccomp); skip rather than crash with SIGABRT.
+        //   ENOSYS   → kernel has no io_uring support at all; skip.
+        io_uring_params probe_params{};
+        const long probe_fd = ::syscall(SYS_io_uring_setup, 2u, &probe_params);
+        if (probe_fd >= 0)
+            ::close(static_cast<int>(probe_fd));
+        else if (errno == EPERM || errno == ENOSYS)
+            GTEST_SKIP() << "io_uring not available in this environment (errno=" << errno << ")";
+        base::set_up();
+    }
 
     void tear_down() override
     {

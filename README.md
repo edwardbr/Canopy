@@ -269,11 +269,23 @@ Key entry points:
 - [Protocol Buffers](documents/serializers/protocol-buffers.md) - Cross-language serialization
 - [Nanopb](documents/serializers/nanopb.md) - Protobuf-compatible encoding for small-runtime builds
 
+### JSON Support
+
+The generic JSON value type formerly developed as CanopyJSON is now part of
+this repository. The C++ implementation lives under `c++/subcomponents/json`,
+and `interfaces/json/json.idl` exposes `json::v1::object`, `json::v1::map`,
+and `json::v1::array` as first-class Canopy IDL types. These are useful where
+the structure of data is open-ended at compile time, such as configuration
+overrides, REST payload fallbacks, and LLM request configuration. JSON values
+serialise to pure JSON on JSON transports and to compact binary on binary
+transports.
+
 ### Companion Repositories
 
 | Repository | Description |
 |------------|-------------|
-| [CanopyJSON](https://github.com/edwardbr/CanopyJSON) | Generic JSON value type (`json::v1::object`) for use in Canopy IDL interfaces. Provides runtime flexibility within a strongly-typed IDL — useful wherever the structure of data is open-ended at compile time, such as LLM request configuration. Serialises to pure JSON on JSON transports and compact binary on binary transports. |
+| [idlparser](https://github.com/edwardbr/idlparser) | Parser used by the Canopy generator to read IDL files. It remains a separate submodule because the parser can be developed and versioned independently from the main RPC runtime. |
+| [CanopyThirdPartyInterfaces](https://github.com/edwardbr/CanopyThirdPartyInterfaces) | Optional corpus of Swagger/OpenAPI-derived third-party REST interface examples and loopback tests. It is not required for normal Canopy builds and is fetched explicitly when third-party interface builds are enabled. |
 
 ---
 
