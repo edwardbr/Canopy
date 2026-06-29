@@ -107,7 +107,11 @@ public:
 
     void tear_down() override
     {
-        base::tear_down();
+        // base::tear_down() dereferences io_scheduler_, which is only created by
+        // base::set_up(). If set_up() skipped early (e.g. GTEST_SKIP), the
+        // scheduler is null and must not be touched.
+        if (this->io_scheduler_)
+            base::tear_down();
         rpc_listener_.reset();
     }
 
