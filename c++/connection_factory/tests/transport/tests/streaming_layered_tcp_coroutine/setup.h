@@ -5,8 +5,12 @@
 #pragma once
 
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
+#include <linux/io_uring.h>
 #include <string>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 #include <connection_factory/connection_factory.h>
 #include <connection_factory/context.h>
@@ -17,6 +21,8 @@ template<bool UseHostInChild, bool RunStandardTests, bool CreateNewZoneThenCreat
 class streaming_layered_tcp_coroutine_setup
     : public streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>
 {
+    using base = streaming_setup_base<UseHostInChild, RunStandardTests, CreateNewZoneThenCreateSubordinatedZone>;
+
     std::shared_ptr<rpc::connection_factory::listener_handle> rpc_listener_;
     std::atomic<uint32_t> connect_layer_calls_{0};
     std::atomic<uint32_t> accept_layer_calls_{0};
@@ -167,4 +173,21 @@ protected:
 
 public:
     ~streaming_layered_tcp_coroutine_setup() override = default;
+
+    void set_up() override
+    {
+        io_uring_params probe_params{};
+        const long probe_fd = ::syscall(SYS_io_uring_setup, 2u, &probe_params);
+        if (probe_fd >= 0)
+            ::close(static_cast<int>(probe_fd));
+        else if (errno == EPERM || errno == ENOSYS)
+            GTEST_SKIP() << "io_uring not available in this environment (errno=" << errno << ")";
+        base::set_up();
+    }
+
+    void tear_down() override
+    {
+        if (this->io_scheduler_)
+            base::tear_down();
+    }
 };
