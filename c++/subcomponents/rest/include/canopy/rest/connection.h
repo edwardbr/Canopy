@@ -13,12 +13,14 @@
 #include <string>
 #include <vector>
 
-#include <connection_factory/connection_factory.h>
 #include <rpc/rpc.h>
 #include <streaming/http_client/client.h>
+#include <streaming/stream.h>
 
 namespace canopy::rest
 {
+    struct connection_settings;
+
     struct name_value
     {
         std::string name;
@@ -28,6 +30,15 @@ namespace canopy::rest
     using query_parameter = name_value;
     using cookie = name_value;
     using request_mutator = std::function<int(streaming::http_client::request&)>;
+
+    struct stream_result
+    {
+        int error_code{rpc::error::OK()};
+        std::shared_ptr<streaming::stream> stream;
+    };
+
+    using stream_connector
+        = std::function<CORO_TASK(stream_result)(const connection_settings&, std::shared_ptr<rpc::service>)>;
 
     struct authority
     {
@@ -49,12 +60,11 @@ namespace canopy::rest
     {
         authority endpoint;
         tls_options tls;
-        std::string base_stream_type;
-        rpc::connection_factory::connection_settings stream_connection;
         std::vector<streaming::http_client::header> default_headers;
         std::vector<query_parameter> default_query_parameters;
         std::vector<cookie> default_cookies;
         request_mutator before_send;
+        stream_connector connector;
         std::chrono::milliseconds connect_timeout{10000};
         std::chrono::milliseconds receive_timeout{10000};
         std::size_t max_response_bytes{2U * 1024U * 1024U};
@@ -70,8 +80,6 @@ namespace canopy::rest
     [[nodiscard]] bool uses_tls(const authority& endpoint) noexcept;
     [[nodiscard]] uint16_t effective_port(const authority& endpoint) noexcept;
     [[nodiscard]] std::string http_host(const authority& endpoint);
-    [[nodiscard]] rpc::connection_factory::connection_settings make_stream_connection_settings(
-        const connection_settings& settings);
 
     void apply_request_defaults(
         streaming::http_client::request& request,
@@ -80,9 +88,8 @@ namespace canopy::rest
         streaming::http_client::request& request,
         const connection_settings& settings);
 
-    CORO_TASK(rpc::connection_factory::stream_result)
+    CORO_TASK(stream_result)
     connect_stream(
         const connection_settings& settings,
-        std::shared_ptr<rpc::service> service = {},
-        rpc::connection_factory::context factory_context = rpc::connection_factory::default_context());
+        std::shared_ptr<rpc::service> service = {});
 } // namespace canopy::rest

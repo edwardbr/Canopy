@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <string_view>
@@ -189,19 +188,38 @@ namespace streaming::http_client
     {
         validate_request(input);
 
-        std::ostringstream output;
-        output << input.method << " " << input.target << " HTTP/1.1\r\n";
+        std::string output;
+        output.reserve(
+            input.method.size() + input.target.size() + input.host.size() + input.body.size()
+            + input.headers.size() * 32U + 64U);
+        output += input.method;
+        output.push_back(' ');
+        output += input.target;
+        output += " HTTP/1.1\r\n";
         if (!input.host.empty() && !canopy::http_utils::has_header(input.headers, "Host", header_name))
-            output << "Host: " << input.host << "\r\n";
+        {
+            output += "Host: ";
+            output += input.host;
+            output += "\r\n";
+        }
         for (const auto& item : input.headers)
-            output << item.name << ": " << item.value << "\r\n";
+        {
+            output += item.name;
+            output += ": ";
+            output += item.value;
+            output += "\r\n";
+        }
         if (!input.body.empty() && !canopy::http_utils::has_header(input.headers, "Content-Length", header_name))
-            output << "Content-Length: " << input.body.size() << "\r\n";
+        {
+            output += "Content-Length: ";
+            output += std::to_string(input.body.size());
+            output += "\r\n";
+        }
         if (input.close_connection && !canopy::http_utils::has_header(input.headers, "Connection", header_name))
-            output << "Connection: close\r\n";
-        output << "\r\n";
-        output << input.body;
-        return output.str();
+            output += "Connection: close\r\n";
+        output += "\r\n";
+        output += input.body;
+        return output;
     }
 
     result parse_response(std::string raw_response)
@@ -217,11 +235,28 @@ namespace streaming::http_client
 
             const auto status_line_end = output.value.raw_headers.find("\r\n");
             const auto status_line = output.value.raw_headers.substr(0, status_line_end);
-            std::istringstream status_stream(status_line);
-            std::string http_version;
-            status_stream >> http_version >> output.value.status_code;
-            std::getline(status_stream, output.value.reason);
-            output.value.reason = canopy::http_utils::trim_ascii_copy(output.value.reason);
+            auto status_line_view = std::string_view(status_line);
+            const auto version_end = status_line_view.find(' ');
+            if (version_end == std::string_view::npos)
+                return make_error(rpc::error::INVALID_DATA(), "invalid HTTP status line: " + status_line);
+
+            const auto http_version = status_line_view.substr(0, version_end);
+            status_line_view.remove_prefix(version_end + 1);
+            while (!status_line_view.empty() && status_line_view.front() == ' ')
+                status_line_view.remove_prefix(1);
+
+            const auto code_end = status_line_view.find(' ');
+            const auto code_text = status_line_view.substr(0, code_end);
+            const auto parse_result
+                = std::from_chars(code_text.data(), code_text.data() + code_text.size(), output.value.status_code);
+            if (parse_result.ec != std::errc{} || parse_result.ptr != code_text.data() + code_text.size())
+                return make_error(rpc::error::INVALID_DATA(), "invalid HTTP status line: " + status_line);
+
+            if (code_end == std::string_view::npos)
+                status_line_view = {};
+            else
+                status_line_view.remove_prefix(code_end + 1);
+            output.value.reason = canopy::http_utils::trim_ascii_copy(status_line_view);
             if (!starts_with(http_version, "HTTP/") || output.value.status_code == 0)
                 return make_error(rpc::error::INVALID_DATA(), "invalid HTTP status line: " + status_line);
 

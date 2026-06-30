@@ -9,8 +9,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <iomanip>
-#include <sstream>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -143,20 +141,23 @@ namespace canopy::rest
 
     std::string encode_path_segment(std::string_view value)
     {
-        std::ostringstream output;
-        output << std::uppercase << std::hex;
+        constexpr char hex_digits[] = "0123456789ABCDEF";
+        std::string output;
+        output.reserve(value.size());
         for (const unsigned char ch : value)
         {
             if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
             {
-                output << static_cast<char>(ch);
+                output.push_back(static_cast<char>(ch));
             }
             else
             {
-                output << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+                output.push_back('%');
+                output.push_back(hex_digits[(ch >> 4U) & 0x0FU]);
+                output.push_back(hex_digits[ch & 0x0FU]);
             }
         }
-        return output.str();
+        return output;
     }
 
     std::string append_path_segment(

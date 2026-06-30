@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <canopy/rest/connection.h>
+#include <canopy/rest/connection_factory.h>
 #include <canopy/rest/server.h>
 #include <connection_factory/connection_factory.h>
 #include <json/config.h>
@@ -560,9 +561,12 @@ TEST(
 
     todos::i_todos::rest_settings settings;
     settings.endpoint.host = "factory.test";
-    settings.stream_connection.stream_layers.push_back(layer);
+    canopy::rest::connection_factory_settings factory_settings;
+    factory_settings.stream_connection.stream_layers.push_back(layer);
+    factory_settings.factory_context = std::move(factory_context);
+    canopy::rest::use_connection_factory(settings, std::move(factory_settings));
 
-    auto connected = SYNC_WAIT(todos::i_todos::rest_caller::connect(std::move(settings), {}, std::move(factory_context)));
+    auto connected = SYNC_WAIT(todos::i_todos::rest_caller::connect(std::move(settings)));
     ASSERT_EQ(connected.error_code, rpc::error::OK());
     ASSERT_TRUE(connected.object);
 

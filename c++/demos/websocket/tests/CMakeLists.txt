@@ -21,6 +21,7 @@ target_link_libraries(
           websocket_server_rest
           websocket_rest_idl
           rest
+          rest_connection_factory
           streaming
           streaming_http_client
           connection_factory

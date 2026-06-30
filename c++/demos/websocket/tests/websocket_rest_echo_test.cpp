@@ -13,6 +13,7 @@
 #include <utility>
 
 #include <canopy/rest/connection.h>
+#include <canopy/rest/connection_factory.h>
 #include <canopy/rest/http_server_adapter.h>
 #include <connection_factory/connection_factory.h>
 #include <json/json_dom.h>
@@ -200,9 +201,12 @@ TEST(
     settings.endpoint.scheme = "http";
     settings.endpoint.host = "websocket-demo.test";
     settings.endpoint.base_path = "/custom";
-    settings.stream_connection.stream_layers.push_back(layer);
+    canopy::rest::connection_factory_settings factory_settings;
+    factory_settings.stream_connection.stream_layers.push_back(layer);
+    factory_settings.factory_context = std::move(factory_context);
+    canopy::rest::use_connection_factory(settings, std::move(factory_settings));
 
-    auto connected = SYNC_WAIT(rest_v1::i_echo::rest_caller::connect(std::move(settings), {}, std::move(factory_context)));
+    auto connected = SYNC_WAIT(rest_v1::i_echo::rest_caller::connect(std::move(settings)));
     ASSERT_EQ(connected.error_code, rpc::error::OK());
     ASSERT_TRUE(connected.object);
 

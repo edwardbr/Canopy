@@ -1581,7 +1581,7 @@ namespace rest_generator
 
             output(
                 "CORO_TASK(::canopy::rest::connect_result<{0}>) {0}::rest_caller::connect(rest_settings settings, "
-                "std::shared_ptr<rpc::service> service, ::rpc::connection_factory::context factory_context)",
+                "std::shared_ptr<rpc::service> service)",
                 interface_name);
             output("{{");
             output("if (settings.endpoint.host.empty())");
@@ -1592,7 +1592,7 @@ namespace rest_generator
             output("{{");
             output("settings.endpoint.base_path = {};", cpp_string_literal(metadata.base_path));
             output("}}");
-            output("auto stream = CO_AWAIT canopy::rest::connect_stream(settings, std::move(service), std::move(factory_context));");
+            output("auto stream = CO_AWAIT canopy::rest::connect_stream(settings, std::move(service));");
             output("if (stream.error_code != rpc::error::OK() || !stream.stream)");
             output("{{");
             output("CO_RETURN ::canopy::rest::connect_result<{0}>{{stream.error_code, {{}}, {{}}}};", interface_name);
@@ -1610,6 +1610,7 @@ namespace rest_generator
 
             for (const auto& [_, method] : metadata.methods)
                 write_rest_method(output, interface_entity, method);
+            output("");
 
             output("{0}::rest_handler::rest_handler(rpc::shared_ptr<{0}> object, std::string base_path)", interface_name);
             output("    : object_(std::move(object))");

@@ -992,8 +992,7 @@ namespace interface_declaration_generator
             header("explicit rest_caller(std::shared_ptr<::streaming::stream>&& stream, rest_settings settings = rest_settings{{}});");
             header(
                 "static CORO_TASK(::canopy::rest::connect_result<{0}>) connect(rest_settings settings, "
-                "std::shared_ptr<rpc::service> service = {{}}, ::rpc::connection_factory::context factory_context = "
-                "::rpc::connection_factory::default_context());",
+                "std::shared_ptr<rpc::service> service = {{}});",
                 interface_name);
             header("");
             for (auto& function : m_ob.get_functions())

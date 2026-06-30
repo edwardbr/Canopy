@@ -10,6 +10,7 @@ target_link_libraries(
           rest_fixture_idl
           streaming_http_client
           rest
+          rest_connection_factory
           json
           streaming
           rpc_log)

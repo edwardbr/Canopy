@@ -9,12 +9,13 @@
 #include <string>
 
 #include <canopy/http_server/http_client_connection.h>
-#include <canopy/rest/server.h>
 #include <file_system/file_system.h>
 #include <memory>
 
 #include <rpc/rpc.h>
 #include <streaming/stream.h>
+
+#include <canopy/rest/server.h>
 
 // Forward declarations
 namespace websocket_demo
