@@ -362,6 +362,8 @@ CANOPY_BUILD_RUST=OFF            # Rust workspace build, disabled by default
 CANOPY_BUILD_DEMOS=ON            # Demo applications
 CANOPY_BUILD_PROTOCOL_BUFFERS=ON # Full Google C++ protobuf runtime support
 CANOPY_BUILD_NANOPB=ON           # Nanopb protobuf-compatible runtime support
+CANOPY_BUILD_ZLIB=ON             # HTTP gzip and WebSocket permessage-deflate support
+CANOPY_BUILD_ZSTD=OFF            # Zstd-backed streaming compression layer
 
 # Development
 CANOPY_USE_LOGGING=ON        # Comprehensive logging
@@ -520,6 +522,8 @@ Git submodules manage external dependencies they will auto load when required:
 - **libcoro**: Coroutine support (when `CANOPY_BUILD_COROUTINE=ON`)
 - **protobuf**: Protocol Buffers compiler and optional full C++ runtime
 - **nanopb**: Small Protocol Buffers-compatible runtime used by runtime-light builds
+- **zlib**: HTTP gzip and WebSocket permessage-deflate support (when `CANOPY_BUILD_ZLIB=ON`)
+- **zstd**: Streaming compression layer support (when `CANOPY_BUILD_ZSTD=ON`)
 - **idlparser**: IDL parser
 
 ---

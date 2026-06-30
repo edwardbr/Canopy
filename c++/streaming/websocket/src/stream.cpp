@@ -14,7 +14,8 @@
 #include <rpc/rpc.h>
 #include <wslay/wslay.h>
 
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
+#  include <streaming/detail/zlib_allocator.h>
 #  include <zlib.h>
 #endif
 
@@ -142,7 +143,7 @@ namespace streaming::websocket
 
         bool settings_enable_permessage_deflate(const ::rpc::websocket_stream::stream_settings& settings)
         {
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
             return settings.permessage_deflate.enabled;
 #else
             (void)settings;
@@ -150,7 +151,7 @@ namespace streaming::websocket
 #endif
         }
 
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
         constexpr size_t zlib_io_chunk_size = 8192;
 
         struct zlib_deflater_guard
@@ -193,8 +194,12 @@ namespace streaming::websocket
             size_t input_size) -> std::optional<std::vector<uint8_t>>
         {
             z_stream zstream{};
-            if (deflateInit2(&zstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+            streaming::detail::initialise_zlib_allocator(zstream);
+            const auto init_result
+                = deflateInit2(&zstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY);
+            if (init_result != Z_OK)
             {
+                RPC_WARNING("WebSocket permessage-deflate deflateInit2 failed: {}", init_result);
                 return std::nullopt;
             }
             zlib_deflater_guard guard{&zstream};
@@ -222,7 +227,17 @@ namespace streaming::websocket
 
                     const int result = deflate(&zstream, flush);
                     if (result != Z_OK)
+                    {
+                        RPC_WARNING(
+                            "WebSocket permessage-deflate deflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            result,
+                            zstream.msg ? zstream.msg : "",
+                            zstream.avail_in,
+                            zstream.avail_out,
+                            zstream.total_in,
+                            zstream.total_out);
                         return std::nullopt;
+                    }
 
                     const auto produced = chunk.size() - zstream.avail_out;
                     output.insert(output.end(), chunk.data(), chunk.data() + produced);
@@ -237,6 +252,7 @@ namespace streaming::websocket
                     permessage_deflate_tail.end(),
                     output.end() - permessage_deflate_tail.size()))
             {
+                RPC_WARNING("WebSocket permessage-deflate deflate output missing sync-flush tail");
                 return std::nullopt;
             }
 
@@ -255,8 +271,13 @@ namespace streaming::websocket
             compressed.insert(compressed.end(), permessage_deflate_tail.begin(), permessage_deflate_tail.end());
 
             z_stream zstream{};
-            if (inflateInit2(&zstream, -MAX_WBITS) != Z_OK)
+            streaming::detail::initialise_zlib_allocator(zstream);
+            const auto init_result = inflateInit2(&zstream, -MAX_WBITS);
+            if (init_result != Z_OK)
+            {
+                RPC_WARNING("WebSocket permessage-deflate inflateInit2 failed: {}", init_result);
                 return std::nullopt;
+            }
             zlib_inflater_guard guard{&zstream};
 
             std::vector<uint8_t> output;
@@ -287,11 +308,24 @@ namespace streaming::websocket
 
                     const int result = inflate(&zstream, Z_SYNC_FLUSH);
                     if (result != Z_OK && result != Z_STREAM_END)
+                    {
+                        RPC_WARNING(
+                            "WebSocket permessage-deflate inflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            result,
+                            zstream.msg ? zstream.msg : "",
+                            zstream.avail_in,
+                            zstream.avail_out,
+                            zstream.total_in,
+                            zstream.total_out);
                         return std::nullopt;
+                    }
 
                     const auto produced = chunk.size() - zstream.avail_out;
                     if (!append_with_limit(output, chunk.data(), produced, max_output_bytes))
+                    {
+                        RPC_WARNING("WebSocket permessage-deflate inflate output exceeded limit {}", max_output_bytes);
                         return std::nullopt;
+                    }
 
                     if (result == Z_STREAM_END)
                     {
@@ -300,7 +334,10 @@ namespace streaming::websocket
                     }
 
                     if (zstream.total_in == total_in_before && zstream.total_out == total_out_before)
+                    {
+                        RPC_WARNING("WebSocket permessage-deflate inflate made no progress");
                         return std::nullopt;
+                    }
                 } while (zstream.avail_out == 0);
 
                 if (input_offset >= compressed.size() && zstream.avail_in == 0)
@@ -858,7 +895,7 @@ namespace streaming::websocket
 
     bool stream::queue_binary_message_locked(rpc::byte_span buffer)
     {
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
         if (permessage_deflate_enabled() && !buffer.empty())
         {
             auto compressed = permessage_deflate_compress(reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
@@ -1010,7 +1047,7 @@ namespace streaming::websocket
             std::vector<uint8_t> message;
             if ((arg->rsv & WSLAY_RSV1_BIT) != 0)
             {
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
                 auto decompressed
                     = permessage_deflate_decompress(arg->msg, arg->msg_length, self->settings_.max_message_bytes);
                 if (!decompressed)

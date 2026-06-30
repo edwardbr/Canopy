@@ -257,6 +257,7 @@ function connect() {
     const config = window.CanopyWebsocketDemoConfig || {};
     const queryWsUrl = new URLSearchParams(window.location.search).get('ws');
     const wsUrl = queryWsUrl || config.wsUrl || defaultWebSocketUrl();
+    addMessage('system', `WebSocket URL: ${wsUrl}`);
     const transportProto = $protobuf_websocket.protobuf.websocket_protocol_v1;
     const appProto = $protobuf_websocket.protobuf.websocket_demo_v1;
 
@@ -324,7 +325,7 @@ function connect() {
     transport.registerStub(eventStub);
     transport.connect().catch(function(err) {
         isConnecting = false;
-        addMessage('error', `Connection failed: ${describeError(err)}`);
+        addMessage('error', `Connection failed to ${wsUrl}: ${describeError(err)}`);
         updateStatus('Disconnected', 'disconnected');
         setUIConnected(false);
     });

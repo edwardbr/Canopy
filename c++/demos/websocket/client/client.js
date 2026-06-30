@@ -2,7 +2,7 @@
 
 const WebSocket = require('ws');
 
-const WS_URL = process.env.WS_URL || 'ws://localhost:8888';
+const WS_URL = process.env.WS_URL || 'ws://localhost:8080';
 
 console.log(`Connecting to ${WS_URL}...`);
 

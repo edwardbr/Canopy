@@ -17,7 +17,7 @@ Browser-based test client with HTTP Echo and WebSocket RPC Calculator modes.
    ```
 
 2. **Open your browser:**
-   Navigate to: `http://localhost:8888`
+   Navigate to: `http://localhost:8080`
 
 3. **Connect and Test:**
    - Click the "Connect" button
@@ -63,7 +63,7 @@ Browser-based test client with HTTP Echo and WebSocket RPC Calculator modes.
 - `GET /` or `GET /index.html` - Main web interface
 - `GET /client.js` - JavaScript client code
 - `POST /api/echo` - HTTP echo endpoint backed by generated REST handler code
-- `WebSocket ws://localhost:8888` - WebSocket endpoint for binary RPC
+- `WebSocket ws://localhost:8080` - WebSocket endpoint for binary RPC
 
 ## Technical Details
 

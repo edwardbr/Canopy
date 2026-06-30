@@ -251,6 +251,8 @@ cmake --preset Debug -DCANOPY_BUILD_BENCHMARKING=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_RUST=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_PROTOCOL_BUFFERS=ON/OFF
 cmake --preset Debug -DCANOPY_BUILD_NANOPB=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_ZLIB=ON/OFF
+cmake --preset Debug -DCANOPY_BUILD_ZSTD=ON/OFF
 
 # Debugging
 cmake --preset Debug -DCANOPY_USE_LOGGING=ON/OFF
@@ -281,6 +283,8 @@ option(CANOPY_BUILD_PROTOCOL_BUFFERS "Include full Google C++ Protocol Buffers s
 option(CANOPY_BUILD_NANOPB "Include Nanopb protobuf-compatible support" ON)
 option(CANOPY_BUILD_CANONICAL_CRYPTO "Include deterministic canonical_crypto serialization support" ON)
 option(CANOPY_BUILD_WEBSOCKET "Include websocket support" ${CANOPY_BUILD_WEBSOCKET_DEFAULT})
+option(CANOPY_BUILD_ZLIB "Build zlib-backed HTTP gzip and WebSocket permessage-deflate support" ON)
+option(CANOPY_BUILD_ZSTD "Build compression stream support from c++/submodules/zstd" OFF)
 
 # Debug options
 option(CANOPY_VERBOSE_GENERATOR "Enable debug output for code generation" OFF)
@@ -311,6 +315,16 @@ option(CANOPY_SGX_BOOTSTRAP_UPDATE_SUBMODULES "Run the Intel SGX SDK preparation
 `CANOPY_BUILD_WEBSOCKET` can be explicitly enabled in both blocking and
 coroutine builds. Its default remains tied to coroutine demo/test presets, so
 blocking consumers should set it to `ON` when they need WebSocket support.
+
+`CANOPY_BUILD_ZLIB` controls the bundled zlib dependency and the protocol
+features that require zlib: HTTP `Content-Encoding: gzip` responses and
+WebSocket RFC 7692 `permessage-deflate`. When WebSocket support and zlib are
+both enabled, WebSocket streams negotiate `permessage-deflate` with clients that
+offer it.
+
+`CANOPY_BUILD_ZSTD` controls the zstd-backed generic streaming compression layer
+under `c++/streaming/compression`. It is independent of HTTP gzip and WebSocket
+`permessage-deflate`; those wire formats are zlib/DEFLATE based.
 
 ### Protobuf-Compatible Serialization Options
 

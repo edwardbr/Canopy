@@ -221,16 +221,15 @@ if(CANOPY_BUILD_COROUTINE)
   endif()
 endif()
 
-if(CANOPY_BUILD_WEBSOCKET AND (CANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE OR CANOPY_BUILD_HTTP_COMPRESSION))
+if(CANOPY_BUILD_ZLIB)
   set(CANOPY_ZLIB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zlib")
 
   if(NOT EXISTS "${CANOPY_ZLIB_SOURCE_DIR}/zlib.h")
     message(
       FATAL_ERROR
-        "zlib-backed HTTP/WebSocket compression support is enabled, but the zlib submodule was not "
+        "CANOPY_BUILD_ZLIB is enabled, but the zlib submodule was not "
         "populated at ${CANOPY_ZLIB_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency "
-        "bootstrap can initialise c++/submodules/zlib, or reconfigure with "
-        "-DCANOPY_BUILD_HTTP_COMPRESSION=OFF -DCANOPY_BUILD_WEBSOCKET_PERMESSAGE_DEFLATE=OFF.")
+        "bootstrap can initialise c++/submodules/zlib, or reconfigure with -DCANOPY_BUILD_ZLIB=OFF.")
   endif()
 
   set(CANOPY_ZLIB_CORE_SOURCES
@@ -349,15 +348,15 @@ if(CANOPY_BUILD_MBEDTLS)
   message(STATUS "Mbed TLS configured from c++/submodules/mbedtls")
 endif()
 
-if(CANOPY_BUILD_COMPRESSION)
+if(CANOPY_BUILD_ZSTD)
   set(CANOPY_ZSTD_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/zstd")
 
   if(NOT EXISTS "${CANOPY_ZSTD_SOURCE_DIR}/build/cmake/CMakeLists.txt")
     message(
       FATAL_ERROR
-        "Compression stream support is enabled, but the zstd submodule was not populated at "
+        "CANOPY_BUILD_ZSTD is enabled, but the zstd submodule was not populated at "
         "${CANOPY_ZSTD_SOURCE_DIR}. Keep GIT_SUBMODULE=ON so the Canopy CMake dependency bootstrap "
-        "can initialise c++/submodules/zstd, or reconfigure with -DCANOPY_BUILD_COMPRESSION=OFF.")
+        "can initialise c++/submodules/zstd, or reconfigure with -DCANOPY_BUILD_ZSTD=OFF.")
   endif()
 
   set(ZSTD_BUILD_PROGRAMS

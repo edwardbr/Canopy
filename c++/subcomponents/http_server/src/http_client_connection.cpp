@@ -19,7 +19,8 @@
 #include <llhttp.h>
 #include <streaming/websocket/stream.h>
 
-#if defined(CANOPY_HTTP_HAS_GZIP)
+#if defined(CANOPY_BUILD_ZLIB)
+#  include <streaming/detail/zlib_allocator.h>
 #  include <zlib.h>
 #endif
 
@@ -316,14 +317,18 @@ namespace canopy::http_server
             vary->second += ", Accept-Encoding";
         }
 
-#if defined(CANOPY_HTTP_HAS_GZIP)
+#if defined(CANOPY_BUILD_ZLIB)
         auto gzip_compress(std::string_view input) -> std::optional<std::string>
         {
             z_stream stream{};
+            streaming::detail::initialise_zlib_allocator(stream);
             const auto init_result
                 = deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY);
             if (init_result != Z_OK)
+            {
+                RPC_WARNING("HTTP gzip deflateInit2 failed: {}", init_result);
                 return std::nullopt;
+            }
 
             std::string output;
             std::array<unsigned char, 16 * 1024> buffer{};
@@ -346,6 +351,14 @@ namespace canopy::http_server
                     deflate_result = deflate(&stream, flush);
                     if (deflate_result != Z_OK && deflate_result != Z_STREAM_END)
                     {
+                        RPC_WARNING(
+                            "HTTP gzip deflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            deflate_result,
+                            stream.msg ? stream.msg : "",
+                            stream.avail_in,
+                            stream.avail_out,
+                            stream.total_in,
+                            stream.total_out);
                         deflateEnd(&stream);
                         return std::nullopt;
                     }
@@ -355,8 +368,12 @@ namespace canopy::http_server
                 } while (stream.avail_out == 0 && deflate_result != Z_STREAM_END);
             } while (deflate_result != Z_STREAM_END);
 
-            if (deflateEnd(&stream) != Z_OK)
+            const auto end_result = deflateEnd(&stream);
+            if (end_result != Z_OK)
+            {
+                RPC_WARNING("HTTP gzip deflateEnd failed: {}", end_result);
                 return std::nullopt;
+            }
 
             return output;
         }
@@ -366,7 +383,7 @@ namespace canopy::http_server
             const request& request,
             response output) -> response
         {
-#if defined(CANOPY_HTTP_HAS_GZIP)
+#if defined(CANOPY_BUILD_ZLIB)
             if (accepted_gzip_qvalue(request) <= 0 || !response_is_compressible(output))
                 return output;
 
@@ -412,7 +429,7 @@ namespace canopy::http_server
             if (!extensions || !websocket_extension_requested(*extensions, "permessage-deflate"))
                 return std::nullopt;
 
-#if defined(CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE)
+#if defined(CANOPY_BUILD_ZLIB)
             return std::string("permessage-deflate; server_no_context_takeover; client_no_context_takeover");
 #else
             return std::nullopt;

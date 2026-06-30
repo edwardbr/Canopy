@@ -82,8 +82,8 @@ target_link_libraries(
           ${CANOPY_FMT_LIB}
           ${CANOPY_LIBRARIES})
 
-if(CANOPY_BUILD_HTTP_COMPRESSION AND TARGET canopy_zlib)
-  target_compile_definitions(canopy_http_server PRIVATE CANOPY_HTTP_HAS_GZIP)
+if(CANOPY_BUILD_ZLIB AND TARGET canopy_zlib)
+  target_compile_definitions(canopy_http_server PRIVATE CANOPY_BUILD_ZLIB)
   target_link_libraries(canopy_http_server PRIVATE canopy_zlib)
 endif()
 

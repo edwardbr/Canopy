@@ -15,7 +15,7 @@ endif()
 if(CANOPY_SECURE_STREAM_BACKEND STREQUAL "OPENSSL")
   add_subdirectory(openssl_tls)
 endif()
-if(CANOPY_BUILD_COMPRESSION)
+if(CANOPY_BUILD_ZSTD)
   add_subdirectory(compression)
 endif()
 

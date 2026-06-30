@@ -17,7 +17,7 @@ CanopyGenerate(
   install_dir ${GENERATED_INSTALL_DIR})
 
 if(NOT TARGET libzstd_static)
-  message(FATAL_ERROR "CANOPY_BUILD_COMPRESSION requires the zstd submodule target libzstd_static")
+  message(FATAL_ERROR "CANOPY_BUILD_ZSTD requires the zstd submodule target libzstd_static")
 endif()
 
 add_library(streaming_compression STATIC src/stream.cpp)

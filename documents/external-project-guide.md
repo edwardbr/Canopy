@@ -92,6 +92,9 @@ set(CANOPY_BUILD_TEST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_RUST       OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_DEMOS      OFF CACHE BOOL "" FORCE)
 set(CANOPY_BUILD_BENCHMARKING OFF CACHE BOOL "" FORCE)
+set(CANOPY_BUILD_ZSTD       OFF CACHE BOOL "" FORCE) # Optional zstd stream layer
+# Leave CANOPY_BUILD_ZLIB ON if you need HTTP gzip or WebSocket permessage-deflate.
+# Set it OFF for smaller builds that do not use those zlib-backed protocol features.
 
 # Optional serialization choices. Full protobuf is useful for host interop.
 # Nanopb is protobuf-compatible and is the preferred SGX/small-runtime path.
@@ -160,6 +163,17 @@ through Nanopb even if the host side of the same build still has full protobuf
 enabled.
 
 Nanopb still needs protobuf tooling at build time. That is separate from the runtime dependency of your generated targets.
+
+### Compression Options
+
+`CANOPY_BUILD_ZLIB=ON` builds the bundled zlib target used by HTTP gzip response
+compression and WebSocket `permessage-deflate`. Keep it enabled for browser
+WebSocket servers that should support standard WebSocket compression, or for
+HTTP servers that should send gzip responses.
+
+`CANOPY_BUILD_ZSTD=ON` builds the zstd-backed generic streaming compression
+layer. Use it when your stream configuration includes a `compression` or `zstd`
+layer. It is not a substitute for HTTP gzip or WebSocket `permessage-deflate`.
 
 If an external project builds Canopy-powered DLLs/shared objects and enables full
 protobuf, the module must run Canopy's dynamic-library shutdown hook before

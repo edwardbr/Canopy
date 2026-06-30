@@ -2,7 +2,7 @@
 
 const http = require('http');
 
-const BASE_URL = process.env.API_URL || 'http://localhost:8888';
+const BASE_URL = process.env.API_URL || 'http://localhost:8080';
 
 console.log('REST API Test Suite');
 console.log('===================\n');

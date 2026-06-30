@@ -4,7 +4,7 @@ const proto = require('./generated/websocket_demo_proto.js');
 const WebsocketDemo = require('./generated/websocket_demo.js');
 const CanopyUntrustedWebTransport = require('./generated/untrusted_web_transport.js');
 
-const WS_URL = process.env.WS_URL || 'ws://localhost:8888';
+const WS_URL = process.env.WS_URL || 'ws://localhost:8080';
 const TransportProto = proto.protobuf.websocket_protocol_v1;
 const AppProto = proto.protobuf.websocket_demo_v1;
 const encoding = process.env.CANOPY_WEBSOCKET_DEMO_ENCODING === 'PROTOCOL_BUFFERS'

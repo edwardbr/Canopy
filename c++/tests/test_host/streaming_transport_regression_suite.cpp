@@ -22,7 +22,7 @@
 #  include <transport/tests/streaming_layered_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_tcp_coroutine/setup.h>
 #  include <transport/tests/streaming_spsc/setup.h>
-#  ifdef CANOPY_BUILD_COMPRESSION
+#  ifdef CANOPY_BUILD_ZSTD
 #    include <streaming/compression/stream.h>
 #    include <streaming/layer_factory/factory.h>
 #  endif
@@ -54,7 +54,7 @@ namespace
         return rpc::byte_span{reinterpret_cast<const char*>(buffer.data()), buffer.size()};
     }
 
-#  if defined(CANOPY_BUILD_WEBSOCKET) || defined(CANOPY_BUILD_COMPRESSION)
+#  if defined(CANOPY_BUILD_WEBSOCKET) || defined(CANOPY_BUILD_ZSTD)
     class scripted_stream final : public streaming::stream
     {
     public:
@@ -549,7 +549,7 @@ TEST(
         scheduler->process_events(std::chrono::milliseconds{1});
 }
 
-#  ifdef CANOPY_BUILD_COMPRESSION
+#  ifdef CANOPY_BUILD_ZSTD
 TEST(
     CompressionStream,
     ZstdRoundTripPreservesByteStream)
@@ -732,7 +732,7 @@ TEST(
     EXPECT_TRUE(websocket->is_closed());
 }
 
-#    ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+#    ifdef CANOPY_BUILD_ZLIB
 TEST(
     WebSocketPenetration,
     MaskedCompressedClientBinaryFrameDeliversPayload)
@@ -1071,7 +1071,7 @@ TEST(
     EXPECT_EQ(http_body(response), "");
 }
 
-#      ifdef CANOPY_HTTP_HAS_GZIP
+#      ifdef CANOPY_BUILD_ZLIB
 TEST(
     HttpCompression,
     RestResponseUsesGzipWhenAccepted)
@@ -1149,7 +1149,7 @@ TEST(
     EXPECT_NE(response.find("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), std::string::npos);
 }
 
-#      ifdef CANOPY_WEBSOCKET_HAS_PERMESSAGE_DEFLATE
+#      ifdef CANOPY_BUILD_ZLIB
 TEST(
     HttpWebSocketUpgradePenetration,
     NegotiatesPermessageDeflateWhenOffered)

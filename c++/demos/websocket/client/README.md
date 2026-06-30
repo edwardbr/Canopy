@@ -90,19 +90,19 @@ Tests include:
 Set the WebSocket server URL via environment variable:
 
 ```bash
-WS_URL=ws://192.168.1.100:8888 npm start
+WS_URL=ws://192.168.1.100:8080 npm start
 ```
 
-Default: `ws://localhost:8888`
+Default: `ws://localhost:8080`
 
 ### REST API Server URL
 Set the REST API server URL via environment variable:
 
 ```bash
-API_URL=http://192.168.1.100:8888 npm run test-rest
+API_URL=http://192.168.1.100:8080 npm run test-rest
 ```
 
-Default: `http://localhost:8888`
+Default: `http://localhost:8080`
 
 ## Examples
 
@@ -121,7 +121,7 @@ npm start
 
 Expected output:
 ```
-Connecting to ws://localhost:8888...
+Connecting to ws://localhost:8080...
 ✓ Connected to WebSocket server
 
 Sending: "Hello from Node.js client!"
@@ -145,7 +145,7 @@ Expected output:
 WebSocket Echo Server Test Suite
 =================================
 
-Connecting to ws://localhost:8888
+Connecting to ws://localhost:8080
 
 Running: Test 1: Basic connection
   ✓ PASSED: Connection established
@@ -172,7 +172,7 @@ Expected output:
 REST API Test Suite
 ===================
 
-Testing API at http://localhost:8888
+Testing API at http://localhost:8080
 
 Running: Test 1: POST /api/echo (generated REST)
   ✓ PASSED: Echoed: Hello, REST API!

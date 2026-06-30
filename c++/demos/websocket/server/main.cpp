@@ -247,12 +247,12 @@ auto main(
 
     cfg.log_values();
 
-    // Resolve the listen endpoint. Default: bind on 0.0.0.0:8888.
+    // Resolve the listen endpoint. Default: bind on 127.0.0.1:8080 via add_default_network_args().
     canopy::network_config::tcp_endpoint listen_ep;
     if (const auto* p = cfg.first_listen())
         listen_ep = *p;
     else
-        listen_ep.port = 8888; // addr = {} = 0.0.0.0, family = ipv4
+        listen_ep.port = 8080; // addr = {} = 0.0.0.0, family = ipv4
 
     std::signal(SIGINT, on_signal);
     std::signal(SIGTERM, on_signal);

@@ -100,7 +100,7 @@ The calculator interface (`i_calculator`) has four methods:
 document.getElementById('calculatorMode').checked = true;
 
 // Connect to WebSocket
-ws = new WebSocket('ws://localhost:8888');
+ws = new WebSocket('ws://localhost:8080');
 ws.binaryType = 'arraybuffer';
 
 // Perform calculation: 5.5 + 3.2

@@ -5,313 +5,251 @@ All rights reserved.
 
 # WebSocket Demo for Canopy
 
-Complete WebSocket server and client demonstration using libcoro and wslay.
+This demo is a small browser and Node.js application built on Canopy's HTTP,
+REST, WebSocket, and generated JavaScript bindings. It is no longer just a text
+echo sample: the default coroutine build serves a browser test UI, exposes a
+generated REST echo endpoint, and upgrades WebSocket connections into Canopy
+RPC.
 
-## Architecture
+## What It Demonstrates
 
-```
-┌─────────────────────────────────────┐
-│   C++ WebSocket Server              │
-│   (libcoro + wslay)                 │
-│                                     │
-│   - HTTP static file server         │
-│   - WebSocket echo server           │
-│   - Port 8888                       │
-└─────────────┬───────────────────────┘
-              │
-      ┌───────┴────────┐
-      │                │
-┌─────▼─────┐   ┌─────▼──────┐
-│  Browser  │   │  Node.js   │
-│  Client   │   │  Client    │
-└───────────┘   └────────────┘
-```
+- Static HTTP file serving for the browser UI.
+- Generated REST handler dispatch through `POST /api/echo`.
+- Browser and Node.js generated JavaScript bindings for `websocket_demo.idl`.
+- Canopy RPC over WebSocket using `transport_untrusted_web`.
+- Calculator RPC calls over binary WebSocket frames.
+- Optional WebSocket `permessage-deflate` when `CANOPY_BUILD_ZLIB=ON`.
+- Optional TLS with `--cert` and `--key`.
+- Optional video mode in coroutine builds.
+- Optional LLM chat support when the demo is not built in calculator-only mode.
 
-## Quick Start
+## Build And Run
 
-### 1. Build and Start the Server
+The normal host demo is built from the coroutine preset:
 
 ```bash
-# Configure and build the server (automatically generates protobuf JavaScript)
 cmake --preset Debug_Coroutine
 cmake --build build_debug_coroutine --target websocket_server
-
-# Run the server
 ./build_debug_coroutine/output/websocket_server
 ```
 
-**Note**: The build process automatically generates JavaScript protobuf files from the IDL definitions:
-- Browser version: `server/www/websocket_proto.js`
-- Node.js version: `client/websocket_proto.js`
+Then open:
 
-Requirements: Node.js and npm (for protobuf JS generation)
-
-Expected output:
-```
-WebSocket server listening on port 8888
+```text
+http://127.0.0.1:8080
 ```
 
-### 2. Option A: Use the Browser Client
-
-Open your web browser and navigate to:
-```
-http://localhost:8888
-```
-
-**What you'll see:**
-- Beautiful web interface with gradient purple design
-- "Connect" button to establish WebSocket connection
-- Message input field for sending messages
-- Real-time message history with color-coded entries
-- Statistics: messages sent/received, connection uptime
-
-**How to use:**
-1. Click "Connect"
-2. Type a message in the input field
-3. Press Enter or click "Send"
-4. See your message echoed back immediately
-5. Click "Disconnect" when done
-
-### 3. Option B: Use the Node.js Client
+The server defaults are injected through the shared network-config CLI layer.
+By default the demo listens on `127.0.0.1:8080`. Override it with `--listen`:
 
 ```bash
-# Install dependencies (first time only)
-cd demos/websocket/client
+./build_debug_coroutine/output/websocket_server --listen=server:0.0.0.0:8080
+```
+
+To serve a different static directory:
+
+```bash
+./build_debug_coroutine/output/websocket_server --static-root=/path/to/www
+```
+
+To run with TLS:
+
+```bash
+./build_debug_coroutine/output/websocket_server \
+  --cert c++/demos/websocket/server/certs/server.crt \
+  --key c++/demos/websocket/server/certs/server.key
+```
+
+With TLS enabled, open `https://127.0.0.1:8080`. The browser client derives
+`wss://` from the page URL automatically.
+
+## Browser Client
+
+The served UI has four modes:
+
+- **Echo**: sends HTTP JSON to `POST /api/echo` and displays the generated REST
+  response. This does not require an open WebSocket connection.
+- **Calculator**: connects over WebSocket and calls the generated
+  `i_calculator` proxy.
+- **Chat**: streams LLM output through the `i_context_event` callback when LLM
+  support is present. Calculator-only builds disable this mode.
+- **Video**: sends VP8/WebCodecs frames through `i_calculator::push_video_frame`
+  and receives processed frames through `i_context_event::push_frame`.
+
+The browser client uses:
+
+- `server/www/index.html`
+- `server/www/client.js`
+- `server/www/generated/websocket_demo.js`
+- `server/www/generated/websocket_demo_proto.js`
+- `server/www/generated/untrusted_web_transport.js`
+- `server/www/generated/websocket_demo_config.js`
+
+The `ws` query parameter can override the WebSocket URL used by the browser:
+
+```text
+http://127.0.0.1:8080/?ws=ws://127.0.0.1:8080
+```
+
+## Node.js Clients
+
+Install the client dependencies once:
+
+```bash
+cd c++/demos/websocket/client
 npm install
-
-# Run simple client (automated test)
-npm start
-
-# OR run interactive client
-npm run interactive
-
-# OR run comprehensive test suite
-npm test
 ```
 
-## Components
+Run calculator RPC tests using the generated JavaScript transport and proxy:
 
-### Server (`server/`)
-- **`server.cpp`** - Main server with:
-  - HTTP static file server
-  - WebSocket handshake handler
-  - WebSocket echo functionality
-  - Multi-client support via coroutines
-- **`websocket_handshake.h`** - WebSocket handshake utilities
-- **`www/`** - Web client files:
-  - `index.html` - Web UI
-  - `client.js` - WebSocket client logic
-
-### Node.js Client (`client/`)
-- **`client.js`** - Simple automated test client
-- **`interactive.js`** - Interactive console client
-- **`test.js`** - Comprehensive test suite (7 tests)
-
-## Features
-
-### Server Features
-✓ **Dual mode support**: Echo (text) and Calculator (RPC with protobuf)
-✓ WebSocket protocol support (RFC 6455)
-✓ HTTP/1.1 static file serving
-✓ Proper handshake with `Sec-WebSocket-Accept`
-✓ Automatic PING/PONG handling
-✓ Binary and text message support
-✓ Multiple concurrent connections
-✓ Coroutine-based async I/O
-✓ Multi-threaded (uses hardware concurrency)
-✓ Full Canopy framework integration
-
-### Client Features
-✓ **Browser and Node.js** clients with identical functionality
-✓ Real-time bidirectional communication
-✓ **Calculator mode**: Binary RPC calls using protobuf
-✓ Message echo verification
-✓ Connection statistics
-✓ Graceful connection handling
-✓ Error handling and reporting
-
-### Build Features
-✓ **Automatic protobuf JS generation** from IDL files via CMake
-✓ Generates browser-compatible static modules
-✓ Generates Node.js CommonJS modules
-✓ Regenerates on IDL/proto file changes
-✓ Uses `protobufjs-cli` via npm (auto-installed)
-✓ Unicode support
-✓ Binary data support
-
-## Testing
-
-### Browser Testing
-1. Open `http://localhost:8888` in browser
-2. Click "Connect"
-3. Send messages and verify echo
-4. Check statistics update correctly
-
-### Node.js Testing
 ```bash
-cd demos/websocket/client
-
-# Quick test
-npm start
-
-# Interactive testing
-npm run interactive
-
-# Full test suite
-npm test
+node test_calculator.js
 ```
 
-**Test suite includes:**
-- Basic connection test
-- Text message echo
-- Multiple sequential messages
-- Binary data echo
-- Large message (10KB)
-- Unicode character support
-- Graceful connection close
+Run REST echo tests:
 
-## Protocol Flow
-
-### HTTP Request → WebSocket Upgrade
-```
-Client → Server: GET / HTTP/1.1
-Server → Client: HTTP/1.1 200 OK (HTML page)
-
-Client → Server: GET / HTTP/1.1
-                  Upgrade: websocket
-                  Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
-
-Server → Client: HTTP/1.1 101 Switching Protocols
-                  Upgrade: websocket
-                  Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
-```
-
-### WebSocket Message Exchange
-```
-Client → Server: TEXT frame: "Hello"
-Server → Client: TEXT frame: "Hello" (echo)
-
-Client → Server: CLOSE frame
-Server → Client: CLOSE frame (response)
-```
-
-## Directory Structure
-
-```
-demos/websocket/
-├── README.md                    # This file
-├── server/
-│   ├── server.cpp              # C++ WebSocket server
-│   ├── websocket_handshake.h   # Handshake utilities
-│   ├── CMakeLists.txt          # Build configuration
-│   └── www/
-│       ├── index.html          # Web UI
-│       ├── client.js           # Browser client logic
-│       └── README.md           # Web client docs
-└── client/
-    ├── client.js               # Node.js simple client
-    ├── interactive.js          # Node.js interactive client
-    ├── test.js                 # Test suite
-    ├── package.json            # NPM configuration
-    └── README.md               # Node.js client docs
-```
-
-## Technical Details
-
-### Server Technology
-- **Framework**: libcoro (C++20 coroutines)
-- **WebSocket Library**: wslay (transport-agnostic)
-- **Handshake**: OpenSSL (SHA-1, Base64)
-- **File I/O**: C++17 filesystem
-- **Concurrency**: io_scheduler with hardware concurrency
-
-### Client Technology
-- **Browser**: Vanilla JavaScript (no frameworks)
-- **Node.js**: ws library (WebSocket implementation)
-- **UI**: Modern CSS with gradients and animations
-
-## Configuration
-
-### Server Port
-Default: `8888`
-
-To change, edit `server.cpp`:
-```cpp
-coro::net::tcp::server server{scheduler,
-    coro::net::tcp::server::options{.port = 8888}};
-```
-
-### Client URL
-Browser client auto-detects from current host.
-
-Node.js client can be configured:
 ```bash
-WS_URL=ws://192.168.1.100:8888 npm start
+npm run test-rest
+```
+
+The Node clients default to `ws://localhost:8080` and `http://localhost:8080`.
+Override them with:
+
+```bash
+WS_URL=ws://192.168.1.100:8080 node test_calculator.js
+API_URL=http://192.168.1.100:8080 npm run test-rest
+```
+
+If the demo was configured with `CANOPY_WEBSOCKET_DEMO_ENCODING=PROTOCOL_BUFFERS`,
+set the same encoding for the generated Node transport:
+
+```bash
+CANOPY_WEBSOCKET_DEMO_ENCODING=PROTOCOL_BUFFERS node test_calculator.js
+```
+
+`client.js`, `interactive.js`, and `test.js` are older raw text WebSocket echo
+helpers. They do not exercise the current Canopy RPC handshake path used by the
+browser calculator and `test_calculator.js`.
+
+## Generated Files
+
+CMake generates browser and Node.js JavaScript bindings from the IDL files:
+
+- `idl/websocket_demo/websocket_demo.idl` -> WebSocket/RPC demo bindings.
+- `idl/websocket_rest/websocket_rest.idl` -> REST echo interface.
+- `idl/websocket_rest/websocket_rest.rest.json` -> REST binding metadata.
+- `idl/websocket_rest/websocket_rest.openapi.json` -> generated OpenAPI output.
+
+Generated JavaScript is written to:
+
+- `client/generated/` for CommonJS Node.js clients.
+- `server/www/generated/` for the browser UI.
+
+The generated files must match the server binary. If the browser reports that
+the Canopy handshake was rejected, rebuild the server target so the generated
+JavaScript bundle and C++ IDL code are regenerated from the same sources.
+
+## Build Options
+
+- `CANOPY_BUILD_WEBSOCKET=ON` is required for this demo.
+- `CANOPY_BUILD_COROUTINE=ON` enables the full host demo, TLS stream support,
+  and video mode.
+- Non-coroutine builds force `CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY=ON`.
+- `CANOPY_WEBSOCKET_DEMO_ENCODING=AUTO` chooses Nanopb when available, otherwise
+  full Protocol Buffers. It can be set to `NANOPB` or `PROTOCOL_BUFFERS`.
+- `CANOPY_BUILD_ZLIB=ON` enables HTTP gzip responses and WebSocket
+  `permessage-deflate`.
+
+## Source Layout
+
+```text
+c++/demos/websocket/
+|-- CMakeLists.txt
+|-- README.md
+|-- client/
+|   |-- README.md
+|   |-- client.js               # legacy raw text WebSocket helper
+|   |-- interactive.js          # legacy raw text WebSocket helper
+|   |-- test.js                 # legacy raw text WebSocket tests
+|   |-- test_calculator.js
+|   |-- test_rest.js
+|   `-- generated/
+|-- idl/
+|   |-- CMakeLists.txt
+|   |-- websocket_demo/
+|   `-- websocket_rest/
+|-- server/
+|   |-- CMakeLists.txt
+|   |-- main.cpp
+|   |-- demo.cpp
+|   |-- demo_zone.cpp
+|   |-- http_client_connection.cpp
+|   |-- rest_echo_service.cpp
+|   |-- websocket_handler.cpp
+|   |-- video_session.cpp
+|   |-- llama_server_engine.cpp
+|   `-- www/
+`-- tests/
+    `-- websocket_rest_echo_test.cpp
+```
+
+## Tests
+
+The JavaScript tests require a running server:
+
+```bash
+./build_debug_coroutine/output/websocket_server
+```
+
+Then, from `c++/demos/websocket/client`:
+
+```bash
+node test_calculator.js
+npm run test-rest
+```
+
+The C++ REST test is registered with CTest when `CANOPY_BUILD_TEST=ON` and the
+`websocket_server_rest` target is available:
+
+```bash
+cmake --build build_debug_coroutine --target websocket_rest_echo_test
+ctest --test-dir build_debug_coroutine -R websocket_rest_echo_test
 ```
 
 ## Troubleshooting
 
-### "Connection refused"
-- Ensure server is running: `./build_debug_coroutine/output/websocket_server`
-- Check firewall settings
-- Verify port 8888 is not in use: `netstat -tuln | grep 8888`
+**Connection refused**
 
-### "File not found" in browser
-- Ensure `www/` directory exists in server directory
-- Check file permissions
-- Server uses `__FILE__` macro to find www directory relative to source
+Check that the server is running and listening on the endpoint your client uses.
+The default is `127.0.0.1:8080`.
 
-### npm install fails
-- Ensure Node.js is installed: `node --version`
-- Try: `npm install --legacy-peer-deps`
+**Browser handshake rejected**
 
-## Examples
+Rebuild the relevant server target. This usually means the generated JavaScript
+bundle and the server binary were built from different IDL output.
 
-### Example 1: Browser Chat Session
-```
-1. Open http://localhost:8888
-2. Click "Connect" → Status shows "Connected"
-3. Type "Hello WebSocket!" → Press Enter
-4. See echo: "← Hello WebSocket!"
-5. Stats show: Sent: 1, Received: 1
-```
+**Chat mode disabled**
 
-### Example 2: Node.js Interactive
-```bash
-$ npm run interactive
-ws> Hello from Node!
-→ Sending: "Hello from Node!"
-← Received: "Hello from Node!"
-ws> quit
-Connection closed
-```
+The build was configured with `CANOPY_WEBSOCKET_DEMO_CALCULATOR_ONLY=ON`, which
+is the default for non-coroutine builds.
 
-### Example 3: Automated Testing
-```bash
-$ npm test
-Running: Test 1: Basic connection
-  ✓ PASSED: Connection established
+**Camera or video mode unavailable**
 
-Running: Test 2: Echo text message
-  ✓ PASSED: Correctly echoed: "Hello, WebSocket!"
+Video mode depends on browser WebCodecs/camera APIs and the coroutine video
+pipeline. Run from a secure origin for camera access when required by the
+browser.
 
-[... 5 more tests ...]
+**TLS only works in coroutine builds**
 
-Test Summary:
-  Total: 7
-  Passed: 7
-  Failed: 0
-```
+The plain server target is dual-mode, but the secure stream path used by
+`--cert/--key` is currently wired for coroutine builds.
 
-## Next Steps
+## Related Docs
 
-- Add message queueing and persistence
-- Implement broadcast to all connected clients
-- Add authentication/authorization
-- Support for WebSocket subprotocols
-- Add TLS/SSL support (wss://)
-- Implement rate limiting
-- Add compression (permessage-deflate)
+- `server/www/README.md` - browser client details.
+- `server/www/CALCULATOR.md` - calculator RPC protocol notes.
+- `server/www/VIDEO.md` - video mode design and limitations.
+- `client/README.md` - Node.js client commands and tests.
 
 ## License
 
