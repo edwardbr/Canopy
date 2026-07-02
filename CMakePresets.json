@@ -195,7 +195,9 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CANOPY_PRODUCTION_RELEASE": "ON",
-                "CANOPY_LOGGING_INFO": "2"
+                "CANOPY_LOGGING_LEVEL": "2",
+                "CANOPY_ENABLE_NATIVE_OPTIMIZATIONS": "ON",
+                "CANOPY_ENABLE_LINK_TIME_OPTIMIZATION": "ON"
             }
         },
         {

@@ -102,8 +102,6 @@ namespace streaming::blocking::tcp
             {
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
                 {
-                    RPC_WARNING(
-                        "tcp::stream::send EAGAIN: {} bytes remaining, fd={}", buffer.size(), socket_.native_handle());
                     auto wstatus = CO_AWAIT socket_.wait_writable(std::chrono::seconds(30));
                     if (!wstatus.is_ok())
                     {

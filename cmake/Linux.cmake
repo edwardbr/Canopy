@@ -48,6 +48,9 @@ list(APPEND CANOPY_SHARED_DEFINES TEMP_DIR="${TEMP_DIR}" RUNTIME_DIR="${RUNTIME_
 set(EXTRA_COMPILE_OPTIONS)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CANOPY_OPTIMIZER_FLAGS -O3)
+  if(CANOPY_ENABLE_NATIVE_OPTIMIZATIONS)
+    list(APPEND CANOPY_OPTIMIZER_FLAGS -march=native)
+  endif()
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 else()
   # Debug configuration
@@ -59,6 +62,23 @@ endif()
 
 message("CMAKE_CXX_FLAGS_DEBUG [${CMAKE_CXX_FLAGS_DEBUG}]")
 message("CANOPY_OPTIMIZER_FLAGS [${CANOPY_OPTIMIZER_FLAGS}]")
+
+set(CANOPY_LTO_COMPILE_OPTIONS)
+set(CANOPY_LTO_LINK_OPTIONS)
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND CANOPY_ENABLE_LINK_TIME_OPTIMIZATION)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    list(APPEND CANOPY_LTO_COMPILE_OPTIONS -flto=thin)
+    list(APPEND CANOPY_LTO_LINK_OPTIONS -flto=thin)
+  elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    list(APPEND CANOPY_LTO_COMPILE_OPTIONS -flto=auto)
+    list(APPEND CANOPY_LTO_LINK_OPTIONS -flto=auto)
+  else()
+    message(WARNING "CANOPY_ENABLE_LINK_TIME_OPTIMIZATION is ON, but ${CMAKE_CXX_COMPILER_ID} is not configured")
+  endif()
+endif()
+
+message("CANOPY_LTO_COMPILE_OPTIONS [${CANOPY_LTO_COMPILE_OPTIONS}]")
+message("CANOPY_LTO_LINK_OPTIONS [${CANOPY_LTO_LINK_OPTIONS}]")
 
 # ######################################################################################################################
 # Debug Information Configuration
@@ -77,7 +97,8 @@ set(CANOPY_SHARED_COMPILE_OPTIONS
     -Wno-gnu-zero-variadic-macro-arguments
     ${EXTRA_COMPILE_OPTIONS}
     ${CANOPY_DEBUG_INFO_FLAGS}
-    ${CANOPY_OPTIMIZER_FLAGS})
+    ${CANOPY_OPTIMIZER_FLAGS}
+    ${CANOPY_LTO_COMPILE_OPTIONS})
 
 if(CANOPY_BUILD_COROUTINE)
   list(APPEND CANOPY_SHARED_COMPILE_OPTIONS # -fcoroutines  # Uncomment if needed for specific compilers
@@ -235,8 +256,8 @@ endif()
 # ######################################################################################################################
 # Link Options
 # ######################################################################################################################
-set(CANOPY_LINK_OPTIONS ${CANOPY_DEBUG_OPTIONS})
-set(CANOPY_LINK_EXE_OPTIONS ${CANOPY_DEBUG_OPTIONS})
+set(CANOPY_LINK_OPTIONS ${CANOPY_DEBUG_OPTIONS} ${CANOPY_LTO_LINK_OPTIONS})
+set(CANOPY_LINK_EXE_OPTIONS ${CANOPY_DEBUG_OPTIONS} ${CANOPY_LTO_LINK_OPTIONS})
 set(CANOPY_LINK_DYNAMIC_LIBRARY_OPTIONS ${CANOPY_LINK_OPTIONS} -fPIC)
 
 # ######################################################################################################################

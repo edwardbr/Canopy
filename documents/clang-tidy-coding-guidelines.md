@@ -20,6 +20,38 @@ The tidy presets use `WarningsAsErrors: '*'`, so every enabled diagnostic must
 either be fixed, narrowly suppressed, or deliberately excluded at the right
 build boundary.
 
+## Measured Benefit
+
+The July 2, 2026 release comparison used the older baseline
+`4c1867dfb2efe306bc06becf25bef72d544ee375` against the current working
+snapshot, with both sides configured consistently for Release benchmarking:
+`CANOPY_LOGGING_LEVEL=2`, `-O3`, `-march=native`, and Clang ThinLTO
+(`-flto=thin`). Ratios below are `current / baseline`, so values below `1.0`
+mean the current code is faster.
+
+| area | rows | median ratio | result |
+|---|---:|---:|---|
+| Fullstack, blocking Release | 160 | 1.005 | effectively flat |
+| Fullstack, coroutine core Release | 240 | 0.971 | about 2.9% faster |
+| Streaming, blocking Release | 40 | 1.002 | effectively flat |
+| Streaming, coroutine Release | 100 | 1.000 | flat median, mixed rows |
+| Serialisation, blocking Release | 262 | 0.995 | slightly faster |
+| Serialisation, coroutine Release | 262 | 1.004 | effectively flat |
+| Zone address Release | 4 | 1.000 | flat |
+
+The strongest improvement was in coroutine fullstack IPC paths:
+`ipc_direct` median `0.745` and `ipc_dll` median `0.768`. In elapsed-time
+terms that means the current code used about 74.5% and 76.8% of the old time,
+respectively. Some `unshared_scheduler_dll` rows were slower, but the same
+transport also had faster rows, so those outliers should be treated as
+scheduler-sensitive until rerun with a focused higher-pass matrix.
+
+These results support keeping the tidy cleanup approach focused on real
+ownership and performance issues. Removing no-op moves, preserving real moves on
+payload-bearing paths, avoiding accidental reference-to-value rewrites, and
+keeping generated Canopy wrappers visible to tidy improved static-analysis
+coverage without showing a broad release performance regression.
+
 ## Check Selection
 
 The main check families are:
@@ -30,8 +62,8 @@ The main check families are:
 
 Some checks are intentionally disabled because they conflict with existing
 Canopy idioms, generated interfaces, ABI boundaries, or review signal quality.
-Do not re-enable a disabled check without first testing both ordinary and SGX /
-coroutine tidy presets.
+Do not re-enable a disabled check without first testing ordinary and coroutine
+tidy presets.
 
 Use current LLVM/clang-tidy tooling that supports the configured checks in
 `.clang-tidy`. If a developer machine reports an unknown check, update the local
@@ -66,8 +98,6 @@ Current examples include:
 
 - `submodules/`
 - `_deps/`
-- staged SGX SDK paths such as `sgx-sdk/` and `sgxsdk/`
-- staged SGXSSL paths such as `sgxssl/`
 - raw nanopb generated headers under `generated/src/.../nanopb/...`
 
 Avoid globally disabling a check because of third-party headers. Narrow the
@@ -132,8 +162,8 @@ Do not rely on an implicit compiler decision to communicate ownership semantics.
 ## C APIs, ABI, And Low-Level Code
 
 Preserve C ABI and foreign-library shapes. Raw pointers, macros, C arrays,
-casts, and globals may be the correct contract at module boundaries, SGX hooks,
-callback contexts, generated C serializers, and foreign library adapters.
+casts, and globals may be the correct contract at module boundaries, callback
+contexts, generated C serializers, and foreign library adapters.
 
 When a low-level construct is required, suppress locally with the exact check
 name and a reason tied to the ABI or storage requirement. Do not perform a
@@ -175,9 +205,6 @@ relevant special build affected by the change. Useful presets include:
 ```bash
 cmake --preset Debug_Coroutine_Tidy
 cmake --build build_debug_coroutine_tidy
-
-cmake --preset Debug_SGX_Sim_Tidy
-cmake --build build_debug_sgx_sim_tidy
 ```
 
 If the change touches shared coroutine/non-coroutine behavior, also consider the
@@ -198,4 +225,3 @@ Before accepting a tidy cleanup, check:
 - Are raw generated and external paths excluded narrowly rather than globally?
 - Are `NOLINT` comments local, named, and justified?
 - Were both coroutine and blocking paths considered?
-- Were SGX / enclave paths considered when include filters changed?

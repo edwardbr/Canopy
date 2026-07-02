@@ -167,6 +167,8 @@ if(NOT DEPENDENCIES_LOADED)
   option(CANOPY_ENABLE_CLANG_TIDY_FIX "Enable auto-fix in clang-tidy" OFF)
   option(CANOPY_ENABLE_COVERAGE "Enable code coverage" OFF)
   option(CANOPY_FORCE_DEBUG_INFORMATION "Force inclusion of debug information" ON)
+  option(CANOPY_ENABLE_NATIVE_OPTIMIZATIONS "Enable CPU-specific native optimization flags for release builds" OFF)
+  option(CANOPY_ENABLE_LINK_TIME_OPTIMIZATION "Enable link-time optimization for release builds" OFF)
 
   option(CMAKE_VERBOSE_MAKEFILE "Verbose build step" OFF)
   option(CMAKE_RULE_MESSAGES "Verbose cmake" OFF)
