@@ -27,7 +27,8 @@ if(CANOPY_BUILD_ENCLAVE)
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_compile_definitions(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC_ENCLAVE})
+  target_compile_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS}
+                                                           ${CANOPY_WARN_PEDANTIC_ENCLAVE})
   target_link_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 
   set_property(TARGET canopy_http_utils_enclave PROPERTY COMPILE_PDB_NAME canopy_http_utils_enclave)
