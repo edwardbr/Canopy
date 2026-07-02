@@ -138,6 +138,7 @@ namespace canopy::http_server
             }
             catch (...)
             {
+                (void)0;
             }
 
             response.headers.erase(it);
@@ -331,7 +332,7 @@ namespace canopy::http_server
             }
 
             std::string output;
-            std::array<unsigned char, 16 * 1024> buffer{};
+            std::array<unsigned char, size_t{16U} * 1024U> buffer{};
             size_t input_offset = 0;
             int deflate_result = Z_OK;
 
@@ -352,7 +353,8 @@ namespace canopy::http_server
                     if (deflate_result != Z_OK && deflate_result != Z_STREAM_END)
                     {
                         RPC_WARNING(
-                            "HTTP gzip deflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            "HTTP gzip deflate failed: result={} msg={} avail_in={} avail_out={} total_in={} "
+                            "total_out={}",
                             deflate_result,
                             stream.msg ? stream.msg : "",
                             stream.avail_in,
@@ -860,8 +862,14 @@ namespace canopy::http_server
         }
 
         auto key = find_header(request, "Sec-WebSocket-Key");
-        RPC_ASSERT(key.has_value());
-        std::string accept_key = calculate_ws_accept(*key);
+        if (!key.has_value())
+        {
+            auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);
+            CO_AWAIT stream_->send(rpc::byte_span{error_response});
+            CO_RETURN nullptr;
+        }
+
+        std::string accept_key = calculate_ws_accept(key.value());
         if (accept_key.empty())
         {
             auto error_response = build_http_response(make_text_response(400, "Bad Request"), false);

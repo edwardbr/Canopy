@@ -187,7 +187,7 @@ namespace
         }
         else if (suffix == 'm' || suffix == 'M')
         {
-            multiplier = 1024 * 1024;
+            multiplier = uint64_t{1024U} * 1024U;
             value.remove_suffix(1);
         }
 
@@ -1567,6 +1567,7 @@ init();
 int main(
     int argc,
     char** argv)
+try
 {
     using namespace comprehensive::v1;
 
@@ -1838,4 +1839,8 @@ int main(
     }
 
     return 0;
+}
+catch (...)
+{
+    return 1;
 }

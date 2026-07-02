@@ -38,6 +38,7 @@ namespace
 int main(
     int argc,
     char** argv)
+try
 {
     using namespace stream_bench;
 
@@ -191,4 +192,8 @@ int main(
 
     fmt::print("\nDone.\n");
     return 0;
+}
+catch (...)
+{
+    return 1;
 }

@@ -6,6 +6,7 @@
 #include "rust_generator.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <functional>
@@ -32,10 +33,10 @@ namespace rust_generator
             uint64_t value;
         };
 
-        constexpr protocol_version_descriptor protocol_versions[] = {
+        constexpr std::array<protocol_version_descriptor, 2> protocol_versions = {{
             {"V3", 3},
             {"V2", 2},
-        };
+        }};
 
         bool is_rust_keyword(const std::string& name)
         {
@@ -960,7 +961,6 @@ namespace rust_generator
 
             const bool is_proxy_method = method_prefix == "proxy_call";
             const auto combined_generics = merge_generics(request_generics, response_generics);
-            const auto combined_where = generic_where_clause_for_params(analysed_params, true, true, true);
 
             // When there are [out]-only interface params, Request carries combined generics
             const bool has_out_only = method_has_out_only_interface_params(iface, function, lib, root_module_name);
@@ -1028,10 +1028,10 @@ namespace rust_generator
             const std::string& root_module_name)
         {
             const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
-            const auto return_type
-                = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value
                 = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
+            const auto return_type
+                = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
 
             const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
             const auto request_where = generic_where_clause_for_params(analysed_params, true, false);
@@ -1352,7 +1352,6 @@ namespace rust_generator
         {
             const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
-            const auto response_where = generic_where_clause_for_params(analysed_params, false, true);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
             auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
 
@@ -1586,8 +1585,7 @@ namespace rust_generator
                         output.raw(");\n");
                     }
                     output("\t\treturn LocalCallResult {{");
-                    if (has_interface_in)
-                        output("\t\t\tincoming,");
+                    output("\t\t\tincoming,");
                     output("\t\t\tresponse,");
                     if (has_interface_out)
                         output("\t\t\toutgoing,");
@@ -1624,8 +1622,6 @@ namespace rust_generator
                 output("\tlet mut {} = {};", param.rust_name, rust_default_value_expression_for_param(param));
             }
 
-            const auto return_type
-                = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value
                 = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
             if (has_return_value)
@@ -1745,21 +1741,15 @@ namespace rust_generator
                 all_where_impl = " where " + impl_bound;
             else
                 all_where_impl += ", " + impl_bound;
-            const auto return_type
-                = rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
             const bool has_return_value
                 = normalise_cpp_type(function.get_return_type()) != "void" && !function.get_return_type().empty();
-
-            // Use combined generics for Request when there are [out]-only interface params
-            const bool has_out_only = false;
-            const auto effective_request_generics = request_generics;
 
             output("#[doc(hidden)]");
             output(
                 "pub fn dispatch_decoded_request<Impl{}>(implementation: &Impl, context: &canopy_rpc::DispatchContext, "
                 "request: Request{}) -> Result<Response{}, i32>",
                 all_generics.empty() ? "" : ", " + all_generics.substr(1, all_generics.size() - 2),
-                effective_request_generics,
+                request_generics,
                 response_generics);
             output("{}", all_where_impl);
             output("{{");
@@ -1771,7 +1761,6 @@ namespace rust_generator
                     continue;
                 output("\t\t{},", param.rust_name);
             }
-            (void)has_out_only;
             output("\t}} = request;");
 
             for (const auto& param : analysed_params)
@@ -1825,8 +1814,6 @@ namespace rust_generator
         {
             const auto analysed_params = analyse_rust_method_params(iface, function, lib, root_module_name);
             const auto all_generics = generic_declaration_for_params(analysed_params, true, true);
-            const auto request_generics = generic_declaration_for_params(analysed_params, true, false);
-            const auto response_generics = generic_declaration_for_params(analysed_params, false, true);
             auto all_where = generic_where_clause_for_params(analysed_params, true, true, true);
             const auto impl_bound
                 = impl_interface_bound_for_params(analysed_params, "Impl", "super::super::Interface", true);

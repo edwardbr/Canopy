@@ -17,8 +17,8 @@ namespace streaming::compression
 {
     namespace
     {
-        constexpr uint64_t default_buffer_bytes = 16 * 1024;
-        constexpr uint64_t max_configured_buffer_bytes = 4 * 1024 * 1024;
+        constexpr uint64_t default_buffer_bytes = uint64_t{16U} * 1024U;
+        constexpr uint64_t max_configured_buffer_bytes = uint64_t{4U} * 1024U * 1024U;
 
         auto bounded_buffer_size(uint64_t configured) -> size_t
         {

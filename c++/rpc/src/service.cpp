@@ -5,6 +5,7 @@
 
 // Standard C++ headers
 #include <algorithm>
+#include <exception>
 #include <utility>
 
 // RPC headers
@@ -441,36 +442,44 @@ namespace rpc
 
     service::~service()
     {
-#ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+        try
         {
-            telemetry_service->on_service_deletion({zone_id_});
-        }
+#ifdef CANOPY_USE_TELEMETRY
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_service_deletion({zone_id_});
+            }
 #endif
 
-        // Child services use reference counting through service proxies to manage proper cleanup ordering.
-        // Parent services maintain references to child services to prevent premature destruction.
-        // The cleanup mechanism in service_proxy handles the proper ordering.
+            // Child services use reference counting through service proxies to manage proper cleanup ordering.
+            // Parent services maintain references to child services to prevent premature destruction.
+            // The cleanup mechanism in service_proxy handles the proper ordering.
 
-        object_id_generator_ = 0;
-        // Verify all object stubs have been properly released before service destruction
-        bool is_empty = check_is_empty();
-        (void)is_empty;
-        RPC_ASSERT(is_empty);
+            object_id_generator_ = 0;
+            // Verify all object stubs have been properly released before service destruction
+            bool is_empty = check_is_empty();
+            (void)is_empty;
+            RPC_ASSERT(is_empty);
 
-        {
-            std::lock_guard l(stub_control_);
-            stubs_.clear();
+            {
+                std::lock_guard l(stub_control_);
+                stubs_.clear();
+            }
+            service_proxies_.clear();
+            {
+                std::lock_guard guard(pending_out_params_control_);
+                pending_out_params_.clear();
+            }
+
+            if (on_shutdown_)
+            {
+                on_shutdown_->set();
+            }
         }
-        service_proxies_.clear();
+        catch (...)
         {
-            std::lock_guard guard(pending_out_params_control_);
-            pending_out_params_.clear();
-        }
-
-        if (on_shutdown_)
-        {
-            on_shutdown_->set();
+            RPC_CRITICAL("service destructor threw during shutdown cleanup");
+            std::terminate();
         }
     }
 
@@ -1450,11 +1459,8 @@ namespace rpc
         {
             auto registered_proxy = existing->second.lock();
             auto registered_transport = registered_proxy ? registered_proxy->get_transport() : nullptr;
-            if (!registered_proxy)
-            {
-                service_proxies_.erase(existing);
-            }
-            else if (!registered_transport || registered_transport->get_status() >= transport_status::DISCONNECTING)
+            if (!registered_proxy || !registered_transport
+                || registered_transport->get_status() >= transport_status::DISCONNECTING)
             {
                 service_proxies_.erase(existing);
             }
@@ -1713,9 +1719,7 @@ namespace rpc
             return;
 
         auto registered = item->second.lock();
-        if (registered && registered.get() == expected)
-            service_proxies_.erase(item);
-        else if (!registered)
+        if (!registered || registered.get() == expected)
             service_proxies_.erase(item);
     }
 

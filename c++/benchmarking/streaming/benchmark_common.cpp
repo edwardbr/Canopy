@@ -123,7 +123,7 @@ namespace stream_bench
             }
             else if (suffix == 'm' || suffix == 'M')
             {
-                multiplier = 1024 * 1024;
+                multiplier = uint64_t{1024U} * 1024U;
                 value.remove_suffix(1);
             }
 

@@ -100,6 +100,7 @@ namespace rpc::io_uring
             output_size = count * size;
             return true;
         }
+
     } // namespace
 
     host_controller::host_controller(

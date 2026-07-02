@@ -139,7 +139,6 @@ namespace comprehensive
                 // Use copy
                 if (obj1_copy)
                 {
-                    std::string result;
                     error = CO_AWAIT obj1_copy->ping();
                     print_result("Ping via copy", error);
                 }
@@ -228,6 +227,7 @@ namespace comprehensive
 }
 
 int main()
+try
 {
     RPC_INFO("Canopy Comprehensive Demo - Shared Pointer");
     RPC_INFO("=========================================");
@@ -252,4 +252,8 @@ int main()
 #else
     return comprehensive::v1::run_shared_ptr_demo() ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

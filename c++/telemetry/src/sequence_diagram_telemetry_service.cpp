@@ -4,6 +4,7 @@
  */
 #include <filesystem>
 #include <algorithm>
+#include <exception>
 #include <thread>
 #include <sstream>
 #include <string>
@@ -272,108 +273,117 @@ namespace rpc::telemetry
 
     sequence_diagram_telemetry_service::~sequence_diagram_telemetry_service()
     {
-        fmt::println(output_, "note left");
-        fmt::println(output_, "orphaned services {}", services.size());
-        fmt::println(output_, "orphaned impls {}", impls.size());
-        fmt::println(output_, "orphaned stubs {}", stubs.size());
-        fmt::println(output_, "orphaned service_proxies {}", service_proxies.size());
-        fmt::println(output_, "orphaned interface_proxies {}", interface_proxies.size());
-        fmt::println(output_, "orphaned object_proxies {}", object_proxies.size());
-
-        std::for_each(
-            services.begin(),
-            services.end(),
-            [this](std::pair<rpc::zone, name_count> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error service zone_id {} service {} count {}",
-                    it.first.get_subnet(),
-                    it.second.name,
-                    it.second.count);
-            });
-        std::for_each(
-            impls.begin(),
-            impls.end(),
-            [this](std::pair<uint64_t, impl> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error implementation {} zone_id {} count {}",
-                    it.second.name,
-                    it.second.zone_id.get_subnet(),
-                    it.second.count);
-            });
-        std::for_each(
-            stubs.begin(),
-            stubs.end(),
-            [this](std::pair<zone_object, stub_info> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error stub zone_id {} object_id {} count {} address {}",
-                    it.first.zone_id.get_subnet(),
-                    it.first.object_id.get_val(),
-                    it.second.count,
-                    it.second.address);
-            });
-        std::for_each(
-            service_proxies.begin(),
-            service_proxies.end(),
-            [this](std::pair<orig_zone, name_count> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error service proxy zone_id {} destination_zone_id {} caller_id {} name {} count {}",
-                    it.first.zone_id.get_subnet(),
-                    it.first.destination_zone_id.get_subnet(),
-                    it.first.caller_zone_id.get_subnet(),
-                    it.second.name,
-                    it.second.count);
-            });
-        std::for_each(
-            object_proxies.begin(),
-            object_proxies.end(),
-            [this](std::pair<interface_proxy_id, uint64_t> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error object_proxy zone_id {} destination_zone_id {} object_id {} count {}",
-                    it.first.zone_id.get_subnet(),
-                    it.first.destination_zone_id.get_subnet(),
-                    it.first.object_id.get_val(),
-                    it.second);
-            });
-        std::for_each(
-            interface_proxies.begin(),
-            interface_proxies.end(),
-            [this](std::pair<interface_proxy_id, name_count> const& it)
-            {
-                fmt::println(
-                    output_,
-                    "error interface_proxy {} zone_id {} destination_zone_id {} object_id {} count {}",
-                    it.second.name,
-                    it.first.zone_id.get_subnet(),
-                    it.first.destination_zone_id.get_subnet(),
-                    it.first.object_id.get_val(),
-                    it.second.count);
-            });
-
-        bool is_heathy = services.empty() && service_proxies.empty() && impls.empty() && stubs.empty()
-                         && interface_proxies.empty() && object_proxies.empty();
-        if (is_heathy)
+        try
         {
-            fmt::println(output_, "system is healthy");
+            fmt::println(output_, "note left");
+            fmt::println(output_, "orphaned services {}", services.size());
+            fmt::println(output_, "orphaned impls {}", impls.size());
+            fmt::println(output_, "orphaned stubs {}", stubs.size());
+            fmt::println(output_, "orphaned service_proxies {}", service_proxies.size());
+            fmt::println(output_, "orphaned interface_proxies {}", interface_proxies.size());
+            fmt::println(output_, "orphaned object_proxies {}", object_proxies.size());
+
+            std::for_each(
+                services.begin(),
+                services.end(),
+                [this](std::pair<rpc::zone, name_count> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error service zone_id {} service {} count {}",
+                        it.first.get_subnet(),
+                        it.second.name,
+                        it.second.count);
+                });
+            std::for_each(
+                impls.begin(),
+                impls.end(),
+                [this](std::pair<uint64_t, impl> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error implementation {} zone_id {} count {}",
+                        it.second.name,
+                        it.second.zone_id.get_subnet(),
+                        it.second.count);
+                });
+            std::for_each(
+                stubs.begin(),
+                stubs.end(),
+                [this](std::pair<zone_object, stub_info> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error stub zone_id {} object_id {} count {} address {}",
+                        it.first.zone_id.get_subnet(),
+                        it.first.object_id.get_val(),
+                        it.second.count,
+                        it.second.address);
+                });
+            std::for_each(
+                service_proxies.begin(),
+                service_proxies.end(),
+                [this](std::pair<orig_zone, name_count> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error service proxy zone_id {} destination_zone_id {} caller_id {} name {} count {}",
+                        it.first.zone_id.get_subnet(),
+                        it.first.destination_zone_id.get_subnet(),
+                        it.first.caller_zone_id.get_subnet(),
+                        it.second.name,
+                        it.second.count);
+                });
+            std::for_each(
+                object_proxies.begin(),
+                object_proxies.end(),
+                [this](std::pair<interface_proxy_id, uint64_t> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error object_proxy zone_id {} destination_zone_id {} object_id {} count {}",
+                        it.first.zone_id.get_subnet(),
+                        it.first.destination_zone_id.get_subnet(),
+                        it.first.object_id.get_val(),
+                        it.second);
+                });
+            std::for_each(
+                interface_proxies.begin(),
+                interface_proxies.end(),
+                [this](std::pair<interface_proxy_id, name_count> const& it)
+                {
+                    fmt::println(
+                        output_,
+                        "error interface_proxy {} zone_id {} destination_zone_id {} object_id {} count {}",
+                        it.second.name,
+                        it.first.zone_id.get_subnet(),
+                        it.first.destination_zone_id.get_subnet(),
+                        it.first.object_id.get_val(),
+                        it.second.count);
+                });
+
+            bool is_heathy = services.empty() && service_proxies.empty() && impls.empty() && stubs.empty()
+                             && interface_proxies.empty() && object_proxies.empty();
+            if (is_heathy)
+            {
+                fmt::println(output_, "system is healthy");
+            }
+            else
+            {
+                fmt::println(output_, "error system is NOT healthy!");
+            }
+            fmt::println(output_, "end note");
+            fmt::println(output_, "@enduml");
+            fclose(output_);
+            output_ = 0;
+            historical_impls.clear();
         }
-        else
+        catch (...)
         {
-            fmt::println(output_, "error system is NOT healthy!");
+            if (output_)
+                fclose(output_);
+            output_ = nullptr;
         }
-        fmt::println(output_, "end note");
-        fmt::println(output_, "@enduml");
-        fclose(output_);
-        output_ = 0;
-        historical_impls.clear();
     }
 
     std::string service_alias(rpc::zone zone_id)

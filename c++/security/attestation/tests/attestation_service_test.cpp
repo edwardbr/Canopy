@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access): Tests assert optional presence before dereferencing; clang-tidy does not model gtest fatal assertions.
 namespace
 {
     using canopy::security::attestation::aead_aes_256_gcm_tag_size;
@@ -1851,3 +1852,4 @@ TEST(
     EXPECT_EQ(unprotected_transport_down.value.params.in_back_channel[1].type_id, 105U);
     EXPECT_EQ(unprotected_transport_down.value.params.in_back_channel[1].payload, std::vector<uint8_t>({18, 19, 20}));
 }
+// NOLINTEND(bugprone-unchecked-optional-access)

@@ -38,7 +38,7 @@ std::string render_cpp_type(
 
 bool is_type_and_parameter_the_same(
     std::string type,
-    std::string name);
+    const std::string& name);
 
 std::string cpp_string_literal(const std::string& value);
 

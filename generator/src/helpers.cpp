@@ -46,7 +46,7 @@ std::string get_smart_ptr_type(
     if (found)
     {
         // auto pos = data - type_name.data();
-        auto rpos = type_name.rfind(">");
+        auto rpos = type_name.rfind('>');
         if (rpos == std::string::npos)
         {
             std::cerr << fmt::format("template parameter is malformed {}", type_name);
@@ -182,7 +182,7 @@ bool is_pointer_to_pointer(std::string type_name)
 
 bool is_type_and_parameter_the_same(
     std::string type,
-    std::string name)
+    const std::string& name)
 {
     if (type.empty() || type.size() < name.size())
         return false;

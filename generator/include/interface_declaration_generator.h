@@ -22,7 +22,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics);
 
     std::string write_proxy_receive_declaration(
@@ -30,7 +30,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics);
 
     std::string write_stub_receive_declaration(
@@ -38,7 +38,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics);
 
     std::string write_stub_reply_declaration(
@@ -46,7 +46,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics);
 
     void write_method(

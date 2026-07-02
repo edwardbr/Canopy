@@ -56,5 +56,5 @@ namespace streaming::http_client
         std::shared_ptr<::streaming::stream> stream,
         const request& input,
         std::chrono::milliseconds receive_timeout = std::chrono::milliseconds{10000},
-        size_t max_response_bytes = 2U * 1024U * 1024U);
+        size_t max_response_bytes = size_t{2U} * 1024U * 1024U);
 }

@@ -34,6 +34,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <atomic>
+#include <exception>
 #include <limits>
 #include <functional>
 #include <type_traits>
@@ -891,18 +892,30 @@ namespace rpc
         {
             if (this != &other)
             {
-                if (transport_)
-                    transport_->decrement_outbound_proxy_count(zone_id_);
+                release();
                 transport_ = std::move(other.transport_);
                 zone_id_ = other.zone_id_;
             }
             return *this;
         }
 
-        ~transport_keep_alive()
+        ~transport_keep_alive() { release(); }
+
+    private:
+        void release() noexcept
         {
-            if (transport_)
+            if (!transport_)
+                return;
+
+            try
+            {
                 transport_->decrement_outbound_proxy_count(zone_id_);
+            }
+            catch (...)
+            {
+                RPC_CRITICAL("transport_keep_alive release threw while decrementing outbound proxy count");
+                std::terminate();
+            }
         }
     };
 

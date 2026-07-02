@@ -23,7 +23,7 @@ namespace canopy::security::attestation
             uint64_t signature{0};
         };
 
-        constexpr size_t max_fake_evidence_field_size = 1024 * 1024;
+        constexpr size_t max_fake_evidence_field_size = size_t{1024U} * 1024U;
 
         auto can_append(
             const std::vector<uint8_t>& out,

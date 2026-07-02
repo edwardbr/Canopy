@@ -159,6 +159,8 @@ namespace crash_handler
         case SIGTERM:
             sigaction(SIGTERM, &old_sigterm_handler_, nullptr);
             break;
+        default:
+            break;
         }
 
         raise(signal);
@@ -470,7 +472,7 @@ namespace crash_handler
 
         if (symbol_strings)
         {
-            free(symbol_strings);
+            free(static_cast<void*>(symbol_strings));
         }
 
         return symbols;

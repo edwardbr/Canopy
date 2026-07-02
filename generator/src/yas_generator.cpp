@@ -194,7 +194,6 @@ namespace yas_generator
             switch (opt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("uint64_t {}", name);
             case STUB_PARAM_IN:
                 return fmt::format("uint64_t {}", name);
             case PROXY_MARSHALL_IN:
@@ -1071,7 +1070,7 @@ namespace yas_generator
     void write_namespace(
         bool from_host,
         const class_entity& lib,
-        std::string prefix,
+        const std::string& prefix,
         writer& proxy,
         const yas_serialization_options& yas_options,
         bool catch_stub_exceptions,

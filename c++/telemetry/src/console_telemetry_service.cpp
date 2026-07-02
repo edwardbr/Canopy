@@ -215,7 +215,7 @@ namespace rpc::telemetry
         {
             if (c >= 'a' && c <= 'z')
             {
-                c = c - 'a' + 'A';
+                c = static_cast<char>(c - 'a' + 'A');
             }
         }
     }

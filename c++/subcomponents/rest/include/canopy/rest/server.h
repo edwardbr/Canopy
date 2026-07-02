@@ -136,8 +136,9 @@ namespace canopy::rest
             Handler handler,
             std::string name = {})
         {
+            auto base_path = std::string(handler.base_path());
             add_endpoint(
-                std::string(handler.base_path()),
+                std::move(base_path),
                 [handler = std::move(handler)](const server_request& request) -> CORO_TASK(std::optional<server_response>)
                 { CO_RETURN CO_AWAIT handler.handle(request); },
                 std::move(name));

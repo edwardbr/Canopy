@@ -29,14 +29,6 @@ namespace rpc::telemetry
     {
         std::string type;        // "console", "file", etc.
         std::string output_path; // For file/console services that need a path
-
-        telemetry_service_config(
-            const std::string& t,
-            const std::string& path = "")
-            : type(t)
-            , output_path(path)
-        {
-        }
     };
 
     /**
@@ -282,7 +274,7 @@ namespace rpc::telemetry
         const std::string& type,
         const std::string& output_path)
     {
-        service_configs_.emplace_back(type, output_path);
+        service_configs_.push_back(telemetry_service_config{FLD(type) type, FLD(output_path) output_path});
     }
 
     void multiplexing_telemetry_service::start_test(

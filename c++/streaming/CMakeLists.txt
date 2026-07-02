@@ -36,7 +36,7 @@ if(CANOPY_BUILD_TEST
   add_executable(streaming_regression_test tests/streaming_regression_test.cpp)
   target_include_directories(streaming_regression_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(streaming_regression_test PRIVATE ${CANOPY_DEFINES})
-  target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(streaming_regression_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
   target_link_options(streaming_regression_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   target_link_libraries(streaming_regression_test PRIVATE streaming streaming_spsc_buffered_stream GTest::gtest_main
                                                           rpc_log)

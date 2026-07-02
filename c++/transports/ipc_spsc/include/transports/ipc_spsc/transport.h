@@ -59,9 +59,7 @@ namespace rpc::ipc_spsc
             std::shared_ptr<streaming::stream> stream;
         };
 
-        static construction_bundle create_bundle(
-            const std::shared_ptr<rpc::service>& service,
-            const options& options);
+        static construction_bundle create_bundle(const std::shared_ptr<rpc::service>& service);
         static void spawn_child(
             const std::shared_ptr<state>& state,
             const options& options);

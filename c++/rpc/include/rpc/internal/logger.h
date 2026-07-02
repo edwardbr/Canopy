@@ -6,7 +6,11 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <cstring>
+#include <utility>
+
+#include <rpc/internal/polyfill/format.h>
 
 #ifndef RPC_LOGGING_DEFINED
 
@@ -31,6 +35,27 @@ extern "C"
         } while (0)
 #  endif
 
+namespace rpc::detail
+{
+    template<typename... Args>
+    inline void log_message_noexcept(
+        int level,
+        std::string_view format_str,
+        Args&&... args) noexcept
+    {
+        try
+        {
+            auto formatted = rpc::format(format_str, std::forward<Args>(args)...);
+            RPC_LOG_BACKEND(level, formatted);
+        }
+        catch (...)
+        {
+            // Logging must not affect control flow, especially from noexcept cleanup paths.
+            return;
+        }
+    }
+} // namespace rpc::detail
+
 #  ifdef __clang__
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
@@ -38,6 +63,12 @@ extern "C"
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wdangling-reference"
 #  endif
+
+#  define RPC_LOG_NOOP(...)                                                                                            \
+      do                                                                                                               \
+      {                                                                                                                \
+          (void)0;                                                                                                     \
+      } while (0)
 
 // Unified logging macros with levels (0=TRACE, 1=DEBUG, 2=INFO, 3=WARNING, 4=ERROR, 5=CRITICAL)
 // CANOPY_LOGGING_LEVEL sets the minimum severity: only messages at or above this level are emitted.
@@ -51,44 +82,40 @@ extern "C"
 #      define RPC_TRACE(format_str, ...)                                                                               \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
-              RPC_LOG_BACKEND(0, formatted);                                                                           \
+              rpc::detail::log_message_noexcept(0, format_str, ##__VA_ARGS__);                                         \
           } while (0)
 #    else
-#      define RPC_TRACE(...)
+#      define RPC_TRACE(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 1
 #      define RPC_DEBUG(format_str, ...)                                                                               \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
-              RPC_LOG_BACKEND(1, formatted);                                                                           \
+              rpc::detail::log_message_noexcept(1, format_str, ##__VA_ARGS__);                                         \
           } while (0)
 #    else
-#      define RPC_DEBUG(...)
+#      define RPC_DEBUG(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 2
 #      define RPC_INFO(format_str, ...)                                                                                \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
-              RPC_LOG_BACKEND(2, formatted);                                                                           \
+              rpc::detail::log_message_noexcept(2, format_str, ##__VA_ARGS__);                                         \
           } while (0)
 #    else
-#      define RPC_INFO(...)
+#      define RPC_INFO(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 3
 #      define RPC_WARNING(format_str, ...)                                                                             \
           do                                                                                                           \
           {                                                                                                            \
-              auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                                 \
-              RPC_LOG_BACKEND(3, formatted);                                                                           \
+              rpc::detail::log_message_noexcept(3, format_str, ##__VA_ARGS__);                                         \
           } while (0)
 #    else
-#      define RPC_WARNING(...)
+#      define RPC_WARNING(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 4
@@ -97,19 +124,17 @@ extern "C"
             do                                                                                                         \
             {                                                                                                          \
                 RPC_ASSERT(false);                                                                                     \
-                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
-                RPC_LOG_BACKEND(4, formatted);                                                                         \
+                rpc::detail::log_message_noexcept(4, format_str, ##__VA_ARGS__);                                       \
             } while (0)
 #      else
 #        define RPC_ERROR(format_str, ...)                                                                             \
             do                                                                                                         \
             {                                                                                                          \
-                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
-                RPC_LOG_BACKEND(4, formatted);                                                                         \
+                rpc::detail::log_message_noexcept(4, format_str, ##__VA_ARGS__);                                       \
             } while (0)
 #      endif
 #    else
-#      define RPC_ERROR(...)
+#      define RPC_ERROR(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #    if CANOPY_LOGGING_LEVEL <= 5
@@ -118,29 +143,27 @@ extern "C"
             do                                                                                                         \
             {                                                                                                          \
                 RPC_ASSERT(false);                                                                                     \
-                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
-                RPC_LOG_BACKEND(5, formatted);                                                                         \
+                rpc::detail::log_message_noexcept(5, format_str, ##__VA_ARGS__);                                       \
             } while (0)
 #      else
 #        define RPC_CRITICAL(format_str, ...)                                                                          \
             do                                                                                                         \
             {                                                                                                          \
-                auto formatted = rpc::format(format_str, ##__VA_ARGS__);                                               \
-                RPC_LOG_BACKEND(5, formatted);                                                                         \
+                rpc::detail::log_message_noexcept(5, format_str, ##__VA_ARGS__);                                       \
             } while (0)
 #      endif
 #    else
-#      define RPC_CRITICAL(...)
+#      define RPC_CRITICAL(...) RPC_LOG_NOOP(__VA_ARGS__)
 #    endif
 
 #  else
 // Disabled logging - all macros are no-ops.
-#    define RPC_TRACE(...)
-#    define RPC_DEBUG(...)
-#    define RPC_INFO(...)
-#    define RPC_WARNING(...)
-#    define RPC_ERROR(...)
-#    define RPC_CRITICAL(...)
+#    define RPC_TRACE(...) RPC_LOG_NOOP(__VA_ARGS__)
+#    define RPC_DEBUG(...) RPC_LOG_NOOP(__VA_ARGS__)
+#    define RPC_INFO(...) RPC_LOG_NOOP(__VA_ARGS__)
+#    define RPC_WARNING(...) RPC_LOG_NOOP(__VA_ARGS__)
+#    define RPC_ERROR(...) RPC_LOG_NOOP(__VA_ARGS__)
+#    define RPC_CRITICAL(...) RPC_LOG_NOOP(__VA_ARGS__)
 #  endif
 
 #  if defined(__clang__)

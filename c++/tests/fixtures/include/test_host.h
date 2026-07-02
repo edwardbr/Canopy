@@ -33,6 +33,11 @@ class basic_host : public rpc::base<Derived, yyy::i_host, ExtraInterfaces...>,
 
     rpc::shared_ptr<yyy::i_host> self_host() { return rpc::static_pointer_cast<yyy::i_host>(this->shared_from_this()); }
 
+protected:
+    // NOLINTBEGIN(bugprone-crtp-constructor-accessibility): Test hosts use a two-stage CRTP fixture base.
+    basic_host() = default;
+    // NOLINTEND(bugprone-crtp-constructor-accessibility)
+
 public:
     ~basic_host() override = default;
 

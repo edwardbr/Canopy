@@ -194,7 +194,7 @@ namespace comprehensive
             // Test 5: Large binary data
             {
                 print_separator("5. LARGE DATA SERIALIZATION (1MB)");
-                std::vector<uint8_t> input(1024 * 1024);
+                std::vector<uint8_t> input(size_t{1024U} * 1024U);
                 for (size_t i = 0; i < input.size(); ++i)
                 {
                     input[i] = static_cast<uint8_t>(i % 256);
@@ -245,6 +245,7 @@ namespace comprehensive
 }
 
 int main()
+try
 {
     RPC_INFO("Canopy Comprehensive Demo - Serialization");
     RPC_INFO("========================================");
@@ -267,4 +268,8 @@ int main()
 #else
     return comprehensive::v1::run_serialisation_demo() ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

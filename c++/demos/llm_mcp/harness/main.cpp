@@ -167,6 +167,7 @@ namespace
 }
 
 int main()
+try
 {
     std::cout << "Canopy LLM/MCP schema demo\n";
 
@@ -177,4 +178,8 @@ int main()
 #endif
 
     return result ? 0 : 1;
+}
+catch (...)
+{
+    return 1;
 }

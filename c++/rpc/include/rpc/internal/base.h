@@ -13,6 +13,15 @@ namespace rpc
     {
         std::weak_ptr<rpc::object_stub> stub_;
 
+    protected:
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility): Canopy allows two-stage CRTP bases.
+        base() = default;
+        base(const base&) = default;
+        base(base&&) noexcept = default;
+        base& operator=(const base&) = default;
+        base& operator=(base&&) noexcept = default;
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
+
     public:
         ~base() override = default;
 
@@ -50,8 +59,9 @@ namespace rpc
         __rpc_call(rpc::send_params params) override
         {
             send_result result{rpc::error::INVALID_INTERFACE_ID(), {}, {}};
+            const auto interface_id = params.interface_id;
             [[maybe_unused]] bool found
-                = ((rpc::match<Interfaces>(params.interface_id)
+                = ((rpc::match<Interfaces>(interface_id)
                            ? ((result = CO_AWAIT Interfaces::stub_caller::call(
                                    static_cast<Interfaces*>(static_cast<Implementation*>(this)), std::move(params))),
                                  true)

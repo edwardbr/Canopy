@@ -59,7 +59,7 @@ if(CANOPY_BUILD_THIRD_PARTY_INTERFACES)
   endif()
 endif()
 if(CANOPY_BUILD_TEST)
-  add_subdirectory(integration_tests)
+  canopy_add_subdirectory_without_clang_tidy(integration_tests)
 endif()
 
 option(CANOPY_BUILD_RUST "Build the Rust workspace alongside the C++ build" OFF)

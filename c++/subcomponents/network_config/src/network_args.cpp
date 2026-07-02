@@ -240,8 +240,9 @@ namespace canopy::network_config
                 {
                     throw std::invalid_argument(fmt::format("ipv6_to_ip_address: group overflow in: {}", colon_hex));
                 }
-                addr[g * 2] = static_cast<uint8_t>(val >> 8);
-                addr[g * 2 + 1] = static_cast<uint8_t>(val);
+                const auto byte_index = static_cast<std::size_t>(g) * 2U;
+                addr[byte_index] = static_cast<uint8_t>(val >> 8);
+                addr[byte_index + 1U] = static_cast<uint8_t>(val);
             }
             catch (const std::invalid_argument&)
             {

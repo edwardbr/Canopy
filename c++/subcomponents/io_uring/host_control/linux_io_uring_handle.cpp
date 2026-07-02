@@ -24,7 +24,7 @@ namespace rpc::io_uring
 {
     namespace
     {
-        constexpr size_t max_tcp_payload_size = 16U * 1024U * 1024U;
+        constexpr size_t max_tcp_payload_size = size_t{16U} * 1024U * 1024U;
 
         auto native_descriptor_error_result(int native_error) noexcept -> descriptor_result
         {

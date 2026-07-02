@@ -12,6 +12,7 @@
 #include <map>
 
 // Forward declarations
+// NOLINTNEXTLINE(bugprone-incorrect-enable-shared-from-this): class_entity is defined in the idlparser submodule.
 class class_entity;
 class attributes;
 

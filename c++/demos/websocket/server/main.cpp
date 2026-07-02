@@ -215,6 +215,7 @@ auto run_http_server(
 auto main(
     int argc,
     char* argv[]) -> int
+try
 {
     args::ArgumentParser parser("WebSocket demo server with static pages, REST endpoints, and websocket RPC.");
     args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
@@ -322,4 +323,8 @@ auto main(
     root_service.reset();
     executor->shutdown();
     return 0;
+}
+catch (...)
+{
+    return 1;
 }

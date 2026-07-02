@@ -505,22 +505,21 @@ namespace rpc
                 std::make_move_iterator(caller_result.out_back_channel.end()));
         }
 
-        if (count_passthrough_ref && count_optimistic_ref)
-        {
 #if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
+        if (count_passthrough_ref)
+        {
+            const auto shared_ref_count = count_optimistic_ref ? 0 : 1;
+            const auto optimistic_ref_count = count_optimistic_ref ? 1 : 0;
             if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
                 telemetry_service->on_pass_through_add_ref(
-                    {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 0, 1});
-#endif
+                    {zone_id_,
+                        forward_destination_,
+                        reverse_destination_,
+                        build_out_param_channel,
+                        shared_ref_count,
+                        optimistic_ref_count});
         }
-        else if (count_passthrough_ref)
-        {
-#if defined(CANOPY_USE_TELEMETRY) && defined(CANOPY_USE_TELEMETRY_RAII_LOGGING)
-            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-                telemetry_service->on_pass_through_add_ref(
-                    {zone_id_, forward_destination_, reverse_destination_, build_out_param_channel, 1, 0});
 #endif
-        }
 
         end_call();
         CO_RETURN final_result;

@@ -450,9 +450,6 @@ namespace generator
             switch (info.type)
             {
             case param_type::BY_VALUE:
-                output = renderer.render_by_value(
-                    option, from_host, lib, name, info.is_in, info.is_out, info.is_const, info.clean_type_name, count);
-                break;
             case param_type::REFERENCE:
                 // For output parameters, references are rendered as BY_VALUE (original behavior)
                 output = renderer.render_by_value(

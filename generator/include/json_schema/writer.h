@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <array>
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -125,9 +127,12 @@ public:
                 if ('\x00' <= c && c <= '\x1f')
                 {
                     // Represent control characters using \uXXXX notation
-                    char buf[7];
-                    snprintf(buf, sizeof(buf), "\\u%04x", (int)c);
-                    escaped_value += buf;
+                    std::array<char, 7> buf{};
+                    const auto written = std::snprintf(buf.data(), buf.size(), "\\u%04x", static_cast<int>(c));
+                    if (written > 0)
+                    {
+                        escaped_value += buf.data();
+                    }
                 }
                 else
                 {

@@ -65,10 +65,30 @@ namespace rpc
         [[nodiscard]] constexpr bool has_value() const noexcept { return std::holds_alternative<T>(storage_); }
         constexpr explicit operator bool() const noexcept { return has_value(); }
 
-        constexpr T& operator*() & noexcept { return std::get<T>(storage_); }
-        constexpr const T& operator*() const& noexcept { return std::get<T>(storage_); }
-        constexpr T* operator->() noexcept { return &std::get<T>(storage_); }
-        constexpr const T* operator->() const noexcept { return &std::get<T>(storage_); }
+        constexpr T& operator*() & noexcept
+        {
+            auto* value = std::get_if<T>(&storage_);
+            assert(value != nullptr);
+            return *value;
+        }
+        constexpr const T& operator*() const& noexcept
+        {
+            const auto* value = std::get_if<T>(&storage_);
+            assert(value != nullptr);
+            return *value;
+        }
+        constexpr T* operator->() noexcept
+        {
+            auto* value = std::get_if<T>(&storage_);
+            assert(value != nullptr);
+            return value;
+        }
+        constexpr const T* operator->() const noexcept
+        {
+            const auto* value = std::get_if<T>(&storage_);
+            assert(value != nullptr);
+            return value;
+        }
 
         constexpr T& value() &
         {
@@ -86,9 +106,24 @@ namespace rpc
             return std::get<T>(std::move(storage_));
         }
 
-        constexpr E& error() & noexcept { return std::get<E>(storage_); }
-        constexpr const E& error() const& noexcept { return std::get<E>(storage_); }
-        constexpr E&& error() && noexcept { return std::get<E>(std::move(storage_)); }
+        constexpr E& error() & noexcept
+        {
+            auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return *error;
+        }
+        constexpr const E& error() const& noexcept
+        {
+            const auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return *error;
+        }
+        constexpr E&& error() && noexcept
+        {
+            auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return std::move(*error);
+        }
     };
 
     template<typename E> class expected<void, E>
@@ -115,9 +150,24 @@ namespace rpc
 
         constexpr void value() const { assert(has_value()); }
 
-        constexpr E& error() & noexcept { return std::get<E>(storage_); }
-        constexpr const E& error() const& noexcept { return std::get<E>(storage_); }
-        constexpr E&& error() && noexcept { return std::get<E>(std::move(storage_)); }
+        constexpr E& error() & noexcept
+        {
+            auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return *error;
+        }
+        constexpr const E& error() const& noexcept
+        {
+            const auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return *error;
+        }
+        constexpr E&& error() && noexcept
+        {
+            auto* error = std::get_if<E>(&storage_);
+            assert(error != nullptr);
+            return std::move(*error);
+        }
     };
 #endif
 }

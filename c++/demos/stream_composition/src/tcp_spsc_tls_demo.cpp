@@ -446,6 +446,7 @@ namespace
 int main(
     int argc,
     char* argv[])
+try
 {
     RPC_INFO("Stream Composition Demo — TCP → SPSC buffered stream → TLS");
     RPC_INFO("============================================");
@@ -573,4 +574,8 @@ int main(
 
     return failures == 0 ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

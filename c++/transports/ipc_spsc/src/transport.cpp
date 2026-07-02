@@ -157,9 +157,7 @@ namespace rpc::ipc_spsc
 
     }
 
-    transport::construction_bundle transport::create_bundle(
-        const std::shared_ptr<rpc::service>& service,
-        const options&)
+    transport::construction_bundle transport::create_bundle(const std::shared_ptr<rpc::service>& service)
     {
         RPC_ASSERT(service);
 
@@ -325,9 +323,7 @@ namespace rpc::ipc_spsc
               std::move(name),
               service,
               std::move(options),
-              create_bundle(
-                  service,
-                  options))
+              create_bundle(service))
     {
     }
 

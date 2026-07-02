@@ -26,7 +26,7 @@ namespace streaming::attestation
         constexpr uint16_t frame_version = 1;
         constexpr size_t frame_header_size
             = sizeof(uint32_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint64_t) + sizeof(uint32_t);
-        constexpr size_t max_frame_payload = 1024 * 1024;
+        constexpr size_t max_frame_payload = size_t{1024U} * 1024U;
 
         enum class frame_kind : uint16_t
         {

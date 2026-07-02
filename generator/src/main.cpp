@@ -358,7 +358,7 @@ int main(
         }
         catch (const args::ParseError& e)
         {
-            std::cerr << e.what() << std::endl;
+            std::cerr << e.what() << '\n';
             std::cerr << args_parser;
             return 1;
         }
@@ -530,7 +530,6 @@ int main(
             // read the original data and close the files afterwards
             string interfaces_h_data;
             string interfaces_proxy_data;
-            string interfaces_proxy_header_data;
             string interfaces_stub_data;
             string interfaces_stub_header_data;
             string interfaces_mock_data;
@@ -896,7 +895,7 @@ int main(
     }
     catch (const std::exception& e)
     {
-        std::cerr << e.what() << std::endl;
+        std::cerr << e.what() << '\n';
         return 1;
     }
 

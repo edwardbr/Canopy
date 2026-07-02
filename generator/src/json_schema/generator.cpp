@@ -42,23 +42,28 @@ namespace json_schema
     // so output is unchanged unless a caller deliberately selects another.
     namespace
     {
-        const schema_profile* g_active_profile = nullptr;
+        const schema_profile*& active_profile_ptr()
+        {
+            static const schema_profile* value = nullptr;
+            return value;
+        }
 
         const schema_profile& active_profile()
         {
             static const schema_profile fallback = config_strict_profile();
-            return g_active_profile ? *g_active_profile : fallback;
+            const auto* active = active_profile_ptr();
+            return active ? *active : fallback;
         }
 
         struct active_profile_scope
         {
             const schema_profile* previous;
             explicit active_profile_scope(const schema_profile& profile)
-                : previous(g_active_profile)
+                : previous(active_profile_ptr())
             {
-                g_active_profile = &profile;
+                active_profile_ptr() = &profile;
             }
-            ~active_profile_scope() { g_active_profile = previous; }
+            ~active_profile_scope() { active_profile_ptr() = previous; }
             active_profile_scope(const active_profile_scope&) = delete;
             active_profile_scope& operator=(const active_profile_scope&) = delete;
         };
@@ -976,7 +981,8 @@ namespace json_schema
                 // literal and stash it as a synthetic attribute on the field.
                 // write_schema_metadata (and the inline metadata paths in
                 // map_idl_type_to_json_schema) pick it up to emit `default`.
-                attributes member_attribs = *var;
+                attributes member_attribs;
+                member_attribs.merge(*var);
                 if (auto translated_default
                     = translate_idl_default_to_json(var->get_default_value(), cleaned_member_type, idl_enum_names);
                     !translated_default.empty())
@@ -2978,8 +2984,9 @@ namespace json_schema
                         {
                             assigned = std::stoll(explicit_str);
                         }
-                        catch (const std::exception&)
+                        catch (const std::exception& exception)
                         {
+                            (void)exception;
                             // Fall back to the running counter; the schema
                             // generator path already logs malformed values.
                         }

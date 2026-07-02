@@ -10,6 +10,7 @@
 // such as adding or processing back_channel data.
 #include <rpc/rpc.h>
 #include <cstdio>
+#include <exception>
 #include <limits>
 #include <algorithm>
 #include <utility>
@@ -61,38 +62,46 @@ namespace rpc
 
     service_proxy::~service_proxy()
     {
-        // keep service alive while service proxy cleans things up
-        auto service = get_operating_zone_service();
+        try
+        {
+            // keep service alive while service proxy cleans things up
+            auto service = get_operating_zone_service();
 
 #ifdef CANOPY_USE_TELEMETRY
-        if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
-        {
-            telemetry_service->on_service_proxy_deletion({get_zone_id(), destination_zone_id_, zone_id_});
-        }
+            if (auto telemetry_service = rpc::telemetry::get_telemetry_service(); telemetry_service)
+            {
+                telemetry_service->on_service_proxy_deletion({get_zone_id(), destination_zone_id_, zone_id_});
+            }
 #endif
 
-        auto transport = transport_.get_nullable();
-        if (transport)
-            transport->decrement_outbound_proxy_count(destination_zone_id_);
+            auto transport = transport_.get_nullable();
+            if (transport)
+                transport->decrement_outbound_proxy_count(destination_zone_id_);
 
-        if (!proxies_.empty())
-        {
-            RPC_WARNING(
-                "service_proxy destructor: {} proxies still in map for destination_zone={}",
-                proxies_.size(),
-                destination_zone_id_.get_subnet());
-
-            for (const auto& proxy_entry : proxies_)
+            if (!proxies_.empty())
             {
-                auto proxy = proxy_entry.second.lock();
                 RPC_WARNING(
-                    "  Remaining proxy: object_id={}, valid={}", proxy_entry.first.get_val(), (proxy ? "true" : "false"));
-            }
-        }
+                    "service_proxy destructor: {} proxies still in map for destination_zone={}",
+                    proxies_.size(),
+                    destination_zone_id_.get_subnet());
 
-        RPC_ASSERT(proxies_.empty());
-        if (service)
-            service->remove_zone_proxy_if_matches(destination_zone_id_, this);
+                for (const auto& proxy_entry : proxies_)
+                {
+                    auto proxy = proxy_entry.second.lock();
+                    RPC_WARNING(
+                        "  Remaining proxy: object_id={}, valid={}", proxy_entry.first.get_val(), (proxy ? "true" : "false"));
+                }
+            }
+
+            RPC_ASSERT(proxies_.empty());
+            if (service)
+                service->remove_zone_proxy_if_matches(destination_zone_id_, this);
+        }
+        catch (...)
+        {
+            RPC_CRITICAL("service_proxy destructor threw during proxy cleanup");
+            std::terminate();
+        }
     }
 
     void service_proxy::update_remote_rpc_version(uint64_t version)
@@ -520,15 +529,23 @@ namespace rpc
             "send_object_release: release returned {} for object {}", rpc::error::to_string(ret), object_id.get_val());
 
         // error handling here as the cleanup needs to happen anyway
-        if (ret == rpc::error::OK())
+        const bool object_not_found_after_optimistic_release = is_optimistic && ret == rpc::error::OBJECT_NOT_FOUND();
+        const bool zone_unreachable_during_cleanup
+            = ret == rpc::error::ZONE_NOT_FOUND() || ret == rpc::error::TRANSPORT_ERROR();
+        if (ret != rpc::error::OK() && !object_not_found_after_optimistic_release && !zone_unreachable_during_cleanup)
+        {
+            RPC_ERROR("cleanup_after_object release failed: {}", rpc::error::to_string(ret));
+        }
+#if defined(CANOPY_USE_LOGGING) && defined(CANOPY_LOGGING_LEVEL) && CANOPY_LOGGING_LEVEL <= 1
+        else if (ret == rpc::error::OK())
         {
             RPC_DEBUG("Remote {} for object {}", is_optimistic ? "optimistic" : "shared", object_id.get_val());
         }
-        else if (is_optimistic && ret == rpc::error::OBJECT_NOT_FOUND())
+        else if (object_not_found_after_optimistic_release)
         {
             RPC_DEBUG("Object {} not found - stub already deleted (normal for optimistic_ptr)", object_id.get_val());
         }
-        else if (ret == rpc::error::ZONE_NOT_FOUND() || ret == rpc::error::TRANSPORT_ERROR())
+        else if (zone_unreachable_during_cleanup)
         {
             RPC_DEBUG(
                 "Zone {} not reachable during cleanup ({}), intermediate zone may have been cleaned up "
@@ -536,10 +553,7 @@ namespace rpc
                 destination_zone_id.get_subnet(),
                 rpc::error::to_string(ret));
         }
-        else
-        {
-            RPC_ERROR("cleanup_after_object release failed: {}", rpc::error::to_string(ret));
-        }
+#endif
         // the transport may now go out of scope and be destroyed here
 
         CO_RETURN;

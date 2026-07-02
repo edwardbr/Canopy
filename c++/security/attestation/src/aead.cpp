@@ -107,7 +107,10 @@ namespace canopy::security::attestation
         if (static_cast<size_t>(len) > result.payload.size() - produced)
             return std::nullopt;
         if (len > 0)
-            std::copy(final_block.begin(), final_block.begin() + len, result.payload.begin() + produced);
+        {
+            const auto output_offset = static_cast<decltype(result.payload)::difference_type>(produced);
+            std::copy(final_block.begin(), final_block.begin() + len, result.payload.begin() + output_offset);
+        }
         produced += static_cast<size_t>(len);
         result.payload.resize(produced);
 
@@ -191,7 +194,10 @@ namespace canopy::security::attestation
         if (static_cast<size_t>(len) > plaintext.size() - produced)
             return std::nullopt;
         if (len > 0)
-            std::copy(final_block.begin(), final_block.begin() + len, plaintext.begin() + produced);
+        {
+            const auto output_offset = static_cast<decltype(plaintext)::difference_type>(produced);
+            std::copy(final_block.begin(), final_block.begin() + len, plaintext.begin() + output_offset);
+        }
         produced += static_cast<size_t>(len);
         plaintext.resize(produced);
         return plaintext;

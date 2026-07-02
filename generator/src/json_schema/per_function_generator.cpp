@@ -100,60 +100,22 @@ namespace json_schema
         {
             return "string";
         }
-        // Array/sequence container types
+        // Array-like container types.
         else if (clean_type.find("std::vector") != std::string::npos || clean_type.find("std::list") != std::string::npos
                  || clean_type.find("std::forward_list") != std::string::npos
                  || clean_type.find("std::deque") != std::string::npos || clean_type.find("std::array") != std::string::npos
-                 || clean_type.find("std::valarray") != std::string::npos)
-        {
-            return "array";
-        }
-        // Set container types (arrays with unique elements)
-        else if (clean_type.find("std::set") != std::string::npos || clean_type.find("std::multiset") != std::string::npos
+                 || clean_type.find("std::valarray") != std::string::npos
+                 || clean_type.find("std::set") != std::string::npos || clean_type.find("std::multiset") != std::string::npos
                  || clean_type.find("std::unordered_set") != std::string::npos
-                 || clean_type.find("std::unordered_multiset") != std::string::npos)
-        {
-            return "array";
-        }
-        // Map/object container types
-        else if (clean_type.find("std::map") != std::string::npos || clean_type.find("std::multimap") != std::string::npos
-                 || clean_type.find("std::unordered_map") != std::string::npos
-                 || clean_type.find("std::unordered_multimap") != std::string::npos)
-        {
-            return "object";
-        }
-        // Stack/Queue container adaptors (treat as arrays)
-        else if (clean_type.find("std::stack") != std::string::npos || clean_type.find("std::queue") != std::string::npos
+                 || clean_type.find("std::unordered_multiset") != std::string::npos
+                 || clean_type.find("std::stack") != std::string::npos || clean_type.find("std::queue") != std::string::npos
                  || clean_type.find("std::priority_queue") != std::string::npos)
         {
             return "array";
         }
-        // RPC optional/nullable/variant types (treat as objects for now)
-        else if (clean_type.find("rpc::optional") != std::string::npos
-                 || clean_type.find("rpc::nullable") != std::string::npos
-                 || clean_type.find("rpc::variant") != std::string::npos
-                 || clean_type.find("std::any") != std::string::npos)
-        {
-            return "object";
-        }
-        // Smart pointer types (treat as objects)
-        else if (clean_type.find("std::unique_ptr") != std::string::npos
-                 || clean_type.find("std::shared_ptr") != std::string::npos
-                 || clean_type.find("std::weak_ptr") != std::string::npos)
-        {
-            return "object";
-        }
-        // Pair and tuple types (treat as objects)
-        else if (clean_type.find("std::pair") != std::string::npos || clean_type.find("std::tuple") != std::string::npos)
-        {
-            return "object";
-        }
-        else
-        {
-            // For complex types (structs, classes, interfaces), use "object"
-            // This includes custom types like xxx::something_complicated
-            return "object";
-        }
+        // For maps, sum types, smart pointers, pairs, tuples, structs, classes,
+        // and interfaces, use "object".
+        return "object";
     }
 
     // Helper function to parse template arguments from instantiated type
@@ -363,8 +325,8 @@ namespace json_schema
                         // Look for simple identifiers that could be template parameters
                         // Template parameters are typically single words without :: or special chars
                         if (!member_type.empty() && member_type.find("::") == std::string::npos
-                            && member_type.find("<") == std::string::npos && member_type.find("*") == std::string::npos
-                            && member_type.find("&") == std::string::npos && member_type.find("std::") == std::string::npos
+                            && member_type.find('<') == std::string::npos && member_type.find('*') == std::string::npos
+                            && member_type.find('&') == std::string::npos && member_type.find("std::") == std::string::npos
                             && member_type != "int" && member_type != "string" && member_type != "bool"
                             && member_type != "char" && member_type != "float" && member_type != "double"
                             && member_type != "void" && member_type != "auto")
@@ -464,12 +426,6 @@ namespace json_schema
 
         return result;
     }
-
-    void generate_type_schema_recursive(
-        const std::string& type_name,
-        const class_entity& root,
-        json_writer& writer,
-        std::set<std::string>& visited_types);
 
     void generate_rpc_optional_type_schema(
         const std::string& inner_type,
@@ -742,8 +698,8 @@ namespace json_schema
                                 writer.write_string_property("type", "array");
 
                                 // Extract the template parameter
-                                size_t start = raw_type_name.find("<") + 1;
-                                size_t end = raw_type_name.rfind(">");
+                                size_t start = raw_type_name.find('<') + 1;
+                                size_t end = raw_type_name.rfind('>');
                                 if (start < end)
                                 {
                                     std::string inner_type = raw_type_name.substr(start, end - start);
@@ -773,9 +729,9 @@ namespace json_schema
                                 writer.write_string_property("description", "Map serialized as array of {k, v} objects");
 
                                 // Extract value type (second template parameter)
-                                size_t start = raw_type_name.find("<") + 1;
-                                size_t comma = raw_type_name.find(",", start);
-                                size_t end = raw_type_name.rfind(">");
+                                size_t start = raw_type_name.find('<') + 1;
+                                size_t comma = raw_type_name.find(',', start);
+                                size_t end = raw_type_name.rfind('>');
 
                                 if (comma != std::string::npos && comma < end)
                                 {

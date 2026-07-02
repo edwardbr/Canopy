@@ -53,6 +53,7 @@
 #pragma once
 
 #include <atomic>
+#include <exception>   // For std::terminate
 #include <utility>     // For std::swap, std::move, std::forward
 #include <stdexcept>   // For std::bad_weak_ptr, std::invalid_argument
 #include <type_traits> // For std::is_base_of_v, std::is_convertible_v, std::remove_extent_t, etc.
@@ -70,6 +71,7 @@
 #  define CANOPY_DEFAULT_DESTRUCTOR = default;
 #  define RPC_ASSERT(x) assert(x)
 #  define RPC_ERROR(...)
+#  define RPC_CRITICAL(...)
 #  define RPC_DEBUG(...)
 
 #  define RPC_MEMORY std
@@ -102,7 +104,7 @@ namespace rpc
 
         void operator()(T* ptr) const noexcept
         {
-            static_assert(sizeof(T) > 0, "can't delete an incomplete type");
+            static_assert(sizeof(T) > 0, "can't delete an incomplete type"); // NOLINT(bugprone-sizeof-expression)
             delete ptr;
         }
     };
@@ -405,8 +407,8 @@ namespace rpc
                 control_block_base() = default;
 
                 virtual ~control_block_base() = default;
-                virtual void dispose_object_actual() = 0;
-                virtual void destroy_self_actual() = 0;
+                virtual void dispose_object_actual() noexcept = 0;
+                virtual void destroy_self_actual() noexcept = 0;
                 virtual void* get_deleter_ptr(const std::type_info&) noexcept { return nullptr; }
 
                 [[nodiscard]] void* get_managed_object_ptr() const { return managed_object_ptr_; }
@@ -439,14 +441,22 @@ namespace rpc
                     return true;
                 }
 
-                void decrement_shared_and_dispose_if_zero()
+                void decrement_shared_and_dispose_if_zero() noexcept
                 {
                     std::int64_t prev = combined_count_.fetch_sub(1LL << 32, std::memory_order_relaxed);
                     long prev_shared = prev >> 32;
 
                     if (prev_shared <= 0)
                     {
-                        RPC_ERROR("decrement_shared_and_dispose_if_zero: shared_count_ was {} before decrement (high 32 bits of combined_count_)", prev_shared);
+                        try
+                        {
+                            RPC_ERROR("decrement_shared_and_dispose_if_zero: shared_count_ was {} before decrement (high 32 bits of combined_count_)", prev_shared);
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL("decrement_shared_and_dispose_if_zero: failed to log invalid shared reference count before termination");
+                            std::terminate();
+                        }
                         RPC_ASSERT(!*"Negative shared_count_ count detected");
                     }
 
@@ -474,16 +484,24 @@ namespace rpc
                     }
                 }
 
-                void decrement_weak_and_destroy_if_zero()
+                void decrement_weak_and_destroy_if_zero() noexcept
                 {
                     long prev_weak = weak_count_.fetch_sub(1, std::memory_order_acq_rel);
 
                     if (prev_weak <= 0)
                     {
-                        RPC_ERROR(
-                            "decrement_weak_and_destroy_if_zero: weak_count_ was {} before decrement (now {})",
-                            prev_weak,
-                            weak_count_.load());
+                        try
+                        {
+                            RPC_ERROR(
+                                "decrement_weak_and_destroy_if_zero: weak_count_ was {} before decrement (now {})",
+                                prev_weak,
+                                weak_count_.load());
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL("decrement_weak_and_destroy_if_zero: failed to log invalid weak reference count before termination");
+                            std::terminate();
+                        }
                         RPC_ASSERT(!*"Negative weak_count_ count detected");
                     }
 
@@ -584,7 +602,15 @@ namespace rpc
 
                     if (prev_opt <= 0)
                     {
-                        RPC_ERROR("decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement (low 32 bits of combined_count_)", prev_opt);
+                        try
+                        {
+                            RPC_ERROR("decrement_optimistic_and_dispose_if_zero: optimistic_count_ was {} before decrement (low 32 bits of combined_count_)", prev_opt);
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL("decrement_optimistic_and_dispose_if_zero: failed to log invalid optimistic reference count before termination");
+                            std::terminate();
+                        }
                         RPC_ASSERT(!*"Negative optimistic_count_ count detected");
                     }
 
@@ -660,7 +686,7 @@ namespace rpc
                 {
                 }
 
-                void dispose_object_actual() override
+                void dispose_object_actual() noexcept override
                 {
                     if (managed_object_ptr_)
                     {
@@ -669,7 +695,7 @@ namespace rpc
                     }
                 }
 
-                void destroy_self_actual() override { delete this; }
+                void destroy_self_actual() noexcept override { delete this; }
 
                 void* get_deleter_ptr(const std::type_info&) noexcept override { return nullptr; }
             };
@@ -685,7 +711,7 @@ namespace rpc
                 {
                 }
 
-                void dispose_object_actual() override
+                void dispose_object_actual() noexcept override
                 {
                     if (managed_object_ptr_)
                     {
@@ -698,12 +724,20 @@ namespace rpc
                         {
                             obj_ptr = static_cast<T*>(managed_object_ptr_);
                         }
-                        object_deleter_(obj_ptr);
+                        try
+                        {
+                            object_deleter_(obj_ptr);
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL("control block deleter threw while disposing managed object");
+                            std::terminate();
+                        }
                         managed_object_ptr_ = nullptr;
                     }
                 }
 
-                void destroy_self_actual() override { delete this; }
+                void destroy_self_actual() noexcept override { delete this; }
 
                 void* get_deleter_ptr(const std::type_info& type) noexcept override
                 {
@@ -730,7 +764,7 @@ namespace rpc
                 {
                 }
 
-                void dispose_object_actual() override
+                void dispose_object_actual() noexcept override
                 {
                     if (managed_object_ptr_)
                     {
@@ -743,18 +777,34 @@ namespace rpc
                         {
                             obj_ptr = static_cast<T*>(managed_object_ptr_);
                         }
-                        object_deleter_(obj_ptr);
+                        try
+                        {
+                            object_deleter_(obj_ptr);
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL("control block allocator/deleter threw while disposing managed object");
+                            std::terminate();
+                        }
                         managed_object_ptr_ = nullptr;
                     }
                 }
 
-                void destroy_self_actual() override
+                void destroy_self_actual() noexcept override
                 {
-                    using ThisType = control_block_impl_with_deleter_alloc<T, Deleter, Alloc>;
-                    using ReboundAlloc = typename std::allocator_traits<Alloc>::template rebind_alloc<ThisType>;
-                    ReboundAlloc rebound_alloc(control_block_allocator_);
-                    std::allocator_traits<ReboundAlloc>::destroy(rebound_alloc, this);
-                    std::allocator_traits<ReboundAlloc>::deallocate(rebound_alloc, this, 1);
+                    try
+                    {
+                        using ThisType = control_block_impl_with_deleter_alloc<T, Deleter, Alloc>;
+                        using ReboundAlloc = typename std::allocator_traits<Alloc>::template rebind_alloc<ThisType>;
+                        ReboundAlloc rebound_alloc(control_block_allocator_);
+                        std::allocator_traits<ReboundAlloc>::destroy(rebound_alloc, this);
+                        std::allocator_traits<ReboundAlloc>::deallocate(rebound_alloc, this, 1);
+                    }
+                    catch (...)
+                    {
+                        RPC_CRITICAL("control block allocator threw while destroying control block");
+                        std::terminate();
+                    }
                 }
 
                 void* get_deleter_ptr(const std::type_info& type) noexcept override
@@ -788,26 +838,44 @@ namespace rpc
                     this->managed_object_ptr_ = to_void_ptr(&object_instance_);
                 }
 
-                void dispose_object_actual() override
+                void dispose_object_actual() noexcept override
                 {
                     if (managed_object_ptr_)
                     {
-                        object_instance_.~T();
+                        try
+                        {
+                            object_instance_.~T();
+                        }
+                        catch (...)
+                        {
+                            RPC_CRITICAL(
+                                "make_shared control block object destructor threw while disposing managed object");
+                            std::terminate();
+                        }
                         managed_object_ptr_ = nullptr;
                     }
                 }
 
-                void destroy_self_actual() override
+                void destroy_self_actual() noexcept override
                 {
-                    if (managed_object_ptr_)
+                    try
                     {
-                        object_instance_.~T();
-                        managed_object_ptr_ = nullptr;
+                        if (managed_object_ptr_)
+                        {
+                            object_instance_.~T();
+                            managed_object_ptr_ = nullptr;
+                        }
+                        using ThisCBType = control_block_make_shared<T, Alloc, Args...>;
+                        typename std::allocator_traits<Alloc>::template rebind_alloc<ThisCBType> actual_cb_allocator(
+                            allocator_instance_);
+                        std::allocator_traits<decltype(actual_cb_allocator)>::deallocate(actual_cb_allocator, this, 1);
                     }
-                    using ThisCBType = control_block_make_shared<T, Alloc, Args...>;
-                    typename std::allocator_traits<Alloc>::template rebind_alloc<ThisCBType> actual_cb_allocator(
-                        allocator_instance_);
-                    std::allocator_traits<decltype(actual_cb_allocator)>::deallocate(actual_cb_allocator, this, 1);
+                    catch (...)
+                    {
+                        RPC_CRITICAL(
+                            "make_shared control block destructor or allocator threw while destroying control block");
+                        std::terminate();
+                    }
                 }
                 void* get_deleter_ptr(const std::type_info&) noexcept override { return nullptr; }
                 ~control_block_make_shared() override { }
@@ -1245,6 +1313,8 @@ namespace rpc
         }
         shared_ptr& operator=(const shared_ptr& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             shared_ptr(r).swap(*this);
             return *this;
         }
@@ -1258,6 +1328,8 @@ namespace rpc
         }
         shared_ptr& operator=(shared_ptr&& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             shared_ptr(std::move(r)).swap(*this);
             return *this;
         }
@@ -1654,6 +1726,8 @@ namespace rpc
 
         weak_ptr& operator=(const weak_ptr& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             weak_ptr(r).swap(*this);
             return *this;
         }
@@ -1675,6 +1749,8 @@ namespace rpc
         }
         weak_ptr& operator=(weak_ptr&& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             weak_ptr(std::move(r)).swap(*this);
             return *this;
         }
@@ -2090,11 +2166,13 @@ namespace rpc
     {
     protected:
         mutable weak_ptr<T> weak_this_; // NOLINT(misc-non-private-member-variables-in-classes)
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility): Mirrors std::enable_shared_from_this's CRTP shape.
         constexpr enable_shared_from_this() noexcept = default;
         enable_shared_from_this(const enable_shared_from_this&) noexcept { }
         enable_shared_from_this& operator=(const enable_shared_from_this&) noexcept { return *this; }
         enable_shared_from_this(enable_shared_from_this&&) noexcept { }
         enable_shared_from_this& operator=(enable_shared_from_this&&) noexcept { return *this; }
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
         ~enable_shared_from_this() = default;
 
         template<typename ActualPtrType>
@@ -2641,6 +2719,8 @@ namespace rpc
         // Copy assignment
         optimistic_ptr& operator=(const optimistic_ptr& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             optimistic_ptr(r).swap(*this);
             return *this;
         }
@@ -2648,6 +2728,8 @@ namespace rpc
         // Move assignment
         optimistic_ptr& operator=(optimistic_ptr&& r) noexcept
         {
+            if (this == std::addressof(r))
+                return *this;
             optimistic_ptr(std::move(r)).swap(*this);
             return *this;
         }

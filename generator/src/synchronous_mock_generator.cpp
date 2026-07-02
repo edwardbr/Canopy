@@ -2,11 +2,12 @@
  *   Copyright (c) 2026 Edward Boggis-Rolfe
  *   All rights reserved.
  */
-#include <type_traits>
 #include <algorithm>
-#include <tuple>
+#include <array>
 #include <filesystem>
 #include <sstream>
+#include <tuple>
+#include <type_traits>
 
 #include "coreclasses.h"
 #include "cpp_parser.h"
@@ -27,10 +28,10 @@ namespace synchronous_mock_generator
         uint64_t value;
     };
 
-    constexpr protocol_version_descriptor protocol_versions[] = {
+    constexpr std::array<protocol_version_descriptor, 2> protocol_versions = {{
         {FLD(macro) "RPC_V3", FLD(symbol) "rpc::VERSION_3", FLD(value) 3},
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
-    };
+    }};
 
     void write_interface(
         const class_entity& m_ob,

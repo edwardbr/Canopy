@@ -128,7 +128,7 @@ namespace rpc
         RPC_ASSERT(count != std::numeric_limits<uint64_t>::max());
         RPC_ASSERT(count != 0);
 
-        uint64_t ret = error::OK();
+        int ret = error::OK();
         auto transport = zone_->get_transport(caller_zone_id);
         if (transport)
         {

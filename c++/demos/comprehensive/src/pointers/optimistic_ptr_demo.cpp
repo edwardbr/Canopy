@@ -286,6 +286,7 @@ namespace comprehensive
 }
 
 int main()
+try
 {
     RPC_INFO("Canopy Comprehensive Demo - Optimistic Pointer");
     RPC_INFO("=============================================");
@@ -317,4 +318,8 @@ int main()
 #else
     return comprehensive::v1::run_optimistic_ptr_demo() ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

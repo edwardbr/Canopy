@@ -9,6 +9,7 @@
 #  include <streaming/spsc_queue/stream.h>
 #  include <transports/ipc_spsc/bootstrap.h>
 #  include <transports/streaming/transport.h>
+#  include <exception>
 
 namespace
 {
@@ -54,31 +55,45 @@ int main(
     int argc,
     char** argv)
 {
-    auto bootstrap = rpc::ipc_spsc::child_process_bootstrap::from_command_line(argc, argv);
-    if (!bootstrap)
-        return 1;
+    try
+    {
+        auto bootstrap = rpc::ipc_spsc::child_process_bootstrap::from_command_line(argc, argv);
+        if (!bootstrap)
+            return 1;
 
-    auto* queues = bootstrap->map_queue_pair();
-    if (!queues)
-        return 2;
+        auto* queues = bootstrap->map_queue_pair();
+        if (!queues)
+            return 2;
 
-    auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
-        coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
-            .pool = coro::thread_pool::options{.thread_count = static_cast<uint32_t>(bootstrap->scheduler_thread_count())},
-            .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
+        auto scheduler = std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
+            coro::scheduler::options{.thread_strategy = coro::scheduler::thread_strategy_t::spawn,
+                .pool
+                = coro::thread_pool::options{.thread_count = static_cast<uint32_t>(bootstrap->scheduler_thread_count())},
+                .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-    int exit_code = 0;
-    coro::sync_wait(
-        coro::when_all(
-            [&]() -> coro::task<void>
-            {
-                exit_code = CO_AWAIT run_child_process(scheduler, bootstrap->child_zone(), queues);
-                CO_RETURN;
-            }()));
+        int exit_code = 0;
+        coro::sync_wait(
+            coro::when_all(
+                [&]() -> coro::task<void>
+                {
+                    exit_code = CO_AWAIT run_child_process(scheduler, bootstrap->child_zone(), queues);
+                    CO_RETURN;
+                }()));
 
-    scheduler->shutdown();
-    rpc::ipc_spsc::queue_pair_bootstrap::unmap_queue_pair(queues);
-    return exit_code;
+        scheduler->shutdown();
+        rpc::ipc_spsc::queue_pair_bootstrap::unmap_queue_pair(queues);
+        return exit_code;
+    }
+    catch (const std::exception& exception)
+    {
+        RPC_CRITICAL("benchmark IPC child process failed: {}", exception.what());
+    }
+    catch (...)
+    {
+        RPC_CRITICAL("benchmark IPC child process failed with unknown exception");
+    }
+
+    return 1;
 }
 
 #endif

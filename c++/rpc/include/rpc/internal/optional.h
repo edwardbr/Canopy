@@ -112,18 +112,57 @@ namespace rpc
         [[nodiscard]] constexpr bool has_value() const noexcept { return value_.has_value(); }
         explicit constexpr operator bool() const noexcept { return has_value(); }
 
-        [[nodiscard]] constexpr const T& value() const& { return value_.value(); }
-        [[nodiscard]] constexpr T& value() & { return value_.value(); }
-        [[nodiscard]] constexpr const T&& value() const&& { return std::move(value_).value(); }
-        [[nodiscard]] constexpr T&& value() && { return std::move(value_).value(); }
+        [[nodiscard]] constexpr const T& value() const&
+        {
+            if (!value_)
+                throw std::bad_optional_access();
+            return *value_;
+        }
+        [[nodiscard]] constexpr T& value() &
+        {
+            if (!value_)
+                throw std::bad_optional_access();
+            return *value_;
+        }
+        [[nodiscard]] constexpr const T&& value() const&&
+        {
+            if (!value_)
+                throw std::bad_optional_access();
+            return std::move(*value_);
+        }
+        [[nodiscard]] constexpr T&& value() &&
+        {
+            if (!value_)
+                throw std::bad_optional_access();
+            return std::move(*value_);
+        }
 
-        [[nodiscard]] constexpr const T& operator*() const& noexcept { return *value_; }
-        [[nodiscard]] constexpr T& operator*() & noexcept { return *value_; }
-        [[nodiscard]] constexpr const T&& operator*() const&& noexcept { return std::move(*value_); }
-        [[nodiscard]] constexpr T&& operator*() && noexcept { return std::move(*value_); }
+        [[nodiscard]] constexpr const T& operator*() const& noexcept
+        {
+            const auto* ptr = value_ ? std::addressof(*value_) : nullptr;
+            return *ptr;
+        }
+        [[nodiscard]] constexpr T& operator*() & noexcept
+        {
+            auto* ptr = value_ ? std::addressof(*value_) : nullptr;
+            return *ptr;
+        }
+        [[nodiscard]] constexpr const T&& operator*() const&& noexcept
+        {
+            const auto* ptr = value_ ? std::addressof(*value_) : nullptr;
+            return std::move(*ptr);
+        }
+        [[nodiscard]] constexpr T&& operator*() && noexcept
+        {
+            auto* ptr = value_ ? std::addressof(*value_) : nullptr;
+            return std::move(*ptr);
+        }
 
-        [[nodiscard]] constexpr const T* operator->() const noexcept { return std::addressof(*value_); }
-        [[nodiscard]] constexpr T* operator->() noexcept { return std::addressof(*value_); }
+        [[nodiscard]] constexpr const T* operator->() const noexcept
+        {
+            return value_ ? std::addressof(*value_) : nullptr;
+        }
+        [[nodiscard]] constexpr T* operator->() noexcept { return value_ ? std::addressof(*value_) : nullptr; }
 
         void reset() noexcept { value_.reset(); }
 
@@ -294,13 +333,39 @@ namespace rpc
         [[nodiscard]] constexpr bool is_absent() const noexcept { return state_ == state_type::absent; }
         [[nodiscard]] constexpr bool is_null() const noexcept { return state_ == state_type::null_value; }
         [[nodiscard]] constexpr bool is_present() const noexcept { return !is_absent(); }
-        [[nodiscard]] constexpr bool has_value() const noexcept { return state_ == state_type::value; }
+        [[nodiscard]] constexpr bool has_value() const noexcept
+        {
+            return state_ == state_type::value && value_.has_value();
+        }
         explicit constexpr operator bool() const noexcept { return has_value(); }
 
-        [[nodiscard]] constexpr const T& value() const& { return value_.value(); }
-        [[nodiscard]] constexpr T& value() & { return value_.value(); }
-        [[nodiscard]] constexpr const T&& value() const&& { return std::move(value_).value(); }
-        [[nodiscard]] constexpr T&& value() && { return std::move(value_).value(); }
+        [[nodiscard]] constexpr const T& value() const&
+        {
+            if (state_ != state_type::value || !value_.has_value())
+                throw std::bad_optional_access();
+            return *value_;
+        }
+
+        [[nodiscard]] constexpr T& value() &
+        {
+            if (state_ != state_type::value || !value_.has_value())
+                throw std::bad_optional_access();
+            return *value_;
+        }
+
+        [[nodiscard]] constexpr const T&& value() const&&
+        {
+            if (state_ != state_type::value || !value_.has_value())
+                throw std::bad_optional_access();
+            return std::move(*value_);
+        }
+
+        [[nodiscard]] constexpr T&& value() &&
+        {
+            if (state_ != state_type::value || !value_.has_value())
+                throw std::bad_optional_access();
+            return std::move(*value_);
+        }
 
         [[nodiscard]] constexpr const T& operator*() const& noexcept { return *value_; }
         [[nodiscard]] constexpr T& operator*() & noexcept { return *value_; }

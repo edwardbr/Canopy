@@ -4,6 +4,7 @@
  */
 
 // Standard C++ headers
+#include <array>
 #include <filesystem>
 #include <sstream>
 #include <tuple>
@@ -65,10 +66,10 @@ namespace synchronous_generator
         uint64_t value;
     };
 
-    constexpr protocol_version_descriptor protocol_versions[] = {
+    constexpr std::array<protocol_version_descriptor, 2> protocol_versions = {{
         {FLD(macro) "RPC_V3", FLD(symbol) "rpc::VERSION_3", FLD(value) 3},
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
-    };
+    }};
 
     bool is_serialized_pointer_field(const function_entity& field)
     {
@@ -225,7 +226,6 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("{0}, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -266,7 +266,6 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("{0}, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -314,7 +313,6 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("{0}, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -397,7 +395,6 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("{0}_, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}_, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -439,7 +436,6 @@ namespace synchronous_generator
         switch (pt)
         {
         case PROXY_MARSHALL_IN:
-            return fmt::format("{0}_, ", name);
         case PROXY_MARSHALL_OUT:
             return fmt::format("{0}_, ", name);
         case STUB_DEMARSHALL_DECLARATION:
@@ -2781,13 +2777,7 @@ namespace synchronous_generator
                     }
                     else if (deduction.identified_type)
                     {
-                        if (deduction.identified_type->get_entity_type() == entity_type::ENUM)
-                        {
-                            header("id ^= static_cast<uint64_t>({});", param.get_name());
-                            header("id = (id << 1)|(id >> (sizeof(id) - 1));//rotl");
-                            break;
-                        }
-                        else if (param.get_name() == "size_t")
+                        if (deduction.identified_type->get_entity_type() == entity_type::ENUM || param.get_name() == "size_t")
                         {
                             header("id ^= static_cast<uint64_t>({});", param.get_name());
                             header("id = (id << 1)|(id >> (sizeof(id) - 1));//rotl");
@@ -3313,7 +3303,7 @@ namespace synchronous_generator
     void write_namespace(
         bool from_host,
         const class_entity& lib,
-        std::string prefix,
+        const std::string& prefix,
         writer& header,
         writer& proxy,
         writer& stub,

@@ -264,6 +264,38 @@ namespace rpc
     template<
         typename T,
         typename... Types>
+    [[nodiscard]] constexpr auto get_if(variant<Types...>* value) noexcept -> T*
+    {
+        return value ? std::get_if<T>(&value->as_std_variant()) : nullptr;
+    }
+
+    template<
+        typename T,
+        typename... Types>
+    [[nodiscard]] constexpr auto get_if(const variant<Types...>* value) noexcept -> const T*
+    {
+        return value ? std::get_if<T>(&value->as_std_variant()) : nullptr;
+    }
+
+    template<
+        typename T,
+        typename... Types>
+    [[nodiscard]] constexpr auto get_if(std::variant<Types...>* value) noexcept -> T*
+    {
+        return std::get_if<T>(value);
+    }
+
+    template<
+        typename T,
+        typename... Types>
+    [[nodiscard]] constexpr auto get_if(const std::variant<Types...>* value) noexcept -> const T*
+    {
+        return std::get_if<T>(value);
+    }
+
+    template<
+        typename T,
+        typename... Types>
     [[nodiscard]] constexpr bool holds_alternative(const variant<Types...>& value) noexcept
     {
         return std::holds_alternative<T>(value.as_std_variant());

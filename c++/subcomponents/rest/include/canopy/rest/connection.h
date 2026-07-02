@@ -67,7 +67,7 @@ namespace canopy::rest
         stream_connector connector;
         std::chrono::milliseconds connect_timeout{10000};
         std::chrono::milliseconds receive_timeout{10000};
-        std::size_t max_response_bytes{2U * 1024U * 1024U};
+        std::size_t max_response_bytes{std::size_t{2U} * 1024U * 1024U};
     };
 
     template<class Interface> struct connect_result

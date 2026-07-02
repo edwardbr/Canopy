@@ -39,7 +39,7 @@ if(CANOPY_BUILD_TEST
   add_executable(attestation_stream_test tests/attestation_stream_test.cpp)
   target_include_directories(attestation_stream_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(attestation_stream_test PRIVATE ${CANOPY_DEFINES})
-  target_compile_options(attestation_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(attestation_stream_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
   target_link_options(attestation_stream_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   if(NOT CANOPY_ENABLE_DEVELOPMENT_ATTESTATION_BACKENDS)
     target_sources(attestation_stream_test

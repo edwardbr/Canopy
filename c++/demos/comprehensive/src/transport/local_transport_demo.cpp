@@ -162,6 +162,7 @@ namespace comprehensive
 }
 
 int main()
+try
 {
     std::cout << "Canopy Comprehensive Demo - Local Transport\n";
     std::cout << "========================================\n";
@@ -186,4 +187,8 @@ int main()
 #else
     return comprehensive::v1::run_local_transport_demo() ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

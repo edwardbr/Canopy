@@ -348,8 +348,8 @@ namespace rpc
             std::string& out,
             uint64_t subnet,
             uint8_t subnet_bits,
-            uint64_t obj_id,
-            uint8_t obj_bits)
+            uint64_t object_id,
+            uint8_t object_bits)
         {
             out += " sn=";
             out += std::to_string(subnet);
@@ -358,14 +358,14 @@ namespace rpc
                 out += "/";
                 out += std::to_string(subnet_bits);
             }
-            if (obj_id != 0 || obj_bits != 64u)
+            if (object_id != 0 || object_bits != 64u)
             {
                 out += " obj=";
-                out += std::to_string(obj_id);
-                if (obj_bits != 64u)
+                out += std::to_string(object_id);
+                if (object_bits != 64u)
                 {
                     out += "/";
-                    out += std::to_string(obj_bits);
+                    out += std::to_string(object_bits);
                 }
             }
         }

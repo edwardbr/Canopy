@@ -875,7 +875,7 @@ namespace protobuf_generator
     void write_namespace(
         bool from_host,
         const class_entity& lib,
-        std::string prefix,
+        const std::string& prefix,
         writer& proto,
         bool catch_stub_exceptions,
         const std::vector<std::string>& rethrow_exceptions)
@@ -1598,9 +1598,6 @@ namespace protobuf_generator
             namespace_names.insert("default");
         }
 
-        // Extract module name from base_filename for prefixing
-        std::string module_name = base_filename.filename().string();
-
         // Generate a separate .proto file for each namespace in schema/ subdirectory
         std::vector<std::string> generated_files;
         protobuf_generator::write_single_namespace(lib, lib, output_path, sub_directory, generated_files);
@@ -2296,14 +2293,9 @@ namespace protobuf_generator
                 // Pointers become uint64_t&
                 final_param_type = "uint64_t&";
             }
-            else if (param_type.find("&&") != std::string::npos)
+            else if (param_type.find("&&") != std::string::npos || param_type.find('&') != std::string::npos)
             {
-                // Rvalue references stay as-is
-                final_param_type = param_type;
-            }
-            else if (param_type.find('&') != std::string::npos)
-            {
-                // Already has &, keep it
+                // References stay as-is
                 final_param_type = param_type;
             }
             else
@@ -3620,13 +3612,10 @@ namespace protobuf_generator
         }
         else if (is_enum_type(root_entity, field_type))
         {
-            std::string proto_enum_type;
-            if (field_type.find("::") != std::string::npos)
-                proto_enum_type = "::protobuf::" + field_type;
-            else if (!package_name.empty())
-                proto_enum_type = "::protobuf::" + package_name + "::" + field_type;
-            else
-                proto_enum_type = "::protobuf::" + field_type;
+            std::string proto_enum_type = "::protobuf::";
+            if (field_type.find("::") == std::string::npos && !package_name.empty())
+                proto_enum_type += package_name + "::";
+            proto_enum_type += field_type;
             cpp("{}{}.set_{}(static_cast<{}>(static_cast<int>({})));",
                 indent,
                 proto_var,
@@ -4252,21 +4241,13 @@ namespace protobuf_generator
                     {
                         // Enum field: cast to proto enum via int
                         // Build fully-qualified proto type name
-                        std::string proto_enum_type;
-                        if (field_type.find("::") != std::string::npos)
-                        {
-                            // Qualified type like rpc::encoding -> ::protobuf::rpc::encoding
-                            proto_enum_type = "::protobuf::" + field_type;
-                        }
-                        else if (!package_name.empty())
+                        std::string proto_enum_type = "::protobuf::";
+                        if (field_type.find("::") == std::string::npos && !package_name.empty())
                         {
                             // Local enum in current package -> ::protobuf::<package>::<enum>
-                            proto_enum_type = "::protobuf::" + package_name + "::" + field_type;
+                            proto_enum_type += package_name + "::";
                         }
-                        else
-                        {
-                            proto_enum_type = "::protobuf::" + field_type;
-                        }
+                        proto_enum_type += field_type;
                         cpp("msg.set_{}(static_cast<{}>(static_cast<int>({})));", field_accessor, proto_enum_type, member_name);
                     }
                     else

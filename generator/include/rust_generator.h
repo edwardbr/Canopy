@@ -6,6 +6,7 @@
 
 #include <filesystem>
 
+// NOLINTNEXTLINE(bugprone-incorrect-enable-shared-from-this): class_entity is defined in the idlparser submodule.
 class class_entity;
 
 namespace rust_generator

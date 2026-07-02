@@ -22,7 +22,7 @@ namespace websocket_demo
                 // the incoming http request comes here
                 (void)parsed_request;
                 rpc::untrusted_web::transport_settings settings;
-                settings.inactivity_timeout_ms = 5 * 60 * 1000;
+                settings.inactivity_timeout_ms = uint64_t{5U} * 60U * 1000U;
 
                 auto factory = [service = std::move(service)]()
                 { return std::static_pointer_cast<websocket_demo::v1::websocket_service>(service)->get_demo_instance(); };

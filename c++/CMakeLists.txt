@@ -50,7 +50,7 @@ add_subdirectory(connection_factory)
 add_subdirectory(subcomponents/rest)
 
 if(CANOPY_BUILD_TEST)
-  add_subdirectory(tests)
+  canopy_add_subdirectory_without_clang_tidy(tests)
 endif()
 
 if(CANOPY_BUILD_DEMOS)

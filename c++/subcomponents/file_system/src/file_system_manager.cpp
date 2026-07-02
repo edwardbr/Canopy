@@ -36,7 +36,7 @@ namespace rpc
                 static constexpr uint32_t open_flag_truncate = 01000;
 #endif
                 static constexpr uint32_t open_mode_user_read_write = 0600;
-                static constexpr size_t default_transfer_size = 64U * 1024U;
+                static constexpr size_t default_transfer_size = size_t{64U} * 1024U;
             }
 
 #ifdef CANOPY_BUILD_COROUTINE

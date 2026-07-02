@@ -25,8 +25,17 @@ namespace fingerprint
         using fingerprint_cache_key = std::pair<const class_entity*, uint64_t>;
         using type_lookup_cache_key = std::pair<const class_entity*, std::string>;
 
-        thread_local std::map<fingerprint_cache_key, uint64_t> fingerprint_cache;
-        thread_local std::map<type_lookup_cache_key, const class_entity*> type_lookup_cache;
+        auto& fingerprint_cache()
+        {
+            thread_local std::map<fingerprint_cache_key, uint64_t> cache;
+            return cache;
+        }
+
+        auto& type_lookup_cache()
+        {
+            thread_local std::map<type_lookup_cache_key, const class_entity*> cache;
+            return cache;
+        }
 
         uint64_t truncate_sha3_hash(const void* hash)
         {
@@ -46,8 +55,9 @@ namespace fingerprint
         const std::string& type_name,
         const class_entity& cls)
     {
-        auto cached = type_lookup_cache.find({&cls, type_name});
-        if (cached != type_lookup_cache.end())
+        auto& cache = type_lookup_cache();
+        auto cached = cache.find({&cls, type_name});
+        if (cached != cache.end())
             return cached->second;
 
         auto type_namespace = split_namespaces(type_name);
@@ -90,21 +100,21 @@ namespace fingerprint
                 }
                 if (candidate_namespace)
                 {
-                    type_lookup_cache[{&cls, type_name}] = candidate_namespace;
+                    cache[{&cls, type_name}] = candidate_namespace;
                     return candidate_namespace;
                 }
             }
             current_namespace = current_namespace->get_owner();
         } while (current_namespace);
 
-        type_lookup_cache[{&cls, type_name}] = nullptr;
+        cache[{&cls, type_name}] = nullptr;
         return nullptr;
     }
 
     std::string extract_subsituted_templates(
         const std::string& source,
         const class_entity& cls,
-        std::vector<const class_entity*> entity_stack,
+        const std::vector<const class_entity*>& entity_stack,
         uint64_t rpc_version)
     {
         std::stringstream sstr;
@@ -212,14 +222,13 @@ namespace fingerprint
 
         if (!comment)
         {
-            auto cached = fingerprint_cache.find({&cls, rpc_version});
-            if (cached != fingerprint_cache.end())
+            auto& cache = fingerprint_cache();
+            auto cached = cache.find({&cls, rpc_version});
+            if (cached != cache.end())
                 return cached->second;
         }
 
         entity_stack.push_back(&cls);
-
-        std::string status_attr = "status";
 
         std::string seed;
 
@@ -466,7 +475,7 @@ namespace fingerprint
         if (cls.get_entity_type() == entity_type::ERROR && seed.empty())
         {
             if (!comment)
-                fingerprint_cache[{&cls, rpc_version}] = 0;
+                fingerprint_cache()[{&cls, rpc_version}] = 0;
             return 0;
         }
 
@@ -478,7 +487,7 @@ namespace fingerprint
         // truncate and return generated hash
         const auto fingerprint = truncate_sha3_hash(hash);
         if (!comment)
-            fingerprint_cache[{&cls, rpc_version}] = fingerprint;
+            fingerprint_cache()[{&cls, rpc_version}] = fingerprint;
         return fingerprint;
     }
 }

@@ -288,6 +288,7 @@ namespace comprehensive
 int main(
     int argc,
     char* argv[])
+try
 {
     RPC_INFO("Canopy Comprehensive Demo - TCP Transport");
     RPC_INFO("========================================");
@@ -389,4 +390,8 @@ int main(
     scheduler_1->shutdown();
     scheduler_2->shutdown();
     return 0;
+}
+catch (...)
+{
+    return 1;
 }

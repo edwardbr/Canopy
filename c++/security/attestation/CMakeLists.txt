@@ -49,7 +49,7 @@ if(CANOPY_SECURITY_ATTESTATION_BUILD_BACKEND_UNIT_TESTS)
   add_executable(attestation_service_test tests/attestation_service_test.cpp)
   target_include_directories(attestation_service_test PRIVATE ${CANOPY_INCLUDES})
   target_compile_definitions(attestation_service_test PRIVATE ${CANOPY_DEFINES})
-  target_compile_options(attestation_service_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(attestation_service_test PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
   target_link_options(attestation_service_test PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   target_link_libraries(attestation_service_test PRIVATE canopy::security_attestation route_attestation_protocol_idl
                                                          GTest::gtest_main rpc_log)

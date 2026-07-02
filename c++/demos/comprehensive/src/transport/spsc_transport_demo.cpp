@@ -232,6 +232,7 @@ namespace comprehensive
 }
 
 int main()
+try
 {
     std::cout << "SPSC Transport Demo - Two Process Architecture\n";
 
@@ -247,4 +248,8 @@ int main()
     }
     return (test_result == 30) ? 0 : 1;
 #endif
+}
+catch (...)
+{
+    return 1;
 }

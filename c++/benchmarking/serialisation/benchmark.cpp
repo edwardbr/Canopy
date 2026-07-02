@@ -732,6 +732,7 @@ namespace serialisation_benchmark
 int main(
     int argc,
     char** argv)
+try
 {
     std::cout << "Canopy Serialisation Benchmark\n";
     std::cout << "=============================\n\n";
@@ -747,4 +748,8 @@ int main(
     serialisation_benchmark::print_footer();
 
     return 0;
+}
+catch (...)
+{
+    return 1;
 }

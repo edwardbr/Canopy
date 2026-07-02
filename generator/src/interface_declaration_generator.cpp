@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 
+#include <array>
 #include <sstream>
 #include <unordered_set>
 
@@ -25,10 +26,10 @@ namespace interface_declaration_generator
         uint64_t value;
     };
 
-    constexpr protocol_version_descriptor protocol_versions[] = {
+    constexpr std::array<protocol_version_descriptor, 2> protocol_versions = {{
         {FLD(macro) "RPC_V3", FLD(symbol) "rpc::VERSION_3", FLD(value) 3},
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
-    };
+    }};
     enum print_type
     {
         PROXY_PARAM_IN,
@@ -219,7 +220,6 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("uint64_t& {}", name);
             case STUB_PARAM_IN:
                 return fmt::format("uint64_t& {}", name);
             case STUB_PARAM_OUT:
@@ -253,7 +253,6 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("{}** {}", type_name, name);
             case STUB_PARAM_IN:
                 return fmt::format("{}** {}", type_name, name);
             case STUB_PARAM_OUT:
@@ -294,9 +293,7 @@ namespace interface_declaration_generator
             case PROXY_PARAM_IN:
                 return fmt::format("const rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
                 return fmt::format("rpc::remote_object& {}", name);
             default:
@@ -327,11 +324,8 @@ namespace interface_declaration_generator
             switch (pt)
             {
             case PROXY_PARAM_IN:
-                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_IN:
-                return fmt::format("rpc::remote_object& {}", name);
             case PROXY_PARAM_OUT:
-                return fmt::format("rpc::remote_object& {}", name);
             case STUB_PARAM_OUT:
                 return fmt::format("rpc::remote_object& {}", name);
             default:
@@ -404,7 +398,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics)
     {
         std::stringstream stream;
@@ -446,7 +440,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_inparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics)
     {
         std::stringstream stream;
@@ -484,7 +478,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics)
     {
         std::stringstream stream;
@@ -523,7 +517,7 @@ namespace interface_declaration_generator
         const std::string& scope,
         const std::shared_ptr<function_entity>& function,
         bool& has_outparams,
-        std::string additional_params,
+        const std::string& additional_params,
         bool include_variadics)
     {
         std::stringstream stream;

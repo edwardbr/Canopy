@@ -205,30 +205,22 @@ namespace rpc
 
         [[nodiscard]] const rpc::get_schema_query* query_if_plain() const noexcept
         {
-            if (!rpc::holds_alternative<rpc::get_schema_query>(query))
-                return nullptr;
-            return &rpc::get<rpc::get_schema_query>(query);
+            return rpc::get_if<rpc::get_schema_query>(&query);
         }
 
         [[nodiscard]] rpc::get_schema_query* query_if_plain() noexcept
         {
-            if (!rpc::holds_alternative<rpc::get_schema_query>(query))
-                return nullptr;
-            return &rpc::get<rpc::get_schema_query>(query);
+            return rpc::get_if<rpc::get_schema_query>(&query);
         }
 
         [[nodiscard]] const rpc::typed_payload* query_if_payload() const noexcept
         {
-            if (!rpc::holds_alternative<rpc::typed_payload>(query))
-                return nullptr;
-            return &rpc::get<rpc::typed_payload>(query);
+            return rpc::get_if<rpc::typed_payload>(&query);
         }
 
         [[nodiscard]] rpc::typed_payload* query_if_payload() noexcept
         {
-            if (!rpc::holds_alternative<rpc::typed_payload>(query))
-                return nullptr;
-            return &rpc::get<rpc::typed_payload>(query);
+            return rpc::get_if<rpc::typed_payload>(&query);
         }
     };
 
@@ -264,30 +256,22 @@ namespace rpc
 
         [[nodiscard]] const rpc::get_schema_response* response_if_plain() const noexcept
         {
-            if (!rpc::holds_alternative<rpc::get_schema_response>(response))
-                return nullptr;
-            return &rpc::get<rpc::get_schema_response>(response);
+            return rpc::get_if<rpc::get_schema_response>(&response);
         }
 
         [[nodiscard]] rpc::get_schema_response* response_if_plain() noexcept
         {
-            if (!rpc::holds_alternative<rpc::get_schema_response>(response))
-                return nullptr;
-            return &rpc::get<rpc::get_schema_response>(response);
+            return rpc::get_if<rpc::get_schema_response>(&response);
         }
 
         [[nodiscard]] const rpc::typed_payload* response_if_payload() const noexcept
         {
-            if (!rpc::holds_alternative<rpc::typed_payload>(response))
-                return nullptr;
-            return &rpc::get<rpc::typed_payload>(response);
+            return rpc::get_if<rpc::typed_payload>(&response);
         }
 
         [[nodiscard]] rpc::typed_payload* response_if_payload() noexcept
         {
-            if (!rpc::holds_alternative<rpc::typed_payload>(response))
-                return nullptr;
-            return &rpc::get<rpc::typed_payload>(response);
+            return rpc::get_if<rpc::typed_payload>(&response);
         }
     };
 

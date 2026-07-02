@@ -632,11 +632,24 @@ namespace json
             {
                 object value;
 
-                template<typename Value>
+                element() = default;
+                element(const element&) = default;
+                element(element&&) noexcept = default;
+
+                template<
+                    typename Value,
+                    std::enable_if_t<
+                        !std::is_same_v<
+                            std::decay_t<Value>,
+                            element>,
+                        int> = 0>
                 element(Value&& element_value)
                     : value(std::forward<Value>(element_value))
                 {
                 }
+
+                element& operator=(const element&) = default;
+                element& operator=(element&&) noexcept = default;
             };
 
             array() = default;
@@ -788,9 +801,7 @@ namespace json
                 return std::get<bool>(value_);
             else if constexpr (std::is_same_v<T, number>)
                 return std::get<number>(value_);
-            else if constexpr (std::is_integral_v<T> && std::is_signed_v<T>)
-                return std::get<number>(value_).template as_integral<T>();
-            else if constexpr (std::is_integral_v<T> && std::is_unsigned_v<T>)
+            else if constexpr (std::is_integral_v<T> && !std::is_same_v<T, bool>)
                 return std::get<number>(value_).template as_integral<T>();
             else if constexpr (std::is_floating_point_v<T>)
                 return static_cast<T>(std::get<number>(value_).as_double());
