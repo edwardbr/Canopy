@@ -1748,23 +1748,23 @@ namespace rpc::stream_transport
     void transport::send_payload_close_connection_ack(
         uint64_t protocol_version,
         message_direction direction,
-        close_connection_ack&& payload,
+        close_connection_ack payload,
         uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
     void transport::send_payload_close_connection_send(
         uint64_t protocol_version,
         message_direction direction,
-        close_connection_send&& payload,
+        close_connection_send payload,
         uint64_t sequence_number)
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
     }
 
     void transport::send_payload_call_receive(

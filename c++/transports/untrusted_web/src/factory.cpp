@@ -24,7 +24,7 @@ namespace rpc::untrusted_web
         if (!resolved_service)
             CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
-        auto accepted = CO_AWAIT transport::create(resolved_service, stream, std::move(handler), std::move(settings));
+        auto accepted = CO_AWAIT transport::create(resolved_service, stream, std::move(handler), settings);
         if (!accepted)
             CO_RETURN accept_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
 

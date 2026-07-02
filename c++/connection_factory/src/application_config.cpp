@@ -51,7 +51,7 @@ namespace rpc::connection_factory
         {
         public:
             explicit runtime_config_error(std::string message)
-                : std::runtime_error(std::move(message))
+                : std::runtime_error(message)
             {
             }
         };

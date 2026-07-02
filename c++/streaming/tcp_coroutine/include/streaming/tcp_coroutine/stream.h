@@ -37,6 +37,11 @@ namespace streaming::coroutine::tcp
             rpc::executor_ptr executor) noexcept;
         ~stream() override;
 
+        stream(const stream&) = delete;
+        stream& operator=(const stream&) = delete;
+        stream(stream&&) = delete;
+        stream& operator=(stream&&) = delete;
+
         auto receive(
             rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{0})

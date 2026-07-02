@@ -394,7 +394,7 @@ namespace rpc::serialization::nanopb
 
         while (stream->bytes_left)
         {
-            pb_wire_type_t wire_type;
+            pb_wire_type_t wire_type{};
             uint32_t tag = 0;
             bool eof = false;
             if (!pb_decode_tag(stream, &wire_type, &tag, &eof))

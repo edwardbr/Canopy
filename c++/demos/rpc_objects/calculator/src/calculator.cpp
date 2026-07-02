@@ -18,7 +18,7 @@ namespace calculator::v1
             calculator_impl() = default;
 
             explicit calculator_impl(std::shared_ptr<rpc::service> service)
-                : service_(std::move(service))
+                : service_(service)
             {
             }
 

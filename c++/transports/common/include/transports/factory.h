@@ -67,7 +67,7 @@ namespace rpc::transport_creation
             executor = rpc::make_executor();
 
         rpc::service_config config;
-        auto created = rpc::root_service::create(std::move(default_name), config, std::move(executor));
+        auto created = rpc::root_service::create(std::move(default_name), config, executor);
         configure_service_encoding(created, encoding);
         return created;
     }

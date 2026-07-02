@@ -776,7 +776,7 @@ function(
     if(generate_protobuf)
       set_source_files_properties(
         "${full_protobuf_cpp_path}" "${proto_proxy_src}"
-        PROPERTIES GENERATED TRUE COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture")
+        PROPERTIES GENERATED TRUE COMPILE_OPTIONS "${CANOPY_GENERATED_PROTOBUF_COMPILE_OPTIONS}")
     endif()
     if(generate_nanopb)
       set_source_files_properties("${full_nanopb_cpp_path}" PROPERTIES GENERATED TRUE COMPILE_OPTIONS
@@ -790,7 +790,7 @@ function(
         ${PROTO_PB_SOURCES}
         PROPERTIES GENERATED TRUE
                    SKIP_LINTING TRUE
-                   COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture"
+                   COMPILE_OPTIONS "${CANOPY_GENERATED_PROTOBUF_COMPILE_OPTIONS}"
                    OBJECT_DEPENDS "${proto_stamp_file}")
     endif()
 

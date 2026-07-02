@@ -885,7 +885,7 @@ namespace rpc
 
         transport_keep_alive(transport_keep_alive&& other) noexcept
             : transport_(std::move(other.transport_))
-            , zone_id_(other.zone_id_)
+            , zone_id_(std::move(other.zone_id_))
         {
         }
 
@@ -895,7 +895,7 @@ namespace rpc
             {
                 release();
                 transport_ = std::move(other.transport_);
-                zone_id_ = other.zone_id_;
+                zone_id_ = std::move(other.zone_id_);
             }
             return *this;
         }

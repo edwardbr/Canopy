@@ -238,7 +238,7 @@ namespace rpc::tcp_coroutine
         std::shared_ptr<rpc::service> service = {},
         rpc::stream_transport::rpc_transport_observer observe_transport = {})
     {
-        auto rpc_settings = settings;
+        const auto& rpc_settings = settings;
         auto acceptor_result = CO_AWAIT listen_acceptor(tcp_coroutine_options, rpc_settings, std::move(service));
         if (acceptor_result.error_code != rpc::error::OK())
             CO_RETURN rpc::stream_transport::listener_result{acceptor_result.error_code, {}};
@@ -246,7 +246,7 @@ namespace rpc::tcp_coroutine
         CO_RETURN CO_AWAIT rpc::stream_transport::accept_rpc_listener<Remote, Local>(
             std::move(acceptor_result.acceptor),
             std::move(factory),
-            std::move(rpc_settings),
+            rpc_settings,
             std::move(acceptor_result.service),
             std::move(acceptor_result.owner),
             acceptor_result.port,

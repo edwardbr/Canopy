@@ -754,8 +754,7 @@ namespace canopy::http_server
         const response& input,
         bool keep_alive) -> std::string
     {
-        response output = input;
-        return build_http_response(request{}, output, keep_alive);
+        return build_http_response(request{}, input, keep_alive);
     }
 
     auto client_connection::build_http_response(
@@ -898,7 +897,7 @@ namespace canopy::http_server
             websocket_settings.permessage_deflate.client_no_context_takeover = true;
         }
         auto ws_stream = std::make_shared<streaming::websocket::stream>(
-            stream_, std::move(websocket_settings), rpc::websocket_stream::endpoint_role::server);
+            stream_, websocket_settings, rpc::websocket_stream::endpoint_role::server);
         CO_RETURN CO_AWAIT handlers_.websocket_upgrade_handler(std::move(request), ws_stream);
     }
 

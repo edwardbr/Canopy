@@ -43,7 +43,7 @@ namespace streaming::compression
         std::shared_ptr<::streaming::stream> underlying,
         ::rpc::compression_stream::stream_settings settings)
         : underlying_(std::move(underlying))
-        , settings_(std::move(settings))
+        , settings_(settings)
         , send_buffer_(bounded_buffer_size(settings_.send_buffer_bytes))
         , receive_buffer_(bounded_buffer_size(settings_.receive_buffer_bytes))
     {

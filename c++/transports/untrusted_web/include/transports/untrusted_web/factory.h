@@ -45,6 +45,6 @@ namespace rpc::untrusted_web
             CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
         auto handler = rpc::make_new_zone_connection_handler<Remote, Local>("untrusted_web", std::move(factory));
-        CO_RETURN CO_AWAIT accept_transport(std::move(stream), std::move(handler), std::move(settings), std::move(service));
+        CO_RETURN CO_AWAIT accept_transport(std::move(stream), std::move(handler), settings, std::move(service));
     }
 } // namespace rpc::untrusted_web

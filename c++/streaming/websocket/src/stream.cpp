@@ -373,7 +373,7 @@ namespace streaming::websocket
         ::rpc::websocket_stream::stream_settings settings,
         ::rpc::websocket_stream::endpoint_role default_role)
         : underlying_(std::move(underlying))
-        , settings_(std::move(settings))
+        , settings_(settings)
         , role_(concrete_role(
               settings_,
               default_role))

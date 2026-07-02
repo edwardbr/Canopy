@@ -45,12 +45,12 @@ list(APPEND CANOPY_SHARED_DEFINES TEMP_DIR="${TEMP_DIR}" RUNTIME_DIR="${RUNTIME_
 # ######################################################################################################################
 # Build Type Configuration
 # ######################################################################################################################
+set(EXTRA_COMPILE_OPTIONS)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   set(CANOPY_OPTIMIZER_FLAGS -O3)
   set(CANOPY_DEFINES ${CANOPY_SHARED_DEFINES} NDEBUG)
 else()
   # Debug configuration
-  set(EXTRA_COMPILE_OPTIONS)
   set(CMAKE_CXX_FLAGS_DEBUG ${CANOPY_DEBUG_COMPILE_FLAGS})
   set(CMAKE_C_FLAGS_DEBUG ${CMAKE_CXX_FLAGS_DEBUG})
   set(CANOPY_OPTIMIZER_FLAGS -O0)
@@ -89,7 +89,17 @@ endif()
 # ######################################################################################################################
 message("CMAKE_CXX_COMPILER_ID ${CMAKE_CXX_COMPILER_ID}")
 
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+set(CANOPY_CXX_DANGLING_REFERENCE_SUPPRESSION)
+set(CANOPY_EXTERNAL_TARGET_SUPPRESS_WARNINGS_OPTIONS -w)
+set(CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS -fvisibility=hidden -fvisibility-inlines-hidden)
+set(CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
+set(CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION "-include")
+set(CANOPY_STL_TEST_COMPAT_COMPILE_OPTIONS -Wno-unqualified-std-cast-call)
+set(CANOPY_STL_TEST_EXTRA_LIBRARIES)
+set(CANOPY_THIRD_PARTY_REST_DEBUG_OPTIONS)
+set(CANOPY_GENERATED_PROTOBUF_COMPILE_OPTIONS -Wno-sign-compare)
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   set(CANOPY_CLANG_WARNS
       -Wc99-extensions
       -Wzero-length-array
@@ -113,6 +123,20 @@ if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
       -Wformat-security # Catch format string vulnerabilities
       -Wnull-dereference # Catch potential null dereferences
   )
+  set(CANOPY_THIRD_PARTY_REST_DEBUG_OPTIONS "$<$<CONFIG:Debug>:-gline-tables-only>")
+  list(
+    APPEND
+    CANOPY_GENERATED_PROTOBUF_COMPILE_OPTIONS
+    -Wno-deprecated-this-capture
+    -Wno-double-promotion
+    -Wno-gcc-compat
+    -Wno-gnu-anonymous-struct
+    -Wno-variadic-macro-arguments-omitted
+    -Wno-nested-anon-types
+    -Wno-nullability-extension)
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "19")
+    set(CANOPY_STL_TEST_EXTRA_LIBRARIES atomic)
+  endif()
 else()
   # GCC
   set(CANOPY_CLANG_WARNS
@@ -125,6 +149,9 @@ else()
       -Wunused # Catch unused variables/functions
       -Wformat-security # Format string security
   )
+  set(CANOPY_CXX_DANGLING_REFERENCE_SUPPRESSION $<$<COMPILE_LANGUAGE:CXX>:-Wno-dangling-reference>)
+  set(CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS} -fno-gnu-unique)
+  set(CANOPY_THIRD_PARTY_REST_DEBUG_OPTIONS "$<$<CONFIG:Debug>:-g1>")
 endif()
 
 # ######################################################################################################################

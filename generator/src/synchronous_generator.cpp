@@ -2327,7 +2327,7 @@ namespace synchronous_generator
             proxy("__{0}_local_proxy(const rpc::weak_ptr<{0}>& ptr)", interface_name);
             proxy(": rpc::local_proxy<{0}>(ptr)", interface_name);
             proxy("{{}}");
-            proxy("virtual ~__{0}_local_proxy() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+            proxy("~__{0}_local_proxy() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
             proxy(
                 "[[nodiscard]] const rpc::casting_interface* __rpc_query_interface(rpc::interface_ordinal "
                 "interface_id) const "

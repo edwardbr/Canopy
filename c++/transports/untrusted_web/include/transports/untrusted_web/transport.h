@@ -63,7 +63,7 @@ namespace rpc::untrusted_web
                 service,
                 stream,
                 rpc::make_new_zone_connection_handler<Remote, Local>("untrusted_web", std::move(factory)),
-                std::move(settings));
+                settings);
         }
 
         static CORO_TASK(std::shared_ptr<transport>) create(
@@ -80,6 +80,11 @@ namespace rpc::untrusted_web
             rpc::untrusted_web::transport_settings settings);
 
         ~transport() override CANOPY_DEFAULT_DESTRUCTOR;
+
+        transport(const transport&) = delete;
+        transport& operator=(const transport&) = delete;
+        transport(transport&&) = delete;
+        transport& operator=(transport&&) = delete;
 
         CORO_TASK(void) receive_consumer_loop(std::unique_ptr<activity_tracker> tracker);
 

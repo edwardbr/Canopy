@@ -3,8 +3,12 @@ Checks: >-
   -*,
   bugprone-*,
   cppcoreguidelines-*,
+  performance-*,
   -bugprone-reserved-identifier,
   -bugprone-easily-swappable-parameters,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  -performance-unnecessary-value-param,
   -cppcoreguidelines-avoid-do-while,
   -cppcoreguidelines-avoid-goto,
   -cppcoreguidelines-avoid-magic-numbers,
@@ -20,7 +24,7 @@ Checks: >-
   -cppcoreguidelines-pro-type-vararg,
   -cppcoreguidelines-special-member-functions
 HeaderFilterRegex: '.*'
-ExcludeHeaderFilterRegex: '.*/submodules/.*|.*/_deps/.*|.*/build[^/]*/.*|.*/generated/.*'
+ExcludeHeaderFilterRegex: '.*/submodules/.*|.*/_deps/.*|.*/sgx-sdk/.*|.*/sgxsdk/.*|.*/sgxssl/.*|.*/generated/src/.*/nanopb/.*'
 FormatStyle: none
 CheckOptions:
   - key: cppcoreguidelines-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic

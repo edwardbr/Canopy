@@ -20,7 +20,7 @@ namespace text_tools::v1
             text_tools_impl() = default;
 
             explicit text_tools_impl(std::shared_ptr<rpc::service> service)
-                : service_(std::move(service))
+                : service_(service)
             {
             }
 

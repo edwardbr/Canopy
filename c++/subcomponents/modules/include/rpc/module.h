@@ -249,7 +249,7 @@ namespace rpc::module
             rpc::shared_ptr<Remote> remote,
             std::shared_ptr<rpc::child_service> service)
         {
-            auto service_base = std::static_pointer_cast<rpc::service>(std::move(service));
+            std::shared_ptr<rpc::service> service_base(std::move(service));
             CO_RETURN CO_AWAIT factory_(std::move(remote), std::move(service_base), context_);
         }
 

@@ -92,7 +92,7 @@ namespace rpc::stream_transport
                     return;
 
                 error_code = input_error_code;
-                prefix = std::move(input_prefix);
+                prefix = input_prefix;
                 payload = std::move(input_payload);
                 completion_.set();
             }
@@ -458,12 +458,12 @@ namespace rpc::stream_transport
         virtual void send_payload_close_connection_ack(
             uint64_t protocol_version,
             message_direction direction,
-            close_connection_ack&& payload,
+            close_connection_ack payload,
             uint64_t sequence_number);
         virtual void send_payload_close_connection_send(
             uint64_t protocol_version,
             message_direction direction,
-            close_connection_send&& payload,
+            close_connection_send payload,
             uint64_t sequence_number);
         virtual void send_payload_call_receive(
             uint64_t protocol_version,

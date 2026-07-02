@@ -175,7 +175,7 @@ namespace config_demo::v1
             }
 
             auto service = rpc::root_service::create(
-                std::move(service_settings.name), rpc::create_local_zone(server.zone_subnet), std::move(executor));
+                std::move(service_settings.name), rpc::create_local_zone(server.zone_subnet), executor);
             service->set_default_encoding(rpc::encoding::yas_binary);
             service->set_shutdown_event(shutdown_event);
 
@@ -227,7 +227,7 @@ namespace config_demo::v1
             }
 
             auto service = rpc::root_service::create(
-                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), std::move(executor));
+                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), executor);
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result = CO_AWAIT rpc::connection_factory::connect_rpc<calc::i_calculator, calc::i_calculator>(
@@ -305,7 +305,7 @@ namespace config_demo::v1
                 CO_RETURN service_settings.error_code;
 
             auto service = rpc::root_service::create(
-                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), std::move(executor));
+                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), executor);
             service->set_default_encoding(rpc::encoding::yas_binary);
 
             auto connect_result
@@ -370,7 +370,7 @@ namespace config_demo::v1
                 CO_RETURN service_settings.error_code;
 
             auto service = rpc::root_service::create(
-                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), std::move(executor));
+                std::move(service_settings.name), rpc::create_local_zone(client.zone_subnet), executor);
             service->set_default_encoding(rpc::encoding::yas_binary);
             service->set_shutdown_event(shutdown_event);
 

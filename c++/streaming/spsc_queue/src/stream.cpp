@@ -33,7 +33,7 @@ namespace streaming::spsc_queue
         std::shared_ptr<rpc::coro::scheduler> scheduler)
         : send_queue_(send_q)
         , recv_queue_(recv_q)
-        , scheduler_(std::move(scheduler))
+        , scheduler_(scheduler)
     {
     }
 
@@ -45,7 +45,7 @@ namespace streaming::spsc_queue
         , recv_queue_(recv_q.get())
         , send_queue_owner_(std::move(send_q))
         , recv_queue_owner_(std::move(recv_q))
-        , scheduler_(std::move(scheduler))
+        , scheduler_(scheduler)
     {
     }
 

@@ -139,7 +139,7 @@ namespace streaming::layer_factory
             return {rpc::error::OK(),
                 std::make_shared<::streaming::websocket::stream>(
                     std::move(stream),
-                    std::move(*settings),
+                    *settings,
                     direction == layer_direction::accept ? ::rpc::websocket_stream::endpoint_role::server
                                                          : ::rpc::websocket_stream::endpoint_role::client)};
         }
@@ -156,7 +156,7 @@ namespace streaming::layer_factory
                 return {rpc::error::INVALID_DATA(), {}};
 
             return {rpc::error::OK(),
-                std::make_shared<::streaming::compression::stream>(std::move(stream), std::move(*settings))};
+                std::make_shared<::streaming::compression::stream>(std::move(stream), *settings)};
         }
 #endif
 

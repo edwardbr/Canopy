@@ -82,7 +82,7 @@ namespace rpc::untrusted_web
               service)
         , stream_(std::move(stream))
         , handler_(std::move(handler))
-        , settings_(std::move(settings))
+        , settings_(settings)
     {
         set_adjacent_zone_id(adjacent_zone_id);
         RPC_DEBUG("New transport connection {}", rpc::to_string(adjacent_zone_id));
@@ -107,8 +107,8 @@ namespace rpc::untrusted_web
         }
         rpc::zone client_zone_id = result.zone_id;
 
-        auto transpt = std::shared_ptr<transport>(
-            new transport(service, client_zone_id, stream, std::move(handler), std::move(settings)));
+        auto transpt
+            = std::shared_ptr<transport>(new transport(service, client_zone_id, stream, std::move(handler), settings));
 
         transpt->set_status(rpc::transport_status::CONNECTED);
 

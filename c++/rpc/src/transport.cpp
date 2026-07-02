@@ -264,12 +264,12 @@ namespace rpc
         destination_count_ += 2;
 
         // Increment outbound passthrough count
-        zone outbound_zone = outbound_dest;
+        const zone& outbound_zone = outbound_dest;
         auto& outbound_counts = zone_counts_[outbound_zone];
         outbound_counts.outbound_passthrough_count++;
 
         // Increment inbound passthrough count
-        zone inbound_zone = inbound_source;
+        const zone& inbound_zone = inbound_source;
         auto& inbound_counts = zone_counts_[inbound_zone];
         inbound_counts.inbound_passthrough_count++;
 
@@ -374,7 +374,7 @@ namespace rpc
             dest.get_subnet(),
             get_destination_count());
 
-        zone dest_zone = dest;
+        const zone& dest_zone = dest;
         auto& counts = zone_counts_[dest_zone];
         counts.proxy_count++;
     }
@@ -382,7 +382,7 @@ namespace rpc
         destination_zone dest,
         destination_zone& transport_to_remove)
     {
-        zone dest_zone = dest;
+        const zone& dest_zone = dest;
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
@@ -441,7 +441,7 @@ namespace rpc
             dest.get_subnet(),
             get_destination_count());
 
-        zone dest_zone = dest;
+        const zone& dest_zone = dest;
         auto& counts = zone_counts_[dest_zone];
         counts.stub_count++;
     }
@@ -449,7 +449,7 @@ namespace rpc
         caller_zone dest,
         destination_zone& transport_to_remove)
     {
-        zone dest_zone = dest;
+        const zone& dest_zone = dest;
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
@@ -503,7 +503,7 @@ namespace rpc
         uint64_t count,
         destination_zone& transport_to_remove)
     {
-        zone dest_zone = dest;
+        const zone& dest_zone = dest;
         auto found = zone_counts_.find(dest_zone);
         if (found == zone_counts_.end())
         {
@@ -608,8 +608,8 @@ namespace rpc
                 return;
             }
 
-            zone outbound_zone = outbound_dest;
-            zone inbound_zone = inbound_source;
+            const zone& outbound_zone = outbound_dest;
+            const zone& inbound_zone = inbound_source;
 
             // Decrement outbound passthrough count
             auto outbound_found = zone_counts_.find(outbound_zone);

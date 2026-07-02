@@ -78,7 +78,7 @@ namespace websocket_demo
                     // bind the upgrade to an RPC handler
                     auto accepted
                         = CO_AWAIT rpc::untrusted_web::accept_rpc<websocket_demo::v1::i_context_event, websocket_demo::v1::i_calculator>(
-                            stream, calculator_connect_callback{demo_instance_factory{service}}, std::move(settings), service);
+                            stream, calculator_connect_callback{demo_instance_factory{service}}, settings, service);
                     if (accepted.error_code != rpc::error::OK())
                         CO_RETURN nullptr;
                     CO_RETURN accepted.transport;

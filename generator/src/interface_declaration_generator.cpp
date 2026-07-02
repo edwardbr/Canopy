@@ -726,7 +726,7 @@ namespace interface_declaration_generator
             header("struct rest_handler_info;");
         }
         header("");
-        header("virtual ~{}() CANOPY_DEFAULT_DESTRUCTOR", interface_name);
+        header("~{}() override CANOPY_DEFAULT_DESTRUCTOR", interface_name);
         header("");
         header("// ********************* interface methods *********************");
 
