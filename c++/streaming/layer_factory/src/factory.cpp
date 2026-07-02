@@ -155,8 +155,7 @@ namespace streaming::layer_factory
             if (!settings)
                 return {rpc::error::INVALID_DATA(), {}};
 
-            return {rpc::error::OK(),
-                std::make_shared<::streaming::compression::stream>(std::move(stream), *settings)};
+            return {rpc::error::OK(), std::make_shared<::streaming::compression::stream>(std::move(stream), *settings)};
         }
 #endif
 

@@ -64,9 +64,8 @@ target_link_libraries(
   PUBLIC rpc::modules
   PRIVATE yas_common rpc_types_idl ${CANOPY_LIBRARIES})
 
-target_compile_options(
-  transport_blocking_dll_runtime
-  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC} ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
+target_compile_options(transport_blocking_dll_runtime PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC}
+                                                              ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
 
 target_link_options(transport_blocking_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

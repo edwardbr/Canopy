@@ -46,11 +46,8 @@ function(CanopyCreateIpcSpscDynamicLibrary target_name)
             rpc::rpc
             ${CANOPY_LIBRARIES})
 
-  target_compile_options(
-    ${target_name}
-    PRIVATE ${CANOPY_COMPILE_OPTIONS}
-            ${CANOPY_WARN_PEDANTIC}
-            ${CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS})
+  target_compile_options(${target_name} PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC}
+                                                ${CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS})
 
   target_link_options(${target_name} PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

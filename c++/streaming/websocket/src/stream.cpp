@@ -231,7 +231,8 @@ namespace streaming::websocket
                     if (result != Z_OK)
                     {
                         RPC_WARNING(
-                            "WebSocket permessage-deflate deflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            "WebSocket permessage-deflate deflate failed: result={} msg={} avail_in={} avail_out={} "
+                            "total_in={} total_out={}",
                             result,
                             zstream.msg ? zstream.msg : "",
                             zstream.avail_in,
@@ -312,7 +313,8 @@ namespace streaming::websocket
                     if (result != Z_OK && result != Z_STREAM_END)
                     {
                         RPC_WARNING(
-                            "WebSocket permessage-deflate inflate failed: result={} msg={} avail_in={} avail_out={} total_in={} total_out={}",
+                            "WebSocket permessage-deflate inflate failed: result={} msg={} avail_in={} avail_out={} "
+                            "total_in={} total_out={}",
                             result,
                             zstream.msg ? zstream.msg : "",
                             zstream.avail_in,

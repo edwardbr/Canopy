@@ -77,8 +77,9 @@ foreach(test_name ${BUILDABLE_TESTS})
 
       # Force include compatibility headers for Microsoft-specific functions
       if(CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION)
-        target_compile_options(${test_name} PRIVATE
-                               "${CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION}${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
+        target_compile_options(
+          ${test_name}
+          PRIVATE "${CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION}${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
       endif()
       target_compile_options(${test_name} PRIVATE ${CANOPY_STL_TEST_COMPAT_COMPILE_OPTIONS})
       target_link_libraries(${test_name} PRIVATE ${CANOPY_STL_TEST_EXTRA_LIBRARIES})

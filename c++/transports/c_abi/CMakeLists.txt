@@ -40,9 +40,8 @@ target_include_directories(
 
 target_link_libraries(transport_c_abi_dll PRIVATE yas_common rpc_types_idl rpc::rpc ${CANOPY_LIBRARIES})
 
-target_compile_options(
-  transport_c_abi_dll
-  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC} ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
+target_compile_options(transport_c_abi_dll PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC}
+                                                   ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
 
 target_link_options(transport_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

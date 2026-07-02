@@ -27,9 +27,8 @@ if(NOT CANOPY_BUILD_COROUTINE)
             rpc_log
             ${CANOPY_LIBRARIES})
 
-  target_compile_options(
-    canopy_example_c_abi_dll
-    PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
+  target_compile_options(canopy_example_c_abi_dll PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK}
+                                                          ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
 
   target_link_options(canopy_example_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
