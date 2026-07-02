@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <mutex>
 #include <memory>
+#include <string_view>
 #include <utility>
 
 // RPC headers
@@ -58,6 +59,18 @@ namespace rpc
             encoding selected_encoding)
         {
             params.payload_encoding = selected_encoding;
+        }
+
+        void sanitise_public_get_schema_result(
+            get_schema_result& result,
+            std::string_view operation)
+        {
+            result.error_code = rpc::error::sanitise_public_control_status(result.error_code, operation);
+            if (result.error_code == rpc::error::OK())
+                return;
+
+            result.out_back_channel.clear();
+            result.response = rpc::get_schema_response{rpc::encoding::not_set, {}};
         }
 
     }
@@ -1136,7 +1149,9 @@ namespace rpc
             CO_RETURN get_schema_result{error::TRANSPORT_ERROR(), rpc::encoding::not_set, {}, {}};
         }
 
-        CO_RETURN CO_AWAIT dest->get_schema(std::move(params));
+        auto result = CO_AWAIT dest->get_schema(std::move(params));
+        sanitise_public_get_schema_result(result, "transport inbound get_schema");
+        CO_RETURN result;
     }
 
     CORO_TASK(standard_result)
@@ -1559,7 +1574,9 @@ namespace rpc
         }
         params.destination_zone_id = destination_zone_id;
 
-        CO_RETURN CO_AWAIT outbound_get_schema(std::move(params));
+        auto result = CO_AWAIT outbound_get_schema(std::move(params));
+        sanitise_public_get_schema_result(result, "transport get_schema");
+        CO_RETURN result;
     }
 
     CORO_TASK(get_schema_result) transport::outbound_get_schema(get_schema_params params)

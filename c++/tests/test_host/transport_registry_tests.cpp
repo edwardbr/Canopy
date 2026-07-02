@@ -234,6 +234,23 @@ namespace
             CO_RETURN rpc::standard_result{rpc::error::OK(), {}};
         }
 
+        CORO_TASK(rpc::get_schema_result) outbound_get_schema(rpc::get_schema_params params) override
+        {
+            ++outbound_get_schema_count;
+            last_get_schema_destination_zone = params.destination_zone_id;
+
+            rpc::interface_descriptor descriptor;
+            descriptor.interface_id = rpc::interface_ordinal{17};
+            descriptor.qualified_name = "registry_test_transport::i_schema";
+            descriptor.deprecated = false;
+            descriptor.schema = R"({"title":"registry schema"})";
+
+            CO_RETURN rpc::get_schema_result{outbound_get_schema_error,
+                rpc::encoding::yas_json,
+                std::vector<rpc::interface_descriptor>{descriptor},
+                std::vector<rpc::back_channel_entry>{rpc::back_channel_entry{7, {1, 2, 3}}}};
+        }
+
         CORO_TASK(rpc::standard_result) outbound_add_ref(rpc::add_ref_params params) override
         {
             ++outbound_add_ref_count;
@@ -266,8 +283,10 @@ namespace
         }
 
         uint64_t outbound_send_count{0};
+        uint64_t outbound_get_schema_count{0};
         uint64_t outbound_add_ref_count{0};
         uint64_t outbound_release_count{0};
+        int outbound_get_schema_error{rpc::error::OK()};
         int outbound_add_ref_error{rpc::error::OK()};
         int outbound_release_error{rpc::error::OK()};
         bool register_adjacent_route_in_inner_connect{false};
@@ -279,6 +298,7 @@ namespace
         std::weak_ptr<rpc::object_stub> last_inner_connect_stub;
         rpc::remote_object last_send_remote_object;
         rpc::caller_zone last_send_caller_zone;
+        rpc::destination_zone last_get_schema_destination_zone;
         rpc::remote_object last_add_ref_remote_object;
         rpc::caller_zone last_add_ref_caller_zone;
         rpc::requesting_zone last_add_ref_requesting_zone;
@@ -411,6 +431,30 @@ namespace
 
         return done.load() ? error_code : rpc::error::CALL_TIMEOUT();
     }
+
+    rpc::get_schema_result run_transport_get_schema_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::get_schema_params params,
+        const std::shared_ptr<coro::scheduler>& scheduler)
+    {
+        std::atomic_bool done{false};
+        rpc::get_schema_result result{rpc::error::CALL_TIMEOUT(), rpc::encoding::not_set, {}, {}};
+        auto task = [&]() -> coro::task<void>
+        {
+            result = CO_AWAIT transport->get_schema(std::move(params));
+            done.store(true);
+            CO_RETURN;
+        };
+
+        if (!scheduler->spawn_detached(task()))
+            return result;
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+        while (!done.load() && std::chrono::steady_clock::now() < deadline)
+            scheduler->process_events(std::chrono::milliseconds{1});
+
+        return result;
+    }
 #else
     bool run_inbound_add_ref_for_test(
         const std::shared_ptr<rpc::transport>& transport,
@@ -434,6 +478,13 @@ namespace
         rpc::add_ref_params params)
     {
         return passthrough->add_ref(std::move(params)).error_code;
+    }
+
+    rpc::get_schema_result run_transport_get_schema_for_test(
+        const std::shared_ptr<registry_test_transport>& transport,
+        rpc::get_schema_params params)
+    {
+        return transport->get_schema(std::move(params));
     }
 #endif
 
@@ -648,6 +699,83 @@ TEST(
 
     transport->set_status(rpc::transport_status::DISCONNECTING);
     EXPECT_EQ(transport->get_status(), rpc::transport_status::DISCONNECTED);
+}
+
+TEST(
+    marshaller_params_tests,
+    default_construction_is_deterministic_and_fails_closed)
+{
+    rpc::send_params send;
+    EXPECT_EQ(send.protocol_version, 0u);
+    EXPECT_EQ(send.encoding_type, rpc::encoding::not_set);
+    EXPECT_EQ(send.tag, 0u);
+    EXPECT_EQ(send.request_id, 0u);
+
+    rpc::add_ref_params add_ref;
+    EXPECT_EQ(add_ref.protocol_version, 0u);
+    EXPECT_EQ(add_ref.build_out_param_channel, rpc::add_ref_options::normal);
+    EXPECT_EQ(add_ref.request_id, 0u);
+
+    rpc::release_params release;
+    EXPECT_EQ(release.protocol_version, 0u);
+    EXPECT_EQ(release.options, rpc::release_options::normal);
+
+    rpc::standard_result standard;
+    EXPECT_EQ(standard.error_code, rpc::error::TRANSPORT_ERROR());
+
+    rpc::send_result send_result;
+    EXPECT_EQ(send_result.error_code, rpc::error::TRANSPORT_ERROR());
+
+    rpc::get_schema_result schema_result;
+    EXPECT_EQ(schema_result.error_code, rpc::error::TRANSPORT_ERROR());
+    auto plain_schema_response = schema_result.response_if_plain();
+    ASSERT_NE(plain_schema_response, nullptr);
+    EXPECT_EQ(plain_schema_response->encoding_type, rpc::encoding::not_set);
+    EXPECT_TRUE(plain_schema_response->interfaces.empty());
+}
+
+TEST(
+    transport_security_tests,
+    get_schema_sanitises_positive_public_control_status)
+{
+#ifdef CANOPY_BUILD_COROUTINE
+    auto scheduler = make_test_scheduler();
+    auto service = make_test_service("transport-get-schema-status", scheduler);
+#else
+    auto service = make_test_service("transport-get-schema-status");
+#endif
+
+    auto transport = std::make_shared<registry_test_transport>("get-schema-status-transport", service);
+    auto destination_zone = rpc::destination_zone{make_local_zone_address(81)};
+    transport->set_adjacent_zone_id(destination_zone);
+    transport->outbound_get_schema_error = 42;
+
+    auto destination_object = destination_zone.with_object(rpc::object{5});
+    ASSERT_TRUE(destination_object.has_value());
+
+    rpc::get_schema_query query;
+    query.remote_object_id = *destination_object;
+    query.encoding_type = rpc::encoding::yas_json;
+
+    rpc::get_schema_params params;
+    params.protocol_version = rpc::get_version();
+    params.caller_zone_id = service->get_zone_id();
+    params.destination_zone_id = destination_zone;
+    params.query = std::move(query);
+
+#ifdef CANOPY_BUILD_COROUTINE
+    auto result = run_transport_get_schema_for_test(transport, std::move(params), scheduler);
+#else
+    auto result = run_transport_get_schema_for_test(transport, std::move(params));
+#endif
+
+    EXPECT_EQ(result.error_code, rpc::error::PROTOCOL_ERROR());
+    EXPECT_TRUE(result.out_back_channel.empty());
+    auto plain_response = result.response_if_plain();
+    ASSERT_NE(plain_response, nullptr);
+    EXPECT_EQ(plain_response->encoding_type, rpc::encoding::not_set);
+    EXPECT_TRUE(plain_response->interfaces.empty());
+    EXPECT_EQ(transport->outbound_get_schema_count, 1u);
 }
 
 TEST(

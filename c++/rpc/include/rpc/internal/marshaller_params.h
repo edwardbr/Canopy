@@ -28,13 +28,13 @@ namespace rpc
 
     struct send_params
     {
-        uint64_t protocol_version;
-        encoding encoding_type;
-        uint64_t tag;
-        caller_zone caller_zone_id;
-        remote_object remote_object_id;
-        interface_ordinal interface_id;
-        method method_id;
+        uint64_t protocol_version = 0;
+        encoding encoding_type = encoding::not_set;
+        uint64_t tag = 0;
+        caller_zone caller_zone_id{};
+        remote_object remote_object_id{};
+        interface_ordinal interface_id{};
+        method method_id{};
         std::vector<char> in_data;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t request_id = 0;
@@ -42,34 +42,34 @@ namespace rpc
 
     struct post_params
     {
-        uint64_t protocol_version;
-        encoding encoding_type;
-        uint64_t tag;
-        caller_zone caller_zone_id;
-        remote_object remote_object_id;
-        interface_ordinal interface_id;
-        method method_id;
+        uint64_t protocol_version = 0;
+        encoding encoding_type = encoding::not_set;
+        uint64_t tag = 0;
+        caller_zone caller_zone_id{};
+        remote_object remote_object_id{};
+        interface_ordinal interface_id{};
+        method method_id{};
         std::vector<char> in_data;
         std::vector<rpc::back_channel_entry> in_back_channel;
     };
 
     struct try_cast_params
     {
-        uint64_t protocol_version;
-        caller_zone caller_zone_id;
-        remote_object remote_object_id;
-        interface_ordinal interface_id;
+        uint64_t protocol_version = 0;
+        caller_zone caller_zone_id{};
+        remote_object remote_object_id{};
+        interface_ordinal interface_id{};
         std::vector<rpc::back_channel_entry> in_back_channel;
         rpc::optional<rpc::typed_payload> payload;
     };
 
     struct add_ref_params
     {
-        uint64_t protocol_version;
-        remote_object remote_object_id;
-        caller_zone caller_zone_id;
-        requesting_zone requesting_zone_id;
-        add_ref_options build_out_param_channel;
+        uint64_t protocol_version = 0;
+        remote_object remote_object_id{};
+        caller_zone caller_zone_id{};
+        requesting_zone requesting_zone_id{};
+        add_ref_options build_out_param_channel = add_ref_options::normal;
         std::vector<rpc::back_channel_entry> in_back_channel;
         uint64_t request_id = 0;
         rpc::optional<rpc::typed_payload> payload;
@@ -77,19 +77,19 @@ namespace rpc
 
     struct release_params
     {
-        uint64_t protocol_version;
-        remote_object remote_object_id;
-        caller_zone caller_zone_id;
-        release_options options;
+        uint64_t protocol_version = 0;
+        remote_object remote_object_id{};
+        caller_zone caller_zone_id{};
+        release_options options = release_options::normal;
         std::vector<rpc::back_channel_entry> in_back_channel;
         rpc::optional<rpc::typed_payload> payload;
     };
 
     struct handshake_params
     {
-        uint64_t protocol_version;
-        caller_zone caller_zone_id;
-        destination_zone destination_zone_id;
+        uint64_t protocol_version = 0;
+        caller_zone caller_zone_id{};
+        destination_zone destination_zone_id{};
         uint64_t type_id = 0;
         encoding payload_encoding = encoding::not_set;
         std::vector<char> payload;
@@ -98,25 +98,25 @@ namespace rpc
 
     struct object_released_params
     {
-        uint64_t protocol_version;
-        remote_object remote_object_id;
-        caller_zone caller_zone_id;
+        uint64_t protocol_version = 0;
+        remote_object remote_object_id{};
+        caller_zone caller_zone_id{};
         std::vector<rpc::back_channel_entry> in_back_channel;
         rpc::optional<rpc::typed_payload> payload;
     };
 
     struct transport_down_params
     {
-        uint64_t protocol_version;
-        destination_zone destination_zone_id;
-        caller_zone caller_zone_id;
+        uint64_t protocol_version = 0;
+        destination_zone destination_zone_id{};
+        caller_zone caller_zone_id{};
         std::vector<rpc::back_channel_entry> in_back_channel;
         rpc::optional<rpc::typed_payload> payload;
     };
 
     struct get_new_zone_id_params
     {
-        uint64_t protocol_version;
+        uint64_t protocol_version = 0;
         std::vector<rpc::back_channel_entry> in_back_channel;
     };
 
@@ -124,7 +124,7 @@ namespace rpc
 
     struct standard_result
     {
-        int error_code;
+        int error_code = rpc::error::TRANSPORT_ERROR();
         std::vector<rpc::back_channel_entry> out_back_channel;
 
         standard_result() = default;
@@ -176,7 +176,7 @@ namespace rpc
 
     struct new_zone_id_result : standard_result
     {
-        zone zone_id;
+        zone zone_id{};
 
         new_zone_id_result() = default;
         new_zone_id_result(
@@ -197,9 +197,9 @@ namespace rpc
     // interface) for a future slice; object-discovery ignores it.
     struct get_schema_params
     {
-        uint64_t protocol_version;
-        caller_zone caller_zone_id;
-        destination_zone destination_zone_id;
+        uint64_t protocol_version = 0;
+        caller_zone caller_zone_id{};
+        destination_zone destination_zone_id{};
         std::vector<rpc::back_channel_entry> in_back_channel;
         rpc::variant<rpc::get_schema_query, rpc::typed_payload> query;
 
