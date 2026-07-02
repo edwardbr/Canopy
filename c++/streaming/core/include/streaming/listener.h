@@ -49,7 +49,7 @@ namespace streaming
         // Obtain via rpc::stream_transport::make_connection_callback<Remote, Local>(zone_factory) —
         // the zone factory and all connection protocol details are baked in.
         using connection_callback
-            = std::function<CORO_TASK(void)(const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<stream>)>;
+            = std::function<CORO_TASK(void)(std::string, std::shared_ptr<rpc::service>, std::shared_ptr<stream>)>;
 
         listener(
             std::string name,

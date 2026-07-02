@@ -10,6 +10,7 @@
 namespace rpc::telemetry
 {
 #if defined(CANOPY_USE_TELEMETRY)
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
     std::shared_ptr<i_telemetry_service> telemetry_service_ = nullptr;
 #endif
 

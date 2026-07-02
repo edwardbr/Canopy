@@ -554,6 +554,7 @@ namespace yas::detail
             Archive& ar,
             rpc::optional<T>& value)
         {
+            // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
             if constexpr (F & yas::json)
             {
                 if constexpr (!(F & yas::compacted))
@@ -580,6 +581,7 @@ namespace yas::detail
                 value = std::move(loaded);
                 return ar;
             }
+            // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
             else
             {
                 bool present = false;
@@ -636,6 +638,7 @@ namespace yas::detail
             Archive& ar,
             rpc::nullable_optional<T>& value)
         {
+            // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
             if constexpr (F & yas::json)
             {
                 if constexpr (!(F & yas::compacted))
@@ -653,6 +656,7 @@ namespace yas::detail
                 value = std::move(loaded);
                 return ar;
             }
+            // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
             else
             {
                 std::uint8_t state = 0;

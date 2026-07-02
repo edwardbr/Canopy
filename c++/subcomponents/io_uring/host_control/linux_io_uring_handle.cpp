@@ -184,7 +184,8 @@ namespace rpc::io_uring
         close();
     }
 
-    CORO_TASK(int) linux_io_uring_handle::get_iouring_data(data& ring_data)
+    CORO_TASK(int)
+    linux_io_uring_handle::get_iouring_data(data& ring_data) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto* controller = controller_locked();
@@ -196,7 +197,7 @@ namespace rpc::io_uring
 
     CORO_TASK(int)
     linux_io_uring_handle::notify_submitted(
-        const data&,
+        data,
         uint32_t)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -328,9 +329,9 @@ namespace rpc::io_uring
     CORO_TASK(operation_result)
     linux_io_uring_handle::bind_tcp_ipv4(
         uint32_t descriptor,
-        const std::array<
+        std::array<
             uint8_t,
-            4>& address,
+            4> address,
         uint16_t port)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -343,9 +344,9 @@ namespace rpc::io_uring
     CORO_TASK(operation_result)
     linux_io_uring_handle::bind_tcp_ipv6(
         uint32_t descriptor,
-        const std::array<
+        std::array<
             uint8_t,
-            16>& address,
+            16> address,
         uint16_t port)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -413,9 +414,9 @@ namespace rpc::io_uring
 
     CORO_TASK(descriptor_result)
     linux_io_uring_handle::connect_tcp_ipv4(
-        const std::array<
+        std::array<
             uint8_t,
-            4>& address,
+            4> address,
         uint16_t port,
         std::chrono::milliseconds timeout)
     {
@@ -443,9 +444,9 @@ namespace rpc::io_uring
 
     CORO_TASK(descriptor_result)
     linux_io_uring_handle::connect_tcp_ipv6(
-        const std::array<
+        std::array<
             uint8_t,
-            16>& address,
+            16> address,
         uint16_t port,
         std::chrono::milliseconds timeout)
     {

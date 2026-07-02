@@ -73,7 +73,7 @@ namespace streaming::spsc_buffered_stream
 
     auto stream::recv_proxy_loop(std::shared_ptr<proxy_state> state) -> coro::task<void>
     {
-        std::array<char, streaming::spsc_queue::max_payload> raw_buf;
+        std::array<char, streaming::spsc_queue::max_payload> raw_buf{};
 
         while (!state->closed.load(std::memory_order_acquire))
         {

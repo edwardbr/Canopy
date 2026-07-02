@@ -212,9 +212,9 @@ namespace streaming::layer_factory
 
         auto apply_tls_layer(
             std::shared_ptr<::streaming::stream> stream,
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             layer_direction direction,
-            const layer_context& context) -> CORO_TASK(stream_layer_result)
+            layer_context context) -> CORO_TASK(stream_layer_result)
         {
             auto settings = materialise_layer_settings<tls_stream_settings>(layer_settings_object(layer));
             if (!settings)
@@ -309,9 +309,9 @@ namespace streaming::layer_factory
 
         auto apply_attestation_layer(
             std::shared_ptr<::streaming::stream> stream,
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             layer_direction direction,
-            const layer_context& context) -> CORO_TASK(stream_layer_result)
+            layer_context context) -> CORO_TASK(stream_layer_result)
         {
             auto settings
                 = materialise_layer_settings<::rpc::attestation_stream::stream_settings>(layer_settings_object(layer));
@@ -387,9 +387,9 @@ namespace streaming::layer_factory
 
     auto apply_stream_layer_async(
         std::shared_ptr<::streaming::stream> stream,
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         layer_direction direction,
-        const layer_context& context) -> CORO_TASK(stream_layer_result)
+        layer_context context) -> CORO_TASK(stream_layer_result)
     {
         if (!stream || layer.type.empty())
             CO_RETURN stream_layer_result{rpc::error::INVALID_DATA(), {}};
@@ -406,7 +406,7 @@ namespace streaming::layer_factory
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_TLS
         if (layer.type == "tls")
-            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), layer, direction, context);
+            CO_RETURN CO_AWAIT apply_tls_layer(std::move(stream), std::move(layer), direction, std::move(context));
 #endif
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_SPSC_BUFFERED_STREAM
@@ -416,7 +416,7 @@ namespace streaming::layer_factory
 
 #ifdef CANOPY_STREAMING_LAYER_FACTORY_HAS_ATTESTATION
         if (layer.type == "attestation" || layer.type == "attestation_stream")
-            CO_RETURN CO_AWAIT apply_attestation_layer(std::move(stream), layer, direction, context);
+            CO_RETURN CO_AWAIT apply_attestation_layer(std::move(stream), std::move(layer), direction, std::move(context));
 #endif
 
         CO_RETURN stream_layer_result{rpc::error::INVALID_DATA(), {}};
@@ -424,10 +424,10 @@ namespace streaming::layer_factory
 
     auto apply_stream_layers_async(
         std::shared_ptr<::streaming::stream> stream,
-        const std::vector<rpc::stream_layers::stream_layer_settings>& layers,
+        std::vector<rpc::stream_layers::stream_layer_settings> layers,
         size_t first_layer,
         layer_direction direction,
-        const layer_context& context) -> CORO_TASK(stream_layer_result)
+        layer_context context) -> CORO_TASK(stream_layer_result)
     {
         if (!stream || first_layer > layers.size())
             CO_RETURN stream_layer_result{rpc::error::INVALID_DATA(), {}};

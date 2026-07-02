@@ -24,7 +24,7 @@ namespace rpc::ipc_spsc
         class Out>
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
-        const transport_settings& settings,
+        transport_settings settings,
         rpc::shared_ptr<In> input_interface,
         std::shared_ptr<rpc::service> service = {})
     {

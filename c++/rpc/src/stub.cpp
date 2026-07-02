@@ -54,6 +54,7 @@ namespace rpc
         if (!interface_id.is_set())
             return target_;
 
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): query_interface exposes a const query surface; stubs return mutable RPC pointers.
         auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
         if (!iface)
             return nullptr;
@@ -76,6 +77,7 @@ namespace rpc
         if (!target_)
             return rpc::error::OBJECT_NOT_FOUND();
 
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): query_interface exposes a const query surface; try_cast only checks support.
         auto* iface = const_cast<rpc::casting_interface*>(target_->__rpc_query_interface(interface_id));
         if (!iface)
             return rpc::error::INVALID_CAST();

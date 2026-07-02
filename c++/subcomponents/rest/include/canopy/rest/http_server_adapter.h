@@ -17,7 +17,7 @@ namespace canopy::rest
 
     CORO_TASK(std::optional<http_server::response>)
     handle_http_request(
-        const http_server::request& request,
-        const endpoint_registry& registry);
+        http_server::request request,
+        endpoint_registry registry);
 
 } // namespace canopy::rest

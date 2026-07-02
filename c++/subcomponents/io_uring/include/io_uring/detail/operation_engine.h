@@ -78,20 +78,20 @@ namespace rpc::io_uring::detail
         int32_t fd{0};
         union
         {
-            uint64_t off;
+            uint64_t off{0};
             uint64_t addr2;
             command_op_fields command;
         };
         union
         {
-            uint64_t addr;
+            uint64_t addr{0};
             uint64_t splice_off_in;
             socket_option_name_fields socket_option;
         };
         uint32_t len{0};
         union
         {
-            uint32_t rw_flags;
+            uint32_t rw_flags{0};
             uint32_t msg_flags;
             uint32_t accept_flags;
             uint32_t open_flags;
@@ -102,20 +102,20 @@ namespace rpc::io_uring::detail
         uint64_t user_data{0};
         union
         {
-            uint16_t buf_index;
+            uint16_t buf_index{0};
             uint16_t buf_group;
         };
         uint16_t personality{0};
         union
         {
-            int32_t splice_fd_in;
+            int32_t splice_fd_in{0};
             uint32_t file_index;
             uint32_t addr_len;
             uint32_t optlen;
         };
         union
         {
-            uint64_t addr3;
+            uint64_t addr3{0};
             uint64_t optval;
         };
         uint64_t pad2{0};

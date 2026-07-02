@@ -43,6 +43,7 @@ namespace rpc
 
             // Coroutine backend: forwards to the supplied io_uring controller
             // and yields the calling coroutine while syscalls are in flight.
+            // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses output refs.
             class manager_impl final : public rpc::base<manager_impl, i_manager>
             {
             public:
@@ -196,6 +197,7 @@ namespace rpc
             private:
                 std::shared_ptr<rpc::io_uring::controller> controller_;
             };
+            // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
             rpc::shared_ptr<i_manager> create_factory(std::shared_ptr<rpc::io_uring::controller> controller)
             {

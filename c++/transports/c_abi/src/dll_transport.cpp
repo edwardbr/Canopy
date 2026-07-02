@@ -496,6 +496,7 @@ namespace rpc::c_abi
             if (!address->blob.data || !address->blob.size || !allocator.free)
                 return;
 
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): allocator owns buffers exposed through const ABI spans.
             allocator.free(allocator.allocator_ctx, const_cast<uint8_t*>(address->blob.data), address->blob.size);
             address->blob = {};
         }
@@ -517,8 +518,11 @@ namespace rpc::c_abi
                 {
                     auto& entry = back_channel->data[i];
                     if (entry.payload.data && entry.payload.size)
-                        allocator.free(
-                            allocator.allocator_ctx, const_cast<uint8_t*>(entry.payload.data), entry.payload.size);
+                    {
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): allocator owns buffers exposed through const ABI spans.
+                        auto* payload_data = const_cast<uint8_t*>(entry.payload.data);
+                        allocator.free(allocator.allocator_ctx, payload_data, entry.payload.size);
+                    }
                 }
 
                 allocator.free(

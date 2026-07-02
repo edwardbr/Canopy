@@ -1072,6 +1072,7 @@ namespace yas
                 Archive& ar,
                 json::v1::object& object)
             {
+                // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
                 if constexpr (F & yas::json)
                 {
                     __YAS_CONSTEXPR_IF(!(F & yas::compacted))
@@ -1128,6 +1129,7 @@ namespace yas
                         object = number;
                     }
                 }
+                // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
                 else
                 {
                     uint8_t type = 0;
@@ -1215,6 +1217,7 @@ namespace yas
                 Archive& ar,
                 json::v1::array& array)
             {
+                // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
                 if constexpr (F & yas::json)
                 {
                     __YAS_CONSTEXPR_IF(!(F & yas::compacted))
@@ -1256,6 +1259,7 @@ namespace yas
                     }
                     __YAS_THROW_IF_BAD_JSON_CHARS(ar, "]");
                 }
+                // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
                 else
                 {
                     const auto size = ar.read_seq_size();
@@ -1323,6 +1327,7 @@ namespace yas
                 Archive& ar,
                 json::v1::map& map)
             {
+                // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
                 if constexpr (F & yas::json)
                 {
                     __YAS_CONSTEXPR_IF(!(F & yas::compacted))
@@ -1378,6 +1383,7 @@ namespace yas
                     }
                     __YAS_THROW_IF_BAD_JSON_CHARS(ar, "}");
                 }
+                // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
                 else
                 {
                     const auto size = ar.read_seq_size();

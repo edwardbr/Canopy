@@ -123,6 +123,7 @@ namespace llm_mcp
                 }
             }
 
+            // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL interfaces use reference parameters.
             class demo_llm final : public rpc::base<demo_llm, i_llm>
             {
                 llm_options options_;
@@ -135,7 +136,13 @@ namespace llm_mcp
                     mcp_tool tool;
                 };
 
-                CORO_TASK(llm_mcp_error) emit(const std::string& message)
+                struct collect_tools_result
+                {
+                    llm_mcp_error error{rpc::error::OK()};
+                    std::vector<bound_tool> tools;
+                };
+
+                CORO_TASK(llm_mcp_error) emit(std::string message)
                 {
                     if (!events_)
                         CO_RETURN llm_mcp_error::CALLBACK_NOT_ASSIGNED;
@@ -151,9 +158,9 @@ namespace llm_mcp
                     CO_RETURN err;
                 }
 
-                CORO_TASK(llm_mcp_error) collect_tools(std::vector<bound_tool>& out)
+                CORO_TASK(collect_tools_result) collect_tools()
                 {
-                    out.clear();
+                    collect_tools_result result;
                     for (const auto& mcp : mcps_)
                     {
                         if (!mcp)
@@ -162,12 +169,15 @@ namespace llm_mcp
                         std::vector<mcp_tool> tools;
                         auto err = CO_AWAIT mcp->list_tools(tools);
                         if (err != rpc::error::OK())
-                            CO_RETURN err;
+                        {
+                            result.error = err;
+                            CO_RETURN result;
+                        }
 
                         for (auto& tool : tools)
-                            out.push_back(bound_tool{mcp, std::move(tool)});
+                            result.tools.push_back(bound_tool{mcp, std::move(tool)});
                     }
-                    CO_RETURN rpc::error::OK();
+                    CO_RETURN result;
                 }
 
                 static const bound_tool* find_tool(
@@ -184,8 +194,8 @@ namespace llm_mcp
 
                 CORO_TASK(llm_mcp_error)
                 call_tool(
-                    const bound_tool& tool,
-                    const std::string& arguments_json)
+                    bound_tool tool,
+                    std::string arguments_json)
                 {
                     auto err = CO_AWAIT emit("calling " + tool.tool.name + " with generated json " + arguments_json);
                     if (err != rpc::error::OK())
@@ -234,10 +244,11 @@ namespace llm_mcp
                     if (!events_)
                         CO_RETURN llm_mcp_error::CALLBACK_NOT_ASSIGNED;
 
-                    std::vector<bound_tool> tools;
-                    auto err = CO_AWAIT collect_tools(tools);
+                    auto tools_result = CO_AWAIT collect_tools();
+                    auto err = tools_result.error;
                     if (err != rpc::error::OK())
                         CO_RETURN err;
+                    auto& tools = tools_result.tools;
 
                     err = CO_AWAIT emit("system prompt: " + options_.system_prompt);
                     if (err != rpc::error::OK())
@@ -310,6 +321,7 @@ namespace llm_mcp
                     CO_RETURN rpc::error::OK();
                 }
             };
+            // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
         }
 
         schema_mcp::schema_mcp(
@@ -320,7 +332,9 @@ namespace llm_mcp
         {
         }
 
-        CORO_TASK(llm_mcp_error) schema_mcp::list_interfaces(std::vector<rpc::interface_descriptor>& interfaces)
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL interfaces use reference parameters.
+        CORO_TASK(llm_mcp_error)
+        schema_mcp::list_interfaces(std::vector<rpc::interface_descriptor>& interfaces)
         {
             interfaces.clear();
             if (!target_)
@@ -330,7 +344,8 @@ namespace llm_mcp
                 *target_, interfaces, rpc::encoding::yas_json, rpc::schema_flavor::mcp, false);
         }
 
-        CORO_TASK(llm_mcp_error) schema_mcp::list_tools(std::vector<mcp_tool>& tools)
+        CORO_TASK(llm_mcp_error)
+        schema_mcp::list_tools(std::vector<mcp_tool>& tools)
         {
             tools.clear();
             std::vector<rpc::interface_descriptor> descriptors;
@@ -399,6 +414,7 @@ namespace llm_mcp
 
             CO_RETURN llm_mcp_error::TOOL_NOT_FOUND;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
         rpc::shared_ptr<i_mcp> make_schema_mcp(
             std::string target_name,

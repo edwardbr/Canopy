@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
 
 namespace canopy::rest
@@ -141,7 +142,7 @@ namespace canopy::rest
 
     std::string encode_path_segment(std::string_view value)
     {
-        constexpr char hex_digits[] = "0123456789ABCDEF";
+        constexpr std::string_view hex_digits = "0123456789ABCDEF";
         std::string output;
         output.reserve(value.size());
         for (const unsigned char ch : value)

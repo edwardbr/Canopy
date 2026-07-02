@@ -3,6 +3,7 @@
  *   All rights reserved.
  */
 // Standard C++ headers
+#include <array>
 #include <chrono>
 #include <thread>
 
@@ -237,7 +238,7 @@ namespace rpc::telemetry
     std::string console_telemetry_service::get_zone_color(uint64_t zone_id) const
     {
         // ANSI color codes - cycle through 8 bright colors
-        static const char* colors[] = {
+        static constexpr std::array<const char*, 8> colors = {{
             "\033[91m", // Bright Red
             "\033[92m", // Bright Green
             "\033[93m", // Bright Yellow
@@ -246,8 +247,8 @@ namespace rpc::telemetry
             "\033[96m", // Bright Cyan
             "\033[97m", // Bright White
             "\033[90m"  // Bright Black (Gray)
-        };
-        return colors[zone_id % 8];
+        }};
+        return colors[zone_id % colors.size()];
     }
 
     std::string console_telemetry_service::get_level_color(level_enum level) const

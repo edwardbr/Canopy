@@ -36,9 +36,9 @@ namespace rpc::io_uring
 
         CORO_TASK(int)
         listen_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& bind_address,
+                4> bind_address,
             uint16_t port,
             uint32_t backlog = 16)
         {
@@ -96,9 +96,9 @@ namespace rpc::io_uring
 
         CORO_TASK(int)
         listen_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& bind_address,
+                16> bind_address,
             uint16_t port,
             uint32_t backlog = 16)
         {
@@ -233,9 +233,9 @@ namespace rpc::io_uring
 
         CORO_TASK(direct_descriptor_result)
         connect_ipv4_with_result(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {
@@ -268,9 +268,9 @@ namespace rpc::io_uring
 
         CORO_TASK(direct_descriptor_result)
         connect_ipv6_with_result(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {
@@ -309,9 +309,9 @@ namespace rpc::io_uring
 
         CORO_TASK(std::shared_ptr<direct_descriptor>)
         connect_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {
@@ -321,9 +321,9 @@ namespace rpc::io_uring
 
         CORO_TASK(std::shared_ptr<direct_descriptor>)
         connect_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000})
         {

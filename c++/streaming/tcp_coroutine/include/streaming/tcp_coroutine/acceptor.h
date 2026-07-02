@@ -37,16 +37,16 @@ namespace streaming::coroutine::tcp
             uint32_t backlog = 16);
         CORO_TASK(int)
         listen_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& bind_address,
+                4> bind_address,
             uint16_t port,
             uint32_t backlog = 16);
         CORO_TASK(int)
         listen_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& bind_address,
+                16> bind_address,
             uint16_t port,
             uint32_t backlog = 16);
 

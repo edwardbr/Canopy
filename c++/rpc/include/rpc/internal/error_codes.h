@@ -36,6 +36,7 @@ namespace rpc
 {
     namespace error
     {
+        constexpr int NOT_INITIALISED = -1;
         int OK();
         int MIN();
         int OUT_OF_MEMORY();               // service has no more memory

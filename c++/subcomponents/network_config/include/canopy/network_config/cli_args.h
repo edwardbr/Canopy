@@ -66,6 +66,6 @@ namespace canopy::network_config
     // Convenience: register args, parse, and return config in one step.
     network_config parse_network_args(
         int argc,
-        char* argv[],
+        char** argv,
         args::ArgumentParser& parser);
 } // namespace canopy::network_config

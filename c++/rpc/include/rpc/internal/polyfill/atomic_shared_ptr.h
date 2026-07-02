@@ -58,9 +58,17 @@ namespace rpc::polyfill
         atomic_smart_ptr(const atomic_smart_ptr&) = delete;
         atomic_smart_ptr& operator=(const atomic_smart_ptr&) = delete;
 
-        void operator=(value_type desired) { store(std::move(desired)); }
+        atomic_smart_ptr& operator=(value_type desired)
+        {
+            store(std::move(desired));
+            return *this;
+        }
 
-        void operator=(std::nullptr_t) { store(nullptr); }
+        atomic_smart_ptr& operator=(std::nullptr_t)
+        {
+            store(nullptr);
+            return *this;
+        }
 
         bool is_lock_free() const noexcept { return false; }
 

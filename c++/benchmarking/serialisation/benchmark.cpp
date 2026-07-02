@@ -51,7 +51,13 @@ namespace serialisation_benchmark
 
     constexpr size_t call_count = 10000;
     constexpr size_t trim_each_side = call_count / 10;
-    volatile uint64_t benchmark_sink = 0;
+
+    volatile uint64_t& benchmark_sink()
+    {
+        static volatile uint64_t sink
+            = 0; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): benchmark black-hole.
+        return sink;
+    }
 
     // -------------------------------------------------------------------------
     // Statistics helpers (identical pattern to fullstack benchmark)
@@ -92,7 +98,7 @@ namespace serialisation_benchmark
 
     void consume(uint64_t value)
     {
-        benchmark_sink = (benchmark_sink * 1315423911u) ^ value;
+        benchmark_sink() = (benchmark_sink() * 1315423911u) ^ value;
     }
 
     void consume_bytes(const std::vector<uint8_t>& bytes)
@@ -569,12 +575,12 @@ namespace serialisation_benchmark
         run_permutation_type("string_holder (13 chars)", scalar_test::string_holder{"hello, world!"});
         run_permutation_type("something_more_complicated", make_more_complicated());
         {
-            scalar_test::something_with_a_template obj;
+            scalar_test::something_with_a_template obj{};
             obj.template_int_val.type_t = 99;
             run_permutation_type("something_with_a_template", obj);
         }
 
-        fmt::print("\nbenchmark sink: {}\n", benchmark_sink);
+        fmt::print("\nbenchmark sink: {}\n", benchmark_sink());
     }
 
     // -------------------------------------------------------------------------
@@ -683,7 +689,7 @@ namespace serialisation_benchmark
             "uint64_arr_holder",
             scalar_test::uint64_arr_holder{{{0ULL, 1ULL, 42ULL, std::numeric_limits<uint64_t>::max()}}});
         {
-            scalar_test::int128_arr_holder h;
+            scalar_test::int128_arr_holder h{};
             h.value = {__int128{0},
                 -(__int128{1} << 100),
                 __int128{1} << 100,
@@ -691,7 +697,7 @@ namespace serialisation_benchmark
             bench_type("int128_arr_holder", h);
         }
         {
-            scalar_test::uint128_arr_holder h;
+            scalar_test::uint128_arr_holder h{};
             h.value = {static_cast<unsigned __int128>(0),
                 (static_cast<unsigned __int128>(0xDEADBEEFULL) << 64) | 0xCAFEBABEULL,
                 static_cast<unsigned __int128>(-1),
@@ -710,19 +716,19 @@ namespace serialisation_benchmark
 
         // ---- Composite structs ----
         {
-            scalar_test::something_complicated obj;
+            scalar_test::something_complicated obj{};
             obj.int_val = 123456789;
             obj.string_val = "benchmark_string";
             bench_type("something_complicated", obj);
         }
         bench_type("something_more_complicated", make_more_complicated());
         {
-            scalar_test::test_template<int> obj;
+            scalar_test::test_template<int> obj{};
             obj.type_t = 42;
             bench_type("test_template<int>", obj);
         }
         {
-            scalar_test::something_with_a_template obj;
+            scalar_test::something_with_a_template obj{};
             obj.template_int_val.type_t = 99;
             bench_type("something_with_a_template", obj);
         }

@@ -36,6 +36,17 @@ namespace websocket_demo
                 return path.rfind("/generated/", 0) == 0 && has_suffix(path, ".js");
             }
 
+            struct rest_request_handler
+            {
+                canopy::rest::endpoint_registry registry;
+
+                auto operator()(canopy::http_server::request request)
+                    -> CORO_TASK(std::optional<canopy::http_server::response>)
+                {
+                    CO_RETURN CO_AWAIT canopy::rest::handle_http_request(std::move(request), registry);
+                }
+            };
+
         }
 
         http_client_connection::http_client_connection(
@@ -66,10 +77,7 @@ namespace websocket_demo
 
             // REST dependency injection point. rest_handlers_ is populated by the application from generated
             // Interface::rest_handler_info metadata, then these two callbacks expose that registry to the HTTP server.
-            handlers.rest_handler
-                = [this](const canopy::http_server::request& request) -> CORO_TASK(
-                                                                          std::optional<canopy::http_server::response>)
-            { CO_RETURN CO_AWAIT canopy::rest::handle_http_request(request, rest_handlers_); };
+            handlers.rest_handler = rest_request_handler{rest_handlers_};
             handlers.is_rest_request = [this](const canopy::http_server::request& request)
             { return rest_handlers_.may_handle(request.url); };
             handlers.websocket_upgrade_handler = websocket_handler_;

@@ -70,14 +70,14 @@ namespace streaming::layer_factory
     // runtime-supplied services. The connection factory uses this path.
     auto apply_stream_layer_async(
         std::shared_ptr<::streaming::stream> stream,
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         layer_direction direction,
-        const layer_context& context = {}) -> CORO_TASK(stream_layer_result);
+        layer_context context = {}) -> CORO_TASK(stream_layer_result);
 
     auto apply_stream_layers_async(
         std::shared_ptr<::streaming::stream> stream,
-        const std::vector<rpc::stream_layers::stream_layer_settings>& layers,
+        std::vector<rpc::stream_layers::stream_layer_settings> layers,
         size_t first_layer,
         layer_direction direction,
-        const layer_context& context = {}) -> CORO_TASK(stream_layer_result);
+        layer_context context = {}) -> CORO_TASK(stream_layer_result);
 } // namespace streaming::layer_factory

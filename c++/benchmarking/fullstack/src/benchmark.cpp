@@ -6,6 +6,7 @@
 #include "benchmark_common.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -58,11 +59,11 @@ namespace
 #else
         localtime_r(&now_time, &local_time);
 #endif
-        char timestamp[32]{};
-        std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local_time);
+        std::array<char, 32> timestamp{};
+        std::strftime(timestamp.data(), timestamp.size(), "%Y-%m-%d_%H-%M-%S", &local_time);
         const auto milliseconds
             = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
-        return fmt::format("{}-{:03}", timestamp, milliseconds);
+        return fmt::format("{}-{:03}", timestamp.data(), milliseconds);
     }
 
     std::filesystem::path default_html_report_path()

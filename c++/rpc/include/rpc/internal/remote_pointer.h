@@ -362,6 +362,7 @@ namespace rpc
             template<typename T> class weak_ptr;
 
             // NAMESPACE_INLINE_BEGIN  // Commented out to simplify
+            // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes): control block internals mirror shared_ptr implementation state.
             struct control_block_base
             {
                 std::atomic<long> weak_count_{1}; // NOLINT(misc-non-private-member-variables-in-classes)
@@ -666,6 +667,7 @@ namespace rpc
                 }
 #endif
             };
+            // NOLINTEND(cppcoreguidelines-non-private-member-variables-in-classes)
 
             template<typename T> static void* to_void_ptr(T* p)
             {
@@ -833,8 +835,8 @@ namespace rpc
                     : control_block_base()
                     , allocator_instance_(std::move(alloc_for_t))
                 {
-                    ::new (const_cast<void*>(static_cast<const void*>(&object_instance_)))
-                        T(std::forward<ConcreteArgs>(args_for_t)...);
+                    ::new (to_void_ptr(&object_instance_)) T(std::forward<ConcreteArgs>(args_for_t)...);
+                    // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer): object_instance_ is inactive union storage until placement-new above.
                     this->managed_object_ptr_ = to_void_ptr(&object_instance_);
                 }
 
@@ -1242,6 +1244,7 @@ namespace rpc
             acquire_this();
         }
 
+        // NOLINTBEGIN(cppcoreguidelines-rvalue-reference-param-not-moved): aliasing move construction steals the control block manually.
         template<typename Y>
         shared_ptr(
             shared_ptr<Y>&& r,
@@ -1252,6 +1255,7 @@ namespace rpc
             r.cb_ = nullptr;
             r.ptr_ = nullptr;
         }
+        // NOLINTEND(cppcoreguidelines-rvalue-reference-param-not-moved)
 
         shared_ptr(const shared_ptr& r) noexcept
             : ptr_(r.ptr_)
@@ -1279,6 +1283,7 @@ namespace rpc
         template<
             typename Y,
             typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        // NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved): heterogeneous move construction steals the control block manually.
         shared_ptr(shared_ptr<Y>&& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.internal_get_ptr()))
             , cb_(r.internal_get_cb())
@@ -1587,7 +1592,9 @@ namespace rpc
         }
 
         // Thread-safe move conversion
-        template<typename Y> void weakly_convert_move_avoiding_expired_conversions(weak_ptr<Y>&& other) noexcept
+        template<typename Y>
+        // NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved): conversion must inspect and clear the source weak pointer manually.
+        void weakly_convert_move_avoiding_expired_conversions(weak_ptr<Y>&& other) noexcept
         {
             if (other.cb_)
             {
@@ -1620,7 +1627,9 @@ namespace rpc
         }
 
         // Fast move (no temporary lock)
-        template<typename Y> void weakly_move_construct_from(weak_ptr<Y>&& other) noexcept
+        template<typename Y>
+        // NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved): weak_ptr move construction steals the control block manually.
+        void weakly_move_construct_from(weak_ptr<Y>&& other) noexcept
         {
             cb_ = other.cb_;
             ptr_for_lock_ = convert_ptr_for_lock<typename weak_ptr<Y>::element_type>(other.cb_, other.ptr_for_lock_);
@@ -2165,7 +2174,7 @@ namespace rpc
     template<typename T> class enable_shared_from_this
     {
     protected:
-        mutable weak_ptr<T> weak_this_; // NOLINT(misc-non-private-member-variables-in-classes)
+        mutable weak_ptr<T> weak_this_; // NOLINT(misc-non-private-member-variables-in-classes,cppcoreguidelines-non-private-member-variables-in-classes)
         // NOLINTBEGIN(bugprone-crtp-constructor-accessibility): Mirrors std::enable_shared_from_this's CRTP shape.
         constexpr enable_shared_from_this() noexcept = default;
         enable_shared_from_this(const enable_shared_from_this&) noexcept { }
@@ -2192,8 +2201,7 @@ namespace rpc
                         // Directly construct weak_ptr from the control block and pointer
                         // instead of creating a temporary shared_ptr
                         weak_this_.cb_ = cb_for_this_obj;
-                        weak_this_.ptr_for_lock_
-                            = const_cast<esft_element*>(static_cast<const esft_element*>(ptr_to_this_obj));
+                        weak_this_.ptr_for_lock_ = static_cast<esft_element*>(ptr_to_this_obj);
                         if (cb_for_this_obj)
                         {
                             cb_for_this_obj->increment_weak();
@@ -2281,6 +2289,7 @@ namespace rpc
         T* ptr = nullptr;
 
         // First try local interface casting
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): query_interface exposes const storage; rpc::shared_ptr owns mutable interface access.
         ptr = const_cast<T*>(static_cast<const T*>(from->__rpc_query_interface(T::get_id(get_version()))));
         if (ptr)
             CO_RETURN shared_ptr<T>(from, ptr);
@@ -2627,6 +2636,7 @@ namespace rpc
         {
             acquire_this();
         }
+        // NOLINTBEGIN(cppcoreguidelines-rvalue-reference-param-not-moved): aliasing move construction steals the control block manually.
         template<typename Y>
         optimistic_ptr(
             optimistic_ptr<Y>&& r,
@@ -2637,6 +2647,7 @@ namespace rpc
             r.cb_ = nullptr;
             r.ptr_ = nullptr;
         }
+        // NOLINTEND(cppcoreguidelines-rvalue-reference-param-not-moved)
 
         // Copy constructor - source is valid, control block guaranteed alive
         optimistic_ptr(const optimistic_ptr& r) noexcept
@@ -2677,6 +2688,7 @@ namespace rpc
         template<
             typename Y,
             typename = std::enable_if_t<is_pointer_compatible<Y>::value>>
+        // NOLINTNEXTLINE(cppcoreguidelines-rvalue-reference-param-not-moved): heterogeneous move construction steals the control block manually.
         optimistic_ptr(optimistic_ptr<Y>&& r) noexcept
             : ptr_(static_cast<element_type_impl*>(r.ptr_))
             , cb_(r.cb_)
@@ -2892,8 +2904,10 @@ namespace rpc
                 CO_RETURN result;
             }
 
+            // NOLINTBEGIN(cppcoreguidelines-pro-type-const-cast): query_interface exposes const storage; optimistic_ptr owns mutable interface access.
             auto ptr
                 = const_cast<T*>(static_cast<const T*>(local_shared->__rpc_query_interface(T::get_id(get_version()))));
+            // NOLINTEND(cppcoreguidelines-pro-type-const-cast)
             if (ptr)
             {
                 result.value = optimistic_ptr<T>(from, ptr);

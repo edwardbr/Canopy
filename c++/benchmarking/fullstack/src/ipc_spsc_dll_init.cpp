@@ -11,12 +11,12 @@
 namespace rpc::ipc_spsc
 {
     coro::task<std::shared_ptr<rpc::stream_transport::transport>> canopy_ipc_spsc_dll_init(
-        const std::string& name,
+        std::string name,
         std::shared_ptr<rpc::root_service> service,
         std::shared_ptr<streaming::stream> stream)
     {
         CO_RETURN CO_AWAIT create_acceptor<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
-            name,
+            std::move(name),
             std::move(service),
             std::move(stream),
             [](rpc::shared_ptr<comprehensive::v1::i_data_processor>,

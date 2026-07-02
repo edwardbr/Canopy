@@ -13,6 +13,7 @@ namespace text_tools::v1
 {
     namespace
     {
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses output refs.
         class text_tools_impl final : public rpc::base<text_tools_impl, i_text_tools>
         {
         public:
@@ -50,6 +51,7 @@ namespace text_tools::v1
         private:
             std::weak_ptr<rpc::service> service_;
         };
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 
     rpc::shared_ptr<i_text_tools> make_text_tools()

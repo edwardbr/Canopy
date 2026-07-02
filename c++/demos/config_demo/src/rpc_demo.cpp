@@ -98,7 +98,7 @@ namespace config_demo::v1
         }
 
         CORO_TASK(demo_error)
-        run_calculator_calls(const rpc::shared_ptr<calc::i_calculator>& remote)
+        run_calculator_calls(rpc::shared_ptr<calc::i_calculator> remote)
         {
             if (!remote)
                 CO_RETURN demo_error::INVALID_RESULT;
@@ -155,6 +155,8 @@ namespace config_demo::v1
                 "config_demo_calculator", nullptr, nullptr, calc::make_calculator_factory());
         }
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // callers synchronously wait for these tasks before referenced settings/runtime/state objects leave scope.
         CORO_TASK(void)
         run_paired_server(
             const rpc::connection_factory::application_runtime& runtime,
@@ -387,6 +389,7 @@ namespace config_demo::v1
             CO_AWAIT shutdown_event->wait();
             CO_RETURN error_code;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
         [[nodiscard]] auto run_external_native(
             const rpc::connection_factory::application_runtime& runtime,

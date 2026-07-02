@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <mutex>
 
+#include <rpc/internal/error_codes.h>
+
 // types.h, error_codes.h, and serialiser.h are included by rpc.h
 
 namespace rpc
@@ -76,7 +78,7 @@ namespace rpc
 
     struct connect_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         rpc::remote_object output_descriptor;
 
         connect_result() = default;

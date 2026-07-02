@@ -38,7 +38,7 @@ namespace rpc::io_uring
         CORO_TASK(int) get_iouring_data(data& ring_data) override;
         CORO_TASK(int)
         notify_submitted(
-            const data& ring_data,
+            data ring_data,
             uint32_t sqe_count) override;
 
         CORO_TASK(descriptor_result)
@@ -67,16 +67,16 @@ namespace rpc::io_uring
         CORO_TASK(operation_result)
         bind_tcp_ipv4(
             uint32_t descriptor,
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port) override;
         CORO_TASK(operation_result)
         bind_tcp_ipv6(
             uint32_t descriptor,
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port) override;
         CORO_TASK(operation_result)
         listen(
@@ -89,16 +89,16 @@ namespace rpc::io_uring
             std::chrono::milliseconds timeout) override;
         CORO_TASK(descriptor_result)
         connect_tcp_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port,
             std::chrono::milliseconds timeout) override;
         CORO_TASK(descriptor_result)
         connect_tcp_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port,
             std::chrono::milliseconds timeout) override;
         CORO_TASK(operation_result) set_tcp_no_delay(uint32_t descriptor) override;

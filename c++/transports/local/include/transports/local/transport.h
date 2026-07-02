@@ -70,7 +70,7 @@ namespace rpc::local
 
         struct child_entry_point_result
         {
-            int error_code;
+            int error_code = rpc::error::NOT_INITIALISED;
             rpc::remote_object output_descriptor;
             std::shared_ptr<parent_transport> child;
 

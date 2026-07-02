@@ -19,13 +19,19 @@ namespace canopy::http_server
     class static_webpage_delivery
     {
     public:
-        using async_file_reader = std::function<CORO_TASK(int)(std::string, std::vector<uint8_t>&)>;
+        struct file_read_result
+        {
+            int error_code{rpc::error::OK()};
+            std::vector<uint8_t> data;
+        };
+
+        using async_file_reader = std::function<CORO_TASK(file_read_result)(std::string)>;
 
         static_webpage_delivery(
             std::string root_path,
             async_file_reader file_reader);
 
-        [[nodiscard]] auto handle(const request& request) const -> CORO_TASK(std::optional<response>);
+        [[nodiscard]] auto handle(request request) const -> CORO_TASK(std::optional<response>);
         static auto content_type_for_path(std::string_view path) -> std::string;
 
     private:

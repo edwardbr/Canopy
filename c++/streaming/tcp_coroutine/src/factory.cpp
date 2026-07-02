@@ -66,9 +66,9 @@ namespace rpc::tcp_coroutine
 
         CORO_TASK(int)
         listen_endpoint_port(
-            const std::shared_ptr<::streaming::coroutine::tcp::acceptor>& acceptor,
-            const ::rpc::tcp_coroutine_stream::endpoint& options,
-            const endpoint_address& address,
+            std::shared_ptr<::streaming::coroutine::tcp::acceptor> acceptor,
+            ::rpc::tcp_coroutine_stream::endpoint options,
+            endpoint_address address,
             uint16_t port,
             uint32_t backlog)
         {
@@ -117,7 +117,7 @@ namespace rpc::tcp_coroutine
 
     CORO_TASK(listen_result)
     listen_loopback(
-        const std::shared_ptr<::streaming::coroutine::tcp::acceptor>& acceptor,
+        std::shared_ptr<::streaming::coroutine::tcp::acceptor> acceptor,
         loopback_listen_options listen_options)
     {
         if (listen_options.port != 0)
@@ -151,9 +151,9 @@ namespace rpc::tcp_coroutine
 
     CORO_TASK(rpc::stream_transport::stream_result)
     connect_resolved_endpoint(
-        const canopy::dns_resolver::endpoint& endpoint,
-        const std::shared_ptr<rpc::io_uring::controller>& controller,
-        const tcp_coroutine_runtime_options& runtime_options,
+        canopy::dns_resolver::endpoint endpoint,
+        std::shared_ptr<rpc::io_uring::controller> controller,
+        tcp_coroutine_runtime_options runtime_options,
         rpc::executor_ptr scheduler)
     {
         ::streaming::coroutine::tcp::stream_result result;
@@ -178,8 +178,8 @@ namespace rpc::tcp_coroutine
 
     CORO_TASK(listen_result)
     listen_endpoint(
-        const std::shared_ptr<::streaming::coroutine::tcp::acceptor>& acceptor,
-        const ::rpc::tcp_coroutine_stream::endpoint& options,
+        std::shared_ptr<::streaming::coroutine::tcp::acceptor> acceptor,
+        ::rpc::tcp_coroutine_stream::endpoint options,
         uint32_t backlog)
     {
         const auto address = parse_endpoint_address(options);
@@ -239,8 +239,8 @@ namespace rpc::tcp_coroutine
 
     CORO_TASK(acceptor_result)
     listen_acceptor(
-        const ::rpc::tcp_coroutine_stream::endpoint& options,
-        const rpc::stream_transport::connection_settings& factory_settings,
+        ::rpc::tcp_coroutine_stream::endpoint options,
+        rpc::stream_transport::connection_settings factory_settings,
         std::shared_ptr<rpc::service> service)
     {
         auto runtime_options = make_tcp_coroutine_runtime_options(options, factory_settings);
@@ -294,7 +294,7 @@ namespace rpc::tcp_coroutine
 
     CORO_TASK(rpc::stream_transport::stream_result)
     connect_stream(
-        const ::rpc::tcp_coroutine_stream::endpoint& options,
+        ::rpc::tcp_coroutine_stream::endpoint options,
         std::shared_ptr<rpc::service> service)
     {
         const auto validation_error = validate_connect_endpoint(options);
@@ -354,8 +354,8 @@ namespace rpc::tcp_coroutine
     CORO_TASK(rpc::stream_transport::stream_accept_result)
     accept_stream(
         rpc::stream_transport::stream_callback callback,
-        const ::rpc::tcp_coroutine_stream::endpoint& options,
-        const rpc::stream_transport::connection_settings& factory_settings,
+        ::rpc::tcp_coroutine_stream::endpoint options,
+        rpc::stream_transport::connection_settings factory_settings,
         std::shared_ptr<rpc::service> service)
     {
         auto rpc_settings = factory_settings;

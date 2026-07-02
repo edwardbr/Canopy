@@ -19,7 +19,9 @@ function(canopy_enable_clang_tidy_for_project_targets)
     if(NOT CLANG_TIDY_COMMAND)
       message(FATAL_ERROR "CANOPY_ENABLE_CLANG_TIDY is ON but CLANG_TIDY_COMMAND is not configured")
     endif()
-    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}" PARENT_SCOPE)
+    set(CMAKE_CXX_CLANG_TIDY
+        "${CLANG_TIDY_COMMAND}"
+        PARENT_SCOPE)
   endif()
 endfunction()
 

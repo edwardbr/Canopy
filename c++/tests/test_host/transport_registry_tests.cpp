@@ -721,13 +721,13 @@ TEST(
     EXPECT_EQ(release.options, rpc::release_options::normal);
 
     rpc::standard_result standard;
-    EXPECT_EQ(standard.error_code, rpc::error::TRANSPORT_ERROR());
+    EXPECT_EQ(standard.error_code, rpc::error::NOT_INITIALISED);
 
     rpc::send_result send_result;
-    EXPECT_EQ(send_result.error_code, rpc::error::TRANSPORT_ERROR());
+    EXPECT_EQ(send_result.error_code, rpc::error::NOT_INITIALISED);
 
     rpc::get_schema_result schema_result;
-    EXPECT_EQ(schema_result.error_code, rpc::error::TRANSPORT_ERROR());
+    EXPECT_EQ(schema_result.error_code, rpc::error::NOT_INITIALISED);
     auto plain_schema_response = schema_result.response_if_plain();
     ASSERT_NE(plain_schema_response, nullptr);
     EXPECT_EQ(plain_schema_response->encoding_type, rpc::encoding::not_set);

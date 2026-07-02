@@ -225,6 +225,8 @@ namespace stream_bench
         const std::vector<standard_result_row>& send_reply_rows,
         const std::vector<stress_result_row>& stress_rows);
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+    // benchmark coroutine callers join before these required context objects leave scope.
     CORO_TASK(bench_stats)
     run_unidirectional_sender(
         std::shared_ptr<streaming::stream> stream,
@@ -235,7 +237,7 @@ namespace stream_bench
     CORO_TASK(void)
     run_drain(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         watchdog& wd);
     CORO_TASK(bench_stats)
     run_send_reply(
@@ -247,7 +249,7 @@ namespace stream_bench
     CORO_TASK(void)
     run_echo(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         watchdog& wd);
     CORO_TASK(stress_stats)
     run_stress_sender(
@@ -259,9 +261,10 @@ namespace stream_bench
     CORO_TASK(stress_stats)
     run_stress_drain(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd);
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     void run_stream_unidirectional_bench(
         std::shared_ptr<streaming::stream> side_a,

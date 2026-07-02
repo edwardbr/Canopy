@@ -55,8 +55,8 @@ namespace rpc::untrusted_web
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
             std::function<CORO_TASK(rpc::service_connect_result<Local>)(
-                const rpc::shared_ptr<Remote>&,
-                const std::shared_ptr<rpc::service>&)> factory,
+                rpc::shared_ptr<Remote>,
+                std::shared_ptr<rpc::service>)> factory,
             rpc::untrusted_web::transport_settings settings = {})
         {
             CO_RETURN CO_AWAIT create(
@@ -69,7 +69,7 @@ namespace rpc::untrusted_web
         static CORO_TASK(std::shared_ptr<transport>) create(
             std::shared_ptr<rpc::service> service,
             std::shared_ptr<streaming::stream> stream,
-            connection_handler&& handler,
+            connection_handler handler,
             rpc::untrusted_web::transport_settings settings = {});
 
         transport(

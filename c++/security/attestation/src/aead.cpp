@@ -175,11 +175,10 @@ namespace canopy::security::attestation
         if (produced > plaintext.size())
             return std::nullopt;
 
+        std::array<uint8_t, aead_aes_256_gcm_tag_size> expected_tag{};
+        std::copy(authentication_tag.begin(), authentication_tag.end(), expected_tag.begin());
         if (!openssl_ok(EVP_CIPHER_CTX_ctrl(
-                ctx.get(),
-                EVP_CTRL_GCM_SET_TAG,
-                static_cast<int>(authentication_tag.size()),
-                const_cast<uint8_t*>(authentication_tag.data()))))
+                ctx.get(), EVP_CTRL_GCM_SET_TAG, static_cast<int>(expected_tag.size()), expected_tag.data())))
         {
             return std::nullopt;
         }

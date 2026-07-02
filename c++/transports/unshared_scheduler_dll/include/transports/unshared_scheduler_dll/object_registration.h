@@ -25,6 +25,44 @@ namespace rpc
         bool object_registered{false};
     };
 
+    template<class Remote, class Local> class unshared_scheduler_object_initializer
+    {
+    public:
+        unshared_scheduler_object_initializer(
+            void* transport_ctx,
+            const rpc::connection_settings* settings,
+            std::string name,
+            std::shared_ptr<json::v1::object> module_global_settings,
+            std::shared_ptr<rpc::module::startup_applications> startup_applications,
+            rpc::module::object_factory<
+                Remote,
+                Local> typed_factory)
+            : transport_ctx_(transport_ctx)
+            , settings_(settings)
+            , name_(std::move(name))
+            , module_global_settings_(std::move(module_global_settings))
+            , startup_applications_(std::move(startup_applications))
+            , typed_factory_(std::move(typed_factory))
+        {
+        }
+
+        CORO_TASK(rpc::connect_result) operator()()
+        {
+            auto wrapped_factory = rpc::module::make_child_service_factory<Remote, Local>(
+                name_, module_global_settings_.get(), typed_factory_, startup_applications_.get());
+            CO_RETURN CO_AWAIT rpc::unshared_scheduler_dll::init_child_zone<Remote, Local>(
+                transport_ctx_, settings_, std::move(wrapped_factory));
+        }
+
+    private:
+        void* transport_ctx_{};
+        const rpc::connection_settings* settings_{};
+        std::string name_;
+        std::shared_ptr<json::v1::object> module_global_settings_;
+        std::shared_ptr<rpc::module::startup_applications> startup_applications_;
+        rpc::module::object_factory<Remote, Local> typed_factory_;
+    };
+
     template<
         class Remote,
         class Local,
@@ -32,7 +70,7 @@ namespace rpc
     CORO_TASK(int)
     register_object(
         object_module_init_params* module_params,
-        Factory&& factory)
+        Factory factory)
     {
         if (!module_params || !module_params->settings)
             CO_RETURN rpc::error::INVALID_DATA();
@@ -75,20 +113,14 @@ namespace rpc
             }
         }
 
-        auto typed_factory = rpc::module::make_object_factory<Remote, Local>(std::forward<Factory>(factory));
+        auto typed_factory = rpc::module::make_object_factory<Remote, Local>(std::move(factory));
         module_params->init_selected_object
-            = [transport_ctx = module_params->transport_ctx,
-                  settings = module_params->settings,
-                  name = std::move(name),
-                  module_global_settings = std::move(module_global_settings),
-                  startup_applications = std::move(startup_applications),
-                  typed_factory = std::move(typed_factory)]() mutable -> CORO_TASK(rpc::connect_result)
-        {
-            auto wrapped_factory = rpc::module::make_child_service_factory<Remote, Local>(
-                name, module_global_settings.get(), typed_factory, startup_applications.get());
-            CO_RETURN CO_AWAIT rpc::unshared_scheduler_dll::init_child_zone<Remote, Local>(
-                transport_ctx, settings, std::move(wrapped_factory));
-        };
+            = unshared_scheduler_object_initializer<Remote, Local>{module_params->transport_ctx,
+                module_params->settings,
+                std::move(name),
+                std::move(module_global_settings),
+                std::move(startup_applications),
+                std::move(typed_factory)};
         CO_RETURN rpc::error::OK();
     }
 }

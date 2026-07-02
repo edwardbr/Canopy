@@ -87,6 +87,38 @@ namespace canopy::http_server
         {
             return path == "/favicon.ico" || path == "/.well-known/appspecific/com.chrome.devtools.json";
         }
+
+        struct file_system_reader
+        {
+            static_webpage_handler_config::file_system_manager file_system;
+
+            auto operator()(std::string file_path) const -> CORO_TASK(static_webpage_delivery::file_read_result)
+            {
+                if (!file_system)
+                    CO_RETURN static_webpage_delivery::file_read_result{rpc::error::INVALID_DATA(), {}};
+
+                std::vector<uint8_t> data;
+                auto error = CO_AWAIT file_system->read_file(std::move(file_path), data);
+                CO_RETURN static_webpage_delivery::file_read_result{error, std::move(data)};
+            }
+        };
+
+        struct static_webpage_handler
+        {
+            std::shared_ptr<static_webpage_delivery> webpage_delivery;
+            static_webpage_handler_config config;
+
+            auto operator()(request request) const -> CORO_TASK(std::optional<response>)
+            {
+                auto output = CO_AWAIT webpage_delivery->handle(request);
+                if (output && config.disable_cache_for_request && config.disable_cache_for_request(request))
+                {
+                    for (const auto& [name, value] : config.disabled_cache_headers)
+                        output->headers[name] = value;
+                }
+                CO_RETURN output;
+            }
+        };
     } // namespace
 
     static_webpage_delivery::static_webpage_delivery(
@@ -97,7 +129,7 @@ namespace canopy::http_server
     {
     }
 
-    auto static_webpage_delivery::handle(const request& request) const -> CORO_TASK(std::optional<response>)
+    auto static_webpage_delivery::handle(request request) const -> CORO_TASK(std::optional<response>)
     {
         if (!file_reader_)
         {
@@ -115,9 +147,8 @@ namespace canopy::http_server
             CO_RETURN std::optional<response>{make_text_response(403, "Forbidden")};
         }
 
-        std::vector<uint8_t> data;
-        const auto read_error = CO_AWAIT file_reader_(*candidate, data);
-        if (read_error != rpc::error::OK())
+        auto read = CO_AWAIT file_reader_(*candidate);
+        if (read.error_code != rpc::error::OK())
         {
             const auto path = canopy::http_utils::request_path(request.url, "");
             if (is_optional_browser_probe(path))
@@ -126,8 +157,8 @@ namespace canopy::http_server
                     "optional browser static request not found url={} file={} error={} ({}) - returning 404",
                     path,
                     *candidate,
-                    read_error,
-                    rpc::error::to_string(read_error));
+                    read.error_code,
+                    rpc::error::to_string(read.error_code));
             }
             else
             {
@@ -135,8 +166,8 @@ namespace canopy::http_server
                     "failed to read static file url={} file={} error={} ({}) - returning 404",
                     path,
                     *candidate,
-                    read_error,
-                    rpc::error::to_string(read_error));
+                    read.error_code,
+                    rpc::error::to_string(read.error_code));
             }
             CO_RETURN std::optional<response>{make_text_response(404, "Not Found")};
         }
@@ -145,9 +176,9 @@ namespace canopy::http_server
         output.status_code = 200;
         output.status_text = status_text(200);
         output.headers["Content-Type"] = content_type_for_path(*candidate);
-        if (!data.empty())
+        if (!read.data.empty())
         {
-            output.body.assign(reinterpret_cast<const char*>(data.data()), data.size());
+            output.body.assign(reinterpret_cast<const char*>(read.data.data()), read.data.size());
         }
         CO_RETURN std::optional<response>{std::move(output)};
     }
@@ -197,24 +228,7 @@ namespace canopy::http_server
     {
         auto file_system = std::move(config.file_system);
         auto webpage_delivery = std::make_shared<static_webpage_delivery>(
-            std::move(config.root_path),
-            [file_system = std::move(file_system)](std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
-            {
-                if (!file_system)
-                {
-                    CO_RETURN rpc::error::INVALID_DATA();
-                }
-                CO_RETURN CO_AWAIT file_system->read_file(std::move(file_path), data);
-            });
-        return [webpage_delivery, config = std::move(config)](const request& request) -> CORO_TASK(std::optional<response>)
-        {
-            auto output = CO_AWAIT webpage_delivery->handle(request);
-            if (output && config.disable_cache_for_request && config.disable_cache_for_request(request))
-            {
-                for (const auto& [name, value] : config.disabled_cache_headers)
-                    output->headers[name] = value;
-            }
-            CO_RETURN output;
-        };
+            std::move(config.root_path), file_system_reader{std::move(file_system)});
+        return static_webpage_handler{std::move(webpage_delivery), std::move(config)};
     }
 } // namespace canopy::http_server

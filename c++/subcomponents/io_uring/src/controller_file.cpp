@@ -143,9 +143,9 @@ namespace rpc::io_uring
 
             struct context
             {
-                uint32_t descriptor;
+                uint32_t descriptor{};
                 rpc::mutable_byte_span buffer;
-                uint64_t offset;
+                uint64_t offset{};
             } operation_context{descriptor, transfer_buffer, offset};
 
             auto result = CO_AWAIT submit_operation(
@@ -241,9 +241,9 @@ namespace rpc::io_uring
 
             struct context
             {
-                uint32_t descriptor;
+                uint32_t descriptor{};
                 rpc::byte_span buffer;
-                uint64_t offset;
+                uint64_t offset{};
             } operation_context{descriptor, transfer_buffer, offset};
 
             auto result = CO_AWAIT submit_operation(

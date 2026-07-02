@@ -312,7 +312,7 @@ namespace streaming::http_client
     CORO_TASK(result)
     send_request(
         std::shared_ptr<::streaming::stream> stream,
-        const request& input,
+        request input,
         std::chrono::milliseconds receive_timeout,
         size_t max_response_bytes)
     {

@@ -56,8 +56,8 @@ namespace canopy::network_config
         // not loopback (::1), not link-local (fe80::/10).
         bool ipv6_is_global(const uint8_t* addr16)
         {
-            static const uint8_t loopback[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-            if (std::memcmp(addr16, loopback, 16) == 0)
+            static constexpr std::array<uint8_t, 16> loopback = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            if (std::memcmp(addr16, loopback.data(), loopback.size()) == 0)
                 return false;
             if (addr16[0] == 0xFE && (addr16[1] & 0xC0) == 0x80)
                 return false; // link-local fe80::/10
@@ -327,7 +327,7 @@ namespace canopy::network_config
         addr = {};
         if (family == ip_address_family::ipv4)
         {
-            struct in_addr a4;
+            struct in_addr a4{};
             if (inet_pton(AF_INET, str.c_str(), &a4) == 1)
             {
                 uint32_t h = ntohl(a4.s_addr);
@@ -337,7 +337,7 @@ namespace canopy::network_config
         }
         else
         {
-            struct in6_addr a6;
+            struct in6_addr a6{};
             if (inet_pton(AF_INET6, str.c_str(), &a6) == 1)
             {
                 std::memcpy(addr.data(), a6.s6_addr, 16);

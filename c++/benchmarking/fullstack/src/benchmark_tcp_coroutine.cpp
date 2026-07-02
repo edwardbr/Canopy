@@ -45,6 +45,8 @@ namespace comprehensive::v1
             return options;
         }
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // these benchmark tasks are joined before the caller-owned result leaves scope.
         CORO_TASK(void)
         wait_for_transport_disconnect(
             std::shared_ptr<coro::scheduler> scheduler,
@@ -71,7 +73,7 @@ namespace comprehensive::v1
             std::shared_ptr<rpc::io_uring::controller> controller,
             rpc::io_uring::wait_strategy measured_wait_strategy,
             rpc::event& server_ready,
-            const rpc::event& client_finished,
+            rpc::event& client_finished,
             rpc::encoding enc,
             uint16_t port)
         {
@@ -103,8 +105,8 @@ namespace comprehensive::v1
             auto server_transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>(
                 "tcp_coroutine_server_transport",
                 rpc::stream_transport::transport_factory(std::move(*maybe_stream)),
-                [](const rpc::shared_ptr<i_data_processor>&,
-                    const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
+                [](rpc::shared_ptr<i_data_processor>,
+                    std::shared_ptr<rpc::service>) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
                 {
                     auto local_service = make_benchmark_data_processor();
                     CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local_service)};
@@ -125,7 +127,7 @@ namespace comprehensive::v1
             std::shared_ptr<coro::scheduler> scheduler,
             std::shared_ptr<rpc::io_uring::controller> controller,
             rpc::io_uring::wait_strategy measured_wait_strategy,
-            const rpc::event& server_ready,
+            rpc::event& server_ready,
             rpc::event& client_finished,
             rpc::encoding enc,
             size_t blob_size,
@@ -188,6 +190,7 @@ namespace comprehensive::v1
             client_service.reset();
             CO_AWAIT shutdown_event->wait();
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 
     benchmark_result run_tcp_coroutine_benchmark(

@@ -32,20 +32,20 @@ namespace streaming::openssl_tls
     // Drain the OpenSSL error queue and emit each entry via telemetry.
     static auto log_ssl_errors(bool peer_certificate_alerts_are_warnings = false) -> bool
     {
-        char buf[256];
+        std::array<char, 256> buf{};
         bool saw_peer_certificate_alert = false;
         unsigned long err = 0;
         while ((err = ERR_get_error()) != 0)
         {
-            ERR_error_string_n(err, buf, sizeof(buf));
+            ERR_error_string_n(err, buf.data(), buf.size());
             if (peer_certificate_alerts_are_warnings && is_peer_certificate_alert(err))
             {
                 saw_peer_certificate_alert = true;
-                RPC_WARNING("OpenSSL peer certificate alert: {}", buf);
+                RPC_WARNING("OpenSSL peer certificate alert: {}", buf.data());
             }
             else
             {
-                RPC_ERROR("OpenSSL: {}", buf);
+                RPC_ERROR("OpenSSL: {}", buf.data());
             }
         }
         return saw_peer_certificate_alert;
@@ -371,8 +371,8 @@ namespace streaming::openssl_tls
         const std::string& cert_file,
         const std::string& key_file,
         server_context_options options)
+        : ctx_(create_server_context())
     {
-        ctx_ = create_server_context();
         if (!ctx_)
             return;
 
@@ -389,8 +389,8 @@ namespace streaming::openssl_tls
     context::context(
         const pem_credentials& credentials,
         server_context_options options)
+        : ctx_(create_server_context())
     {
-        ctx_ = create_server_context();
         if (!ctx_)
             return;
 
@@ -423,10 +423,10 @@ namespace streaming::openssl_tls
     }
 
     client_context::client_context(client_context_options options)
-        : verify_peer_(options.verify_peer)
+        : ctx_(SSL_CTX_new(TLS_client_method()))
+        , verify_peer_(options.verify_peer)
         , server_name_(std::move(options.server_name))
     {
-        ctx_ = SSL_CTX_new(TLS_client_method());
         if (!ctx_)
         {
             RPC_ERROR("Failed to create TLS client context");
@@ -569,7 +569,7 @@ namespace streaming::openssl_tls
 
     auto stream::feed_rbio(std::chrono::milliseconds timeout) -> CORO_TASK(rpc::io_status)
     {
-        std::array<char, 4096> buf;
+        std::array<char, 4096> buf{};
         auto [status, span] = CO_AWAIT underlying_->receive(rpc::mutable_byte_span{buf.data(), buf.size()}, timeout);
         if (status.is_ok() && span.empty())
             CO_RETURN rpc::io_status{FLD(type) rpc::io_status::kind::timeout};
@@ -591,7 +591,7 @@ namespace streaming::openssl_tls
 
     auto stream::drain_wbio() -> CORO_TASK(bool)
     {
-        std::array<char, 4096> buf;
+        std::array<char, 4096> buf{};
         while (true)
         {
             int len = 0;

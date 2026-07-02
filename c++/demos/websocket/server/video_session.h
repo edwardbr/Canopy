@@ -161,7 +161,7 @@ namespace websocket_demo
                 uint64_t seq,
                 uint64_t pts_us,
                 uint32_t flags,
-                const std::vector<uint8_t>& payload);
+                std::vector<uint8_t> payload);
         };
     }
 }

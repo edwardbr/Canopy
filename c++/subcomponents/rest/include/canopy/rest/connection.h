@@ -37,8 +37,7 @@ namespace canopy::rest
         std::shared_ptr<streaming::stream> stream;
     };
 
-    using stream_connector
-        = std::function<CORO_TASK(stream_result)(const connection_settings&, std::shared_ptr<rpc::service>)>;
+    using stream_connector = std::function<CORO_TASK(stream_result)(connection_settings, std::shared_ptr<rpc::service>)>;
 
     struct authority
     {
@@ -90,6 +89,6 @@ namespace canopy::rest
 
     CORO_TASK(stream_result)
     connect_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {});
 } // namespace canopy::rest

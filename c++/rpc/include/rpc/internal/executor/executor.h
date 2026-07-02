@@ -139,15 +139,16 @@ namespace rpc
             return operation.executor && !operation.executor->is_shutdown();
         }
 
-        template<class Operation>
+#ifdef CANOPY_BUILD_COROUTINE
+        template<class Callable>
         CORO_TASK(void)
         run_operation(
-            Operation& operation,
-            const std::shared_ptr<executor_when_all_state>& state)
+            Callable callable,
+            std::shared_ptr<executor_when_all_state> state)
         {
             try
             {
-                CO_AWAIT operation.callable();
+                CO_AWAIT callable();
             }
             catch (...)
             {
@@ -156,6 +157,23 @@ namespace rpc
             state->complete_one();
             CO_RETURN;
         }
+#else
+        template<class Callable>
+        void run_operation(
+            Callable& callable,
+            const std::shared_ptr<executor_when_all_state>& state)
+        {
+            try
+            {
+                callable();
+            }
+            catch (...)
+            {
+                state->fail();
+            }
+            state->complete_one();
+        }
+#endif
 
         template<class Operation>
         void schedule_operation(
@@ -163,9 +181,9 @@ namespace rpc
             const std::shared_ptr<executor_when_all_state>& state)
         {
 #ifdef CANOPY_BUILD_COROUTINE
-            auto submitted = operation.executor->spawn_detached(run_operation(operation, state));
+            auto submitted = operation.executor->spawn_detached(run_operation(std::move(operation.callable), state));
 #else
-            auto submitted = operation.executor->post([&operation, state] { run_operation(operation, state); });
+            auto submitted = operation.executor->post([&operation, state] { run_operation(operation.callable, state); });
 #endif
             if (!submitted)
             {
@@ -175,6 +193,8 @@ namespace rpc
         }
     }
 
+    // NOLINTBEGIN(cppcoreguidelines-rvalue-reference-param-not-moved): matches libcoro sync_wait(rvalue awaitable)
+    // ownership; scheduled operations borrow until this blocking wait completes.
     template<class... Operations> bool sync_wait(executor_when_all<Operations...>&& work)
     {
         constexpr auto operation_count = sizeof...(Operations);
@@ -188,6 +208,7 @@ namespace rpc
         SYNC_WAIT(state->done.wait());
         return state->ok.load(std::memory_order_acquire);
     }
+    // NOLINTEND(cppcoreguidelines-rvalue-reference-param-not-moved)
 
     inline void shutdown_executor(const executor_ptr& executor)
     {

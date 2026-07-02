@@ -205,6 +205,7 @@ namespace streaming::websocket
             zlib_deflater_guard guard{&zstream};
 
             std::vector<uint8_t> output;
+            std::array<uint8_t, zlib_io_chunk_size> input_chunk{};
             size_t input_offset = 0;
             bool finished = false;
 
@@ -212,8 +213,9 @@ namespace streaming::websocket
             {
                 if (zstream.avail_in == 0 && input_offset < input_size)
                 {
-                    const auto chunk = std::min<size_t>(input_size - input_offset, std::numeric_limits<uInt>::max());
-                    zstream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(input + input_offset));
+                    const auto chunk = std::min(input_size - input_offset, input_chunk.size());
+                    std::copy_n(input + input_offset, chunk, input_chunk.data());
+                    zstream.next_in = input_chunk.data();
                     zstream.avail_in = static_cast<uInt>(chunk);
                     input_offset += chunk;
                 }
@@ -371,7 +373,6 @@ namespace streaming::websocket
         ::rpc::websocket_stream::stream_settings settings,
         ::rpc::websocket_stream::endpoint_role default_role)
         : underlying_(std::move(underlying))
-        , wslay_ctx_(nullptr)
         , settings_(std::move(settings))
         , role_(concrete_role(
               settings_,
@@ -383,8 +384,7 @@ namespace streaming::websocket
         if (settings_.keep_alive.enabled && keep_alive_interval(settings_) > std::chrono::milliseconds{0})
             next_ping_time_ = std::chrono::steady_clock::now() + keep_alive_interval(settings_);
 
-        wslay_event_callbacks callbacks;
-        std::memset(&callbacks, 0, sizeof(callbacks));
+        wslay_event_callbacks callbacks{};
         callbacks.recv_callback = recv_callback;
         callbacks.send_callback = send_callback;
         callbacks.genmask_callback = genmask_callback;

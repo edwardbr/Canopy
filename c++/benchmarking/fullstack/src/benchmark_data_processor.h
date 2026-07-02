@@ -8,6 +8,7 @@
 
 namespace comprehensive::v1
 {
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): IDL output parameters are reference based.
     class benchmark_data_processor_impl : public rpc::base<benchmark_data_processor_impl, i_data_processor>
     {
     public:
@@ -55,6 +56,7 @@ namespace comprehensive::v1
             CO_RETURN rpc::error::OK();
         }
     };
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     inline rpc::shared_ptr<i_data_processor> make_benchmark_data_processor()
     {

@@ -11,6 +11,7 @@
 #include <queue>
 #include <type_traits>
 #include <unordered_map>
+#include <vector>
 #include <streaming/stream_transport.h>
 #include <streaming/stream.h>
 
@@ -52,7 +53,7 @@ namespace rpc::stream_transport
         {
             struct result
             {
-                envelope_prefix prefix;
+                envelope_prefix prefix{};
                 envelope_payload payload;
                 int error_code = rpc::error::OK();
             };
@@ -74,7 +75,7 @@ namespace rpc::stream_transport
             rpc::event completion_{false};
             std::atomic<bool> done_{false};
 
-            envelope_prefix prefix;
+            envelope_prefix prefix{};
             envelope_payload payload;
             int error_code = rpc::error::OK();
             std::chrono::steady_clock::time_point start_time{};
@@ -170,6 +171,7 @@ namespace rpc::stream_transport
             std::shared_ptr<transport> transport,
             std::shared_ptr<rpc::service> svc);
         CORO_TASK(bool) flush_send_queue();
+        CORO_TASK(rpc::io_status) send_part(std::vector<uint8_t> data);
 
         // Stub handlers (called when receiving messages)
         CORO_TASK(void)
@@ -252,7 +254,7 @@ namespace rpc::stream_transport
             using payload_type = rpc::compat::remove_cvref_t<SendPayload>;
 
             envelope_payload payload_envelope = {FLD(payload_fingerprint) rpc::id<payload_type>::get(protocol_version),
-                FLD(payload) rpc::to_yas_binary(sendPayload)};
+                FLD(payload) rpc::to_yas_binary(std::forward<SendPayload>(sendPayload))};
             auto payload = rpc::to_yas_binary(payload_envelope);
 
             auto prefix = envelope_prefix{FLD(version) protocol_version,
@@ -376,7 +378,7 @@ namespace rpc::stream_transport
         cleanup(
             std::shared_ptr<transport> transport,
             std::shared_ptr<rpc::service> svc);
-        CORO_TASK(void) notify_disconnect_once(const std::shared_ptr<rpc::service>& svc);
+        CORO_TASK(void) notify_disconnect_once(std::shared_ptr<rpc::service> svc);
 
         CORO_TASK(void)
         handle_initial_stub_add_ref(
@@ -699,7 +701,7 @@ namespace rpc::stream_transport
         class Remote,
         class Local>
     std::function<CORO_TASK(void)(
-        const std::string&,
+        std::string,
         std::shared_ptr<rpc::service>,
         std::shared_ptr<streaming::stream>)>
     make_connection_callback(

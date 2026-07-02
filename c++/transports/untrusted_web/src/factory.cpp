@@ -13,7 +13,7 @@ namespace rpc::untrusted_web
     accept_transport(
         std::shared_ptr<streaming::stream> stream,
         transport::connection_handler handler,
-        const transport_settings& settings,
+        transport_settings settings,
         std::shared_ptr<rpc::service> service)
     {
         if (!stream || !handler)
@@ -24,7 +24,7 @@ namespace rpc::untrusted_web
         if (!resolved_service)
             CO_RETURN accept_result{rpc::error::INVALID_DATA(), {}, {}};
 
-        auto accepted = CO_AWAIT transport::create(resolved_service, stream, std::move(handler), settings);
+        auto accepted = CO_AWAIT transport::create(resolved_service, stream, std::move(handler), std::move(settings));
         if (!accepted)
             CO_RETURN accept_result{rpc::error::TRANSPORT_ERROR(), {}, {}};
 

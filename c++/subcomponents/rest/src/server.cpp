@@ -519,22 +519,6 @@ namespace canopy::rest
         inputs.emplace(std::string(name), item->second);
     }
 
-    CORO_TASK(rpc::send_result)
-    call_rpc_object(
-        const rpc::casting_interface& object,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        json::v1::map inputs)
-    {
-        rpc::send_params params{};
-        params.protocol_version = rpc::get_version();
-        params.encoding_type = rpc::encoding::yas_json;
-        params.interface_id = interface_id;
-        params.method_id = method_id;
-        params.in_data = make_rpc_input_buffer(std::move(inputs));
-        CO_RETURN CO_AWAIT rpc::casting_interface::call(object, std::move(params));
-    }
-
     server_response response_from_rpc_result(
         const rpc::send_result& result,
         std::string_view out_param)
@@ -668,7 +652,7 @@ namespace canopy::rest
     }
 
     CORO_TASK(std::optional<server_response>)
-    endpoint_registry::handle(const server_request& request) const
+    endpoint_registry::handle(server_request request) const
     {
         for (const auto& endpoint : endpoints_)
         {

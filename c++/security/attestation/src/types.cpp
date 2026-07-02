@@ -7,15 +7,17 @@
 
 #include <openssl/crypto.h>
 
+#include <array>
 #include <limits>
+#include <string_view>
 #include <utility>
 
 namespace canopy::security::attestation
 {
     namespace
     {
-        constexpr char session_id_prefix[] = "canopy-attestation-session:";
-        constexpr char session_id_format_version[] = "v2";
+        constexpr std::string_view session_id_prefix = "canopy-attestation-session:";
+        constexpr std::string_view session_id_format_version = "v2";
         constexpr size_t uint64_decimal_max_digits = std::numeric_limits<uint64_t>::digits10 + 1;
         constexpr size_t size_t_decimal_max_digits = std::numeric_limits<size_t>::digits10 + 1;
 
@@ -31,14 +33,15 @@ namespace canopy::security::attestation
             std::string& out,
             T value)
         {
-            char buffer[std::numeric_limits<T>::digits10 + 2];
-            auto* cursor = buffer + sizeof(buffer);
+            std::array<char, std::numeric_limits<T>::digits10 + 2> buffer{};
+            const auto* const end = buffer.data() + buffer.size();
+            auto* cursor = buffer.data() + buffer.size();
             do
             {
                 *--cursor = static_cast<char>('0' + (value % 10));
                 value /= 10;
             } while (value != 0);
-            out.append(cursor, buffer + sizeof(buffer));
+            out.append(cursor, static_cast<size_t>(end - cursor));
         }
     } // namespace
 
@@ -96,7 +99,7 @@ namespace canopy::security::attestation
 
         std::string out;
         out.reserve(
-            (sizeof(session_id_prefix) - 1) + (sizeof(session_id_format_version) - 1) + left.size() + right.size()
+            session_id_prefix.size() + session_id_format_version.size() + left.size() + right.size()
             + (size_t_decimal_max_digits * 2) + uint64_decimal_max_digits + 5);
         // The session id is a readable map key, but it is also fed back into
         // KDF context. Length framing prevents attacker-controlled identity

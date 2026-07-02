@@ -18,6 +18,28 @@ using namespace std::chrono_literals;
 
 namespace
 {
+    struct listener_callback_counter
+    {
+        std::atomic<int>* calls{nullptr};
+
+        auto operator()(
+            std::string,
+            std::shared_ptr<rpc::service>,
+            std::shared_ptr<streaming::stream>) const -> CORO_TASK(void)
+        {
+            calls->fetch_add(1, std::memory_order_relaxed);
+            co_return;
+        }
+    };
+
+    auto stop_listener_async(
+        std::shared_ptr<streaming::listener> listener,
+        std::shared_ptr<rpc::service> service) -> coro::task<void>
+    {
+        EXPECT_TRUE(CO_AWAIT listener->start_listening_async(service));
+        CO_AWAIT listener->stop_listening();
+    }
+
     std::shared_ptr<coro::scheduler> make_scheduler()
     {
         return std::shared_ptr<coro::scheduler>(coro::scheduler::make_unique(
@@ -211,21 +233,10 @@ TEST(
     auto acceptor = std::make_shared<late_accept_acceptor>(accepted_stream);
     std::atomic<int> callback_calls{0};
 
-    auto listener = std::make_shared<streaming::listener>(
-        "test-listener",
-        acceptor,
-        [&](const std::string&, std::shared_ptr<rpc::service>, std::shared_ptr<streaming::stream>) -> CORO_TASK(void)
-        {
-            callback_calls.fetch_add(1, std::memory_order_relaxed);
-            co_return;
-        });
+    auto listener
+        = std::make_shared<streaming::listener>("test-listener", acceptor, listener_callback_counter{&callback_calls});
 
-    coro::sync_wait(
-        [&]() -> coro::task<void>
-        {
-            EXPECT_TRUE(CO_AWAIT listener->start_listening_async(service));
-            CO_AWAIT listener->stop_listening();
-        }());
+    coro::sync_wait(stop_listener_async(listener, service));
 
     EXPECT_TRUE(acceptor->stopped());
     EXPECT_TRUE(accepted_stream->is_closed());

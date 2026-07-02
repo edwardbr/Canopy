@@ -51,7 +51,6 @@ namespace rpc::ipc_spsc
         struct state;
 
         std::shared_ptr<state> state_;
-        bool child_started_ = false;
 
         struct construction_bundle
         {
@@ -106,7 +105,7 @@ namespace rpc::ipc_spsc
     CORO_TASK(std::shared_ptr<rpc::stream_transport::transport>)
     make_peer_acceptor(
         std::string name,
-        const std::shared_ptr<rpc::service>& service,
+        std::shared_ptr<rpc::service> service,
         shared_memory_file_options options,
         std::function<CORO_TASK(rpc::service_connect_result<Local>)(
             rpc::shared_ptr<Remote>,

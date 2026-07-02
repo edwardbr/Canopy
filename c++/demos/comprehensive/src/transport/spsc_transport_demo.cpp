@@ -36,6 +36,23 @@ namespace comprehensive
         namespace calc = ::calculator::v1;
 
 #ifdef CANOPY_BUILD_COROUTINE
+        struct calculator_connect_callback
+        {
+            rpc::event& on_connected;
+
+            CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
+            operator()(
+                rpc::shared_ptr<calc::i_calculator>,
+                std::shared_ptr<rpc::service> svc) const
+            {
+                on_connected.set();
+                std::cout << "Process 2: Created calculator service\n";
+                CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
+            }
+        };
+
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // run_spsc_demo joins these tasks before the caller-owned events/flags leave scope.
         CORO_TASK(bool)
         process_1_task(
             bool& success,
@@ -71,7 +88,7 @@ namespace comprehensive
                 remote_calculator = connect_result.output_interface;
                 error = connect_result.error_code;
 
-                is_loaded = true;
+                is_loaded.store(true, std::memory_order_release);
 
                 service_1.reset();
             }
@@ -126,7 +143,7 @@ namespace comprehensive
             rpc::spsc_queue::queue_pair queues,
             std::atomic<bool>& is_loaded,
             rpc::event& server_ready,
-            const rpc::event& client_finished)
+            rpc::event& client_finished)
         {
             (void)zone_1;
             (void)is_loaded;
@@ -144,17 +161,7 @@ namespace comprehensive
             options.transport.call_timeout_sweep = uint64_t{1};
 
             auto accept_result = CO_AWAIT rpc::spsc_queue::accept_rpc<calc::i_calculator, calc::i_calculator>(
-                // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
-                [&](const rpc::shared_ptr<calc::i_calculator>&,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
-                {
-                    on_connected.set();
-                    std::cout << "Process 2: Created calculator service\n";
-                    CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
-                },
-                queues,
-                options,
-                service_2);
+                calculator_connect_callback{on_connected}, queues, options, service_2);
             if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
             {
                 std::cout << "Process 2: Accept failed: " << static_cast<int>(accept_result.error_code) << "\n";
@@ -185,6 +192,7 @@ namespace comprehensive
             co_await on_shutdown_event->wait();
             std::cout << "Process 2: Shutdown complete\n";
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
         bool run_spsc_demo()
         {

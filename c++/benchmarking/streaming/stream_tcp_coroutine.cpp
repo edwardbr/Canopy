@@ -42,6 +42,130 @@ namespace stream_bench
             return owner;
         }
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // run_tcp_coroutine_pair joins these tasks before server_ready leaves scope.
+        template<typename ServerFn>
+        coro::task<void> run_tcp_coroutine_server_side(
+            std::shared_ptr<streaming::coroutine::tcp::acceptor> acceptor,
+            rpc::event& server_ready,
+            ServerFn server_fn)
+        {
+            server_ready.set();
+            auto maybe_stream = co_await acceptor->accept();
+            if (!maybe_stream)
+                co_return;
+            co_await server_fn(*maybe_stream);
+            acceptor->stop();
+        }
+
+        template<typename ClientFn>
+        coro::task<void> run_tcp_coroutine_client_side(
+            rpc::event& server_ready,
+            std::shared_ptr<rpc::io_uring::controller> client_controller,
+            uint16_t port,
+            std::shared_ptr<coro::scheduler> client_scheduler,
+            ClientFn client_fn)
+        {
+            co_await server_ready.wait();
+            rpc::io_uring::connector connector(std::move(client_controller));
+            auto connect_result = co_await connector.connect_loopback_with_result(port);
+            auto stream_result = streaming::coroutine::tcp::make_stream_result(
+                connect_result, port, streaming::coroutine::tcp::default_stream_options(), std::move(client_scheduler));
+            if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
+                co_return;
+            co_await client_fn(std::move(stream_result.connection));
+        }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
+
+        struct drain_stream_action
+        {
+            std::atomic<bool>& stop;
+            watchdog& wd;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                CO_AWAIT run_drain(std::move(stream), stop, wd);
+                CO_RETURN;
+            }
+        };
+
+        struct echo_stream_action
+        {
+            std::atomic<bool>& stop;
+            watchdog& wd;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                CO_AWAIT run_echo(std::move(stream), stop, wd);
+                CO_RETURN;
+            }
+        };
+
+        struct unidirectional_sender_action
+        {
+            const std::vector<uint8_t>& payload;
+            std::atomic<bool>& stop;
+            const bench_config& cfg;
+            watchdog& wd;
+            bench_stats& output;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                output = CO_AWAIT run_unidirectional_sender(std::move(stream), payload, stop, cfg, wd);
+                CO_RETURN;
+            }
+        };
+
+        struct send_reply_action
+        {
+            const std::vector<uint8_t>& payload;
+            std::atomic<bool>& stop;
+            const bench_config& cfg;
+            watchdog& wd;
+            bench_stats& output;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                output = CO_AWAIT run_send_reply(std::move(stream), payload, stop, cfg, wd);
+                CO_RETURN;
+            }
+        };
+
+        struct stress_drain_action
+        {
+            std::atomic<bool>& stop;
+            const bench_config& cfg;
+            watchdog& wd;
+            stress_stats& output;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                output = CO_AWAIT run_stress_drain(std::move(stream), stop, cfg, wd);
+                CO_RETURN;
+            }
+        };
+
+        struct stress_sender_action
+        {
+            const std::vector<uint8_t>& payload;
+            std::atomic<bool>& stop;
+            const bench_config& cfg;
+            watchdog& wd;
+            stress_stats& output;
+
+            CORO_TASK(void)
+            operator()(std::shared_ptr<streaming::stream> stream) const
+            {
+                output = CO_AWAIT run_stress_sender(std::move(stream), payload, stop, cfg, wd);
+                CO_RETURN;
+            }
+        };
+
         void run_tcp_coroutine_pair(
             const std::shared_ptr<coro::scheduler>& server_scheduler,
             const std::shared_ptr<coro::scheduler>& client_scheduler,
@@ -60,26 +184,8 @@ namespace stream_bench
             rpc::event server_ready;
             coro::sync_wait(
                 coro::when_all(
-                    [&]() -> coro::task<void>
-                    {
-                        server_ready.set();
-                        auto maybe_stream = co_await acceptor->accept();
-                        if (!maybe_stream)
-                            co_return;
-                        co_await server_fn(*maybe_stream);
-                        acceptor->stop();
-                    }(),
-                    [&]() -> coro::task<void>
-                    {
-                        co_await server_ready.wait();
-                        rpc::io_uring::connector connector(client_controller);
-                        auto connect_result = co_await connector.connect_loopback_with_result(port);
-                        auto stream_result = streaming::coroutine::tcp::make_stream_result(
-                            connect_result, port, streaming::coroutine::tcp::default_stream_options(), client_scheduler);
-                        if (stream_result.error_code != rpc::error::OK() || !stream_result.connection)
-                            co_return;
-                        co_await client_fn(std::move(stream_result.connection));
-                    }()));
+                    run_tcp_coroutine_server_side(acceptor, server_ready, server_fn),
+                    run_tcp_coroutine_client_side(server_ready, client_controller, port, client_scheduler, client_fn)));
         }
 
         void run_standard_tcp_coroutine(
@@ -89,7 +195,7 @@ namespace stream_bench
             bench_stats& out_unidirectional,
             bench_stats& out_send_reply)
         {
-            const std::vector<uint8_t> payload(blob_size, 0xab);
+            std::vector<uint8_t> payload(blob_size, 0xab);
             auto server_scheduler = make_scheduler();
             auto client_scheduler = make_scheduler();
             auto server_owner = make_benchmark_tcp_coroutine_scheduler(server_scheduler);
@@ -111,10 +217,8 @@ namespace stream_bench
                     server_controller,
                     client_controller,
                     allocate_loopback_port(),
-                    [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                    { co_await run_drain(stream, stop, wd); },
-                    [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                    { out_unidirectional = co_await run_unidirectional_sender(stream, payload, stop, cfg, wd); });
+                    drain_stream_action{stop, wd},
+                    unidirectional_sender_action{payload, stop, cfg, wd, out_unidirectional});
             }
 
             if (cfg.run_send_reply)
@@ -126,10 +230,8 @@ namespace stream_bench
                     server_controller,
                     client_controller,
                     allocate_loopback_port(),
-                    [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                    { co_await run_echo(stream, stop, wd); },
-                    [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                    { out_send_reply = co_await run_send_reply(stream, payload, stop, cfg, wd); });
+                    echo_stream_action{stop, wd},
+                    send_reply_action{payload, stop, cfg, wd, out_send_reply});
             }
 
             server_owner->shutdown();
@@ -143,7 +245,7 @@ namespace stream_bench
             stress_stats& out_send,
             stress_stats& out_recv)
         {
-            const std::vector<uint8_t> payload(blob_size, 0xab);
+            std::vector<uint8_t> payload(blob_size, 0xab);
             auto server_scheduler = make_scheduler();
             auto client_scheduler = make_scheduler();
             auto server_owner = make_benchmark_tcp_coroutine_scheduler(server_scheduler);
@@ -163,10 +265,8 @@ namespace stream_bench
                 server_controller,
                 client_controller,
                 allocate_loopback_port(),
-                [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                { out_recv = co_await run_stress_drain(stream, stop, cfg, wd); },
-                [&](std::shared_ptr<streaming::stream> stream) -> coro::task<void>
-                { out_send = co_await run_stress_sender(std::move(stream), payload, stop, cfg, wd); });
+                stress_drain_action{stop, cfg, wd, out_recv},
+                stress_sender_action{payload, stop, cfg, wd, out_send});
 
             server_owner->shutdown();
             client_owner->shutdown();

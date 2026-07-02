@@ -6,6 +6,7 @@
 #include <llm_mcp/logic.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <memory>
 #include <random>
@@ -208,11 +209,12 @@ namespace llm_mcp
                 const llama_vocab* vocab,
                 llama_token token)
             {
-                char buffer[256];
-                const int length = llama_token_to_piece(vocab, token, buffer, sizeof(buffer), 0, true);
+                std::array<char, 256> buffer{};
+                const int length
+                    = llama_token_to_piece(vocab, token, buffer.data(), static_cast<int32_t>(buffer.size()), 0, true);
                 if (length <= 0)
                     return {};
-                return std::string(buffer, buffer + length);
+                return std::string(buffer.data(), buffer.data() + length);
             }
 
             [[nodiscard]] uint32_t worker_threads()
@@ -223,6 +225,7 @@ namespace llm_mcp
                 return std::min<uint32_t>(detected, 8);
             }
 
+            // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL interfaces and local output helpers use references.
             class llama_cpp_llm final : public rpc::base<llama_cpp_llm, i_llm>
             {
                 llm_options options_;
@@ -455,6 +458,7 @@ namespace llm_mcp
                     CO_RETURN rpc::error::OK();
                 }
             };
+            // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
         }
 
         rpc::shared_ptr<i_llm_factory> make_llama_cpp_llm_factory(std::string model_path)

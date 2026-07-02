@@ -675,6 +675,7 @@ namespace rpc::c_abi
             if (!address->blob.data || !address->blob.size)
                 return;
 
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): allocator owns buffers exposed through const ABI spans.
             allocator.free(allocator.allocator_ctx, const_cast<uint8_t*>(address->blob.data), address->blob.size);
             address->blob = {};
         }
@@ -689,8 +690,11 @@ namespace rpc::c_abi
                 {
                     auto& entry = back_channel->data[i];
                     if (entry.payload.data && entry.payload.size)
-                        allocator.free(
-                            allocator.allocator_ctx, const_cast<uint8_t*>(entry.payload.data), entry.payload.size);
+                    {
+                        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): allocator owns buffers exposed through const ABI spans.
+                        auto* payload_data = const_cast<uint8_t*>(entry.payload.data);
+                        allocator.free(allocator.allocator_ctx, payload_data, entry.payload.size);
+                    }
                 }
 
                 allocator.free(
@@ -947,6 +951,7 @@ namespace rpc::c_abi
         if (size == 0)
             return {};
 
+        // NOLINTNEXTLINE(cppcoreguidelines-no-malloc): C ABI allocator callback returns ownership to a foreign caller.
         auto* data = static_cast<uint8_t*>(std::malloc(size));
         if (!data)
             return {};
@@ -959,6 +964,7 @@ namespace rpc::c_abi
         uint8_t* data,
         size_t)
     {
+        // NOLINTNEXTLINE(cppcoreguidelines-no-malloc): C ABI allocator callback receives ownership from a foreign caller.
         std::free(data);
     }
 

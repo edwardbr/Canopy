@@ -44,6 +44,7 @@ namespace websocket_demo
 {
     namespace v1
     {
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses const input refs and output refs.
         class demo : public rpc::base<demo, v1::i_calculator>
         {
 #if CANOPY_WEBSOCKET_DEMO_HAS_LLM
@@ -244,6 +245,7 @@ namespace websocket_demo
                 CO_RETURN rpc::error::OK();
             }
         };
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #if CANOPY_WEBSOCKET_DEMO_HAS_LLM
         rpc::shared_ptr<v1::i_calculator> create_websocket_demo_instance(

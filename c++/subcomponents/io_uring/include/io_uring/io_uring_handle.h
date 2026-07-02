@@ -27,7 +27,7 @@ namespace rpc::io_uring
         // handle decides whether that means an SQPOLL wake, an io_uring_enter,
         // or no action for the current environment.
         virtual CORO_TASK(int) notify_submitted(
-            const data& ring_data,
+            data ring_data,
             uint32_t sqe_count) = 0;
 
         virtual CORO_TASK(descriptor_result) open_file(
@@ -78,9 +78,9 @@ namespace rpc::io_uring
 
         virtual CORO_TASK(operation_result) bind_tcp_ipv4(
             uint32_t,
-            const std::array<
+            std::array<
                 uint8_t,
-                4>&,
+                4>,
             uint16_t)
         {
             CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
@@ -88,9 +88,9 @@ namespace rpc::io_uring
 
         virtual CORO_TASK(operation_result) bind_tcp_ipv6(
             uint32_t,
-            const std::array<
+            std::array<
                 uint8_t,
-                16>&,
+                16>,
             uint16_t)
         {
             CO_RETURN operation_result{rpc::error::PROTOCOL_ERROR(), 0, 0};
@@ -116,9 +116,9 @@ namespace rpc::io_uring
         }
 
         virtual CORO_TASK(descriptor_result) connect_tcp_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>&,
+                4>,
             uint16_t,
             std::chrono::milliseconds)
         {
@@ -126,9 +126,9 @@ namespace rpc::io_uring
         }
 
         virtual CORO_TASK(descriptor_result) connect_tcp_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>&,
+                16>,
             uint16_t,
             std::chrono::milliseconds)
         {

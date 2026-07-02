@@ -22,9 +22,9 @@ namespace rpc::connection_factory::detail
             bool supports_accept_base() const override { return true; }
 
             auto connect_base(
-                const json::v1::object& settings,
+                json::v1::object settings,
                 std::shared_ptr<rpc::service> service,
-                const context&) const -> CORO_TASK(stream_result) override
+                context) const -> CORO_TASK(stream_result) override
             {
                 auto endpoint = materialise_settings<rpc::tcp_blocking_stream::endpoint>(settings);
                 if (endpoint.error_code != rpc::error::OK())
@@ -33,9 +33,9 @@ namespace rpc::connection_factory::detail
             }
 
             auto accept_base(
-                const json::v1::object& settings,
+                json::v1::object settings,
                 std::shared_ptr<rpc::service>,
-                const context&) const -> CORO_TASK(stream_acceptor_result) override
+                context) const -> CORO_TASK(stream_acceptor_result) override
             {
                 auto endpoint = materialise_settings<rpc::tcp_blocking_stream::endpoint>(settings);
                 if (endpoint.error_code != rpc::error::OK())

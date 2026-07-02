@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <rpc/internal/error_codes.h>
 #include <rpc/internal/executor/executor.h>
 
 #include <string>
@@ -80,7 +81,7 @@ namespace rpc
 
     struct remote_object_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         rpc::remote_object descriptor;
 
         remote_object_result() = default;
@@ -95,7 +96,7 @@ namespace rpc
 
     template<class T> struct service_connect_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         rpc::shared_ptr<T> output_interface;
 
         service_connect_result() = default;
@@ -298,7 +299,7 @@ namespace rpc
         bool spawn(coro::task<void>&& callable)
         {
             // Forwards the lambda (or any other callable) to the real scheduler
-            return executor_->spawn_detached(std::forward<coro::task<void>>(callable));
+            return executor_->spawn_detached(std::move(callable));
         }
         auto get_scheduler() const { return executor_; }
 #else
@@ -1218,6 +1219,7 @@ namespace rpc
         std::shared_ptr<rpc::object_stub> input_stub;
         bool stub_created = false;
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines): named lambda lives in this coroutine frame and is awaited before this function returns.
         auto release_input_stub_after_failed_connect = [&]() -> CORO_TASK(void)
         {
             if (!input_stub)
@@ -1239,6 +1241,7 @@ namespace rpc
             CO_RETURN;
         };
 
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines): named lambda lives in this coroutine frame and is awaited before this function returns.
         auto rollback_failed_connection = [&](rpc::service_proxy* service_proxy_to_remove) -> CORO_TASK(void)
         {
             CO_AWAIT release_input_stub_after_failed_connect();
@@ -1662,8 +1665,8 @@ namespace rpc
     {
         service* old_service_ = nullptr;
         current_service_tracker(service* current_service)
+            : old_service_(service::get_current_service())
         {
-            old_service_ = service::get_current_service();
             service::set_current_service(current_service);
         }
         ~current_service_tracker() { service::set_current_service(old_service_); }

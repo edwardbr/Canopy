@@ -37,8 +37,8 @@ namespace comprehensive::v1
         auto child_transport = std::make_shared<rpc::local::child_transport>("benchmark_child", root_service);
 
         child_transport->set_child_entry_point<i_data_processor, i_data_processor>(
-            [](const rpc::shared_ptr<i_data_processor>&,
-                const std::shared_ptr<rpc::child_service>&) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
+            [](rpc::shared_ptr<i_data_processor>,
+                std::shared_ptr<rpc::child_service>) -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
             {
                 CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), make_benchmark_data_processor()};
             });

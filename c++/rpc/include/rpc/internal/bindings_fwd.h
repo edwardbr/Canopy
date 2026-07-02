@@ -4,6 +4,11 @@
  */
 #pragma once
 
+#include <memory>
+#include <utility>
+
+#include <rpc/internal/error_codes.h>
+
 namespace rpc
 {
     class object_stub;
@@ -12,7 +17,7 @@ namespace rpc
 
     template<class Ptr> struct interface_bind_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         Ptr iface;
 
         interface_bind_result() = default;
@@ -27,7 +32,7 @@ namespace rpc
 
     struct remote_object_bind_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         std::shared_ptr<rpc::object_stub> stub;
         rpc::remote_object descriptor;
 

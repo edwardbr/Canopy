@@ -381,7 +381,7 @@ namespace rpc::stream_transport
     start_rpc_listener(
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
         ::streaming::listener::connection_callback on_connection,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<void> owner,
         uint16_t port,

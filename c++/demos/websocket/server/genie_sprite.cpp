@@ -4,6 +4,7 @@
 #include "genie_sprite.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -126,9 +127,9 @@ namespace websocket_demo
                     // tallest, outer ones lowest, so the silhouette reads as a
                     // crown. Base edges tile [16,184] into five segments.
                     const int base_y = 78;
-                    const int ex[6] = {16, 50, 84, 116, 150, 184};
-                    const int apex_x[5] = {33, 67, 100, 133, 167};
-                    const int apex_y[5] = {44, 26, 8, 26, 44};
+                    const std::array<int, 6> ex{16, 50, 84, 116, 150, 184};
+                    const std::array<int, 5> apex_x{33, 67, 100, 133, 167};
+                    const std::array<int, 5> apex_y{44, 26, 8, 26, 44};
                     for (int i = 0; i < 5; ++i)
                         fill_triangle(buf, ex[i], base_y, ex[i + 1], base_y, apex_x[i], apex_y[i], gold);
 
@@ -138,7 +139,7 @@ namespace websocket_demo
                     fill_rect(buf, 16, 112, 184, 122, gold_dark);
 
                     // Jewel ball at each point's tip.
-                    const rgba tip[5] = {sapphire, emerald, ruby, emerald, sapphire};
+                    const std::array<rgba, 5> tip{sapphire, emerald, ruby, emerald, sapphire};
                     for (int i = 0; i < 5; ++i)
                         fill_ellipse(buf, apex_x[i], apex_y[i] + 4, 7, 7, tip[i]);
 

@@ -94,7 +94,7 @@ namespace rpc::untrusted_web
     transport::create(
         std::shared_ptr<rpc::service> service,
         std::shared_ptr<streaming::stream> stream,
-        connection_handler&& handler,
+        connection_handler handler,
         rpc::untrusted_web::transport_settings settings)
     {
         // generate a zone id for the client

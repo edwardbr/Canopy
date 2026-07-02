@@ -277,6 +277,27 @@ namespace
         return make_untrusted_web_request_message(destination, websocket_protocol::v1::message_type::send, true);
     }
 
+    class untrusted_web_example_factory
+    {
+    public:
+        explicit untrusted_web_example_factory(std::shared_ptr<std::atomic_bool> handler_called)
+            : handler_called_(std::move(handler_called))
+        {
+        }
+
+        auto operator()(
+            rpc::shared_ptr<yyy::i_host> remote_host,
+            std::shared_ptr<rpc::service> service) const -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
+        {
+            handler_called_->store(true, std::memory_order_release);
+            auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service, remote_host));
+            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
+        }
+
+    private:
+        std::shared_ptr<std::atomic_bool> handler_called_;
+    };
+
     auto parse_handshake_complete_destination(const std::vector<std::vector<uint8_t>>& sent)
         -> std::optional<rpc::zone_address_args>
     {
@@ -348,17 +369,106 @@ namespace
 
     auto make_untrusted_web_example_factory(std::shared_ptr<std::atomic_bool> handler_called)
     {
-        return [handler_called](
-                   const rpc::shared_ptr<yyy::i_host>& remote_host,
-                   const std::shared_ptr<rpc::service>& service) -> CORO_TASK(rpc::service_connect_result<yyy::i_example>)
-        {
-            handler_called->store(true, std::memory_order_release);
-            auto example = rpc::shared_ptr<yyy::i_example>(new marshalled_tests::example(service, remote_host));
-            CO_RETURN rpc::service_connect_result<yyy::i_example>{rpc::error::OK(), std::move(example)};
-        };
+        return untrusted_web_example_factory{std::move(handler_called)};
     }
 
 #    ifdef CANOPY_BUILD_HTTP_SERVER
+    class websocket_upgrade_recorder
+    {
+    public:
+        explicit websocket_upgrade_recorder(std::shared_ptr<std::atomic_bool> upgrade_handler_called)
+            : upgrade_handler_called_(std::move(upgrade_handler_called))
+        {
+        }
+
+        auto operator()(
+            canopy::http_server::request request,
+            std::shared_ptr<streaming::stream> websocket_stream) const -> CORO_TASK(std::shared_ptr<rpc::transport>)
+        {
+            std::ignore = request;
+            std::ignore = websocket_stream;
+            upgrade_handler_called_->store(true, std::memory_order_release);
+            CO_RETURN nullptr;
+        }
+
+    private:
+        std::shared_ptr<std::atomic_bool> upgrade_handler_called_;
+    };
+
+    class fixed_response_handler
+    {
+    public:
+        explicit fixed_response_handler(canopy::http_server::response response)
+            : response_(std::move(response))
+        {
+        }
+
+        auto operator()(canopy::http_server::request) const -> CORO_TASK(std::optional<canopy::http_server::response>)
+        {
+            CO_RETURN std::optional<canopy::http_server::response>{response_};
+        }
+
+    private:
+        canopy::http_server::response response_;
+    };
+
+    class static_webpage_delivery_handler
+    {
+    public:
+        explicit static_webpage_delivery_handler(
+            std::shared_ptr<canopy::http_server::static_webpage_delivery> webpage_delivery)
+            : webpage_delivery_(std::move(webpage_delivery))
+        {
+        }
+
+        auto operator()(canopy::http_server::request request) const
+            -> CORO_TASK(std::optional<canopy::http_server::response>)
+        {
+            CO_RETURN CO_AWAIT webpage_delivery_->handle(std::move(request));
+        }
+
+    private:
+        std::shared_ptr<canopy::http_server::static_webpage_delivery> webpage_delivery_;
+    };
+
+    class recording_file_reader
+    {
+    public:
+        explicit recording_file_reader(std::shared_ptr<std::atomic_bool> called)
+            : called_(std::move(called))
+        {
+        }
+
+        auto operator()(std::string) const -> CORO_TASK(canopy::http_server::static_webpage_delivery::file_read_result)
+        {
+            called_->store(true, std::memory_order_release);
+            CO_RETURN canopy::http_server::static_webpage_delivery::file_read_result{rpc::error::OK(), {}};
+        }
+
+    private:
+        std::shared_ptr<std::atomic_bool> called_;
+    };
+
+    class fixed_body_file_reader
+    {
+    public:
+        explicit fixed_body_file_reader(std::shared_ptr<std::string> body)
+            : body_(std::move(body))
+        {
+        }
+
+        auto operator()(std::string file_path) const
+            -> CORO_TASK(canopy::http_server::static_webpage_delivery::file_read_result)
+        {
+            EXPECT_EQ(file_path, "/static/index.html");
+            CO_RETURN canopy::http_server::static_webpage_delivery::file_read_result{
+                rpc::error::OK(), std::vector<uint8_t>(body_->begin(), body_->end())};
+        }
+
+    private:
+        std::shared_ptr<std::string> body_;
+    };
+
     auto websocket_upgrade_request(
         std::string method = "GET",
         std::string key = "dGhlIHNhbXBsZSBub25jZQ==",
@@ -380,16 +490,7 @@ namespace
         stream->push(std::vector<uint8_t>(wire_request.begin(), wire_request.end()));
 
         canopy::http_server::handler_set handlers;
-        handlers.websocket_upgrade_handler
-            = [upgrade_handler_called](
-                  const canopy::http_server::request& request,
-                  std::shared_ptr<streaming::stream> websocket_stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-        {
-            std::ignore = request;
-            std::ignore = websocket_stream;
-            upgrade_handler_called->store(true, std::memory_order_release);
-            CO_RETURN nullptr;
-        };
+        handlers.websocket_upgrade_handler = websocket_upgrade_recorder{std::move(upgrade_handler_called)};
 
         canopy::http_server::client_connection connection(stream, std::move(handlers), limits);
         (void)coro::sync_wait(connection.handle());
@@ -421,10 +522,7 @@ namespace
         canopy::http_server::response response) -> std::vector<std::vector<uint8_t>>
     {
         canopy::http_server::handler_set handlers;
-        handlers.rest_handler
-            = [response = std::move(response)](
-                  const canopy::http_server::request&) -> CORO_TASK(std::optional<canopy::http_server::response>)
-        { CO_RETURN std::optional<canopy::http_server::response>{response}; };
+        handlers.rest_handler = fixed_response_handler{std::move(response)};
         return run_http_request(wire_request, std::move(handlers));
     }
 
@@ -446,6 +544,55 @@ namespace
 #    endif
 #  endif
 
+    CORO_TASK(bool) coro_malformed_init_message_disconnects_transport(std::shared_ptr<coro::scheduler> scheduler);
+
+    class connection_handler_recorder
+    {
+    public:
+        explicit connection_handler_recorder(std::shared_ptr<std::atomic_bool> handler_called)
+            : handler_called_(std::move(handler_called))
+        {
+        }
+
+        auto operator()(
+            rpc::connection_settings,
+            std::shared_ptr<rpc::service>,
+            std::shared_ptr<rpc::transport>) const -> CORO_TASK(rpc::connection_handler_result)
+        {
+            handler_called_->store(true, std::memory_order_release);
+            CO_RETURN rpc::connection_handler_result{rpc::error::OK(), {}};
+        }
+
+    private:
+        std::shared_ptr<std::atomic_bool> handler_called_;
+    };
+
+    class malformed_init_runner
+    {
+    public:
+        malformed_init_runner(
+            std::shared_ptr<coro::scheduler> scheduler,
+            std::atomic_bool* done,
+            bool* passed)
+            : scheduler_(std::move(scheduler))
+            , done_(done)
+            , passed_(passed)
+        {
+        }
+
+        auto operator()() const -> coro::task<void>
+        {
+            *passed_ = CO_AWAIT coro_malformed_init_message_disconnects_transport(scheduler_);
+            done_->store(true, std::memory_order_release);
+            CO_RETURN;
+        }
+
+    private:
+        std::shared_ptr<coro::scheduler> scheduler_;
+        std::atomic_bool* done_{};
+        bool* passed_{};
+    };
+
     CORO_TASK(bool) coro_malformed_init_message_disconnects_transport(std::shared_ptr<coro::scheduler> scheduler)
     {
         auto zone_id = rpc::DEFAULT_PREFIX;
@@ -463,12 +610,7 @@ namespace
             "bad_init_responder",
             service,
             std::move(transport_stream),
-            [handler_called](rpc::connection_settings, std::shared_ptr<rpc::service>, std::shared_ptr<rpc::transport>)
-                -> CORO_TASK(rpc::connection_handler_result)
-            {
-                handler_called->store(true, std::memory_order_release);
-                CO_RETURN rpc::connection_handler_result{rpc::error::OK(), {}};
-            },
+            connection_handler_recorder{handler_called},
             rpc::stream_transport::stream_transport_options{
                 .call_timeout = std::chrono::milliseconds{0},
                 .call_timeout_sweep = std::chrono::milliseconds{0},
@@ -530,12 +672,7 @@ TEST(
 
     std::atomic_bool done{false};
     bool passed = false;
-    auto runner = [&]() -> coro::task<void>
-    {
-        passed = CO_AWAIT coro_malformed_init_message_disconnects_transport(scheduler);
-        done.store(true, std::memory_order_release);
-        CO_RETURN;
-    };
+    auto runner = malformed_init_runner{scheduler, &done, &passed};
 
     ASSERT_TRUE(scheduler->spawn_detached(runner()));
 
@@ -949,6 +1086,7 @@ TEST(
     HttpStaticWebpageDelivery,
     HandlerConfigCanDisableCacheForSelectedRequests)
 {
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated file-system IDL uses output refs.
     class test_file_system_manager final : public rpc::base<test_file_system_manager, rpc::file_system::i_manager>
     {
     public:
@@ -979,6 +1117,7 @@ TEST(
             CO_RETURN rpc::error::NOT_IMPLEMENTED();
         }
     };
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     canopy::http_server::static_webpage_handler_config config;
     config.root_path = "/static";
@@ -1003,18 +1142,10 @@ TEST(
 {
     auto file_reader_called = std::make_shared<std::atomic_bool>(false);
     auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
-        "/static",
-        [file_reader_called](std::string, std::vector<uint8_t>&) -> CORO_TASK(int)
-        {
-            file_reader_called->store(true, std::memory_order_release);
-            CO_RETURN rpc::error::OK();
-        });
+        "/static", recording_file_reader{file_reader_called});
 
     canopy::http_server::handler_set handlers;
-    handlers.webpage_handler
-        = [webpage_delivery](
-              const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
-    { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+    handlers.webpage_handler = static_webpage_delivery_handler{webpage_delivery};
 
     auto response = sent_http_text(run_http_request(http_request("/%2e%2e/secret.txt"), std::move(handlers)));
 
@@ -1097,20 +1228,11 @@ TEST(
 {
     auto file_body
         = std::make_shared<std::string>("<!doctype html><html><body>" + std::string(256, 's') + "</body></html>");
-    auto webpage_delivery = std::make_shared<canopy::http_server::static_webpage_delivery>(
-        "/static",
-        [file_body](std::string file_path, std::vector<uint8_t>& data) -> CORO_TASK(int)
-        {
-            EXPECT_EQ(file_path, "/static/index.html");
-            data.assign(file_body->begin(), file_body->end());
-            CO_RETURN rpc::error::OK();
-        });
+    auto webpage_delivery
+        = std::make_shared<canopy::http_server::static_webpage_delivery>("/static", fixed_body_file_reader{file_body});
 
     canopy::http_server::handler_set handlers;
-    handlers.webpage_handler
-        = [webpage_delivery](
-              const canopy::http_server::request& request) -> CORO_TASK(std::optional<canopy::http_server::response>)
-    { CO_RETURN CO_AWAIT webpage_delivery->handle(request); };
+    handlers.webpage_handler = static_webpage_delivery_handler{webpage_delivery};
 
     auto response = sent_http_text(run_http_request(http_request("/", "Accept-Encoding: gzip\r\n"), std::move(handlers)));
     auto body = http_body(response);

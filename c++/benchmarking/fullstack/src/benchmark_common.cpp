@@ -102,6 +102,7 @@ namespace comprehensive::v1
             "N/A");
     }
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): benchmark helper fills caller-owned samples while awaited synchronously by callers.
     CORO_TASK(comprehensive_error)
     run_benchmark_calls(
         rpc::shared_ptr<i_data_processor> remote,
@@ -141,6 +142,7 @@ namespace comprehensive::v1
 
         CO_RETURN rpc::error::OK();
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     uint16_t allocate_loopback_port()
     {

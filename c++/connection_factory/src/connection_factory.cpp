@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <optional>
 #include <typeindex>
 #include <utility>
 
@@ -102,34 +103,34 @@ namespace rpc::connection_factory
             const context& factory_context);
 
         auto connect_base_stream(
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> CORO_TASK(stream_result);
+            context factory_context) -> CORO_TASK(stream_result);
 
         auto accept_base_streams(
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> CORO_TASK(stream_acceptor_result);
+            context factory_context) -> CORO_TASK(stream_acceptor_result);
 
         auto accept_single_base_stream(
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> CORO_TASK(stream_result);
+            context factory_context) -> CORO_TASK(stream_result);
 
         auto apply_stream_layer(
             std::shared_ptr<::streaming::stream> stream,
-            const rpc::stream_layers::stream_layer_settings& layer,
+            rpc::stream_layers::stream_layer_settings layer,
             layer_direction direction,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> CORO_TASK(stream_result);
+            context factory_context) -> CORO_TASK(stream_result);
 
         auto apply_stream_layers(
             std::shared_ptr<::streaming::stream> stream,
-            const connection_settings& settings,
+            connection_settings settings,
             size_t first_layer,
             layer_direction direction,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> CORO_TASK(stream_result);
+            context factory_context) -> CORO_TASK(stream_result);
     } // namespace detail
 
     namespace
@@ -378,6 +379,47 @@ namespace rpc::connection_factory
 
             return result;
         }
+
+        struct accept_stream_transformer
+        {
+            connection_settings settings;
+            context factory_context;
+            size_t first_layer{0};
+            std::shared_ptr<rpc::service> service;
+
+            auto operator()(std::shared_ptr<::streaming::stream> stream) const
+                -> CORO_TASK(std::optional<std::shared_ptr<::streaming::stream>>)
+            {
+                auto wrapped = CO_AWAIT detail::apply_stream_layers(
+                    std::move(stream), settings, first_layer, layer_direction::accept, service, factory_context);
+                if (wrapped.error_code != rpc::error::OK())
+                    CO_RETURN std::nullopt;
+                CO_RETURN std::optional<std::shared_ptr<::streaming::stream>>(std::move(wrapped.stream));
+            }
+        };
+
+        struct layered_accept_stream_callback
+        {
+            connection_settings settings;
+            context factory_context;
+            std::shared_ptr<rpc::service> service;
+            stream_callback callback;
+
+            auto operator()(std::shared_ptr<::streaming::stream> stream) const -> CORO_TASK(void)
+            {
+                auto wrapped = CO_AWAIT detail::apply_stream_layers(
+                    std::move(stream), settings, 1, layer_direction::accept, service, factory_context);
+                if (wrapped.error_code != rpc::error::OK())
+                {
+                    if (wrapped.stream)
+                        CO_AWAIT wrapped.stream->set_closed();
+                    CO_RETURN;
+                }
+
+                CO_AWAIT callback(std::move(wrapped.stream));
+                CO_RETURN;
+            }
+        };
 
     } // namespace
 
@@ -719,9 +761,9 @@ namespace rpc::connection_factory
     }
 
     auto detail::connect_base_stream(
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> CORO_TASK(stream_result)
+        context factory_context) -> CORO_TASK(stream_result)
     {
         auto& state = *detail::connection_factory_access::state(factory_context);
 
@@ -742,9 +784,9 @@ namespace rpc::connection_factory
     }
 
     auto detail::accept_base_streams(
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> CORO_TASK(stream_acceptor_result)
+        context factory_context) -> CORO_TASK(stream_acceptor_result)
     {
         auto& state = *detail::connection_factory_access::state(factory_context);
 
@@ -765,9 +807,9 @@ namespace rpc::connection_factory
     }
 
     auto detail::accept_single_base_stream(
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> CORO_TASK(stream_result)
+        context factory_context) -> CORO_TASK(stream_result)
     {
         auto& state = *detail::connection_factory_access::state(factory_context);
 
@@ -790,10 +832,10 @@ namespace rpc::connection_factory
 
     auto detail::apply_stream_layer(
         std::shared_ptr<::streaming::stream> stream,
-        const rpc::stream_layers::stream_layer_settings& layer,
+        rpc::stream_layers::stream_layer_settings layer,
         layer_direction direction,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> CORO_TASK(stream_result)
+        context factory_context) -> CORO_TASK(stream_result)
     {
         auto& state = *detail::connection_factory_access::state(factory_context);
 
@@ -809,25 +851,26 @@ namespace rpc::connection_factory
             CO_RETURN stream_result{layer_context.error_code, {}};
 
         auto wrapped = CO_AWAIT ::streaming::layer_factory::apply_stream_layer_async(
-            std::move(stream), layer, layer_factory_direction(direction), layer_context.context);
+            std::move(stream), std::move(layer), layer_factory_direction(direction), std::move(layer_context.context));
         CO_RETURN stream_result{wrapped.error_code, std::move(wrapped.stream)};
     }
 
     auto detail::apply_stream_layers(
         std::shared_ptr<::streaming::stream> stream,
-        const connection_settings& settings,
+        connection_settings settings,
         size_t first_layer,
         layer_direction direction,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> CORO_TASK(stream_result)
+        context factory_context) -> CORO_TASK(stream_result)
     {
         if (first_layer > settings.stream_layers.size())
             CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
 
         for (auto layer_index = first_layer; layer_index < settings.stream_layers.size(); ++layer_index)
         {
+            auto layer = settings.stream_layers[layer_index];
             auto result = CO_AWAIT detail::apply_stream_layer(
-                std::move(stream), settings.stream_layers[layer_index], direction, service, factory_context);
+                std::move(stream), std::move(layer), direction, service, factory_context);
             if (result.error_code != rpc::error::OK())
                 CO_RETURN result;
             stream = std::move(result.stream);
@@ -838,7 +881,7 @@ namespace rpc::connection_factory
 
     CORO_TASK(stream_acceptor_result)
     open_stream_acceptor(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context)
     {
@@ -847,33 +890,25 @@ namespace rpc::connection_factory
         if (topology_error != rpc::error::OK())
             CO_RETURN stream_acceptor_result{topology_error, {}, {}, 0};
 
-        CO_RETURN CO_AWAIT detail::accept_base_streams(settings.stream_layers.front(), std::move(service), factory_context);
+        CO_RETURN CO_AWAIT detail::accept_base_streams(
+            settings.stream_layers.front(), std::move(service), std::move(factory_context));
     }
 
     auto detail::make_accept_stream_transformer(
-        const connection_settings& settings,
+        connection_settings settings,
         size_t first_layer,
         std::shared_ptr<rpc::service> service,
-        const context& factory_context) -> ::streaming::listener::stream_transformer
+        context factory_context) -> ::streaming::listener::stream_transformer
     {
         if (first_layer >= settings.stream_layers.size())
             return {};
 
-        return
-            [settings, factory_context, first_layer, service = std::move(service)](
-                std::shared_ptr<::streaming::stream> stream) -> CORO_TASK(std::optional<std::shared_ptr<::streaming::stream>>)
-        {
-            auto wrapped = CO_AWAIT detail::apply_stream_layers(
-                std::move(stream), settings, first_layer, layer_direction::accept, service, factory_context);
-            if (wrapped.error_code != rpc::error::OK())
-                CO_RETURN std::nullopt;
-            CO_RETURN std::optional<std::shared_ptr<::streaming::stream>>(std::move(wrapped.stream));
-        };
+        return accept_stream_transformer{std::move(settings), std::move(factory_context), first_layer, std::move(service)};
     }
 
     CORO_TASK(stream_result)
     connect_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context)
     {
@@ -901,7 +936,7 @@ namespace rpc::connection_factory
 
     CORO_TASK(stream_result)
     accept_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context)
     {
@@ -930,7 +965,7 @@ namespace rpc::connection_factory
     CORO_TASK(stream_accept_result)
     accept_streams(
         stream_callback callback,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context)
     {
@@ -950,21 +985,8 @@ namespace rpc::connection_factory
             CO_RETURN stream_accept_result{acceptor.error_code, {}};
 
         auto stream_settings = make_stream_rpc_settings({}, service_settings.settings);
-        auto wrapped_callback = [settings, factory_context, service = resolved_service, callback = std::move(callback)](
-                                    std::shared_ptr<::streaming::stream> stream) mutable -> CORO_TASK(void)
-        {
-            auto wrapped = CO_AWAIT detail::apply_stream_layers(
-                std::move(stream), settings, 1, layer_direction::accept, service, factory_context);
-            if (wrapped.error_code != rpc::error::OK())
-            {
-                if (wrapped.stream)
-                    CO_AWAIT wrapped.stream->set_closed();
-                CO_RETURN;
-            }
-
-            CO_AWAIT callback(std::move(wrapped.stream));
-            CO_RETURN;
-        };
+        auto wrapped_callback
+            = layered_accept_stream_callback{settings, factory_context, resolved_service, std::move(callback)};
 
         CO_RETURN accept_streams(
             std::move(acceptor.acceptor),

@@ -121,14 +121,15 @@ extern "C" CANOPY_IPC_SPSC_DLL_EXPORT void canopy_ipc_spsc_dll_start(
             scheduler = ctx->scheduler,
             shutdown_event = ctx->shutdown_event]() mutable
         {
-            coro::sync_wait(
-                coro::when_all(
-                    [&]() -> coro::task<void>
-                    {
-                        CO_AWAIT run_runtime(
-                            std::move(name), dll_zone, send_queue, recv_queue, on_parent_expired, callback_ctx, scheduler, shutdown_event);
-                        CO_RETURN;
-                    }()));
+            coro::sync_wait(run_runtime(
+                std::move(name),
+                dll_zone,
+                send_queue,
+                recv_queue,
+                on_parent_expired,
+                callback_ctx,
+                std::move(scheduler),
+                std::move(shutdown_event)));
         });
 
     result->runtime_ctx = ctx;

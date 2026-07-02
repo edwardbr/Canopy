@@ -7,6 +7,7 @@
 
 #include <ares.h>
 
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <limits>
@@ -276,7 +277,7 @@ namespace canopy::dns_resolver
             output.native_protocol = node.ai_protocol;
             output.ttl_seconds = node.ai_ttl;
 
-            char numeric_host[INET6_ADDRSTRLEN] = {};
+            std::array<char, INET6_ADDRSTRLEN> numeric_host{};
             if (node.ai_family == AF_INET)
             {
                 if (!node.ai_addr || node.ai_addrlen < static_cast<ares_socklen_t>(sizeof(sockaddr_in)))
@@ -286,7 +287,7 @@ namespace canopy::dns_resolver
                 output.family = address_family::ipv4;
                 output.port = ntohs(addr->sin_port);
                 std::memcpy(output.ipv4.data(), &addr->sin_addr, output.ipv4.size());
-                if (!::inet_ntop(AF_INET, &addr->sin_addr, numeric_host, sizeof(numeric_host)))
+                if (!::inet_ntop(AF_INET, &addr->sin_addr, numeric_host.data(), numeric_host.size()))
                     return false;
             }
             else if (node.ai_family == AF_INET6)
@@ -298,7 +299,7 @@ namespace canopy::dns_resolver
                 output.family = address_family::ipv6;
                 output.port = ntohs(addr->sin6_port);
                 std::memcpy(output.ipv6.data(), &addr->sin6_addr, output.ipv6.size());
-                if (!::inet_ntop(AF_INET6, &addr->sin6_addr, numeric_host, sizeof(numeric_host)))
+                if (!::inet_ntop(AF_INET6, &addr->sin6_addr, numeric_host.data(), numeric_host.size()))
                     return false;
             }
             else
@@ -306,7 +307,7 @@ namespace canopy::dns_resolver
                 return false;
             }
 
-            output.numeric_host = numeric_host;
+            output.numeric_host = numeric_host.data();
             endpoints.push_back(std::move(output));
             return true;
         }
@@ -502,24 +503,26 @@ namespace canopy::dns_resolver
                 return make_error(ARES_ETIMEOUT, "DNS lookup timed out");
             }
 
-            ares_socket_t socks[ARES_GETSOCK_MAXNUM]{};
-            const int bitmask = ares_getsock(resolver.get(), socks, ARES_GETSOCK_MAXNUM);
+            std::array<ares_socket_t, ARES_GETSOCK_MAXNUM> socks{};
+            const int bitmask = ares_getsock(resolver.get(), socks.data(), static_cast<int>(socks.size()));
             if (bitmask == 0)
                 break;
 
-            struct pollfd pfds[ARES_GETSOCK_MAXNUM]{};
+            std::array<pollfd, ARES_GETSOCK_MAXNUM> pfds{};
             int npfds = 0;
-            for (int i = 0; i < ARES_GETSOCK_MAXNUM; i++)
+            for (size_t i = 0; i < pfds.size(); i++)
             {
-                pfds[i].fd = -1;
-                if (ARES_GETSOCK_READABLE(bitmask, i) || ARES_GETSOCK_WRITABLE(bitmask, i))
+                auto& pfd = pfds[i];
+                const auto socket_index = static_cast<int>(i);
+                pfd.fd = -1;
+                if (ARES_GETSOCK_READABLE(bitmask, socket_index) || ARES_GETSOCK_WRITABLE(bitmask, socket_index))
                 {
-                    pfds[i].fd = socks[i];
-                    if (ARES_GETSOCK_READABLE(bitmask, i))
-                        pfds[i].events |= POLLIN;
-                    if (ARES_GETSOCK_WRITABLE(bitmask, i))
-                        pfds[i].events |= POLLOUT;
-                    npfds = i + 1;
+                    pfd.fd = socks[i];
+                    if (ARES_GETSOCK_READABLE(bitmask, socket_index))
+                        pfd.events |= POLLIN;
+                    if (ARES_GETSOCK_WRITABLE(bitmask, socket_index))
+                        pfd.events |= POLLOUT;
+                    npfds = socket_index + 1;
                 }
             }
 
@@ -534,7 +537,7 @@ namespace canopy::dns_resolver
                     timeout_ms = static_cast<int>(tp->tv_sec * 1000 + tp->tv_usec / 1000);
             }
 
-            const int polled = ::poll(pfds, static_cast<nfds_t>(npfds), timeout_ms);
+            const int polled = ::poll(pfds.data(), static_cast<nfds_t>(npfds), timeout_ms);
             if (polled < 0)
             {
                 if (errno == EINTR)
@@ -552,7 +555,7 @@ namespace canopy::dns_resolver
                 continue;
             }
 
-            ares_fd_events_t events[ARES_GETSOCK_MAXNUM]{};
+            std::array<ares_fd_events_t, ARES_GETSOCK_MAXNUM> events{};
             size_t nevents = 0;
             for (int i = 0; i < npfds; i++)
             {
@@ -572,7 +575,8 @@ namespace canopy::dns_resolver
 
             if (nevents != 0)
             {
-                const auto process_status = ares_process_fds(resolver.get(), events, nevents, ARES_PROCESS_FLAG_NONE);
+                const auto process_status
+                    = ares_process_fds(resolver.get(), events.data(), nevents, ARES_PROCESS_FLAG_NONE);
                 if (process_status != ARES_SUCCESS)
                     return make_error(process_status, "failed to process DNS socket events");
             }
@@ -594,8 +598,8 @@ namespace canopy::dns_resolver
 
     CORO_TASK(resolve_result)
     resolve_service(
-        const std::string& host,
-        const std::string& service,
+        std::string host,
+        std::string service,
         resolve_options options)
     {
 #ifdef CANOPY_BUILD_COROUTINE
@@ -608,7 +612,7 @@ namespace canopy::dns_resolver
 
     CORO_TASK(resolve_result)
     resolve_host(
-        const std::string& host,
+        std::string host,
         uint16_t port,
         resolve_options options)
     {

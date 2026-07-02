@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 
 namespace spsc
@@ -13,7 +14,8 @@ namespace spsc
     {
     public:
         queue() noexcept
-            : head_(0)
+            : ring_()
+            , head_(0)
             , tail_(0)
         {
         }
@@ -44,7 +46,7 @@ namespace spsc
 
     private:
         [[nodiscard]] std::size_t next(std::size_t current) const noexcept { return (current + 1) % (Size + 1); }
-        T ring_[Size + 1];
+        std::array<T, Size + 1> ring_;
         std::atomic<std::size_t> head_, tail_;
     };
 }

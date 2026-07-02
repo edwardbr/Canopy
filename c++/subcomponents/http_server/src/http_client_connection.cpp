@@ -333,14 +333,16 @@ namespace canopy::http_server
 
             std::string output;
             std::array<unsigned char, size_t{16U} * 1024U> buffer{};
+            std::array<unsigned char, size_t{16U} * 1024U> input_buffer{};
             size_t input_offset = 0;
             int deflate_result = Z_OK;
 
             do
             {
                 const auto remaining = input.size() - input_offset;
-                const auto input_size = std::min<size_t>(remaining, std::numeric_limits<uInt>::max());
-                stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.data() + input_offset));
+                const auto input_size = std::min(remaining, input_buffer.size());
+                std::copy_n(input.data() + input_offset, input_size, input_buffer.data());
+                stream.next_in = input_buffer.data();
                 stream.avail_in = static_cast<uInt>(input_size);
                 input_offset += input_size;
                 const auto flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
@@ -598,19 +600,19 @@ namespace canopy::http_server
             result.resize(encoded_length);
             return result;
 #elif defined(CANOPY_SECURE_STREAM_BACKEND_OPENSSL)
-            unsigned char hash[SHA_DIGEST_LENGTH];
-            SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()), combined.size(), hash);
+            std::array<unsigned char, SHA_DIGEST_LENGTH> hash{};
+            SHA1(reinterpret_cast<const unsigned char*>(combined.c_str()), combined.size(), hash.data());
 
             BIO* bio = BIO_new(BIO_s_mem());
             BIO* b64 = BIO_new(BIO_f_base64());
             bio = BIO_push(b64, bio);
 
             BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
-            BIO_write(bio, hash, SHA_DIGEST_LENGTH);
+            BIO_write(bio, hash.data(), static_cast<int>(hash.size()));
             BIO_flush(bio);
 
             BUF_MEM* buffer_ptr = nullptr;
-            BIO_get_mem_ptr(bio, &buffer_ptr);
+            BIO_ctrl(bio, BIO_C_GET_BUF_MEM_PTR, 0, static_cast<void*>(&buffer_ptr));
 
             std::string result(buffer_ptr->data, buffer_ptr->length);
             BIO_free_all(bio);
@@ -821,7 +823,7 @@ namespace canopy::http_server
         return build_http_response(handshake, false);
     }
 
-    auto client_connection::dispatch_request(const request& request) const -> CORO_TASK(std::optional<response>)
+    auto client_connection::dispatch_request(request request) const -> CORO_TASK(std::optional<response>)
     {
         const auto is_rest_request
             = handlers_.is_rest_request ? handlers_.is_rest_request(request) : default_is_rest_request(request);
@@ -837,13 +839,13 @@ namespace canopy::http_server
 
         if (handlers_.webpage_handler)
         {
-            CO_RETURN CO_AWAIT handlers_.webpage_handler(request);
+            CO_RETURN CO_AWAIT handlers_.webpage_handler(std::move(request));
         }
 
         CO_RETURN make_text_response(404, "Not Found");
     }
 
-    auto client_connection::handle_websocket_upgrade(const request& request) -> CORO_TASK(std::shared_ptr<rpc::transport>)
+    auto client_connection::handle_websocket_upgrade(request request) -> CORO_TASK(std::shared_ptr<rpc::transport>)
     {
         if (auto validation_error = validate_websocket_upgrade_request(request, limits_))
         {
@@ -897,7 +899,7 @@ namespace canopy::http_server
         }
         auto ws_stream = std::make_shared<streaming::websocket::stream>(
             stream_, std::move(websocket_settings), rpc::websocket_stream::endpoint_role::server);
-        CO_RETURN CO_AWAIT handlers_.websocket_upgrade_handler(request, ws_stream);
+        CO_RETURN CO_AWAIT handlers_.websocket_upgrade_handler(std::move(request), ws_stream);
     }
 
     auto client_connection::handle() -> CORO_TASK(std::shared_ptr<rpc::transport>)

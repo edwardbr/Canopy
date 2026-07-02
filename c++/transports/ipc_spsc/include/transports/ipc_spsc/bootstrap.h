@@ -17,11 +17,12 @@ namespace rpc::ipc_spsc
 {
     class queue_pair_bootstrap
     {
-    protected:
+    private:
         std::string mapped_file_;
         rpc::zone child_zone_;
         size_t scheduler_thread_count_ = 1;
 
+    protected:
         queue_pair_bootstrap(
             std::string mapped_file,
             rpc::zone child_zone,

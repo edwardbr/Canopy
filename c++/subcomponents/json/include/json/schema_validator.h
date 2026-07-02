@@ -51,10 +51,11 @@ namespace json
 
                 void append(validation_result&& other)
                 {
+                    auto moved_errors = std::move(other).errors_;
                     errors_.insert(
                         errors_.end(),
-                        std::make_move_iterator(other.errors_.begin()),
-                        std::make_move_iterator(other.errors_.end()));
+                        std::make_move_iterator(moved_errors.begin()),
+                        std::make_move_iterator(moved_errors.end()));
                 }
 
             private:

@@ -29,8 +29,8 @@ namespace rpc::io_uring
         {
             uint16_t family{socket_family_inet};
             uint16_t port_be{0};
-            uint8_t address[4]{127, 0, 0, 1};
-            uint8_t zero[8]{};
+            std::array<uint8_t, 4> address{127, 0, 0, 1};
+            std::array<uint8_t, 8> zero{};
         };
 
         static_assert(sizeof(direct_ipv4_sockaddr) == ipv4_sockaddr_size);
@@ -40,7 +40,7 @@ namespace rpc::io_uring
             uint16_t family{socket_family_inet6};
             uint16_t port_be{0};
             uint32_t flowinfo_be{0};
-            uint8_t address[16]{};
+            std::array<uint8_t, 16> address{};
             uint32_t scope_id_be{0};
         };
 
@@ -74,7 +74,7 @@ namespace rpc::io_uring
     // shared_ptr<staging_buffer> for that operation is destroyed. Operations
     // that need two kernel-visible pointers reserve both slots as one unit.
     //
-    // Under pressure, allocation is FIFO:
+    // Under pressure, allocation is queued:
     //
     //     allocate_staging_buffers()
     //          |
@@ -84,7 +84,7 @@ namespace rpc::io_uring
     //                                      |
     //     release_staging_buffer() -------+
     //          |
-    //          +-- grant front waiter, then resume it outside the spin lock
+    //          +-- grant the first waiter that fits, then resume it outside the spin lock
 
     // Records one borrowed slot from the ring-visible staging buffer region.
     // The object is deliberately small because destruction returns the slot.
@@ -270,7 +270,7 @@ namespace rpc::io_uring
         // reservation is important for two-buffer operations because a partial
         // reservation would let a coroutine hold a scarce slot while waiting for
         // another one.
-        uint32_t slots[2]{std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
+        std::array<uint32_t, 2> slots{std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()};
         uint32_t found_count = 0;
         for (uint32_t slot = 0; slot < staging_buffer_count_ && found_count < required_buffer_count; ++slot)
         {
@@ -337,37 +337,47 @@ namespace rpc::io_uring
             return {};
         }
 
-        while (!staging_buffer_waiters_.empty())
+        std::shared_ptr<staging_buffer_waiter> waiter;
+        auto waiter_position = staging_buffer_waiters_.end();
+        auto waiter_error = rpc::error::OK();
+        for (auto current = staging_buffer_waiters_.begin(); current != staging_buffer_waiters_.end();)
         {
-            auto waiter = staging_buffer_waiters_.front();
+            waiter = *current;
             if (!waiter)
             {
-                staging_buffer_waiters_.pop_front();
+                current = staging_buffer_waiters_.erase(current);
                 continue;
             }
 
-            waiter->error_code = reserve_staging_buffers_locked(
+            waiter_error = reserve_staging_buffers_locked(
                 waiter->required_buffer_count,
                 waiter->first_requested_size,
                 waiter->second_requested_size,
                 waiter->first_reservation,
                 waiter->second_reservation);
-            if (waiter->error_code == rpc::error::RESOURCE_EXHAUSTED())
+            if (waiter_error == rpc::error::RESOURCE_EXHAUSTED())
             {
                 // Exhaustion is ordinary backpressure, not a failed waiter.
-                // Leave the waiter at the front so it keeps its FIFO position
-                // and retry when another staging_buffer guard is released.
-                waiter->error_code = rpc::error::OK();
-                return {};
+                // Keep scanning so a one-buffer operation behind a two-buffer
+                // receive can free progress instead of being head-of-line blocked.
+                ++current;
+                continue;
             }
 
-            staging_buffer_waiters_.pop_front();
-            waiter->granted = true;
-            waiter->queued = false;
-            return waiter;
+            waiter_position = current;
+            break;
         }
 
-        return {};
+        if (!waiter || waiter_position == staging_buffer_waiters_.end())
+        {
+            return {};
+        }
+
+        staging_buffer_waiters_.erase(waiter_position);
+        waiter->error_code = waiter_error;
+        waiter->granted = waiter_error == rpc::error::OK();
+        waiter->queued = false;
+        return waiter;
     }
 
     void controller::cancel_staging_buffer_waiter(const std::shared_ptr<staging_buffer_waiter>& waiter) noexcept
@@ -532,10 +542,11 @@ namespace rpc::io_uring
         return {rpc::error::OK(), std::move(first_buffer), std::move(second_buffer)};
     }
 
-    // Common staging-buffer admission path. Under pressure, waiters join a FIFO
-    // queue and only the head waiter is allowed to reserve the next available
-    // slots. The waiter still yields through the scheduler so allocation stays
-    // bounded by staging_buffer_wait_attempt_limit.
+    // Common staging-buffer admission path. Under pressure, waiters join a
+    // queue and are resumed when enough slots are available for their whole
+    // request. A smaller request may bypass a larger request temporarily; that
+    // avoids a two-buffer receive blocking a one-buffer send that would produce
+    // the data needed to complete the receive.
     CORO_TASK(controller::staging_buffer_pair_allocation_result)
     controller::allocate_staging_buffers(
         uint32_t required_buffer_count,
@@ -585,13 +596,13 @@ namespace rpc::io_uring
                     CO_RETURN staging_buffer_pair_allocation_result{err, {}, {}};
                 }
 
+                if (waiter && !waiter->queued && waiter->error_code != rpc::error::OK())
+                {
+                    CO_RETURN staging_buffer_pair_allocation_result{waiter->error_code, {}, {}};
+                }
+
                 if (waiter && waiter->granted)
                 {
-                    if (waiter->error_code != rpc::error::OK())
-                    {
-                        CO_RETURN staging_buffer_pair_allocation_result{waiter->error_code, {}, {}};
-                    }
-
                     first_reservation = waiter->first_reservation;
                     second_reservation = waiter->second_reservation;
                     reserved = true;
@@ -602,7 +613,8 @@ namespace rpc::io_uring
                     {
                         // Fast path: no queued waiters means this coroutine can
                         // try the pool directly. Once anyone is queued, later
-                        // callers must join the queue to avoid cutting ahead.
+                        // callers join the queue so grant_next_staging_buffer_waiter_locked()
+                        // can choose a request that fits the available slots.
                         err = reserve_staging_buffers_locked(
                             required_buffer_count,
                             first_requested_size,
@@ -643,13 +655,13 @@ namespace rpc::io_uring
                             // under the mutex so the waiter cannot miss the
                             // transition from queued to granted.
                             grant_next_staging_buffer_waiter_locked();
+                            if (!waiter->queued && waiter->error_code != rpc::error::OK())
+                            {
+                                CO_RETURN staging_buffer_pair_allocation_result{waiter->error_code, {}, {}};
+                            }
+
                             if (waiter->granted)
                             {
-                                if (waiter->error_code != rpc::error::OK())
-                                {
-                                    CO_RETURN staging_buffer_pair_allocation_result{waiter->error_code, {}, {}};
-                                }
-
                                 first_reservation = waiter->first_reservation;
                                 second_reservation = waiter->second_reservation;
                                 reserved = true;
@@ -750,9 +762,9 @@ namespace rpc::io_uring
     // bind/connect SQEs can pass a kernel-readable address pointer.
     CORO_TASK(controller::staging_buffer_allocation_result)
     controller::make_ipv4_address_buffer(
-        const std::array<
+        std::array<
             uint8_t,
-            4>& bind_address,
+            4> bind_address,
         uint16_t port)
     {
         auto allocation = CO_AWAIT allocate_staging_buffer(sizeof(direct_ipv4_sockaddr));
@@ -763,7 +775,7 @@ namespace rpc::io_uring
 
         direct_ipv4_sockaddr address{};
         address.port_be = host_to_network_u16(port);
-        std::memcpy(address.address, bind_address.data(), bind_address.size());
+        std::memcpy(address.address.data(), bind_address.data(), bind_address.size());
         std::memcpy(allocation.buffer->data(), &address, sizeof(address));
         CO_RETURN allocation;
     }
@@ -776,9 +788,9 @@ namespace rpc::io_uring
 
     CORO_TASK(controller::staging_buffer_allocation_result)
     controller::make_ipv6_address_buffer(
-        const std::array<
+        std::array<
             uint8_t,
-            16>& bind_address,
+            16> bind_address,
         uint16_t port)
     {
         auto allocation = CO_AWAIT allocate_staging_buffer(sizeof(direct_ipv6_sockaddr));
@@ -789,7 +801,7 @@ namespace rpc::io_uring
 
         direct_ipv6_sockaddr address{};
         address.port_be = host_to_network_u16(port);
-        std::memcpy(address.address, bind_address.data(), bind_address.size());
+        std::memcpy(address.address.data(), bind_address.data(), bind_address.size());
         std::memcpy(allocation.buffer->data(), &address, sizeof(address));
         CO_RETURN allocation;
     }

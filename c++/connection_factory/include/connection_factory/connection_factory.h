@@ -38,7 +38,7 @@ namespace rpc::connection_factory
     // when building a custom transport on top of the stream factory.
     CORO_TASK(stream_result)
     connect_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context());
 
@@ -48,7 +48,7 @@ namespace rpc::connection_factory
     // many connections, use open_stream_acceptor or accept_streams instead.
     CORO_TASK(stream_result)
     accept_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context());
 
@@ -59,7 +59,7 @@ namespace rpc::connection_factory
     // streams, or can use accept_streams to have the factory do that.
     CORO_TASK(stream_acceptor_result)
     open_stream_acceptor(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context());
 
@@ -70,7 +70,7 @@ namespace rpc::connection_factory
     CORO_TASK(stream_accept_result)
     accept_streams(
         stream_callback callback,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context());
 
@@ -88,7 +88,7 @@ namespace rpc::connection_factory
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
         rpc::shared_ptr<In> input_interface,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context());
 
@@ -106,7 +106,7 @@ namespace rpc::connection_factory
         rpc_factory<
             Remote,
             Local> factory,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context(),
         rpc_transport_observer observe_transport = {});
@@ -120,7 +120,7 @@ namespace rpc::connection_factory
     CORO_TASK(accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         context factory_context = default_context(),
         rpc_transport_observer observe_transport = {});

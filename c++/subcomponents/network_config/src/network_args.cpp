@@ -40,21 +40,21 @@ namespace canopy::network_config
 #ifndef _WIN32
             if (family == ip_address_family::ipv4)
             {
-                struct in_addr a4;
+                struct in_addr a4{};
                 uint32_t h = (static_cast<uint32_t>(addr[0]) << 24) | (static_cast<uint32_t>(addr[1]) << 16)
                              | (static_cast<uint32_t>(addr[2]) << 8) | static_cast<uint32_t>(addr[3]);
                 a4.s_addr = htonl(h);
-                char buf[INET_ADDRSTRLEN];
-                if (inet_ntop(AF_INET, &a4, buf, sizeof(buf)))
-                    return buf;
+                std::array<char, INET_ADDRSTRLEN> buf{};
+                if (inet_ntop(AF_INET, &a4, buf.data(), buf.size()))
+                    return buf.data();
             }
             else
             {
-                struct in6_addr a6;
+                struct in6_addr a6{};
                 std::memcpy(a6.s6_addr, addr.data(), 16);
-                char buf[INET6_ADDRSTRLEN];
-                if (inet_ntop(AF_INET6, &a6, buf, sizeof(buf)))
-                    return buf;
+                std::array<char, INET6_ADDRSTRLEN> buf{};
+                if (inet_ntop(AF_INET6, &a6, buf.data(), buf.size()))
+                    return buf.data();
             }
 #endif
             return "0.0.0.0";
@@ -363,6 +363,7 @@ namespace canopy::network_config
     // network_args_context — constructor
     // ---------------------------------------------------------------------------
 
+    // NOLINTBEGIN(cppcoreguidelines-slicing): args registers groups through Group&, and ArgumentParser is the root Group.
     network_args_context::network_args_context(args::ArgumentParser& parser)
         : virtual_addresses_group_(
               parser,
@@ -444,6 +445,7 @@ namespace canopy::network_config
               {"connect"})
     {
     }
+    // NOLINTEND(cppcoreguidelines-slicing)
 
     // ---------------------------------------------------------------------------
     // Parsing helpers (file-scope)
@@ -660,7 +662,7 @@ namespace canopy::network_config
 
     network_config parse_network_args(
         int argc,
-        char* argv[],
+        char** argv,
         args::ArgumentParser& parser)
     {
         network_args_context ctx{parser};

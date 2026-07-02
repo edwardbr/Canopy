@@ -202,6 +202,25 @@ Prefer running the smallest relevant target first, then broaden if needed.
 - Keep naming and surrounding style consistent with the local file.
 - Baseline code should remain valid in non-coroutine builds unless the change is explicitly coroutine-only.
 
+## Clang-Tidy Cleanup Rules
+
+- Do not mechanically change API semantics just to satisfy clang-tidy.
+- For `cppcoreguidelines-avoid-reference-coroutine-parameters`, preserve references when the referenced object is required and its lifetime is known to outlive the coroutine frame. Common safe cases include:
+  - caller-owned objects passed into coroutines that are immediately awaited with `sync_wait`, `when_all`, or an equivalent join;
+  - per-iteration state declared outside the coroutine call and joined before leaving scope;
+  - generated IDL input/output reference parameters when generated dispatch code passes named input/output locals from the awaiting coroutine frame;
+  - required output parameters such as result, stats, reason strings, or parsed payload objects.
+- For generated IDL calls, the safety comes from coroutine-frame lifetime: if the caller creates named input and output locals, then `CO_AWAIT target->method(input, output)` keeps that caller frame alive while the callee runs. Do not assume references are safe when passing temporaries, when the task is stored/detached, or when returning the task to be awaited after the caller frame may be gone.
+- In those cases, keep the reference and use a tightly scoped `NOLINT`/`NOLINTBEGIN` with a short lifetime explanation.
+- Do not replace a required reference with a raw pointer unless `nullptr` is a valid, documented state and the code checks and handles it.
+- Do not wrap a parameter in `std::shared_ptr` or `rpc::shared_ptr` just to appease clang-tidy. Use shared ownership only when the object is already owned that way or the coroutine genuinely needs to extend lifetime independently of the caller.
+- Passing `std::shared_ptr` by value is appropriate for ownership/lifetime extension, not as a general replacement for references.
+- Required out parameters should remain references. Pointer out parameters are only appropriate for optional outputs, C ABI boundaries, or APIs where null is meaningful and handled.
+- Preserve ABI and C API shapes where pointers are part of the contract, such as module init hooks, callback contexts, raw buffers, and foreign library APIs.
+- Prefer fixing real issues over suppressing checks: initialize members, use safer casts/APIs, add null terminators for C-style arrays when required, and remove dead code after confirming it is unused.
+- For dead code, verify with source and generated/build-tree searches, then ask before deleting unless the user has already approved that specific removal.
+- Keep suppressions narrow and local. Avoid broad file-level disables unless the file is generated or dominated by an unavoidable external pattern.
+
 ## Coroutine And Blocking Builds
 
 - Canopy supports both blocking and coroutine builds.

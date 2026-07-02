@@ -10,19 +10,24 @@
 
 namespace streaming::detail
 {
-    inline voidpf zlib_alloc(voidpf opaque, uInt items, uInt size) noexcept
+    inline voidpf zlib_alloc(
+        voidpf opaque,
+        uInt items,
+        uInt size) noexcept
     {
         (void)opaque;
         if (size != 0 && items > std::numeric_limits<uInt>::max() / size)
             return Z_NULL;
 
-        return std::calloc(items, size);
+        return std::calloc(items, size); // NOLINT(cppcoreguidelines-no-malloc): zlib requires C allocation callbacks.
     }
 
-    inline void zlib_free(voidpf opaque, voidpf address) noexcept
+    inline void zlib_free(
+        voidpf opaque,
+        voidpf address) noexcept
     {
         (void)opaque;
-        std::free(address);
+        std::free(address); // NOLINT(cppcoreguidelines-no-malloc): zlib requires C allocation callbacks.
     }
 
     inline void initialise_zlib_allocator(z_stream& stream) noexcept

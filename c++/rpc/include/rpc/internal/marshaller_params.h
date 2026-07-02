@@ -124,7 +124,7 @@ namespace rpc
 
     struct standard_result
     {
-        int error_code = rpc::error::TRANSPORT_ERROR();
+        int error_code = rpc::error::NOT_INITIALISED;
         std::vector<rpc::back_channel_entry> out_back_channel;
 
         standard_result() = default;

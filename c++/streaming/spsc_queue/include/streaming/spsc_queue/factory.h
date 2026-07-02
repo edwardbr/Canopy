@@ -30,12 +30,12 @@ namespace rpc::spsc_queue
 
     CORO_TASK(rpc::stream_transport::stream_result)
     connect_stream(
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service = {});
 
     CORO_TASK(rpc::stream_transport::stream_result)
     accept_stream(
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service = {});
 
     template<
@@ -44,8 +44,8 @@ namespace rpc::spsc_queue
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
         rpc::shared_ptr<In> input_interface,
-        const queue_pair& queues,
-        const rpc::stream_transport::connection_settings& settings,
+        queue_pair queues,
+        rpc::stream_transport::connection_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         auto resolved_service = rpc::stream_transport::ensure_service(settings, std::move(service), "spsc_rpc_client");
@@ -64,12 +64,15 @@ namespace rpc::spsc_queue
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
         rpc::shared_ptr<In> input_interface,
-        const queue_pair& queues,
-        const rpc::stream_transport::transport_settings& settings,
+        queue_pair queues,
+        rpc::stream_transport::transport_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT connect_rpc<In, Out>(
-            std::move(input_interface), queues, rpc::stream_transport::make_connection_settings(settings), std::move(service));
+            std::move(input_interface),
+            std::move(queues),
+            rpc::stream_transport::make_connection_settings(std::move(settings)),
+            std::move(service));
     }
 
     template<
@@ -78,11 +81,14 @@ namespace rpc::spsc_queue
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
         rpc::shared_ptr<In> input_interface,
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT connect_rpc<In, Out>(
-            std::move(input_interface), queues, rpc::stream_transport::make_connection_settings(), std::move(service));
+            std::move(input_interface),
+            std::move(queues),
+            rpc::stream_transport::make_connection_settings(),
+            std::move(service));
     }
 
     template<
@@ -93,8 +99,8 @@ namespace rpc::spsc_queue
         rpc::stream_transport::rpc_factory<
             Remote,
             Local> factory,
-        const queue_pair& queues,
-        const rpc::stream_transport::connection_settings& settings,
+        queue_pair queues,
+        rpc::stream_transport::connection_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         auto resolved_service = rpc::stream_transport::ensure_service(settings, std::move(service), "spsc_rpc_accept");
@@ -115,12 +121,15 @@ namespace rpc::spsc_queue
         rpc::stream_transport::rpc_factory<
             Remote,
             Local> factory,
-        const queue_pair& queues,
-        const rpc::stream_transport::transport_settings& settings,
+        queue_pair queues,
+        rpc::stream_transport::transport_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
-            std::move(factory), queues, rpc::stream_transport::make_connection_settings(settings), std::move(service));
+            std::move(factory),
+            std::move(queues),
+            rpc::stream_transport::make_connection_settings(std::move(settings)),
+            std::move(service));
     }
 
     template<
@@ -131,11 +140,11 @@ namespace rpc::spsc_queue
         rpc::stream_transport::rpc_factory<
             Remote,
             Local> factory,
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
-            std::move(factory), queues, rpc::stream_transport::make_connection_settings(), std::move(service));
+            std::move(factory), std::move(queues), rpc::stream_transport::make_connection_settings(), std::move(service));
     }
 
     template<
@@ -144,14 +153,14 @@ namespace rpc::spsc_queue
     CORO_TASK(rpc::stream_transport::rpc_accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
-        const queue_pair& queues,
-        const rpc::stream_transport::connection_settings& settings,
+        queue_pair queues,
+        rpc::stream_transport::connection_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
             rpc::stream_transport::fixed_factory<Remote, Local>(std::move(local_interface)),
-            queues,
-            settings,
+            std::move(queues),
+            std::move(settings),
             std::move(service));
     }
 
@@ -161,12 +170,12 @@ namespace rpc::spsc_queue
     CORO_TASK(rpc::stream_transport::rpc_accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
             rpc::stream_transport::fixed_factory<Remote, Local>(std::move(local_interface)),
-            queues,
+            std::move(queues),
             rpc::stream_transport::make_connection_settings(),
             std::move(service));
     }

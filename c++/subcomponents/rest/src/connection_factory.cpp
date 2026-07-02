@@ -112,6 +112,24 @@ namespace canopy::rest
             (void)settings;
 #endif
         }
+
+        struct connection_factory_connector
+        {
+            connection_factory_settings factory_settings;
+
+            auto operator()(
+                connection_settings settings,
+                std::shared_ptr<rpc::service> service) const -> CORO_TASK(stream_result)
+            {
+                auto stream_settings = make_stream_connection_settings(settings, factory_settings);
+                if (stream_settings.stream_layers.empty())
+                    CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
+
+                auto result = CO_AWAIT rpc::connection_factory::connect_stream(
+                    std::move(stream_settings), std::move(service), factory_settings.factory_context);
+                CO_RETURN stream_result{result.error_code, std::move(result.stream)};
+            }
+        };
     } // namespace
 
     rpc::connection_factory::connection_settings make_stream_connection_settings(
@@ -134,18 +152,7 @@ namespace canopy::rest
 
     stream_connector make_connection_factory_connector(connection_factory_settings factory_settings)
     {
-        return [factory_settings = std::move(factory_settings)](
-                   const connection_settings& settings,
-                   std::shared_ptr<rpc::service> service) mutable -> CORO_TASK(stream_result)
-        {
-            auto stream_settings = make_stream_connection_settings(settings, factory_settings);
-            if (stream_settings.stream_layers.empty())
-                CO_RETURN stream_result{rpc::error::INVALID_DATA(), {}};
-
-            auto result = CO_AWAIT rpc::connection_factory::connect_stream(
-                stream_settings, std::move(service), factory_settings.factory_context);
-            CO_RETURN stream_result{result.error_code, std::move(result.stream)};
-        };
+        return connection_factory_connector{std::move(factory_settings)};
     }
 
     void use_connection_factory(

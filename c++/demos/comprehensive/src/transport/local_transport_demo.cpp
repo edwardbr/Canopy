@@ -73,7 +73,7 @@ namespace comprehensive
             std::cout << "Creating child service in Zone " << child_transport->get_adjacent_zone_id().get_subnet() << "\n";
 
             child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
-                [&](const rpc::shared_ptr<i_demo_service>& parent, const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                [](rpc::shared_ptr<i_demo_service> parent, std::shared_ptr<rpc::child_service> child_service_ptr)
                     -> CORO_TASK(rpc::service_connect_result<i_demo_service>)
                 {
                     (void)parent;

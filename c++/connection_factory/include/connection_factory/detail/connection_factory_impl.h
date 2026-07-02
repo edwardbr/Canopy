@@ -22,10 +22,10 @@ namespace rpc::connection_factory
     namespace detail
     {
         auto make_accept_stream_transformer(
-            const connection_settings& settings,
+            connection_settings settings,
             size_t first_layer,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context) -> ::streaming::listener::stream_transformer;
+            context factory_context) -> ::streaming::listener::stream_transformer;
 
         struct native_transport_connect_context
         {
@@ -46,10 +46,10 @@ namespace rpc::connection_factory
         CORO_TASK(rpc::service_connect_result<Out>)
         connect_native_transport(
             rpc::shared_ptr<In> input_interface,
-            const transport_selection_result& transport,
-            const connection_settings& settings,
+            transport_selection_result transport,
+            connection_settings settings,
             std::shared_ptr<rpc::service> service,
-            const context& factory_context)
+            context factory_context)
         {
             if (!transport.settings)
                 CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
@@ -75,6 +75,18 @@ namespace rpc::connection_factory
                 std::move(connect_context.transport),
                 std::move(input_interface));
         }
+
+        template<class In, class Out> struct local_child_entry_point
+        {
+            rpc_factory<In, Out> child_factory;
+
+            auto operator()(
+                rpc::shared_ptr<In> remote_interface,
+                std::shared_ptr<rpc::child_service> child_service) const -> CORO_TASK(rpc::service_connect_result<Out>)
+            {
+                CO_RETURN CO_AWAIT child_factory(std::move(remote_interface), std::move(child_service));
+            }
+        };
     } // namespace detail
 
 #ifdef CANOPY_CONNECTION_FACTORY_HAS_LOCAL
@@ -87,7 +99,7 @@ namespace rpc::connection_factory
         rpc_factory<
             In,
             Out> child_factory,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         if (!child_factory)
@@ -110,10 +122,7 @@ namespace rpc::connection_factory
             CO_RETURN rpc::service_connect_result<Out>{rpc::error::INVALID_DATA(), {}};
 
         std::function<CORO_TASK(rpc::service_connect_result<Out>)(rpc::shared_ptr<In>, std::shared_ptr<rpc::child_service>)> entry_point
-            = [child_factory = std::move(child_factory)](
-                  rpc::shared_ptr<In> remote_interface,
-                  std::shared_ptr<rpc::child_service> child_service) mutable -> CORO_TASK(rpc::service_connect_result<Out>)
-        { CO_RETURN CO_AWAIT child_factory(std::move(remote_interface), std::move(child_service)); };
+            = detail::local_child_entry_point<In, Out>{std::move(child_factory)};
         local_transport->template set_child_entry_point<In, Out>(std::move(entry_point));
 
         CO_RETURN CO_AWAIT local.service->template connect_to_zone<In, Out>(
@@ -127,7 +136,7 @@ namespace rpc::connection_factory
     CORO_TASK(rpc::service_connect_result<Out>)
     connect_rpc(
         rpc::shared_ptr<In> input_interface,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context)
     {
@@ -138,7 +147,7 @@ namespace rpc::connection_factory
         if (transport.type != "stream_rpc")
         {
             CO_RETURN CO_AWAIT detail::connect_native_transport<In, Out>(
-                std::move(input_interface), transport, settings, std::move(service), factory_context);
+                std::move(input_interface), std::move(transport), settings, std::move(service), factory_context);
         }
 
         auto rpc_settings = detail::resolve_stream_rpc_settings(settings);
@@ -165,7 +174,7 @@ namespace rpc::connection_factory
         rpc_factory<
             Remote,
             Local> factory,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context,
         rpc_transport_observer observe_transport)
@@ -218,14 +227,14 @@ namespace rpc::connection_factory
     CORO_TASK(accept_result)
     accept_rpc(
         rpc::shared_ptr<Local> local_interface,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service,
         context factory_context,
         rpc_transport_observer observe_transport)
     {
         CO_RETURN CO_AWAIT accept_rpc<Remote, Local>(
             fixed_factory<Remote, Local>(std::move(local_interface)),
-            settings,
+            std::move(settings),
             std::move(service),
             std::move(factory_context),
             std::move(observe_transport));

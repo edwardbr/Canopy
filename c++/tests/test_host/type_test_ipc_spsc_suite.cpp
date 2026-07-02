@@ -123,11 +123,6 @@ namespace
         const char* mode,
         const std::string& shared_memory_file)
     {
-        auto child_pid = ::fork();
-        EXPECT_GE(child_pid, 0);
-        if (child_pid != 0)
-            return child_pid;
-
         std::vector<std::string> arguments{
             CANOPY_TEST_IPC_SPSC_PEER_PROCESS_PATH,
             "--mode",
@@ -140,6 +135,11 @@ namespace
         for (auto& argument : arguments)
             argv.push_back(argument.data());
         argv.push_back(nullptr);
+
+        auto child_pid = ::fork();
+        EXPECT_GE(child_pid, 0);
+        if (child_pid != 0)
+            return child_pid;
 
         ::execve(CANOPY_TEST_IPC_SPSC_PEER_PROCESS_PATH, argv.data(), environ);
         _exit(127);

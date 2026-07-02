@@ -82,7 +82,7 @@ namespace rpc::io_uring
         CORO_TASK(int) wake_iouring();
         CORO_TASK(int)
         notify_submitted(
-            const data& ring_data,
+            data ring_data,
             uint32_t sqe_count);
         CORO_TASK(int) get_iouring_data(data& ring_data);
         CORO_TASK(int) refresh_iouring_data();
@@ -117,16 +117,16 @@ namespace rpc::io_uring
         CORO_TASK(operation_result)
         bind_tcp_ipv4(
             uint32_t descriptor,
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port);
         CORO_TASK(operation_result)
         bind_tcp_ipv6(
             uint32_t descriptor,
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port);
         CORO_TASK(operation_result)
         listen(
@@ -139,16 +139,16 @@ namespace rpc::io_uring
             std::chrono::milliseconds timeout);
         CORO_TASK(descriptor_result)
         connect_tcp_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port,
             std::chrono::milliseconds timeout);
         CORO_TASK(descriptor_result)
         connect_tcp_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port,
             std::chrono::milliseconds timeout);
         CORO_TASK(transfer_result)
@@ -393,15 +393,15 @@ namespace rpc::io_uring
             uint64_t generation) noexcept;
         CORO_TASK(staging_buffer_allocation_result)
         make_ipv4_address_buffer(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port);
         CORO_TASK(staging_buffer_allocation_result)
         make_ipv6_address_buffer(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port);
         CORO_TASK(staging_buffer_allocation_result) make_loopback_address_buffer(uint16_t port);
         CORO_TASK(transfer_result)
@@ -426,19 +426,19 @@ namespace rpc::io_uring
             std::shared_ptr<void> linked_keep_alive);
         CORO_TASK(int)
         submit_no_op(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& operation);
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> operation);
         CORO_TASK(int)
         submit_prepared_operation(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& operation,
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> operation,
             fill_sqe_callback fill_sqe,
             void* context);
         CORO_TASK(int)
         submit_prepared_linked_operation(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& primary_operation,
-            const std::shared_ptr<detail::direct_ring_operation>& linked_operation,
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> primary_operation,
+            std::shared_ptr<detail::direct_ring_operation> linked_operation,
             fill_linked_sqe_callback fill_sqes,
             void* context);
         [[nodiscard]] std::shared_ptr<submission_waiter> make_submission_waiter(
@@ -450,16 +450,16 @@ namespace rpc::io_uring
 
         CORO_TASK(int)
         wait_for_operation(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& operation);
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> operation);
         CORO_TASK(int)
         wait_for_operation_cooperative(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& operation);
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> operation);
         CORO_TASK(int)
         wait_for_operation_proactor(
-            const data& ring_data,
-            const std::shared_ptr<detail::direct_ring_operation>& operation);
+            data ring_data,
+            std::shared_ptr<detail::direct_ring_operation> operation);
         bool request_completion_pump(const data& ring_data) noexcept;
         CORO_TASK(void) completion_pump_loop(data ring_data);
         CORO_TASK(void) wait_before_next_poll();

@@ -17,29 +17,29 @@
 
 #include <filesystem>
 
-// copied from spdlog
-#define I_TELEMETRY_LEVEL_DEBUG 0
-#define I_TELEMETRY_LEVEL_TRACE 1
-#define I_TELEMETRY_LEVEL_INFO 2
-#define I_TELEMETRY_LEVEL_WARN 3
-#define I_TELEMETRY_LEVEL_ERROR 4
-#define I_TELEMETRY_LEVEL_CRITICAL 5
-#define I_TELEMETRY_LEVEL_OFF 6
+// Numeric values mirror spdlog levels and are serialized in telemetry events.
+inline constexpr int telemetry_level_debug = 0;
+inline constexpr int telemetry_level_trace = 1;
+inline constexpr int telemetry_level_info = 2;
+inline constexpr int telemetry_level_warn = 3;
+inline constexpr int telemetry_level_error = 4;
+inline constexpr int telemetry_level_critical = 5;
+inline constexpr int telemetry_level_off = 6;
 
 namespace rpc::telemetry
 {
     class i_telemetry_service
     {
     public:
-        enum level_enum
+        enum level_enum // NOLINT(cppcoreguidelines-use-enum-class): telemetry levels are serialized as integer values.
         {
-            debug = I_TELEMETRY_LEVEL_DEBUG,
-            trace = I_TELEMETRY_LEVEL_TRACE,
-            info = I_TELEMETRY_LEVEL_INFO,
-            warn = I_TELEMETRY_LEVEL_WARN,
-            err = I_TELEMETRY_LEVEL_ERROR,
-            critical = I_TELEMETRY_LEVEL_CRITICAL,
-            off = I_TELEMETRY_LEVEL_OFF,
+            debug = telemetry_level_debug,
+            trace = telemetry_level_trace,
+            info = telemetry_level_info,
+            warn = telemetry_level_warn,
+            err = telemetry_level_error,
+            critical = telemetry_level_critical,
+            off = telemetry_level_off,
             n_levels
         };
         virtual ~i_telemetry_service() = default;
@@ -136,6 +136,7 @@ namespace rpc::telemetry
 namespace rpc
 {
     using i_telemetry_service = telemetry::i_telemetry_service;
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
     inline auto& telemetry_service_ = telemetry::telemetry_service_;
 
     inline std::shared_ptr<i_telemetry_service> get_telemetry_service()

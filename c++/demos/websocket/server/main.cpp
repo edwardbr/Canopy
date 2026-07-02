@@ -8,10 +8,13 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <cstddef>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <canopy/network_config/cli_args.h>
@@ -33,6 +36,7 @@
 
 namespace
 {
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): signal handler state must be static storage.
     volatile std::sig_atomic_t g_stop_requested = 0;
 
     void on_signal(int signal_number)
@@ -55,12 +59,11 @@ namespace
     };
 
     bool has_cli_option(
-        int argc,
-        char* argv[],
+        std::span<char*> argv,
         std::string_view option)
     {
         const std::string with_equals = std::string(option) + "=";
-        for (int i = 1; i < argc; ++i)
+        for (std::size_t i = 1; i < argv.size(); ++i)
         {
             const std::string_view arg = argv[i];
             if (arg == option || arg.rfind(with_equals, 0) == 0)
@@ -70,22 +73,19 @@ namespace
         return false;
     }
 
-    augmented_cli add_default_network_args(
-        int argc,
-        char* argv[])
+    augmented_cli add_default_network_args(std::span<char*> argv)
     {
         augmented_cli result;
         result.storage.reserve(8);
-        result.argv.reserve(argc + 8);
+        result.argv.reserve(argv.size() + 8);
 
-        for (int i = 0; i < argc; ++i)
-            result.argv.push_back(argv[i]);
+        for (char* arg : argv)
+            result.argv.push_back(arg);
 
-        const bool has_any_va
-            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
-              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
-        const bool has_listen = has_cli_option(argc, argv, "--listen");
+        const bool has_any_va = has_cli_option(argv, "--va-name") || has_cli_option(argv, "--va-type")
+                                || has_cli_option(argv, "--va-prefix") || has_cli_option(argv, "--va-subnet-bits")
+                                || has_cli_option(argv, "--va-object-id-bits") || has_cli_option(argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argv, "--listen");
 
         auto append = [&result](std::initializer_list<const char*> args)
         {
@@ -146,7 +146,7 @@ namespace
 #endif
 }
 
-auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<rpc::file_system::i_manager>
+    auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<rpc::file_system::i_manager>
 {
 #ifdef CANOPY_BUILD_COROUTINE
     rpc::io_uring::linux_io_uring_handle::options handle_options;
@@ -177,9 +177,28 @@ auto create_static_file_manager(rpc::executor_ptr executor) -> rpc::shared_ptr<r
 #endif
 }
 
-// (Previous async load_tls_credentials helper removed — the
-// streaming::secure::context(cert_path, key_path) constructor reads
-// the PEM files synchronously and works in both modes.)
+    // (Previous async load_tls_credentials helper removed — the
+    // streaming::secure::context(cert_path, key_path) constructor reads
+    // the PEM files synchronously and works in both modes.)
+
+    struct websocket_stream_handler
+    {
+        std::shared_ptr<websocket_demo::v1::websocket_service> service;
+        rpc::shared_ptr<rpc::file_system::i_manager> file_system_manager;
+        canopy::rest::endpoint_registry rest_handlers;
+        std::string static_root_path;
+
+        auto operator()(std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
+        {
+            // The demo-specific factory is bound here; http_client_connection only sees the generic upgrade callback.
+            auto websocket_handler = websocket_demo::v1::make_websocket_upgrade_handler(service);
+            websocket_demo::v1::http_client_connection connection(
+                std::move(stream), std::move(websocket_handler), file_system_manager, static_root_path, rest_handlers);
+
+            // service this call
+            CO_RETURN CO_AWAIT connection.handle();
+        }
+    };
 }
 
 auto run_http_server(
@@ -192,20 +211,8 @@ auto run_http_server(
     std::shared_ptr<streaming::secure::context> tls_ctx) -> CORO_TASK(void)
 {
     // when a new client connection is made this is called
-    auto stream_handler = [service,
-                              file_system_manager,
-                              rest_handlers = std::move(rest_handlers),
-                              static_root_path = std::move(static_root_path)](
-                              std::shared_ptr<streaming::stream> stream) -> CORO_TASK(std::shared_ptr<rpc::transport>)
-    {
-        // The demo-specific factory is bound here; http_client_connection only sees the generic upgrade callback.
-        auto websocket_handler = websocket_demo::v1::make_websocket_upgrade_handler(service);
-        websocket_demo::v1::http_client_connection connection(
-            std::move(stream), std::move(websocket_handler), file_system_manager, static_root_path, rest_handlers);
-
-        // service this call
-        CO_RETURN CO_AWAIT connection.handle();
-    };
+    auto stream_handler = websocket_stream_handler{
+        std::move(service), std::move(file_system_manager), std::move(rest_handlers), std::move(static_root_path)};
 
     CO_AWAIT canopy::http_server::run_server(
         ep, executor, std::move(stream_handler), tls_ctx, [] { return stop_requested(); });
@@ -214,7 +221,7 @@ auto run_http_server(
 
 auto main(
     int argc,
-    char* argv[]) -> int
+    char** argv) -> int
 try
 {
     args::ArgumentParser parser("WebSocket demo server with static pages, REST endpoints, and websocket RPC.");
@@ -224,7 +231,7 @@ try
     args::ValueFlag<std::string> key_file(parser, "file", "Path to TLS private key file (PEM format)", {"key"}, "");
     args::ValueFlag<std::string> path(
         parser, "path", "Path to static websocket demo files", {"static-root"}, CANOPY_WEBSOCKET_DEMO_STATIC_ROOT);
-    auto cli = add_default_network_args(argc, argv);
+    auto cli = add_default_network_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
 
     try
     {

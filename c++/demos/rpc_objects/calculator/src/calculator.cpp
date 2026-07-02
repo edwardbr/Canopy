@@ -11,6 +11,7 @@ namespace calculator::v1
 {
     namespace
     {
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses output refs.
         class calculator_impl final : public rpc::base<calculator_impl, i_calculator>
         {
         public:
@@ -66,6 +67,7 @@ namespace calculator::v1
         private:
             std::weak_ptr<rpc::service> service_;
         };
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 
     rpc::shared_ptr<i_calculator> make_calculator()

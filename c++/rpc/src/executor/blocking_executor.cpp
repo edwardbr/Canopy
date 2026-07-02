@@ -3,8 +3,10 @@
  *   All rights reserved.
  */
 #include <rpc/internal/executor/blocking_executor.h>
+#include <rpc/internal/logger.h>
 
 #include <algorithm>
+#include <exception>
 #include <utility>
 
 namespace rpc
@@ -242,10 +244,17 @@ namespace rpc
                     maybe_grow();
                     task.fn();
                 }
+                catch (const std::exception& ex)
+                {
+                    // Worker threads must not propagate exceptions; posted
+                    // callables own their own error handling.
+                    RPC_CRITICAL("blocking_executor worker task threw: {}", ex.what());
+                }
                 catch (...)
                 {
                     // Worker threads must not propagate exceptions; posted
                     // callables own their own error handling.
+                    RPC_CRITICAL("blocking_executor worker task threw an unknown exception");
                 }
                 running_tasks_.fetch_sub(1, std::memory_order_acq_rel);
                 maybe_grow();

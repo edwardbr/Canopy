@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -616,6 +617,7 @@ namespace yas::detail
             Archive& ar,
             rpc::variant<Types...>& value)
         {
+            // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
             if constexpr (F & yas::json)
             {
                 if constexpr (!(F & yas::compacted))
@@ -631,16 +633,17 @@ namespace yas::detail
                 // length. A short buffer here would silently truncate the
                 // key and overflow past `key` (json_read_key does not bound
                 // its NUL write to the size).
-                char key[1024];
-                json_read_key(ar, key, sizeof(key));
+                std::array<char, 1024> key{};
+                json_read_key(ar, key.data(), key.size());
 
-                rpc_variant_detail::load_alternative_by_tag<F>(ar, key, value);
+                rpc_variant_detail::load_alternative_by_tag<F>(ar, key.data(), value);
 
                 if constexpr (!(F & yas::compacted))
                     json_skipws(ar);
 
                 __YAS_THROW_IF_BAD_JSON_CHARS(ar, "}");
             }
+            // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
             else
             {
                 std::uint8_t index = 0;

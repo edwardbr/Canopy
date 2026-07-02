@@ -950,16 +950,10 @@ namespace rpc::stream_transport
                 else
                     break;
             }
-            auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(rpc::io_status)
-            {
-                if (data.empty())
-                    CO_RETURN rpc::io_status{rpc::io_status::kind::ok, 0};
-                CO_RETURN CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(data.data()), data.size()});
-            };
 
-            auto send_status = CO_AWAIT send_part(item.prefix_data);
+            auto send_status = CO_AWAIT send_part(std::move(item.prefix_data));
             if (send_status.is_ok())
-                send_status = CO_AWAIT send_part(item.payload_data);
+                send_status = CO_AWAIT send_part(std::move(item.payload_data));
             if (!send_status.is_ok())
             {
                 if (is_peer_disconnect_send_failure(send_status))
@@ -984,6 +978,13 @@ namespace rpc::stream_transport
             }
         }
         CO_RETURN true;
+    }
+
+    CORO_TASK(rpc::io_status) transport::send_part(std::vector<uint8_t> data)
+    {
+        if (data.empty())
+            CO_RETURN rpc::io_status{rpc::io_status::kind::ok, 0};
+        CO_RETURN CO_AWAIT stream_->send(rpc::byte_span{reinterpret_cast<const char*>(data.data()), data.size()});
     }
 
     CORO_TASK(void) transport::send_producer_loop(std::shared_ptr<activity_tracker> tracker)
@@ -1018,17 +1019,10 @@ namespace rpc::stream_transport
 
             if (had_item)
             {
-                auto send_part = [this](const std::vector<uint8_t>& data) -> CORO_TASK(rpc::io_status)
-                {
-                    if (data.empty())
-                        CO_RETURN rpc::io_status{rpc::io_status::kind::ok, 0};
-                    CO_RETURN CO_AWAIT stream_->send(
-                        rpc::byte_span{reinterpret_cast<const char*>(data.data()), data.size()});
-                };
-                auto send_status = CO_AWAIT send_part(item.prefix_data);
+                auto send_status = CO_AWAIT send_part(std::move(item.prefix_data));
                 if (send_status.is_ok())
                 {
-                    send_status = CO_AWAIT send_part(item.payload_data);
+                    send_status = CO_AWAIT send_part(std::move(item.payload_data));
                 }
                 if (!send_status.is_ok())
                 {
@@ -1158,7 +1152,7 @@ namespace rpc::stream_transport
     }
 
     CORO_TASK(void)
-    transport::notify_disconnect_once(const std::shared_ptr<rpc::service>& svc)
+    transport::notify_disconnect_once(std::shared_ptr<rpc::service> svc)
     {
         bool expected = false;
         if (!disconnect_notification_sent_.compare_exchange_strong(
@@ -1759,7 +1753,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_close_connection_send(
@@ -1770,7 +1764,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_call_receive(
@@ -1836,7 +1830,7 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 
     void transport::send_payload_init_client_channel_response(
@@ -1847,6 +1841,6 @@ namespace rpc::stream_transport
     {
         if (run_outgoing_handlers(protocol_version, direction, sequence_number, payload))
             return;
-        send_payload(protocol_version, direction, payload, sequence_number, send_priority::high);
+        send_payload(protocol_version, direction, std::move(payload), sequence_number, send_priority::high);
     }
 }

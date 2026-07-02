@@ -1022,8 +1022,8 @@ namespace interface_declaration_generator
             header("explicit rest_handler(rpc::shared_ptr<{0}> object, std::string base_path = {{}});", interface_name);
             header("[[nodiscard]] std::string_view base_path() const noexcept;");
             header(
-                "CORO_TASK(std::optional<::canopy::rest::server_response>) handle(const "
-                "::canopy::rest::server_request& request) const;");
+                "CORO_TASK(std::optional<::canopy::rest::server_response>) handle("
+                "::canopy::rest::server_request request) const;");
             header("");
             header("private:");
             header("rpc::shared_ptr<{0}> object_;", interface_name);

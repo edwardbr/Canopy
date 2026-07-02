@@ -45,7 +45,7 @@ namespace
 
     [[nodiscard]] auto parse_options(
         int argc,
-        char* argv[]) -> options
+        char** argv) -> options
     {
         options result;
         for (int i = 1; i < argc; ++i)
@@ -395,7 +395,7 @@ namespace
 
 int main(
     int argc,
-    char* argv[])
+    char** argv)
 {
     try
     {

@@ -192,6 +192,30 @@ namespace rpc::module
         return object_factory<Remote, Local>(std::forward<Factory>(factory));
     }
 
+    template<class Remote, class Local, class LocalFactory> class service_only_factory_adapter
+    {
+    public:
+        explicit service_only_factory_adapter(LocalFactory local_factory)
+            : local_factory_(std::move(local_factory))
+        {
+        }
+
+        CORO_TASK(rpc::service_connect_result<Local>)
+        operator()(
+            rpc::shared_ptr<Remote> remote,
+            std::shared_ptr<rpc::service> service,
+            object_factory_context context)
+        {
+            (void)remote;
+            (void)context;
+            auto local = local_factory_(std::move(service));
+            CO_RETURN rpc::service_connect_result<Local>{rpc::error::OK(), std::move(local)};
+        }
+
+    private:
+        LocalFactory local_factory_;
+    };
+
     // Convenience adapter for the common case where the implementation does not
     // need the parent/host remote interface or module settings. The supplied
     // LocalFactory only receives the owning rpc::service and returns Local.
@@ -204,17 +228,35 @@ namespace rpc::module
         Local>
     make_object_factory_with_service(LocalFactory local_factory)
     {
-        return [local_factory = std::move(local_factory)](
-                   rpc::shared_ptr<Remote> remote,
-                   std::shared_ptr<rpc::service> service,
-                   object_factory_context context) mutable -> CORO_TASK(rpc::service_connect_result<Local>)
-        {
-            (void)remote;
-            (void)context;
-            auto local = local_factory(std::move(service));
-            CO_RETURN rpc::service_connect_result<Local>{rpc::error::OK(), std::move(local)};
-        };
+        return service_only_factory_adapter<Remote, Local, LocalFactory>{std::move(local_factory)};
     }
+
+    template<class Remote, class Local> class child_service_factory_adapter
+    {
+    public:
+        child_service_factory_adapter(
+            object_factory_context context,
+            object_factory<
+                Remote,
+                Local> factory)
+            : context_(std::move(context))
+            , factory_(std::move(factory))
+        {
+        }
+
+        CORO_TASK(rpc::service_connect_result<Local>)
+        operator()(
+            rpc::shared_ptr<Remote> remote,
+            std::shared_ptr<rpc::child_service> service)
+        {
+            auto service_base = std::static_pointer_cast<rpc::service>(std::move(service));
+            CO_RETURN CO_AWAIT factory_(std::move(remote), std::move(service_base), context_);
+        }
+
+    private:
+        object_factory_context context_;
+        object_factory<Remote, Local> factory_;
+    };
 
     // Adapt a generic object_factory to the shape expected by
     // rpc::child_service::create_child_zone().
@@ -237,14 +279,34 @@ namespace rpc::module
             std::shared_ptr<rpc::child_service>)>
     {
         auto context = make_object_factory_context(std::move(name), module_global_settings, startup_applications);
-        return [context = std::move(context), factory = std::move(factory)](
-                   rpc::shared_ptr<Remote> remote,
-                   std::shared_ptr<rpc::child_service> service) mutable -> CORO_TASK(rpc::service_connect_result<Local>)
-        {
-            auto service_base = std::static_pointer_cast<rpc::service>(service);
-            CO_RETURN CO_AWAIT factory(std::move(remote), std::move(service_base), context);
-        };
+        return child_service_factory_adapter<Remote, Local>{std::move(context), std::move(factory)};
     }
+
+    template<class Remote, class Local> class service_factory_adapter
+    {
+    public:
+        service_factory_adapter(
+            object_factory_context context,
+            object_factory<
+                Remote,
+                Local> factory)
+            : context_(std::move(context))
+            , factory_(std::move(factory))
+        {
+        }
+
+        CORO_TASK(rpc::service_connect_result<Local>)
+        operator()(
+            rpc::shared_ptr<Remote> remote,
+            std::shared_ptr<rpc::service> service)
+        {
+            CO_RETURN CO_AWAIT factory_(std::move(remote), std::move(service), context_);
+        }
+
+    private:
+        object_factory_context context_;
+        object_factory<Remote, Local> factory_;
+    };
 
     // Adapt a generic object_factory to transports that already pass a service
     // rather than a child_service. This is used by shared-scheduler
@@ -265,10 +327,7 @@ namespace rpc::module
             std::shared_ptr<rpc::service>)>
     {
         auto context = make_object_factory_context(std::move(name), module_global_settings, startup_applications);
-        return [context = std::move(context), factory = std::move(factory)](
-                   rpc::shared_ptr<Remote> remote,
-                   std::shared_ptr<rpc::service> service) mutable -> CORO_TASK(rpc::service_connect_result<Local>)
-        { CO_RETURN CO_AWAIT factory(std::move(remote), std::move(service), context); };
+        return service_factory_adapter<Remote, Local>{std::move(context), std::move(factory)};
     }
 
 } // namespace rpc::module

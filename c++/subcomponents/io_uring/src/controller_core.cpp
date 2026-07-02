@@ -198,7 +198,7 @@ namespace rpc::io_uring
 
     CORO_TASK(int)
     controller::notify_submitted(
-        const data& ring_data,
+        data ring_data,
         uint32_t sqe_count)
     {
         auto err = shutdown_error();
@@ -218,7 +218,8 @@ namespace rpc::io_uring
 
     // Returns the cached io_uring descriptor to callers, fetching it from the
     // environment handle first if this controller has not cached it yet.
-    CORO_TASK(int) controller::get_iouring_data(data& ring_data)
+    CORO_TASK(int)
+    controller::get_iouring_data(data& ring_data) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters)
     {
         auto err = CO_AWAIT ensure_iouring_data();
         if (err != rpc::error::OK())

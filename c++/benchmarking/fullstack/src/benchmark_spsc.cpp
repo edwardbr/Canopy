@@ -27,11 +27,28 @@ namespace comprehensive::v1
             pinned_queues->push_back(queues);
         }
 
+        struct spsc_connect_callback
+        {
+            rpc::event& on_connected;
+
+            CORO_TASK(rpc::service_connect_result<i_data_processor>)
+            operator()(
+                rpc::shared_ptr<i_data_processor>,
+                std::shared_ptr<rpc::service>) const
+            {
+                auto local = make_benchmark_data_processor();
+                on_connected.set();
+                CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
+            }
+        };
+
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // these benchmark tasks are joined before the caller-owned queues/result leave scope.
         CORO_TASK(void)
         spsc_client_task(
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_1,
-            spsc_queues* queues,
+            spsc_queues& queues,
             rpc::event& server_ready,
             rpc::event& client_finished,
             rpc::encoding enc,
@@ -43,8 +60,8 @@ namespace comprehensive::v1
             auto service = rpc::root_service::create("spsc_client", zone_1, scheduler);
             service->set_default_encoding(enc);
 
-            auto stream_1 = std::make_shared<streaming::spsc_queue::stream>(
-                &queues->to_process_1, &queues->to_process_2, scheduler);
+            auto stream_1
+                = std::make_shared<streaming::spsc_queue::stream>(&queues.to_process_1, &queues.to_process_2, scheduler);
             auto transport = rpc::stream_transport::make_client("spsc_transport_1", service, std::move(stream_1));
 
             rpc::shared_ptr<i_data_processor> remote_processor;
@@ -80,9 +97,9 @@ namespace comprehensive::v1
         spsc_server_task(
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::zone zone_2,
-            spsc_queues* queues,
+            spsc_queues& queues,
             rpc::event& server_ready,
-            const rpc::event& client_finished,
+            rpc::event& client_finished,
             rpc::encoding enc)
         {
             auto service = rpc::root_service::create("spsc_server", zone_2, scheduler);
@@ -92,18 +109,12 @@ namespace comprehensive::v1
 
             rpc::event on_connected;
 
-            auto stream_2 = std::make_shared<streaming::spsc_queue::stream>(
-                &queues->to_process_2, &queues->to_process_1, scheduler);
+            auto stream_2
+                = std::make_shared<streaming::spsc_queue::stream>(&queues.to_process_2, &queues.to_process_1, scheduler);
             auto transport = CO_AWAIT service->make_acceptor<i_data_processor, i_data_processor>(
                 "spsc_transport_2",
                 rpc::stream_transport::transport_factory(std::move(stream_2)),
-                [&on_connected](const rpc::shared_ptr<i_data_processor>&, const std::shared_ptr<rpc::service>&)
-                    -> CORO_TASK(rpc::service_connect_result<i_data_processor>)
-                {
-                    auto local = make_benchmark_data_processor();
-                    on_connected.set();
-                    CO_RETURN rpc::service_connect_result<i_data_processor>{rpc::error::OK(), std::move(local)};
-                });
+                spsc_connect_callback{on_connected});
 
             server_ready.set();
             CO_AWAIT transport->accept();
@@ -115,6 +126,7 @@ namespace comprehensive::v1
             CO_AWAIT shutdown_event->wait();
             CO_RETURN;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 
     benchmark_result run_spsc_benchmark(
@@ -137,8 +149,8 @@ namespace comprehensive::v1
 
         coro::sync_wait(
             coro::when_all(
-                spsc_client_task(scheduler_1, zone_1, queues.get(), server_ready, client_finished, enc, blob_size, result),
-                spsc_server_task(scheduler_2, zone_2, queues.get(), server_ready, client_finished, enc)));
+                spsc_client_task(scheduler_1, zone_1, *queues, server_ready, client_finished, enc, blob_size, result),
+                spsc_server_task(scheduler_2, zone_2, *queues, server_ready, client_finished, enc)));
 
         scheduler_1.reset();
         scheduler_2.reset();

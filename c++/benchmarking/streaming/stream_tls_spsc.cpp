@@ -29,6 +29,35 @@ namespace stream_bench
             }
         };
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // make_tls_pair joins these tasks before the caller-owned outputs leave scope.
+        coro::task<void> make_tls_server_stream(
+            std::shared_ptr<streaming::stream> raw,
+            std::shared_ptr<streaming::secure::context> context,
+            std::shared_ptr<coro::scheduler> scheduler,
+            std::shared_ptr<streaming::stream>& output)
+        {
+            auto stream
+                = std::make_shared<streaming::secure::stream>(std::move(raw), std::move(context), std::move(scheduler));
+            if (co_await stream->handshake())
+                output = std::move(stream);
+            co_return;
+        }
+
+        coro::task<void> make_tls_client_stream(
+            std::shared_ptr<streaming::stream> raw,
+            std::shared_ptr<streaming::secure::client_context> context,
+            std::shared_ptr<coro::scheduler> scheduler,
+            std::shared_ptr<streaming::stream>& output)
+        {
+            auto stream
+                = std::make_shared<streaming::secure::stream>(std::move(raw), std::move(context), std::move(scheduler));
+            if (co_await stream->client_handshake())
+                output = std::move(stream);
+            co_return;
+        }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
+
         bool make_tls_pair(
             const tls_fixture_cert_pair& cert,
             const std::shared_ptr<streaming::stream>& raw_a,
@@ -45,20 +74,8 @@ namespace stream_bench
 
             coro::sync_wait(
                 coro::when_all(
-                    scheduler_a->schedule(
-                        [&]() -> coro::task<void>
-                        {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw_a, server_context, scheduler_a);
-                            if (co_await stream->handshake())
-                                tls_a = stream;
-                        }()),
-                    scheduler_b->schedule(
-                        [&]() -> coro::task<void>
-                        {
-                            auto stream = std::make_shared<streaming::secure::stream>(raw_b, client_context, scheduler_b);
-                            if (co_await stream->client_handshake())
-                                tls_b = stream;
-                        }())));
+                    scheduler_a->schedule(make_tls_server_stream(raw_a, server_context, scheduler_a, tls_a)),
+                    scheduler_b->schedule(make_tls_client_stream(raw_b, client_context, scheduler_b, tls_b))));
 
             return tls_a && tls_b;
         }

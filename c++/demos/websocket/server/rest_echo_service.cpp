@@ -13,6 +13,7 @@ namespace websocket_demo
         {
             namespace rest_v1 = websocket_demo::rest::v1;
 
+            // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses output refs.
             class echo_service final : public rpc::base<echo_service, rest_v1::i_echo>
             {
             public:
@@ -24,6 +25,7 @@ namespace websocket_demo
                     CO_RETURN rpc::error::OK();
                 }
             };
+            // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
         }
 
         auto make_echo_service() -> rpc::shared_ptr<rest_v1::i_echo>

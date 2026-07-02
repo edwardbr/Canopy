@@ -22,16 +22,17 @@ namespace
             rpc::error::OK(), comprehensive::v1::make_benchmark_data_processor()};
     }
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+    // main waits for this task before the mapped queue pair is unmapped.
     CORO_TASK(int)
     run_child_process(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::zone child_zone,
-        rpc::ipc_spsc::queue_pair* queues)
+        rpc::ipc_spsc::queue_pair& queues)
     {
         auto service = rpc::root_service::create("benchmark_ipc_child_process", child_zone, scheduler);
 
-        auto stream
-            = std::make_shared<streaming::spsc_queue::stream>(&queues->dll_to_host, &queues->host_to_dll, scheduler);
+        auto stream = std::make_shared<streaming::spsc_queue::stream>(&queues.dll_to_host, &queues.host_to_dll, scheduler);
         auto acceptor
             = rpc::stream_transport::create<comprehensive::v1::i_data_processor, comprehensive::v1::i_data_processor>(
                 "benchmark_ipc_child_process", service, std::move(stream), &make_data_processor);
@@ -49,6 +50,7 @@ namespace
         service.reset();
         CO_RETURN 0;
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 }
 
 int main(
@@ -71,14 +73,7 @@ int main(
                 = coro::thread_pool::options{.thread_count = static_cast<uint32_t>(bootstrap->scheduler_thread_count())},
                 .execution_strategy = coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool}));
 
-        int exit_code = 0;
-        coro::sync_wait(
-            coro::when_all(
-                [&]() -> coro::task<void>
-                {
-                    exit_code = CO_AWAIT run_child_process(scheduler, bootstrap->child_zone(), queues);
-                    CO_RETURN;
-                }()));
+        int exit_code = coro::sync_wait(run_child_process(scheduler, bootstrap->child_zone(), *queues));
 
         scheduler->shutdown();
         rpc::ipc_spsc::queue_pair_bootstrap::unmap_queue_pair(queues);

@@ -55,6 +55,7 @@ namespace rpc
                 return rpc::effective_encoding(service_proxy->get_encoding());
             return rpc::effective_encoding(rpc::encoding::yas_json);
         }
+
     }
 
     bool are_in_same_zone(
@@ -133,6 +134,8 @@ namespace rpc
         return out;
     }
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): this helper intentionally borrows
+    // existing casting_interface/output objects; this is a stable API contract used by coroutine call sites.
     CORO_TASK(int)
     casting_interface::get_schema(
         const casting_interface& iface,
@@ -173,7 +176,10 @@ namespace rpc
         filter_interface(out, interface_id);
         CO_RETURN rpc::error::OK();
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): this helper intentionally borrows
+    // an existing casting_interface object while the caller awaits the RPC call.
     CORO_TASK(rpc::send_result)
     casting_interface::call(
         const casting_interface& iface,
@@ -198,6 +204,7 @@ namespace rpc
         {
             if (params.protocol_version == 0)
                 params.protocol_version = rpc::get_version();
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): local dispatch requires mutable interface access through a const validation path.
             CO_RETURN CO_AWAIT const_cast<rpc::casting_interface&>(iface).__rpc_call(std::move(params));
         }
 
@@ -220,7 +227,10 @@ namespace rpc
             std::move(params.in_data),
             params.request_id);
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): this helper intentionally borrows
+    // an existing casting_interface object while the caller awaits the RPC post.
     CORO_TASK(int)
     casting_interface::post(
         const casting_interface& iface,
@@ -253,6 +263,7 @@ namespace rpc
             send.method_id = params.method_id;
             send.in_data = std::move(params.in_data);
             send.in_back_channel = std::move(params.in_back_channel);
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast): local dispatch requires mutable interface access through a const validation path.
             auto result = CO_AWAIT const_cast<rpc::casting_interface&>(iface).__rpc_call(std::move(send));
             CO_RETURN result.error_code;
         }
@@ -270,6 +281,7 @@ namespace rpc
         CO_RETURN CO_AWAIT object_proxy->post(
             protocol_version, params.encoding_type, params.tag, params.interface_id, params.method_id, std::move(params.in_data));
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     // (Removed dead commented-out function get_channel_zone)
 }

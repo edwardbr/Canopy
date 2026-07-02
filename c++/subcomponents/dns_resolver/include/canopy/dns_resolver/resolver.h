@@ -82,12 +82,12 @@ namespace canopy::dns_resolver
         resolve_options options = {});
 
     [[nodiscard]] CORO_TASK(resolve_result) resolve_service(
-        const std::string& host,
-        const std::string& service,
+        std::string host,
+        std::string service,
         resolve_options options = {});
 
     [[nodiscard]] CORO_TASK(resolve_result) resolve_host(
-        const std::string& host,
+        std::string host,
         uint16_t port,
         resolve_options options = {});
 }

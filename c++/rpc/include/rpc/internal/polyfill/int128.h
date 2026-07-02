@@ -6,6 +6,7 @@
 
 // needed for uint128_t and int128_t serialisation support protobuffers are sending pairs of uint64_t's
 
+#include <array>
 #include <string>
 #include <string_view>
 
@@ -24,14 +25,14 @@ namespace rpc
     {
         if (v == 0)
             return "0";
-        char buf[40];
-        char* p = buf + sizeof(buf);
+        std::array<char, 40> buf{};
+        char* p = buf.data() + buf.size();
         while (v)
         {
             *--p = static_cast<char>('0' + static_cast<int>(v % 10));
             v /= 10;
         }
-        return std::string(p, buf + sizeof(buf));
+        return std::string(p, buf.data() + buf.size());
     }
 
     inline std::string int128_to_string(__int128 v)
@@ -102,6 +103,7 @@ namespace yas
                 Archive& ar,
                 __int128& obj)
             {
+                // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
                 if (F & yas::json)
                 {
                     __YAS_CONSTEXPR_IF(!(F & yas::compacted))
@@ -121,6 +123,7 @@ namespace yas
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "unreachable");
                     }
                 }
+                // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
                 else
                 {
                     auto* parts = reinterpret_cast<uint64_t*>(&obj);
@@ -159,6 +162,7 @@ namespace yas
                 Archive& ar,
                 unsigned __int128& obj)
             {
+                // NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays): YAS JSON validation macro uses an internal stack array.
                 if (F & yas::json)
                 {
                     __YAS_CONSTEXPR_IF(!(F & yas::compacted))
@@ -178,6 +182,7 @@ namespace yas
                         __YAS_THROW_IF_BAD_JSON_CHARS(ar, "unreachable");
                     }
                 }
+                // NOLINTEND(cppcoreguidelines-avoid-c-arrays)
                 else
                 {
                     auto* parts = reinterpret_cast<uint64_t*>(&obj);

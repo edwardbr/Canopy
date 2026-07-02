@@ -5,15 +5,16 @@
 
 #ifdef CANOPY_BUILD_COROUTINE
 
+#  include <array>
 #  include <atomic>
 #  include <cerrno>
+#  include <chrono>
 #  include <csignal>
 #  include <cstdio>
 #  include <cstdlib>
 #  include <cstring>
 #  include <filesystem>
 #  include <fcntl.h>
-#  include <chrono>
 #  include <memory>
 #  include <random>
 #  include <string_view>
@@ -32,7 +33,7 @@
 #  include <transports/ipc_spsc/bootstrap.h>
 #  include <transports/ipc_spsc/transport.h>
 
-extern char** environ;
+extern char** environ; // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): POSIX execve environment.
 
 namespace rpc::ipc_spsc
 {
@@ -98,11 +99,15 @@ namespace rpc::ipc_spsc
             if (options.path.empty())
                 return {};
 
+            auto open_path = options.path;
             int flags = O_RDWR;
             if (options.create)
+            {
+                open_path = options.path + ".creating." + std::to_string(static_cast<long long>(::getpid()));
                 flags |= O_CREAT | O_EXCL;
+            }
 
-            int fd = ::open(options.path.c_str(), flags, 0600);
+            int fd = ::open(open_path.c_str(), flags, 0600);
             if (fd < 0)
                 return {};
 
@@ -111,7 +116,7 @@ namespace rpc::ipc_spsc
                 if (::ftruncate(fd, sizeof(rpc::ipc_spsc::queue_pair)) != 0)
                 {
                     ::close(fd);
-                    ::unlink(options.path.c_str());
+                    ::unlink(open_path.c_str());
                     return {};
                 }
             }
@@ -133,12 +138,21 @@ namespace rpc::ipc_spsc
             if (queues == MAP_FAILED)
             {
                 if (options.create)
-                    ::unlink(options.path.c_str());
+                    ::unlink(open_path.c_str());
                 return {};
             }
 
             if (options.create)
+            {
                 new (queues) rpc::ipc_spsc::queue_pair{};
+                if (::link(open_path.c_str(), options.path.c_str()) != 0)
+                {
+                    ::munmap(queues, sizeof(rpc::ipc_spsc::queue_pair));
+                    ::unlink(open_path.c_str());
+                    return {};
+                }
+                ::unlink(open_path.c_str());
+            }
 
             // The mapped queue pair is the owner object for both SPSC queues.
             // make_shared_memory_stream() creates aliasing shared_ptrs to the
@@ -199,9 +213,9 @@ namespace rpc::ipc_spsc
         // This pipe is a one-byte readiness handshake between parent and child after fork().
         // Child writes once PR_SET_PDEATHSIG is armed; parent blocks until then so callers only
         // observe a transport whose "kill child when parent dies" contract is already active.
-        int ready_pipe[2] = {-1, -1};
+        std::array<int, 2> ready_pipe{{-1, -1}};
         if (options.kill_child_on_parent_death)
-            RPC_ASSERT(::pipe(ready_pipe) == 0);
+            RPC_ASSERT(::pipe(ready_pipe.data()) == 0);
 
         pid_t child_pid = ::fork();
         RPC_ASSERT(child_pid >= 0);
@@ -340,7 +354,6 @@ namespace rpc::ipc_spsc
         , state_(std::move(bundle.state))
     {
         spawn_child(state_, options);
-        child_started_ = true;
     }
 
     transport::~transport()

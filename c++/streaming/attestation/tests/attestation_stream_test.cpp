@@ -86,7 +86,7 @@ namespace
     auto send_string(
         std::shared_ptr<streaming::attestation::stream> from,
         std::shared_ptr<streaming::attestation::stream> to,
-        const std::string& value) -> coro::task<std::string>
+        std::string value) -> coro::task<std::string>
     {
         auto status = co_await from->send(rpc::byte_span{value});
         if (!status.is_ok())
@@ -113,12 +113,10 @@ TEST(
     auto server_a = std::make_shared<streaming::attestation::stream>(pair.a, make_options(server_a_service));
     auto server_b = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_b_service));
 
-    bool a_ok = false;
-    bool b_ok = false;
-    coro::sync_wait(
-        coro::when_all(
-            [&]() -> coro::task<void> { a_ok = co_await server_a->client_handshake(); }(),
-            [&]() -> coro::task<void> { b_ok = co_await server_b->server_handshake(); }()));
+    auto [a_handshake, b_handshake]
+        = coro::sync_wait(coro::when_all(server_a->client_handshake(), server_b->server_handshake()));
+    const bool a_ok = a_handshake.return_value();
+    const bool b_ok = b_handshake.return_value();
 
     EXPECT_TRUE(a_ok);
     EXPECT_TRUE(b_ok);
@@ -163,12 +161,10 @@ TEST(
     auto client = std::make_shared<streaming::attestation::stream>(pair.a, make_options(client_service));
     auto server = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_service));
 
-    bool client_ok = false;
-    bool server_ok = false;
-    coro::sync_wait(
-        coro::when_all(
-            [&]() -> coro::task<void> { client_ok = co_await client->client_handshake(); }(),
-            [&]() -> coro::task<void> { server_ok = co_await server->server_handshake(); }()));
+    auto [client_handshake, server_handshake]
+        = coro::sync_wait(coro::when_all(client->client_handshake(), server->server_handshake()));
+    const bool client_ok = client_handshake.return_value();
+    const bool server_ok = server_handshake.return_value();
 
     EXPECT_TRUE(client_ok);
     EXPECT_TRUE(server_ok);
@@ -210,12 +206,10 @@ TEST(
     auto client = std::make_shared<streaming::attestation::stream>(pair.a, make_options(client_service));
     auto server = std::make_shared<streaming::attestation::stream>(pair.b, make_options(server_service));
 
-    bool client_ok = true;
-    bool server_ok = true;
-    coro::sync_wait(
-        coro::when_all(
-            [&]() -> coro::task<void> { client_ok = co_await client->client_handshake(); }(),
-            [&]() -> coro::task<void> { server_ok = co_await server->server_handshake(); }()));
+    auto [client_handshake, server_handshake]
+        = coro::sync_wait(coro::when_all(client->client_handshake(), server->server_handshake()));
+    const bool client_ok = client_handshake.return_value();
+    const bool server_ok = server_handshake.return_value();
 
     EXPECT_FALSE(client_ok);
     EXPECT_FALSE(server_ok);

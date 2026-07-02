@@ -209,8 +209,8 @@ namespace rpc::io_uring
     // capacity before timing out.
     CORO_TASK(int)
     controller::submit_no_op(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& operation)
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> operation)
     {
         int waiter_error = rpc::error::OK();
         auto waiter = make_submission_waiter(1, waiter_error);
@@ -269,8 +269,8 @@ namespace rpc::io_uring
     // operation engine owns the SQ lock.
     CORO_TASK(int)
     controller::submit_prepared_operation(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& operation,
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> operation,
         fill_sqe_callback fill_sqe,
         void* context)
     {
@@ -331,9 +331,9 @@ namespace rpc::io_uring
     // per attempt and retried cooperatively, exactly like the single-SQE path.
     CORO_TASK(int)
     controller::submit_prepared_linked_operation(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& primary_operation,
-        const std::shared_ptr<detail::direct_ring_operation>& linked_operation,
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> primary_operation,
+        std::shared_ptr<detail::direct_ring_operation> linked_operation,
         fill_linked_sqe_callback fill_sqes,
         void* context)
     {
@@ -530,8 +530,8 @@ namespace rpc::io_uring
     // fallback.
     CORO_TASK(int)
     controller::wait_for_operation(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& operation)
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> operation)
     {
         if (wait_strategy_ == wait_strategy::proactor && scheduler_)
         {
@@ -559,8 +559,8 @@ namespace rpc::io_uring
     // same shared CQ.
     CORO_TASK(int)
     controller::wait_for_operation_cooperative(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& operation)
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> operation)
     {
         for (uint32_t attempt = 0; attempt < operation_wait_attempt_limit; ++attempt)
         {
@@ -638,8 +638,8 @@ namespace rpc::io_uring
     // on proactor mode.
     CORO_TASK(int)
     controller::wait_for_operation_proactor(
-        const data& ring_data,
-        const std::shared_ptr<detail::direct_ring_operation>& operation)
+        data ring_data,
+        std::shared_ptr<detail::direct_ring_operation> operation)
     {
         if (operation->completed.load(std::memory_order_acquire))
         {

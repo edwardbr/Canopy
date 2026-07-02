@@ -248,8 +248,6 @@ namespace rpc
     shared_ptr<T>::shared_ptr(
         const std::shared_ptr<rpc::object_proxy>& object_proxy,
         from_object_proxy_tag)
-        : ptr_(nullptr)
-        , cb_(nullptr)
     {
         if (!object_proxy)
             return;
@@ -263,8 +261,6 @@ namespace rpc
     optimistic_ptr<T>::optimistic_ptr(
         const std::shared_ptr<rpc::object_proxy>& object_proxy,
         from_object_proxy_tag)
-        : ptr_(nullptr)
-        , cb_(nullptr)
     {
         if (!object_proxy)
             return;

@@ -38,16 +38,16 @@ namespace streaming::coroutine::tcp
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
         CORO_TASK(stream_result)
         connect_ipv4(
-            const std::array<
+            std::array<
                 uint8_t,
-                4>& address,
+                4> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
         CORO_TASK(stream_result)
         connect_ipv6(
-            const std::array<
+            std::array<
                 uint8_t,
-                16>& address,
+                16> address,
             uint16_t port,
             std::chrono::milliseconds timeout = std::chrono::milliseconds{5000});
 
@@ -68,9 +68,9 @@ namespace streaming::coroutine::tcp
     CORO_TASK(stream_result)
     connect_ipv4(
         std::shared_ptr<rpc::io_uring::controller> controller,
-        const std::array<
+        std::array<
             uint8_t,
-            4>& address,
+            4> address,
         uint16_t port,
         stream::options stream_options,
         std::chrono::milliseconds timeout,
@@ -79,9 +79,9 @@ namespace streaming::coroutine::tcp
     CORO_TASK(stream_result)
     connect_ipv6(
         std::shared_ptr<rpc::io_uring::controller> controller,
-        const std::array<
+        std::array<
             uint8_t,
-            16>& address,
+            16> address,
         uint16_t port,
         stream::options stream_options,
         std::chrono::milliseconds timeout,

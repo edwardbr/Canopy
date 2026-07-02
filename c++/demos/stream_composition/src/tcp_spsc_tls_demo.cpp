@@ -58,10 +58,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cstddef>
 #include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 
 // ---------------------------------------------------------------------------
@@ -148,17 +151,29 @@ namespace stream_composition
             std::copy(endpoint.addr.begin(), endpoint.addr.end(), result.begin());
             return result;
         }
+
+        struct echo_service_connector
+        {
+            auto operator()(
+                rpc::shared_ptr<i_echo>,
+                std::shared_ptr<rpc::service>) const -> CORO_TASK(rpc::service_connect_result<i_echo>)
+            {
+                CO_RETURN rpc::service_connect_result<i_echo>{rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
+            }
+        };
     } // namespace
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+    // main joins these tasks before the per-iteration events/flag leave scope.
     CORO_TASK(void)
     run_server(
         std::shared_ptr<coro::scheduler> scheduler,
         rpc::event& server_ready,
-        const rpc::event& client_finished,
-        const canopy::network_config::tcp_endpoint& listen_ep,
+        rpc::event& client_finished,
+        canopy::network_config::tcp_endpoint listen_ep,
         rpc::zone server_zone,
-        const std::string& cert_path,
-        const std::string& key_path,
+        std::string cert_path,
+        std::string key_path,
         std::atomic<bool>& iteration_ok)
     {
         auto shutdown_event = std::make_shared<rpc::event>();
@@ -211,18 +226,7 @@ namespace stream_composition
         options.transport.name = "server_transport";
         options.transport.encoding = rpc::encoding::yas_binary;
         auto accept_result = CO_AWAIT rpc::connection_factory::accept_rpc_listener<i_echo, i_echo>(
-            std::move(acceptor),
-            [](const rpc::shared_ptr<i_echo>&,
-                const std::shared_ptr<rpc::service>&) -> CORO_TASK(rpc::service_connect_result<i_echo>)
-            {
-                CO_RETURN rpc::service_connect_result<i_echo>{rpc::error::OK(), rpc::shared_ptr<i_echo>(new echo_impl())};
-            },
-            options,
-            service,
-            {},
-            listen_ep.port,
-            {},
-            std::move(tls_transformer));
+            std::move(acceptor), echo_service_connector{}, options, service, {}, listen_ep.port, {}, std::move(tls_transformer));
 
         if (accept_result.error_code != rpc::error::OK() || !accept_result.handle)
         {
@@ -252,9 +256,9 @@ namespace stream_composition
     CORO_TASK(void)
     run_client(
         std::shared_ptr<coro::scheduler> scheduler,
-        const rpc::event& server_ready,
+        rpc::event& server_ready,
         rpc::event& client_finished,
-        const canopy::network_config::tcp_endpoint& connect_ep,
+        canopy::network_config::tcp_endpoint connect_ep,
         rpc::zone client_zone,
         std::atomic<bool>& iteration_ok)
     {
@@ -353,6 +357,7 @@ namespace stream_composition
         client_finished.set();
         CO_RETURN;
     }
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
 #endif // CANOPY_BUILD_COROUTINE
 } // namespace stream_composition
@@ -369,12 +374,11 @@ namespace
     };
 
     bool has_cli_option(
-        int argc,
-        char* argv[],
+        std::span<char*> argv,
         std::string_view option)
     {
         const std::string with_equals = std::string(option) + "=";
-        for (int i = 1; i < argc; ++i)
+        for (std::size_t i = 1; i < argv.size(); ++i)
         {
             const std::string_view arg = argv[i];
             if (arg == option || arg.rfind(with_equals, 0) == 0)
@@ -384,23 +388,20 @@ namespace
         return false;
     }
 
-    augmented_cli add_default_network_args(
-        int argc,
-        char* argv[])
+    augmented_cli add_default_network_args(std::span<char*> argv)
     {
         augmented_cli result;
         result.storage.reserve(16);
-        result.argv.reserve(argc + 16);
+        result.argv.reserve(argv.size() + 16);
 
-        for (int i = 0; i < argc; ++i)
-            result.argv.push_back(argv[i]);
+        for (char* arg : argv)
+            result.argv.push_back(arg);
 
-        const bool has_any_va
-            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
-              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
-        const bool has_listen = has_cli_option(argc, argv, "--listen");
-        const bool has_connect = has_cli_option(argc, argv, "--connect");
+        const bool has_any_va = has_cli_option(argv, "--va-name") || has_cli_option(argv, "--va-type")
+                                || has_cli_option(argv, "--va-prefix") || has_cli_option(argv, "--va-subnet-bits")
+                                || has_cli_option(argv, "--va-object-id-bits") || has_cli_option(argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argv, "--listen");
+        const bool has_connect = has_cli_option(argv, "--connect");
 
         auto append = [&result](std::initializer_list<const char*> args)
         {
@@ -445,7 +446,7 @@ namespace
 
 int main(
     int argc,
-    char* argv[])
+    char** argv)
 try
 {
     RPC_INFO("Stream Composition Demo — TCP → SPSC buffered stream → TLS");
@@ -458,7 +459,7 @@ try
     args::ArgumentParser parser("stream_composition demo: i_echo over TCP → SPSC buffered stream → TLS.");
     args::HelpFlag help(parser, "help", "Display this help and exit", {'h', "help"});
     auto net = canopy::network_config::add_network_args(parser);
-    auto cli = add_default_network_args(argc, argv);
+    auto cli = add_default_network_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
 
     try
     {

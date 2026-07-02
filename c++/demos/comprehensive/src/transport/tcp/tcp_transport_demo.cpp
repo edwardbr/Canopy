@@ -35,7 +35,11 @@
 #include <rpc/rpc.h>
 #include <connection_factory/options.h>
 #include <streaming/tcp_coroutine/factory.h>
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
+#include <memory>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -60,12 +64,11 @@ namespace
     };
 
     bool has_cli_option(
-        int argc,
-        char* argv[],
+        std::span<char*> argv,
         std::string_view option)
     {
         const std::string with_equals = std::string(option) + "=";
-        for (int i = 1; i < argc; ++i)
+        for (std::size_t i = 1; i < argv.size(); ++i)
         {
             const std::string_view arg = argv[i];
             if (arg == option || arg.rfind(with_equals, 0) == 0)
@@ -75,23 +78,20 @@ namespace
         return false;
     }
 
-    augmented_cli add_default_network_args(
-        int argc,
-        char* argv[])
+    augmented_cli add_default_network_args(std::span<char*> argv)
     {
         augmented_cli result;
         result.storage.reserve(16);
-        result.argv.reserve(argc + 16);
+        result.argv.reserve(argv.size() + 16);
 
-        for (int i = 0; i < argc; ++i)
-            result.argv.push_back(argv[i]);
+        for (char* arg : argv)
+            result.argv.push_back(arg);
 
-        const bool has_any_va
-            = has_cli_option(argc, argv, "--va-name") || has_cli_option(argc, argv, "--va-type")
-              || has_cli_option(argc, argv, "--va-prefix") || has_cli_option(argc, argv, "--va-subnet-bits")
-              || has_cli_option(argc, argv, "--va-object-id-bits") || has_cli_option(argc, argv, "--va-subnet");
-        const bool has_listen = has_cli_option(argc, argv, "--listen");
-        const bool has_connect = has_cli_option(argc, argv, "--connect");
+        const bool has_any_va = has_cli_option(argv, "--va-name") || has_cli_option(argv, "--va-type")
+                                || has_cli_option(argv, "--va-prefix") || has_cli_option(argv, "--va-subnet-bits")
+                                || has_cli_option(argv, "--va-object-id-bits") || has_cli_option(argv, "--va-subnet");
+        const bool has_listen = has_cli_option(argv, "--listen");
+        const bool has_connect = has_cli_option(argv, "--connect");
 
         auto append = [&result](std::initializer_list<const char*> args)
         {
@@ -162,12 +162,14 @@ namespace comprehensive
             return options;
         }
 
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+        // main joins these tasks before the per-iteration events leave scope.
         CORO_TASK(bool)
         run_tcp_server(
             std::shared_ptr<coro::scheduler> scheduler,
             rpc::event& server_ready,
-            const rpc::event& client_finished,
-            const canopy::network_config::tcp_endpoint& listen_ep,
+            rpc::event& client_finished,
+            canopy::network_config::tcp_endpoint listen_ep,
             rpc::zone server_zone)
         {
             const std::string host = listen_ep.to_string();
@@ -185,8 +187,8 @@ namespace comprehensive
             auto options = tcp_options_from_endpoint(
                 listen_ep, "tcp_server", "server_transport", "server_transport", "tcp_server");
             auto accept_result = CO_AWAIT rpc::tcp_coroutine::accept_rpc<calc::i_calculator, calc::i_calculator>(
-                [](const rpc::shared_ptr<calc::i_calculator>&,
-                    const std::shared_ptr<rpc::service>& svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
+                [](rpc::shared_ptr<calc::i_calculator>,
+                    std::shared_ptr<rpc::service> svc) -> CORO_TASK(rpc::service_connect_result<calc::i_calculator>)
                 {
                     CO_RETURN rpc::service_connect_result<calc::i_calculator>{rpc::error::OK(), calc::make_calculator(svc)};
                 },
@@ -219,9 +221,9 @@ namespace comprehensive
         CORO_TASK(bool)
         run_tcp_client(
             std::shared_ptr<coro::scheduler> scheduler,
-            const rpc::event& server_ready,
+            rpc::event& server_ready,
             rpc::event& client_finished,
-            const canopy::network_config::tcp_endpoint& connect_ep,
+            canopy::network_config::tcp_endpoint connect_ep,
             rpc::zone client_zone)
         {
             const std::string host = connect_ep.to_string();
@@ -282,12 +284,13 @@ namespace comprehensive
             print_separator("TCP CLIENT SHUTDOWN");
             CO_RETURN true;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 }
 
 int main(
     int argc,
-    char* argv[])
+    char** argv)
 try
 {
     RPC_INFO("Canopy Comprehensive Demo - TCP Transport");
@@ -303,7 +306,7 @@ try
         args::HelpFlag help(parser, "help", "Display this help message and exit", {'h', "help"});
 
         auto net = canopy::network_config::add_network_args(parser);
-        auto cli = add_default_network_args(argc, argv);
+        auto cli = add_default_network_args(std::span<char*>(argv, static_cast<std::size_t>(argc)));
 
         try
         {

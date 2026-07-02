@@ -310,7 +310,7 @@ namespace rpc
         {
             if (v == 0)
                 return "0";
-            const char digits[] = "0123456789abcdef";
+            constexpr std::string_view digits = "0123456789abcdef";
             std::string s;
             for (int shift = 12; shift >= 0; shift -= 4)
                 if (uint8_t n = (v >> shift) & 0xF; n || !s.empty() || shift == 0)

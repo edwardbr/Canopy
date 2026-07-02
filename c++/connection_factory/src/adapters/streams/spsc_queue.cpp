@@ -23,9 +23,9 @@ namespace rpc::connection_factory::detail
             bool supports_accept_single_base() const override { return true; }
 
             auto connect_base(
-                const json::v1::object& settings,
+                json::v1::object settings,
                 std::shared_ptr<rpc::service> service,
-                const context& factory_context) const -> CORO_TASK(stream_result) override
+                context factory_context) const -> CORO_TASK(stream_result) override
             {
                 auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())
@@ -38,9 +38,9 @@ namespace rpc::connection_factory::detail
             }
 
             auto accept_single_base(
-                const json::v1::object& settings,
+                json::v1::object settings,
                 std::shared_ptr<rpc::service> service,
-                const context& factory_context) const -> CORO_TASK(stream_result) override
+                context factory_context) const -> CORO_TASK(stream_result) override
             {
                 auto spsc_settings = materialise_settings<rpc::spsc_queue_stream::stream_settings>(settings);
                 if (spsc_settings.error_code != rpc::error::OK())

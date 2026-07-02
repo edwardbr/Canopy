@@ -233,11 +233,31 @@ namespace rpc::stream_transport
     start_rpc_listener(
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
         ::streaming::listener::connection_callback on_connection,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
         ::streaming::listener::stream_transformer transform_stream = {});
+
+    template<class Remote, class Local> class fixed_rpc_factory_impl
+    {
+    public:
+        explicit fixed_rpc_factory_impl(rpc::shared_ptr<Local> local_interface)
+            : local_interface_(std::move(local_interface))
+        {
+        }
+
+        CORO_TASK(rpc::service_connect_result<Local>)
+        operator()(
+            rpc::shared_ptr<Remote>,
+            std::shared_ptr<rpc::service>) const
+        {
+            CO_RETURN rpc::service_connect_result<Local>{rpc::error::OK(), local_interface_};
+        }
+
+    private:
+        rpc::shared_ptr<Local> local_interface_;
+    };
 
     template<
         class Remote,
@@ -247,10 +267,7 @@ namespace rpc::stream_transport
         Local>
     fixed_factory(rpc::shared_ptr<Local> local_interface)
     {
-        return [local_interface = std::move(local_interface)](
-                   rpc::shared_ptr<Remote>,
-                   std::shared_ptr<rpc::service>) mutable -> CORO_TASK(rpc::service_connect_result<Local>)
-        { CO_RETURN rpc::service_connect_result<Local>{rpc::error::OK(), local_interface}; };
+        return fixed_rpc_factory_impl<Remote, Local>(std::move(local_interface));
     }
 
     template<
@@ -260,7 +277,7 @@ namespace rpc::stream_transport
     connect_rpc_stream(
         rpc::shared_ptr<In> input_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         auto transport_result = make_client_rpc_stream_transport(std::move(stream), settings, std::move(service));
@@ -279,11 +296,11 @@ namespace rpc::stream_transport
     connect_rpc_stream(
         rpc::shared_ptr<In> input_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const transport_settings& settings,
+        transport_settings settings,
         std::shared_ptr<rpc::service> service = {})
     {
         CO_RETURN CO_AWAIT connect_rpc_stream<In, Out>(
-            std::move(input_interface), std::move(stream), make_connection_settings(settings), std::move(service));
+            std::move(input_interface), std::move(stream), make_connection_settings(std::move(settings)), std::move(service));
     }
 
     template<
@@ -295,7 +312,7 @@ namespace rpc::stream_transport
         rpc_factory<
             Remote,
             Local> factory,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -305,8 +322,9 @@ namespace rpc::stream_transport
         const auto stream_options = transport_options(settings.transport);
         CO_RETURN CO_AWAIT start_rpc_listener(
             std::move(acceptor),
+            // NOLINTNEXTLINE(cppcoreguidelines-avoid-capturing-lambda-coroutines)
             [factory = std::move(factory), stream_options, observe_transport = std::move(observe_transport)](
-                const std::string& name,
+                std::string name,
                 std::shared_ptr<rpc::service> svc,
                 std::shared_ptr<::streaming::stream> stream) mutable -> CORO_TASK(void)
             {
@@ -316,7 +334,7 @@ namespace rpc::stream_transport
                     observe_transport(transport);
                 CO_RETURN;
             },
-            settings,
+            std::move(settings),
             std::move(service),
             std::move(owner),
             port,
@@ -332,7 +350,7 @@ namespace rpc::stream_transport
         rpc_factory<
             Remote,
             Local> factory,
-        const transport_settings& settings,
+        transport_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -342,7 +360,7 @@ namespace rpc::stream_transport
         CO_RETURN CO_AWAIT accept_rpc_listener<Remote, Local>(
             std::move(acceptor),
             std::move(factory),
-            make_connection_settings(settings),
+            make_connection_settings(std::move(settings)),
             std::move(service),
             std::move(owner),
             port,
@@ -357,7 +375,7 @@ namespace rpc::stream_transport
     accept_rpc_listener(
         rpc::shared_ptr<Local> local_interface,
         std::shared_ptr<::streaming::stream_acceptor> acceptor,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {},
         uint16_t port = 0,
@@ -367,7 +385,7 @@ namespace rpc::stream_transport
         CO_RETURN CO_AWAIT accept_rpc_listener<Remote, Local>(
             std::move(acceptor),
             fixed_factory<Remote, Local>(std::move(local_interface)),
-            settings,
+            std::move(settings),
             std::move(service),
             std::move(owner),
             port,
@@ -384,7 +402,7 @@ namespace rpc::stream_transport
         rpc_factory<
             Remote,
             Local> factory,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {})
     {
@@ -415,14 +433,14 @@ namespace rpc::stream_transport
     accept_rpc_stream(
         rpc::shared_ptr<Local> local_interface,
         std::shared_ptr<::streaming::stream> stream,
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service = {},
         std::shared_ptr<void> owner = {})
     {
         CO_RETURN CO_AWAIT accept_rpc_stream<Remote, Local>(
             std::move(stream),
             fixed_factory<Remote, Local>(std::move(local_interface)),
-            settings,
+            std::move(settings),
             std::move(service),
             std::move(owner));
     }

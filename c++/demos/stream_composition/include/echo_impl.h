@@ -14,6 +14,7 @@
 
 namespace stream_composition
 {
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses output refs.
     class echo_impl : public rpc::base<echo_impl, i_echo>
     {
     public:
@@ -26,4 +27,5 @@ namespace stream_composition
             CO_RETURN rpc::error::OK();
         }
     };
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 } // namespace stream_composition

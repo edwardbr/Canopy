@@ -18,6 +18,7 @@ namespace text = text_tools::v1;
 
 namespace
 {
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL callback signature.
     class event_sink final : public rpc::base<event_sink, llm::i_llm_events>
     {
     public:
@@ -38,6 +39,7 @@ namespace
             CO_RETURN rpc::error::OK();
         }
     };
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
 
     [[nodiscard]] bool contains(
         const std::string& haystack,

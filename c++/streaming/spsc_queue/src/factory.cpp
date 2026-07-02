@@ -15,7 +15,7 @@ namespace rpc::spsc_queue
     {
         CORO_TASK(rpc::stream_transport::stream_result)
         make_stream(
-            const queue_pair& queues,
+            queue_pair queues,
             bool connect_side,
             std::shared_ptr<rpc::service> service)
         {
@@ -42,18 +42,18 @@ namespace rpc::spsc_queue
 
     CORO_TASK(rpc::stream_transport::stream_result)
     connect_stream(
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service)
     {
-        CO_RETURN CO_AWAIT make_stream(queues, true, std::move(service));
+        CO_RETURN CO_AWAIT make_stream(std::move(queues), true, std::move(service));
     }
 
     CORO_TASK(rpc::stream_transport::stream_result)
     accept_stream(
-        const queue_pair& queues,
+        queue_pair queues,
         std::shared_ptr<rpc::service> service)
     {
-        CO_RETURN CO_AWAIT make_stream(queues, false, std::move(service));
+        CO_RETURN CO_AWAIT make_stream(std::move(queues), false, std::move(service));
     }
 } // namespace rpc::spsc_queue
 

@@ -772,22 +772,20 @@ function(
       endif()
     endif()
 
-    # Mark wrapper files as GENERATED and skip linting because they are emitted by the protobuf generator.
+    # Mark Canopy-generated wrapper files as GENERATED. They intentionally remain visible to clang-tidy.
     if(generate_protobuf)
-      set_source_files_properties("${full_protobuf_cpp_path}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
-      set_source_files_properties("${proto_proxy_src}" PROPERTIES GENERATED TRUE SKIP_LINTING TRUE)
+      set_source_files_properties(
+        "${full_protobuf_cpp_path}" "${proto_proxy_src}"
+        PROPERTIES GENERATED TRUE COMPILE_OPTIONS "-Wno-sign-compare;-Wno-deprecated-this-capture")
     endif()
     if(generate_nanopb)
-      set_source_files_properties(
-        "${full_nanopb_cpp_path}"
-        PROPERTIES GENERATED TRUE
-                   SKIP_LINTING TRUE
-                   COMPILE_OPTIONS "-Wno-unreachable-code")
+      set_source_files_properties("${full_nanopb_cpp_path}" PROPERTIES GENERATED TRUE COMPILE_OPTIONS
+                                                                                      "-Wno-unreachable-code")
     endif()
 
     if(PROTO_PB_SOURCES)
-      # Protobuf's generated sources currently trigger noisy sign-compare warnings in bundled abseil headers under
-      # Clang.Suppress that warning for the generated.pb.cc files only so the project logs stay readable.
+      # Raw protoc sources include protobuf / abseil internals directly. Keep the owning Canopy targets pedantic, but
+      # quarantine third-party generated translation-unit warnings here.
       set_source_files_properties(
         ${PROTO_PB_SOURCES}
         PROPERTIES GENERATED TRUE

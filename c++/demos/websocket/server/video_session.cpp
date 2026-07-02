@@ -336,7 +336,7 @@ namespace websocket_demo
             uint64_t seq,
             uint64_t pts_us,
             uint32_t flags,
-            const std::vector<uint8_t>& payload)
+            std::vector<uint8_t> payload)
         {
             auto p = pump_;
             if (!p->sink_)
@@ -346,7 +346,7 @@ namespace websocket_demo
             // correctness over latency there.
             if (!p->scheduler_)
             {
-                co_await p->process_one(seq, pts_us, flags, payload);
+                co_await p->process_one(seq, pts_us, flags, std::move(payload));
                 CO_RETURN rpc::error::OK();
             }
 
@@ -360,7 +360,7 @@ namespace websocket_demo
                 p->pending_seq_ = seq;
                 p->pending_pts_ = pts_us;
                 p->pending_flags_ = flags;
-                p->pending_payload_ = payload;
+                p->pending_payload_ = std::move(payload);
                 p->has_pending_ = true;
                 if (!p->worker_running_)
                 {

@@ -10,6 +10,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
@@ -22,6 +23,7 @@
 #include <random>
 #include <stdexcept>
 #include <system_error>
+#include <tuple>
 
 #include <fmt/format.h>
 
@@ -65,11 +67,11 @@ namespace stream_bench
 #else
             localtime_r(&now_time, &local_time);
 #endif
-            char timestamp[32]{};
-            std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", &local_time);
+            std::array<char, 32> timestamp{};
+            std::strftime(timestamp.data(), timestamp.size(), "%Y-%m-%d_%H-%M-%S", &local_time);
             const auto milliseconds
                 = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
-            return fmt::format("{}-{:03}", timestamp, milliseconds);
+            return fmt::format("{}-{:03}", timestamp.data(), milliseconds);
         }
 
         bool starts_with(
@@ -1321,6 +1323,8 @@ initFilters();draw();
         return static_cast<bool>(output);
     }
 
+    // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters):
+    // benchmark coroutine callers join before these required context objects leave scope.
     CORO_TASK(bench_stats)
     run_unidirectional_sender(
         std::shared_ptr<streaming::stream> stream,
@@ -1354,7 +1358,7 @@ initFilters();draw();
     CORO_TASK(void)
     run_drain(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         watchdog& wd)
     {
         std::vector<uint8_t> buffer(1 << 20);
@@ -1420,7 +1424,7 @@ initFilters();draw();
     CORO_TASK(void)
     run_echo(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         watchdog& wd)
     {
         std::vector<uint8_t> buffer(1 << 20);
@@ -1472,7 +1476,7 @@ initFilters();draw();
     CORO_TASK(stress_stats)
     run_stress_drain(
         std::shared_ptr<streaming::stream> stream,
-        const std::atomic<bool>& stop,
+        std::atomic<bool>& stop,
         const bench_config& cfg,
         watchdog& wd)
     {
@@ -1503,6 +1507,8 @@ initFilters();draw();
         CO_RETURN stats;
     }
 
+    // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
+
     void run_stream_unidirectional_bench(
         std::shared_ptr<streaming::stream> side_a,
         std::shared_ptr<streaming::stream> side_b,
@@ -1511,15 +1517,13 @@ initFilters();draw();
         size_t blob_size,
         bench_stats& out_unidirectional)
     {
-        const std::vector<uint8_t> payload(blob_size, 0xab);
-
+        std::vector<uint8_t> payload(blob_size, 0xab);
         std::atomic<bool> stop{false};
+
 #ifdef CANOPY_BUILD_COROUTINE
-        coro::sync_wait(
-            coro::when_all(
-                [&]() -> coro::task<void>
-                { out_unidirectional = co_await run_unidirectional_sender(side_a, payload, stop, cfg, wd); }(),
-                run_drain(side_b, stop, wd)));
+        auto tasks = coro::sync_wait(
+            coro::when_all(run_unidirectional_sender(side_a, payload, stop, cfg, wd), run_drain(side_b, stop, wd)));
+        out_unidirectional = std::get<0>(tasks).return_value();
 #else
         std::thread peer([&]() { run_drain(side_b, stop, wd); });
         out_unidirectional = run_unidirectional_sender(side_a, payload, stop, cfg, wd);
@@ -1535,14 +1539,13 @@ initFilters();draw();
         size_t blob_size,
         bench_stats& out_send_reply)
     {
-        const std::vector<uint8_t> payload(blob_size, 0xab);
-
+        std::vector<uint8_t> payload(blob_size, 0xab);
         std::atomic<bool> stop{false};
+
 #ifdef CANOPY_BUILD_COROUTINE
-        coro::sync_wait(
-            coro::when_all(
-                [&]() -> coro::task<void> { out_send_reply = co_await run_send_reply(side_a, payload, stop, cfg, wd); }(),
-                run_echo(side_b, stop, wd)));
+        auto tasks
+            = coro::sync_wait(coro::when_all(run_send_reply(side_a, payload, stop, cfg, wd), run_echo(side_b, stop, wd)));
+        out_send_reply = std::get<0>(tasks).return_value();
 #else
         std::thread peer([&]() { run_echo(side_b, stop, wd); });
         out_send_reply = run_send_reply(side_a, payload, stop, cfg, wd);
@@ -1575,13 +1578,13 @@ initFilters();draw();
         stress_stats& out_send,
         stress_stats& out_recv)
     {
-        const std::vector<uint8_t> payload(blob_size, 0xab);
+        std::vector<uint8_t> payload(blob_size, 0xab);
         std::atomic<bool> stop{false};
 #ifdef CANOPY_BUILD_COROUTINE
-        coro::sync_wait(
-            coro::when_all(
-                [&]() -> coro::task<void> { out_send = co_await run_stress_sender(side_a, payload, stop, cfg, wd); }(),
-                [&]() -> coro::task<void> { out_recv = co_await run_stress_drain(side_b, stop, cfg, wd); }()));
+        auto tasks = coro::sync_wait(
+            coro::when_all(run_stress_sender(side_a, payload, stop, cfg, wd), run_stress_drain(side_b, stop, cfg, wd)));
+        out_send = std::get<0>(tasks).return_value();
+        out_recv = std::get<1>(tasks).return_value();
 #else
         std::thread peer([&]() { out_recv = run_stress_drain(side_b, stop, cfg, wd); });
         out_send = run_stress_sender(side_a, payload, stop, cfg, wd);

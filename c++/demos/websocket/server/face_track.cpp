@@ -3,6 +3,7 @@
 
 #include "face_track.h"
 
+#include <cstddef>
 #include <cmath>
 
 namespace websocket_demo
@@ -55,16 +56,16 @@ namespace websocket_demo
                 stats s;
                 for (int yy = 0; yy < ch; ++yy)
                 {
-                    const unsigned char* urow = up + yy * us;
-                    const unsigned char* vrow = vp + yy * vs;
-                    const unsigned char* yrow = yp + (yy * 2) * ys;
+                    const unsigned char* urow = up + static_cast<std::ptrdiff_t>(yy) * us;
+                    const unsigned char* vrow = vp + static_cast<std::ptrdiff_t>(yy) * vs;
+                    const unsigned char* yrow = yp + static_cast<std::ptrdiff_t>(yy) * 2 * ys;
                     for (int xx = 0; xx < cw; ++xx)
                     {
                         const int cb = urow[xx];
                         const int cr = vrow[xx];
                         if (cb < CB_MIN || cb > CB_MAX || cr < CR_MIN || cr > CR_MAX)
                             continue;
-                        if (yrow[xx * 2] < Y_MIN)
+                        if (yrow[static_cast<std::ptrdiff_t>(xx) * 2] < Y_MIN)
                             continue;
                         if (gated && (std::fabs(xx - cxw) > rxw || std::fabs(yy - cyw) > ryw))
                             continue;
@@ -118,10 +119,10 @@ namespace websocket_demo
             const float raw_cy = static_cast<float>(my * 2.0);
             float raw_w = static_cast<float>(sdx * 2.0 * 3.0); // 1.5 sigma each side, x2 chroma
             float raw_h = static_cast<float>(sdy * 2.0 * 3.0);
-            const float max_w = fw * 0.45f;
-            const float max_h = fh * 0.55f;
-            const float min_w = fw * 0.06f;
-            const float min_h = fh * 0.06f;
+            const float max_w = static_cast<float>(fw) * 0.45f;
+            const float max_h = static_cast<float>(fh) * 0.55f;
+            const float min_w = static_cast<float>(fw) * 0.06f;
+            const float min_h = static_cast<float>(fh) * 0.06f;
             raw_w = raw_w > max_w ? max_w : (raw_w < min_w ? min_w : raw_w);
             raw_h = raw_h > max_h ? max_h : (raw_h < min_h ? min_h : raw_h);
 

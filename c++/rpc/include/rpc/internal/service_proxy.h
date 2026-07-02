@@ -11,6 +11,8 @@
 #include <atomic>
 #include <functional>
 #include <vector>
+
+#include <rpc/internal/error_codes.h>
 #include <rpc/internal/member_ptr.h>
 
 #ifdef CANOPY_USE_TELEMETRY
@@ -27,7 +29,7 @@ namespace rpc
 
     struct object_proxy_lookup_result
     {
-        int error_code;
+        int error_code = rpc::error::NOT_INITIALISED;
         std::shared_ptr<object_proxy> proxy;
 
         object_proxy_lookup_result() = default;

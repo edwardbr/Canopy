@@ -101,11 +101,6 @@ namespace canopy::rest
         std::string_view name,
         std::string_view body,
         std::string_view field_map_json);
-    [[nodiscard]] CORO_TASK(rpc::send_result) call_rpc_object(
-        const rpc::casting_interface& object,
-        rpc::interface_ordinal interface_id,
-        rpc::method method_id,
-        json::v1::map inputs);
     [[nodiscard]] server_response response_from_rpc_result(
         const rpc::send_result& result,
         std::string_view out_param);
@@ -121,7 +116,17 @@ namespace canopy::rest
         std::initializer_list<response_field_binding> fields,
         std::string_view field_map_json);
 
-    using server_handler = std::function<CORO_TASK(std::optional<server_response>)(const server_request&)>;
+    using server_handler = std::function<CORO_TASK(std::optional<server_response>)(server_request)>;
+
+    template<class Handler> struct generated_server_handler
+    {
+        Handler handler;
+
+        auto operator()(server_request request) const -> CORO_TASK(std::optional<server_response>)
+        {
+            CO_RETURN CO_AWAIT handler.handle(std::move(request));
+        }
+    };
 
     class endpoint_registry
     {
@@ -137,11 +142,7 @@ namespace canopy::rest
             std::string name = {})
         {
             auto base_path = std::string(handler.base_path());
-            add_endpoint(
-                std::move(base_path),
-                [handler = std::move(handler)](const server_request& request) -> CORO_TASK(std::optional<server_response>)
-                { CO_RETURN CO_AWAIT handler.handle(request); },
-                std::move(name));
+            add_endpoint(std::move(base_path), generated_server_handler<Handler>{std::move(handler)}, std::move(name));
         }
 
         template<class Interface>
@@ -175,7 +176,7 @@ namespace canopy::rest
         [[nodiscard]] bool may_handle(std::string_view target) const;
 
         CORO_TASK(std::optional<server_response>)
-        handle(const server_request& request) const;
+        handle(server_request request) const;
 
     private:
         struct endpoint

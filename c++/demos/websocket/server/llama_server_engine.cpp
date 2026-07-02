@@ -16,11 +16,13 @@
 #include <string.h>
 #include <string>
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string.h>
 
 // Suppress unused function warnings from llama.cpp headers
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #include <common.h>
 #include "llama_chat_include.h"
@@ -42,12 +44,12 @@
 #include <secret_llama/secret_llama.h>
 #include "llama_server_engine.h"
 
-#define POOL_THREADS 4
-
 namespace secret_llama
 {
     inline namespace v1_0
     {
+        constexpr int POOL_THREADS = 4;
+
         class llama_cpp_loaded_model : public loaded_model
         {
             llama_model* model_ = nullptr;
@@ -107,8 +109,8 @@ namespace secret_llama
 
             std::vector<char> formatted_;
 
-            llama_batch batch_;
-            llama_token new_token_id_;
+            llama_batch batch_{};
+            llama_token new_token_id_ = 0;
             common_chat_templates_ptr chat_templates_;
             // std::vector<std::string> stop_strs_; // To hold stop strings from configuration
 
@@ -226,11 +228,12 @@ namespace secret_llama
                     // Convert EOS token ID to string
                     if (eos_token_id != LLAMA_TOKEN_NULL)
                     {
-                        char eos_buf[256];
-                        int eos_len = llama_token_to_piece(vocab, eos_token_id, eos_buf, sizeof(eos_buf), 0, true);
+                        std::array<char, 256> eos_buf{};
+                        int eos_len = llama_token_to_piece(
+                            vocab, eos_token_id, eos_buf.data(), static_cast<int32_t>(eos_buf.size()), 0, true);
                         if (eos_len > 0)
                         {
-                            std::string eos_str(eos_buf, eos_len);
+                            std::string eos_str(eos_buf.data(), eos_len);
                             stop_strs_.push_back(eos_str);
                             RPC_DEBUG("[CTX {}] Added EOS stop string: '{}'", std::to_string(context_id_), eos_str);
                         }
@@ -238,12 +241,13 @@ namespace secret_llama
 
                     // Try to get stop strings from model metadata
                     // Check for common chat template stop tokens in metadata
-                    char metadata_buf[1024];
+                    std::array<char, 1024> metadata_buf{};
 
                     // Try to get the EOS token from tokenizer metadata
-                    if (llama_model_meta_val_str(model, "tokenizer.ggml.eos_token", metadata_buf, sizeof(metadata_buf)) >= 0)
+                    if (llama_model_meta_val_str(model, "tokenizer.ggml.eos_token", metadata_buf.data(), metadata_buf.size())
+                        >= 0)
                     {
-                        std::string meta_eos = metadata_buf;
+                        std::string meta_eos = metadata_buf.data();
                         if (!meta_eos.empty()
                             && std::find(stop_strs_.begin(), stop_strs_.end(), meta_eos) == stop_strs_.end())
                         {
@@ -445,8 +449,8 @@ namespace secret_llama
                 std::string& piece)
             {
                 const llama_vocab* vocab = llama_model_get_vocab(model_->get());
-                char buf[256];
-                int n = llama_token_to_piece(vocab, token_id, buf, sizeof(buf), 0, true);
+                std::array<char, 256> buf{};
+                int n = llama_token_to_piece(vocab, token_id, buf.data(), static_cast<int32_t>(buf.size()), 0, true);
                 if (n < 0)
                 {
                     RPC_ERROR(
@@ -454,7 +458,7 @@ namespace secret_llama
                     return 1;
                 }
 
-                piece.assign(buf, buf + n);
+                piece.assign(buf.data(), buf.data() + n);
                 return 0;
             }
 
@@ -718,7 +722,7 @@ namespace secret_llama
 
         class llama_cpp_engine : public llm_engine
         {
-            std::atomic<uint64_t> count_;
+            std::atomic<uint64_t> count_{0};
 
         public:
             ~llama_cpp_engine() override = default;
@@ -784,8 +788,6 @@ namespace secret_llama
                     std::ignore = overrides;
                     std::ignore = rng_seed;
 
-                    error_types ret = error_types::OK;
-
                     // number of tokens to predict
                     int n_predict = 32;
 
@@ -842,14 +844,14 @@ namespace secret_llama
 
                     for (auto id : prompt_tokens)
                     {
-                        char buf[128];
-                        int n = llama_token_to_piece(vocab, id, buf, sizeof(buf), 0, true);
+                        std::array<char, 128> buf{};
+                        int n = llama_token_to_piece(vocab, id, buf.data(), static_cast<int32_t>(buf.size()), 0, true);
                         if (n < 0)
                         {
                             return error_types::UNABLE_TO_GET_PIECE;
                         }
 
-                        out += std::string(buf, n);
+                        out += std::string(buf.data(), n);
                     }
 
                     // prepare a batch for the prompt
@@ -877,13 +879,14 @@ namespace secret_llama
                                 break;
                             }
 
-                            char buf[128];
-                            int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+                            std::array<char, 128> buf{};
+                            int n = llama_token_to_piece(
+                                vocab, new_token_id, buf.data(), static_cast<int32_t>(buf.size()), 0, true);
                             if (n < 0)
                             {
                                 return error_types::UNABLE_TO_GET_PIECE;
                             }
-                            out += std::string(buf, n);
+                            out += std::string(buf.data(), n);
 
                             // prepare the next batch with the sampled token
                             batch = llama_batch_get_one(&new_token_id, 1);

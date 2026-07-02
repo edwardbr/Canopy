@@ -8,6 +8,7 @@
 #include <array>
 #include <limits>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -52,6 +53,18 @@ namespace streaming::attestation
         };
 
         struct verdict_payload
+        {
+            bool accepted{false};
+            std::string reason;
+        };
+
+        struct hello_result
+        {
+            bool accepted{false};
+            hello_payload hello;
+        };
+
+        struct handshake_step_result
         {
             bool accepted{false};
             std::string reason;
@@ -428,14 +441,14 @@ namespace streaming::attestation
         }
 
         auto read_exact(
-            const std::shared_ptr<::streaming::stream>& underlying,
-            std::vector<uint8_t>& buffer,
+            std::shared_ptr<::streaming::stream> underlying,
+            rpc::mutable_byte_span buffer,
             std::chrono::milliseconds timeout) -> coro::task<coro::net::io_status>
         {
             size_t offset = 0;
             while (offset < buffer.size())
             {
-                auto target = rpc::mutable_byte_span{buffer.data() + offset, buffer.size() - offset};
+                auto target = buffer.subspan(offset);
                 auto [status, bytes] = co_await underlying->receive(target, timeout);
                 if (!status.is_ok())
                     co_return status;
@@ -457,7 +470,7 @@ namespace streaming::attestation
         {
         }
 
-        auto send_frame(const frame& value) -> coro::task<coro::net::io_status>
+        auto send_frame(frame value) -> coro::task<coro::net::io_status>
         {
             if (!underlying)
                 co_return closed_status();
@@ -476,7 +489,7 @@ namespace streaming::attestation
                 co_return std::pair{closed_status(), result};
 
             std::vector<uint8_t> header(frame_header_size);
-            auto status = co_await read_exact(underlying, header, options.handshake_timeout);
+            auto status = co_await read_exact(underlying, rpc::mutable_byte_span{header}, options.handshake_timeout);
             if (!status.is_ok())
                 co_return std::pair{status, result};
 
@@ -487,7 +500,7 @@ namespace streaming::attestation
                 co_return std::pair{protocol_status(), result};
 
             std::vector<uint8_t> payload(payload_size);
-            status = co_await read_exact(underlying, payload, options.handshake_timeout);
+            status = co_await read_exact(underlying, rpc::mutable_byte_span{payload}, options.handshake_timeout);
             if (!status.is_ok())
                 co_return std::pair{status, result};
 
@@ -519,7 +532,7 @@ namespace streaming::attestation
             if (!hello_payload_bytes)
                 co_return protocol_status();
             value.body = make_cmw(hello_media_type(), "canopy.attestation.hello.v1", std::move(*hello_payload_bytes));
-            co_return co_await send_frame(value);
+            co_return co_await send_frame(std::move(value));
         }
 
         auto send_evidence(handshake_role role) -> coro::task<coro::net::io_status>
@@ -545,16 +558,16 @@ namespace streaming::attestation
             value.transcript_id = options.transcript_id;
             value.body = std::move(evidence.evidence);
             context.local_evidence_sent = true;
-            co_return co_await send_frame(value);
+            co_return co_await send_frame(std::move(value));
         }
 
         auto send_verdict(
             bool accepted,
-            const std::string& reason) -> coro::task<coro::net::io_status>
+            std::string reason) -> coro::task<coro::net::io_status>
         {
             verdict_payload verdict;
             verdict.accepted = accepted;
-            verdict.reason = reason;
+            verdict.reason = std::move(reason);
 
             frame value;
             value.kind = frame_kind::evidence_verdict;
@@ -564,60 +577,64 @@ namespace streaming::attestation
                 co_return protocol_status();
             value.body
                 = make_cmw(verdict_media_type(), "canopy.attestation.verdict.v1", std::move(*verdict_payload_bytes));
-            co_return co_await send_frame(value);
+            co_return co_await send_frame(std::move(value));
         }
 
-        auto receive_hello(
-            handshake_role local_role,
-            hello_payload& hello) -> coro::task<bool>
+        auto receive_hello(handshake_role local_role) -> coro::task<hello_result>
         {
+            hello_result result;
             auto [status, value] = co_await receive_frame();
             if (!status.is_ok())
-                co_return false;
+                co_return result;
 
             const auto expected_kind = local_role == handshake_role::client ? frame_kind::server_hello_attest
                                                                             : frame_kind::client_hello_attest;
             if (value.kind != expected_kind || value.body.media_type != hello_media_type())
-                co_return false;
+                co_return result;
             if (value.transcript_id != options.transcript_id)
-                co_return false;
-            co_return parse_hello(value.body.payload, hello);
+                co_return result;
+            if (!parse_hello(value.body.payload, result.hello))
+                co_return result;
+            result.accepted = true;
+            co_return result;
         }
 
         auto receive_and_verify_evidence(
-            const hello_payload& peer_hello,
-            handshake_role local_role,
-            std::string& reason) -> coro::task<bool>
+            hello_payload peer_hello,
+            handshake_role local_role) -> coro::task<handshake_step_result>
         {
+            handshake_step_result result;
             context.peer_identity = peer_hello.local_identity;
             if (!peer_hello.will_send_evidence)
             {
                 if (!options.service || options.service->requires_peer_evidence()
                     || !options.service->allows_unattested_peer())
                 {
-                    reason = "peer did not send attestation evidence and local policy does not allow unattested peers";
-                    co_return false;
+                    result.reason
+                        = "peer did not send attestation evidence and local policy does not allow unattested peers";
+                    co_return result;
                 }
-                reason = "peer attestation explicitly allowed by policy";
-                co_return true;
+                result.accepted = true;
+                result.reason = "peer attestation explicitly allowed by policy";
+                co_return result;
             }
 
             if (!options.service)
             {
-                reason = "no attestation service configured";
-                co_return false;
+                result.reason = "no attestation service configured";
+                co_return result;
             }
 
             auto [status, value] = co_await receive_frame();
             if (!status.is_ok())
             {
-                reason = "failed to receive peer evidence";
-                co_return false;
+                result.reason = "failed to receive peer evidence";
+                co_return result;
             }
             if (value.kind != frame_kind::evidence || value.transcript_id != options.transcript_id)
             {
-                reason = "peer evidence frame is invalid";
-                co_return false;
+                result.reason = "peer evidence frame is invalid";
+                co_return result;
             }
 
             evidence_binding binding;
@@ -629,53 +646,56 @@ namespace streaming::attestation
                 local_role == handshake_role::client ? handshake_role::server : handshake_role::client);
             if (!nonce)
             {
-                reason = "failed to encode peer evidence binding";
-                co_return false;
+                result.reason = "failed to encode peer evidence binding";
+                co_return result;
             }
             binding.nonce = std::move(*nonce);
 
             auto verdict = options.service->verify_peer_evidence(value.body, std::move(binding));
             if (!verdict.accepted)
             {
-                reason = verdict.reason;
-                co_return false;
+                result.reason = std::move(verdict.reason);
+                co_return result;
             }
 
             context.peer_attested = true;
             context.peer_identity = verdict.peer_identity;
             context.backend_id = verdict.backend_id;
             context.level = verdict.level;
-            reason = verdict.reason;
-            co_return true;
+            result.accepted = true;
+            result.reason = std::move(verdict.reason);
+            co_return result;
         }
 
-        auto receive_verdict(std::string& reason) -> coro::task<bool>
+        auto receive_verdict() -> coro::task<handshake_step_result>
         {
+            handshake_step_result result;
             auto [status, value] = co_await receive_frame();
             if (!status.is_ok())
             {
-                reason = "failed to receive peer attestation verdict";
-                co_return false;
+                result.reason = "failed to receive peer attestation verdict";
+                co_return result;
             }
             if (value.kind != frame_kind::evidence_verdict || value.body.media_type != verdict_media_type())
             {
-                reason = "peer attestation verdict frame is invalid";
-                co_return false;
+                result.reason = "peer attestation verdict frame is invalid";
+                co_return result;
             }
             if (value.transcript_id != options.transcript_id)
             {
-                reason = "peer attestation verdict transcript mismatch";
-                co_return false;
+                result.reason = "peer attestation verdict transcript mismatch";
+                co_return result;
             }
 
             verdict_payload verdict;
             if (!parse_verdict(value.body.payload, verdict))
             {
-                reason = "peer attestation verdict payload is malformed";
-                co_return false;
+                result.reason = "peer attestation verdict payload is malformed";
+                co_return result;
             }
-            reason = verdict.reason;
-            co_return verdict.accepted;
+            result.accepted = verdict.accepted;
+            result.reason = std::move(verdict.reason);
+            co_return result;
         }
 
         auto perform_handshake(handshake_role role) -> coro::task<bool>
@@ -697,23 +717,22 @@ namespace streaming::attestation
             if (!status.is_ok())
                 co_return false;
 
-            hello_payload peer_hello;
-            if (!co_await receive_hello(role, peer_hello))
+            auto peer_hello = co_await receive_hello(role);
+            if (!peer_hello.accepted)
             {
                 co_await send_verdict(false, "peer hello was invalid");
                 co_return false;
             }
 
-            std::string local_reason;
-            const bool local_accept = co_await receive_and_verify_evidence(peer_hello, role, local_reason);
-            status = co_await send_verdict(local_accept, local_reason);
-            if (!status.is_ok() || !local_accept)
+            auto local_result = co_await receive_and_verify_evidence(std::move(peer_hello.hello), role);
+            status = co_await send_verdict(local_result.accepted, std::move(local_result.reason));
+            if (!status.is_ok() || !local_result.accepted)
                 co_return false;
 
-            std::string peer_reason;
-            if (!co_await receive_verdict(peer_reason))
+            auto peer_result = co_await receive_verdict();
+            if (!peer_result.accepted)
             {
-                RPC_WARNING("Peer rejected attestation handshake: {}", peer_reason);
+                RPC_WARNING("Peer rejected attestation handshake: {}", peer_result.reason);
                 co_return false;
             }
 

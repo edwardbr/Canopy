@@ -1649,7 +1649,7 @@ namespace rest_generator
 
             output(
                 "CORO_TASK(std::optional<::canopy::rest::server_response>) {0}::rest_handler::handle("
-                "const ::canopy::rest::server_request& request) const",
+                "::canopy::rest::server_request request) const",
                 interface_name);
             output("{{");
             output("try");

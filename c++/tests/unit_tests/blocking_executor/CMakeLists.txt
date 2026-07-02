@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 if(NOT CANOPY_BUILD_COROUTINE)
   add_executable(blocking_executor_test blocking_executor_test.cpp)
 
-  target_link_libraries(blocking_executor_test GTest::gtest_main rpc::rpc)
+  target_link_libraries(blocking_executor_test GTest::gtest_main rpc::rpc rpc_log)
 
   target_include_directories(blocking_executor_test PRIVATE ${CANOPY_CPP_SOURCE_DIR}/rpc/include
                                                             ${CMAKE_BINARY_DIR}/generated/include)

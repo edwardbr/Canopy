@@ -241,9 +241,9 @@ namespace rpc::io_uring
     CORO_TASK(operation_result)
     controller::bind_tcp_ipv4(
         uint32_t descriptor,
-        const std::array<
+        std::array<
             uint8_t,
-            4>& bind_address,
+            4> bind_address,
         uint16_t port)
     {
         auto err = CO_AWAIT ensure_iouring_data();
@@ -286,9 +286,9 @@ namespace rpc::io_uring
     CORO_TASK(operation_result)
     controller::bind_tcp_ipv6(
         uint32_t descriptor,
-        const std::array<
+        std::array<
             uint8_t,
-            16>& bind_address,
+            16> bind_address,
         uint16_t port)
     {
         auto err = CO_AWAIT ensure_iouring_data();
@@ -492,9 +492,9 @@ namespace rpc::io_uring
 
     CORO_TASK(descriptor_result)
     controller::connect_tcp_ipv4(
-        const std::array<
+        std::array<
             uint8_t,
-            4>& address,
+            4> address,
         uint16_t port,
         std::chrono::milliseconds timeout)
     {
@@ -623,9 +623,9 @@ namespace rpc::io_uring
 
     CORO_TASK(descriptor_result)
     controller::connect_tcp_ipv6(
-        const std::array<
+        std::array<
             uint8_t,
-            16>& address,
+            16> address,
         uint16_t port,
         std::chrono::milliseconds timeout)
     {
@@ -809,9 +809,9 @@ namespace rpc::io_uring
 
             struct context
             {
-                uint32_t descriptor;
+                uint32_t descriptor{};
                 rpc::byte_span buffer;
-                uint32_t msg_flags;
+                uint32_t msg_flags{};
             } operation_context{descriptor, transfer_buffer, msg_flags};
 
             auto result = CO_AWAIT submit_operation(
@@ -940,9 +940,9 @@ namespace rpc::io_uring
 
             struct context
             {
-                uint32_t descriptor;
+                uint32_t descriptor{};
                 rpc::mutable_byte_span buffer;
-                uint32_t msg_flags;
+                uint32_t msg_flags{};
             } operation_context{descriptor, transfer_buffer, msg_flags};
 
             auto result = CO_AWAIT submit_operation(

@@ -28,6 +28,7 @@ namespace comprehensive
 {
     namespace v1
     {
+        // NOLINTBEGIN(cppcoreguidelines-avoid-reference-coroutine-parameters): generated IDL uses input/output refs in these demo implementations.
         // ============================================================================
         // Data Processor Implementation (Serialization Demo)
         // ============================================================================
@@ -322,8 +323,7 @@ namespace comprehensive
 
                 auto child_transport = std::make_shared<rpc::local::child_transport>("child", service);
                 child_transport->set_child_entry_point<i_demo_service, i_demo_service>(
-                    [](const rpc::shared_ptr<i_demo_service>& parent,
-                        const std::shared_ptr<rpc::child_service>& child_service_ptr)
+                    [](rpc::shared_ptr<i_demo_service> parent, std::shared_ptr<rpc::child_service> child_service_ptr)
                         -> CORO_TASK(rpc::service_connect_result<i_demo_service>)
                     {
                         (void)parent;
@@ -362,6 +362,7 @@ namespace comprehensive
                 CO_RETURN rpc::error::OK();
             }
         };
+        // NOLINTEND(cppcoreguidelines-avoid-reference-coroutine-parameters)
     }
 }
 

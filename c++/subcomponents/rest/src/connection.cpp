@@ -170,7 +170,7 @@ namespace canopy::rest
 
     CORO_TASK(stream_result)
     connect_stream(
-        const connection_settings& settings,
+        connection_settings settings,
         std::shared_ptr<rpc::service> service)
     {
         if (settings.endpoint.host.empty())
