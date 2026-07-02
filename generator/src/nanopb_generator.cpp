@@ -538,7 +538,7 @@ namespace nanopb_generator
 
             for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 if (const auto* found = search_for_enum(ns_entity))
                     return found;
             }
@@ -578,7 +578,7 @@ namespace nanopb_generator
 
             for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 if (const auto* found = search_for_error(ns_entity))
                     return found;
             }
@@ -655,7 +655,7 @@ namespace nanopb_generator
 
             for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 if (const auto* found = search_for_struct(ns_entity))
                     return found;
             }
@@ -1454,9 +1454,9 @@ namespace nanopb_generator
         for (size_t index = 0; index < alternative_types.size(); ++index)
         {
             const auto value_field_name = variant_value_field_name(index);
-            const auto current_prefix = state_prefix + "_" + value_field_name;
-            const auto alternative_expr = "rpc::get<" + std::to_string(index) + ">(" + source_value_expr + ")";
-            const auto wrapper_expr = target_expr + "." + field_name;
+            const auto current_prefix = concat_strings(state_prefix, "_", value_field_name);
+            const auto alternative_expr = concat_strings("rpc::get<", std::to_string(index), ">(", source_value_expr, ")");
+            const auto wrapper_expr = concat_strings(target_expr, ".", field_name);
 
             cpp("case {}:", index);
             cpp("{{");
@@ -1857,7 +1857,7 @@ namespace nanopb_generator
             auto member_type = field->get_return_type();
             if (!concrete_template_param.empty())
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
-            const auto current_prefix = state_prefix + "_" + member_name;
+            const auto current_prefix = concat_strings(state_prefix, "_", member_name);
 
             if (is_nullable_optional_type(member_type))
             {
@@ -1866,8 +1866,8 @@ namespace nanopb_generator
                     package_name,
                     "value",
                     nullable_optional_inner_type(member_type),
-                    target_expr + "." + member_name,
-                    current_prefix + "_value",
+                    concat_strings(target_expr, ".", member_name),
+                    concat_strings(current_prefix, "_value"),
                     cpp);
             }
             else if (is_optional_type(member_type))
@@ -1877,14 +1877,14 @@ namespace nanopb_generator
                     package_name,
                     "value",
                     optional_inner_type(member_type),
-                    target_expr + "." + member_name,
-                    current_prefix + "_value",
+                    concat_strings(target_expr, ".", member_name),
+                    concat_strings(current_prefix, "_value"),
                     cpp);
             }
             else if (std::vector<std::string> variant_alternatives; is_variant_type(member_type, variant_alternatives))
             {
                 write_prepare_nanopb_variant_decode(
-                    lib, package_name, member_type, target_expr + "." + member_name, current_prefix, cpp);
+                    lib, package_name, member_type, concat_strings(target_expr, ".", member_name), current_prefix, cpp);
             }
             else if (is_string_type(member_type))
             {
@@ -1955,7 +1955,7 @@ namespace nanopb_generator
                         lib,
                         *nested_struct,
                         package_name,
-                        target_expr + "." + member_name,
+                        concat_strings(target_expr, ".", member_name),
                         current_prefix,
                         cpp,
                         nested_concrete_template_param);
@@ -1987,7 +1987,7 @@ namespace nanopb_generator
             auto member_type = field->get_return_type();
             if (!concrete_template_param.empty())
                 member_type = substitute_single_template_parameter(struct_entity, concrete_template_param, member_type);
-            const auto current_prefix = state_prefix + "_" + member_name;
+            const auto current_prefix = concat_strings(state_prefix, "_", member_name);
 
             if (is_nullable_optional_type(member_type))
             {
@@ -1997,7 +1997,7 @@ namespace nanopb_generator
                     member_name,
                     nullable_optional_inner_type(member_type),
                     source_expr,
-                    target_expr + "." + member_name,
+                    concat_strings(target_expr, ".", member_name),
                     current_prefix,
                     cpp);
             }
@@ -2021,9 +2021,9 @@ namespace nanopb_generator
                     package_name,
                     "value",
                     inner_type,
-                    source_expr + "." + member_name,
-                    current_prefix + "_value",
-                    current_prefix + "_value",
+                    concat_strings(source_expr, ".", member_name),
+                    concat_strings(current_prefix, "_value"),
+                    concat_strings(current_prefix, "_value"),
                     cpp);
                 cpp("{}.{} = {}_value;", target_expr, member_name, current_prefix);
                 cpp("}}");
@@ -2038,7 +2038,7 @@ namespace nanopb_generator
                 {
                     cpp("if (!{}.has_{})", source_expr, member_name);
                     cpp("{{");
-                    cpp("{} = {}{{}};", target_expr + "." + member_name, normalize_type(member_type));
+                    cpp("{} = {}{{}};", concat_strings(target_expr, ".", member_name), normalize_type(member_type));
                     cpp("}}");
                     cpp("else");
                     cpp("{{");
@@ -2046,8 +2046,8 @@ namespace nanopb_generator
                         lib,
                         package_name,
                         member_type,
-                        source_expr + "." + member_name,
-                        target_expr + "." + member_name,
+                        concat_strings(source_expr, ".", member_name),
+                        concat_strings(target_expr, ".", member_name),
                         current_prefix,
                         cpp);
                     cpp("}}");
@@ -2058,8 +2058,8 @@ namespace nanopb_generator
                         lib,
                         package_name,
                         member_type,
-                        source_expr + "." + member_name,
-                        target_expr + "." + member_name,
+                        concat_strings(source_expr, ".", member_name),
+                        concat_strings(target_expr, ".", member_name),
                         current_prefix,
                         cpp);
                 }
@@ -2130,8 +2130,8 @@ namespace nanopb_generator
                         lib,
                         *nested_struct,
                         package_name,
-                        source_expr + "." + member_name,
-                        target_expr + "." + member_name,
+                        concat_strings(source_expr, ".", member_name),
+                        concat_strings(target_expr, ".", member_name),
                         current_prefix,
                         cpp,
                         nested_concrete_template_param);
@@ -2168,7 +2168,7 @@ namespace nanopb_generator
     {
         for (const auto& interface_elem : lib.get_elements(entity_type::INTERFACE))
         {
-            auto& interface_entity = static_cast<const class_entity&>(*interface_elem);
+            auto& interface_entity = dynamic_cast<const class_entity&>(*interface_elem);
 
             for (const auto& function : interface_entity.get_functions())
             {
@@ -2190,7 +2190,7 @@ namespace nanopb_generator
 
         for (const auto& struct_elem : lib.get_elements(entity_type::STRUCT))
         {
-            auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+            auto& struct_entity = dynamic_cast<const class_entity&>(*struct_elem);
             if (struct_entity.get_is_template())
                 continue;
 
@@ -3131,7 +3131,7 @@ namespace nanopb_generator
                 cpp("std::vector<char>& __buffer)");
                 cpp("{{");
                 const auto request_c_type
-                    = nanopb_c_prefix(package_name) + "_" + interface_name + "_" + function_name + "Request";
+                    = concat_strings(nanopb_c_prefix(package_name), "_", interface_name, "_", function_name, "Request");
                 cpp("try");
                 cpp("{{");
                 cpp("{} __message = {}_init_zero;", request_c_type, request_c_type);
@@ -3149,9 +3149,8 @@ namespace nanopb_generator
                 cpp("");
 
                 cpp("template<>");
-                std::string proxy_deserialiser_signature = "int " + interface_name
-                                                           + "::proxy_deserialiser<rpc::serialiser::" + serialiser_name
-                                                           + ">::" + function_name + "(";
+                std::string proxy_deserialiser_signature = concat_strings(
+                    "int ", interface_name, "::proxy_deserialiser<rpc::serialiser::", serialiser_name, ">::", function_name, "(");
                 bool first_param = true;
                 param_names.clear();
                 for (const auto* parameter : out_params)
@@ -3169,7 +3168,7 @@ namespace nanopb_generator
                 cpp(proxy_deserialiser_signature);
                 cpp("{{");
                 const auto response_c_type
-                    = nanopb_c_prefix(package_name) + "_" + interface_name + "_" + function_name + "Response";
+                    = concat_strings(nanopb_c_prefix(package_name), "_", interface_name, "_", function_name, "Response");
                 cpp("try");
                 cpp("{{");
                 cpp("{} __message = {}_init_zero;", response_c_type, response_c_type);
@@ -3189,8 +3188,8 @@ namespace nanopb_generator
                 cpp("");
 
                 cpp("template<>");
-                std::string stub_deserialiser_signature = "int " + interface_name + "::stub_deserialiser<rpc::serialiser::"
-                                                          + serialiser_name + ">::" + function_name + "(";
+                std::string stub_deserialiser_signature = concat_strings(
+                    "int ", interface_name, "::stub_deserialiser<rpc::serialiser::", serialiser_name, ">::", function_name, "(");
                 first_param = true;
                 param_names.clear();
                 for (const auto* parameter : in_params)
@@ -3208,7 +3207,7 @@ namespace nanopb_generator
                 cpp(stub_deserialiser_signature);
                 cpp("{{");
                 const auto stub_request_c_type
-                    = nanopb_c_prefix(package_name) + "_" + interface_name + "_" + function_name + "Request";
+                    = concat_strings(nanopb_c_prefix(package_name), "_", interface_name, "_", function_name, "Request");
                 cpp("try");
                 cpp("{{");
                 cpp("{} __message = {}_init_zero;", stub_request_c_type, stub_request_c_type);
@@ -3228,8 +3227,8 @@ namespace nanopb_generator
                 cpp("");
 
                 cpp("template<>");
-                std::string stub_serialiser_signature = "int " + interface_name + "::stub_serialiser<rpc::serialiser::"
-                                                        + serialiser_name + ">::" + function_name + "(";
+                std::string stub_serialiser_signature = concat_strings(
+                    "int ", interface_name, "::stub_serialiser<rpc::serialiser::", serialiser_name, ">::", function_name, "(");
                 first_param = true;
                 param_names.clear();
                 for (const auto* parameter : out_params)
@@ -3247,7 +3246,7 @@ namespace nanopb_generator
                 cpp(stub_serialiser_signature);
                 cpp("{{");
                 const auto stub_response_c_type
-                    = nanopb_c_prefix(package_name) + "_" + interface_name + "_" + function_name + "Response";
+                    = concat_strings(nanopb_c_prefix(package_name), "_", interface_name, "_", function_name, "Response");
                 cpp("try");
                 cpp("{{");
                 cpp("{} __message = {}_init_zero;", stub_response_c_type, stub_response_c_type);
@@ -3293,7 +3292,7 @@ namespace nanopb_generator
         {
             for (const auto& elem : entity.get_elements(entity_type::STRUCT))
             {
-                auto& template_entity = static_cast<const class_entity&>(*elem);
+                auto& template_entity = dynamic_cast<const class_entity&>(*elem);
                 if (template_entity.get_is_template() && template_entity.get_name() == inst.template_name)
                     write_template_instantiation_methods(entity, template_entity, inst, package_name, cpp);
             }
@@ -3306,15 +3305,15 @@ namespace nanopb_generator
 
             if (elem->get_entity_type() == entity_type::NAMESPACE)
             {
-                write_namespace_methods(static_cast<const class_entity&>(*elem), cpp);
+                write_namespace_methods(dynamic_cast<const class_entity&>(*elem), cpp);
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                write_struct_methods(entity, static_cast<const class_entity&>(*elem), package_name, cpp);
+                write_struct_methods(entity, dynamic_cast<const class_entity&>(*elem), package_name, cpp);
             }
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
-                write_interface_methods(entity, static_cast<const class_entity&>(*elem), package_name, cpp);
+                write_interface_methods(entity, dynamic_cast<const class_entity&>(*elem), package_name, cpp);
             }
         }
 

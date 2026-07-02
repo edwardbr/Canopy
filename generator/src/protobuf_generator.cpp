@@ -266,7 +266,7 @@ namespace protobuf_generator
 
                 for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
                 {
-                    if (elem && search_for_error(static_cast<const class_entity&>(*elem)))
+                    if (elem && search_for_error(dynamic_cast<const class_entity&>(*elem)))
                         return true;
                 }
 
@@ -699,11 +699,11 @@ namespace protobuf_generator
                         // Import the master aggregator file (lightweight, no dummy messages)
                         if (!dir_part.empty())
                         {
-                            proto_import = dir_part + "/protobuf/" + file_part + "_all.proto";
+                            proto_import = concat_strings(dir_part, "/protobuf/", file_part, "_all.proto");
                         }
                         else
                         {
-                            proto_import = "protobuf/" + file_part + "_all.proto";
+                            proto_import = concat_strings("protobuf/", file_part, "_all.proto");
                         }
                     }
 
@@ -744,7 +744,7 @@ namespace protobuf_generator
         // Scan all interfaces for template usage
         for (auto& interface_elem : lib.get_elements(entity_type::INTERFACE))
         {
-            auto& interface_entity = static_cast<const class_entity&>(*interface_elem);
+            auto& interface_entity = dynamic_cast<const class_entity&>(*interface_elem);
 
             for (auto& function : interface_entity.get_functions())
             {
@@ -803,7 +803,7 @@ namespace protobuf_generator
         // Scan non-template struct fields for template type usages (e.g. test_template<int> as a field)
         for (auto& struct_elem : lib.get_elements(entity_type::STRUCT))
         {
-            auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+            auto& struct_entity = dynamic_cast<const class_entity&>(*struct_elem);
             if (struct_entity.get_is_template())
                 continue;
 
@@ -857,7 +857,7 @@ namespace protobuf_generator
         {
             if (ns_elem->get_entity_type() == entity_type::NAMESPACE)
             {
-                auto& ns_entity = static_cast<const class_entity&>(*ns_elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*ns_elem);
                 collect_template_instantiations(ns_entity, instantiations);
             }
         }
@@ -893,21 +893,21 @@ namespace protobuf_generator
                 {
                     // In protobuf, nested messages can be defined within other messages
                     // For now, we'll process the namespace contents directly
-                    auto& ent = static_cast<const class_entity&>(*elem);
+                    auto& ent = dynamic_cast<const class_entity&>(*elem);
                     write_namespace(
                         from_host, ent, prefix + elem->get_name() + ".", proto, catch_stub_exceptions, rethrow_exceptions);
                 }
                 else
                 {
                     // For inline namespaces, just process contents directly
-                    auto& ent = static_cast<const class_entity&>(*elem);
+                    auto& ent = dynamic_cast<const class_entity&>(*elem);
                     write_namespace(from_host, ent, prefix, proto, catch_stub_exceptions, rethrow_exceptions);
                 }
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 // Skip template struct definitions - only concrete instantiations should be generated
-                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*elem);
                 if (!struct_entity.get_is_template())
                 {
                     // Generate message definition for non-template struct
@@ -918,7 +918,7 @@ namespace protobuf_generator
             else if (elem->get_entity_type() == entity_type::ENUM)
             {
                 // Generate enum definition for enum
-                auto& enum_entity = static_cast<const class_entity&>(*elem);
+                auto& enum_entity = dynamic_cast<const class_entity&>(*elem);
                 std::string enum_name = sanitize_type_name(enum_entity.get_name());
                 proto("enum {} {{", enum_name);
 
@@ -985,7 +985,7 @@ namespace protobuf_generator
         {
             if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*elem);
                 if (struct_entity.get_is_template())
                     continue;
                 for (auto& member : struct_entity.get_elements(entity_type::STRUCTURE_MEMBERS))
@@ -1056,7 +1056,7 @@ namespace protobuf_generator
                 if (elem->get_entity_type() == entity_type::NAMESPACE)
                 {
                     protobuf_generator::write_single_namespace(
-                        lib, static_cast<const class_entity&>(*elem), output_path, sub_directory, generated_files);
+                        lib, dynamic_cast<const class_entity&>(*elem), output_path, sub_directory, generated_files);
                 }
             }
             return;
@@ -1081,7 +1081,7 @@ namespace protobuf_generator
         bool has_interface_parameters = false;
         for (auto& interface_elem : current_lib.get_elements(entity_type::INTERFACE))
         {
-            auto& interface_entity = static_cast<const class_entity&>(*interface_elem);
+            auto& interface_entity = dynamic_cast<const class_entity&>(*interface_elem);
             for (auto& function : interface_entity.get_functions())
             {
                 if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
@@ -1143,7 +1143,7 @@ namespace protobuf_generator
             // Find the template entity in current_lib
             for (auto& struct_elem : current_lib.get_elements(entity_type::STRUCT))
             {
-                auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*struct_elem);
                 if (struct_entity.get_is_template() && struct_entity.get_name() == inst.template_name)
                 {
                     int field_number = 0;
@@ -1162,12 +1162,12 @@ namespace protobuf_generator
             else if (elem->get_entity_type() == entity_type::NAMESPACE)
             {
                 protobuf_generator::write_single_namespace(
-                    lib, static_cast<const class_entity&>(*elem), output_path, sub_directory, generated_files);
+                    lib, dynamic_cast<const class_entity&>(*elem), output_path, sub_directory, generated_files);
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
                 // Skip template struct definitions - only concrete instantiations should be generated
-                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*elem);
                 if (!struct_entity.get_is_template())
                 {
                     // Generate message definition for non-template struct
@@ -1178,7 +1178,7 @@ namespace protobuf_generator
             else if (elem->get_entity_type() == entity_type::ENUM)
             {
                 // Generate enum definition for enum
-                auto& enum_entity = static_cast<const class_entity&>(*elem);
+                auto& enum_entity = dynamic_cast<const class_entity&>(*elem);
                 std::string enum_name = sanitize_type_name(enum_entity.get_name());
                 proto("enum {} {{", enum_name);
 
@@ -1266,7 +1266,7 @@ namespace protobuf_generator
         auto ns = interface_entity->get_owner();
         while (ns && ns->get_name().empty())
         {
-            interface_name = ns->get_name() + "_" + interface_name;
+            interface_name = concat_strings(ns->get_name(), "_", interface_name);
             ns = ns->get_owner();
         }
 
@@ -1314,7 +1314,7 @@ namespace protobuf_generator
         //     // Check interfaces in this entity
         //     for (auto& elem : entity.get_elements(entity_type::INTERFACE))
         //     {
-        //         auto& interface_cls = static_cast<const class_entity&>(*elem);
+        //         auto& interface_cls = dynamic_cast<const class_entity&>(*elem);
         //         std::string import_lib = interface_cls.get_import_lib();
 
         //         if (!import_lib.empty())
@@ -1370,7 +1370,7 @@ namespace protobuf_generator
         //     // Recursively scan namespaces
         //     for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
         //     {
-        //         auto& ns_entity = static_cast<const class_entity&>(*elem);
+        //         auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
         //         scan_for_imports(ns_entity);
         //     }
         // };
@@ -1420,8 +1420,8 @@ namespace protobuf_generator
             if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
             {
                 std::string method_name = function->get_name();
-                std::string input_type = interface_name + "_" + method_name + "Request";
-                std::string output_type = interface_name + "_" + method_name + "Response";
+                std::string input_type = concat_strings(interface_name, "_", method_name, "Request");
+                std::string output_type = concat_strings(interface_name, "_", method_name, "Response");
 
                 // Write request message
                 proto("message {} {{", input_type);
@@ -1566,8 +1566,8 @@ namespace protobuf_generator
             if (function->get_entity_type() == entity_type::FUNCTION_METHOD)
             {
                 std::string method_name = function->get_name();
-                std::string input_type = interface_name + "_" + method_name + "Request";
-                std::string output_type = interface_name + "_" + method_name + "Response";
+                std::string input_type = concat_strings(interface_name, "_", method_name, "Request");
+                std::string output_type = concat_strings(interface_name, "_", method_name, "Response");
 
                 // Write the RPC method declaration
                 proto("rpc {}({}) returns ({});", method_name, input_type, output_type);
@@ -1947,7 +1947,7 @@ namespace protobuf_generator
             // Check nested namespaces
             for (auto& elem : entity.get_elements(entity_type::NAMESPACE))
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 if (search_for_enum(ns_entity))
                     return true;
             }
@@ -2304,7 +2304,9 @@ namespace protobuf_generator
                 final_param_type = param_type + "&";
             }
 
-            signature += final_param_type + " " + param_name;
+            signature += final_param_type;
+            signature += " ";
+            signature += param_name;
         }
 
         if (!first_param)
@@ -2540,7 +2542,9 @@ namespace protobuf_generator
                 final_param_type = param_type + "&";
             }
 
-            signature += final_param_type + " " + param_name;
+            signature += final_param_type;
+            signature += " ";
+            signature += param_name;
         }
 
         if (!first_param)
@@ -2765,7 +2769,7 @@ namespace protobuf_generator
                 final_param_type = param_type;
                 if (final_param_type.find("const ") == std::string::npos)
                 {
-                    final_param_type = "const " + final_param_type;
+                    final_param_type.insert(0, "const ");
                 }
             }
             else
@@ -2774,7 +2778,9 @@ namespace protobuf_generator
                 final_param_type = "const " + param_type + "&";
             }
 
-            signature += final_param_type + " " + param_name;
+            signature += final_param_type;
+            signature += " ";
+            signature += param_name;
         }
 
         if (!first_param)
@@ -3152,14 +3158,14 @@ namespace protobuf_generator
         {
             if (elem->get_entity_type() == entity_type::NAMESPACE)
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 const class_entity* result = find_struct_by_name(ns_entity, name);
                 if (result)
                     return result;
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*elem);
                 if (struct_entity.get_name() == name || struct_entity.get_name() == unqualified)
                     return &struct_entity;
             }
@@ -4335,7 +4341,7 @@ namespace protobuf_generator
                         if (inner_type.find("::") != std::string::npos)
                             qualified_inner_type = "::" + inner_type;
                         else if (!struct_cpp_ns.empty())
-                            qualified_inner_type = struct_cpp_ns + "::" + inner_type;
+                            qualified_inner_type = concat_strings(struct_cpp_ns, "::", inner_type);
                     }
                     write_proto_field_to_nullable_optional(
                         root_entity, inner_type, "msg", field_accessor, member_name, qualified_inner_type, cpp, "");
@@ -4349,7 +4355,7 @@ namespace protobuf_generator
                         if (inner_type.find("::") != std::string::npos)
                             qualified_inner_type = "::" + inner_type;
                         else if (!struct_cpp_ns.empty())
-                            qualified_inner_type = struct_cpp_ns + "::" + inner_type;
+                            qualified_inner_type = concat_strings(struct_cpp_ns, "::", inner_type);
                     }
                     cpp("if (msg.has_{}())", field_accessor);
                     cpp("{{");
@@ -4583,7 +4589,7 @@ namespace protobuf_generator
                         else if (!struct_cpp_ns.empty())
                         {
                             // Local enum - qualify with struct's namespace
-                            qualified_enum_type = struct_cpp_ns + "::" + field_type;
+                            qualified_enum_type = concat_strings(struct_cpp_ns, "::", field_type);
                         }
                         else
                         {
@@ -4717,7 +4723,7 @@ namespace protobuf_generator
             const class_entity* found_template = nullptr;
             for (auto& struct_elem : lib.get_elements(entity_type::STRUCT))
             {
-                auto& struct_entity = static_cast<const class_entity&>(*struct_elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*struct_elem);
                 if (struct_entity.get_is_template() && struct_entity.get_name() == inst.template_name)
                 {
                     found_template = &struct_entity;
@@ -4743,7 +4749,7 @@ namespace protobuf_generator
 
             if (elem->get_entity_type() == entity_type::NAMESPACE)
             {
-                auto& ns_entity = static_cast<const class_entity&>(*elem);
+                auto& ns_entity = dynamic_cast<const class_entity&>(*elem);
                 bool is_inline = elem->has_value("inline");
 
                 // Open namespace block for nested namespace
@@ -4771,7 +4777,7 @@ namespace protobuf_generator
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                auto& struct_entity = static_cast<const class_entity&>(*elem);
+                auto& struct_entity = dynamic_cast<const class_entity&>(*elem);
                 // Skip template structs - they need template specialization handling
                 if (!struct_entity.get_is_template())
                 {
@@ -4790,7 +4796,7 @@ namespace protobuf_generator
 
             if (elem->get_entity_type() == entity_type::INTERFACE)
             {
-                auto& interface_entity = static_cast<const class_entity&>(*elem);
+                auto& interface_entity = dynamic_cast<const class_entity&>(*elem);
                 // Compute the protobuf package name (uses underscores, includes inline namespaces)
                 std::string protobuf_package_name = get_namespace_name(lib);
                 write_interface_protobuf_cpp(lib, interface_entity, protobuf_package_name, cpp);

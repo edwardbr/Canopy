@@ -445,7 +445,7 @@ namespace rust_generator
             const std::string& root_module_name)
         {
             const auto type_name = normalise_cpp_type(cpp_type);
-            const auto scalar_type = rust_scalar_value_type_for_cpp_type(type_name);
+            auto scalar_type = rust_scalar_value_type_for_cpp_type(type_name);
             if (!scalar_type.empty())
                 return scalar_type;
 
@@ -662,10 +662,12 @@ namespace rust_generator
             {
                 auto rust_type = rust_method_signature_type_for_param(param);
                 if (param.is_out)
-                    rust_type = "&mut " + rust_type;
+                    rust_type.insert(0, "&mut ");
 
                 signature += ", ";
-                signature += param.rust_name + ": " + rust_type;
+                signature += param.rust_name;
+                signature += ": ";
+                signature += rust_type;
             }
             signature += ") -> ";
             signature += rust_value_type_for_cpp_type_with_lib(function.get_return_type(), iface, lib, root_module_name);
@@ -2759,7 +2761,7 @@ namespace rust_generator
                 {
                     output("pub mod {}", sanitize_identifier(elem->get_name()));
                     output("{{");
-                    write_namespace(output, top_lib, static_cast<const class_entity&>(*elem), root_module_name);
+                    write_namespace(output, top_lib, dynamic_cast<const class_entity&>(*elem), root_module_name);
                     output("}}");
                 }
                 else if (elem->get_entity_type() == entity_type::INTERFACE)
@@ -2776,11 +2778,11 @@ namespace rust_generator
                 }
                 else if (elem->get_entity_type() == entity_type::STRUCT)
                 {
-                    write_struct(output, static_cast<const class_entity&>(*elem), top_lib, root_module_name);
+                    write_struct(output, dynamic_cast<const class_entity&>(*elem), top_lib, root_module_name);
                 }
                 else if (elem->get_entity_type() == entity_type::ENUM)
                 {
-                    write_enum(output, static_cast<const class_entity&>(*elem));
+                    write_enum(output, dynamic_cast<const class_entity&>(*elem));
                 }
                 else if (elem->get_entity_type() == entity_type::RUSTQUOTE)
                 {
@@ -2795,7 +2797,7 @@ namespace rust_generator
                         continue;
                     if (elem->get_entity_type() != entity_type::INTERFACE)
                         continue;
-                    write_interface(output, static_cast<const class_entity&>(*elem), root_module_name, top_lib);
+                    write_interface(output, dynamic_cast<const class_entity&>(*elem), root_module_name, top_lib);
                 }
             }
         }

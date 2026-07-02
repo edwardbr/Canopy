@@ -36,7 +36,7 @@ namespace canopy::rest
     CORO_TASK(std::optional<http_server::response>)
     handle_http_request(
         http_server::request request,
-        endpoint_registry registry)
+        const endpoint_registry& registry) // NOLINT(cppcoreguidelines-avoid-reference-coroutine-parameters): request handler owns registry and immediately awaits the task.
     {
         if (!registry.may_handle(request.url))
             CO_RETURN std::nullopt;

@@ -81,7 +81,7 @@ namespace fingerprint
                     {
                         if (element->get_entity_type() >= entity_type::FUNCTION_METHOD)
                             continue;
-                        const auto* tmp1 = static_cast<class_entity*>(element.get());
+                        const auto* tmp1 = dynamic_cast<class_entity*>(element.get());
                         if (tmp1->get_name() == ns)
                         {
                             subcls = tmp1;
@@ -243,7 +243,9 @@ namespace fingerprint
             auto* owner = cls.get_owner();
             while (owner)
             {
-                seed = owner->get_name() + "::" + seed;
+                std::string owner_prefix = owner->get_name();
+                owner_prefix += "::";
+                seed.insert(0, owner_prefix);
                 owner = owner->get_owner();
             }
 

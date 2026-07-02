@@ -45,8 +45,6 @@ target_link_options(generator PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 set_property(TARGET generator PROPERTY COMPILE_PDB_NAME generator)
 
-set_target_properties(generator PROPERTIES CXX_CLANG_TIDY "")
-
 if(STRIP_DEBUG
    OR GENERATE_DEBUG_INDEX
    OR STRIP_AND_DELETE_SYMBOLS)

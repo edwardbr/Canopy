@@ -8,8 +8,10 @@
 #include <string>
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <iostream>
 #include <cstdint>
+#include <string_view>
 
 // Forward declarations
 // NOLINTNEXTLINE(bugprone-incorrect-enable-shared-from-this): class_entity is defined in the idlparser submodule.
@@ -18,6 +20,29 @@ class attributes;
 
 namespace generator
 {
+    [[nodiscard]] inline std::string_view string_piece(const std::string& value) noexcept
+    {
+        return value;
+    }
+
+    [[nodiscard]] inline std::string_view string_piece(std::string_view value) noexcept
+    {
+        return value;
+    }
+
+    [[nodiscard]] inline std::string_view string_piece(const char* value) noexcept
+    {
+        return value == nullptr ? std::string_view{} : std::string_view{value};
+    }
+
+    template<typename... Parts> [[nodiscard]] std::string concat_strings(const Parts&... parts)
+    {
+        std::string result;
+        result.reserve((string_piece(parts).size() + ... + size_t{0}));
+        (result.append(string_piece(parts)), ...);
+        return result;
+    }
+
     // Unified parameter type classification (shared across all generators)
     enum class param_type
     {
@@ -47,14 +72,14 @@ namespace generator
     // Unified parameter analysis result
     struct parameter_info
     {
-        param_type type;
+        param_type type{param_type::BY_VALUE};
         std::string clean_type_name;
         std::string reference_modifiers;
-        bool is_in;
-        bool is_out;
-        bool is_const;
-        bool is_interface;
-        bool by_value;
+        bool is_in{false};
+        bool is_out{false};
+        bool is_const{false};
+        bool is_interface{false};
+        bool by_value{false};
     };
 
     // Type checking utilities for basic types
@@ -108,8 +133,8 @@ namespace generator
     struct param_analysis_result
     {
         parameter_info info;
-        bool should_process_as_input;
-        bool should_process_as_output;
+        bool should_process_as_input{false};
+        bool should_process_as_output{false};
     };
 
     // Unified parameter analysis and filtering

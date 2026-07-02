@@ -260,7 +260,7 @@ namespace rpc::io_uring
             //     available slot(s)
             //             |
             //             v
-            //     front waiter reserves both required slots
+            //     next grantable waiter reserves the required slot(s)
             //             |
             //             v
             //     coroutine resumes and wraps reservations in staging_buffer

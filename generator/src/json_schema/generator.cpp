@@ -1778,8 +1778,8 @@ namespace json_schema
                     std::string method_name = generator::clean_type_name(method->get_name());
                     if (method_name.empty())
                         continue;
-                    std::string send_struct_name = qualified_name + "_" + method_name + "_send";
-                    std::string receive_struct_name = qualified_name + "_" + method_name + "_receive";
+                    std::string send_struct_name = concat_strings(qualified_name, "_", method_name, "_send");
+                    std::string receive_struct_name = concat_strings(qualified_name, "_", method_name, "_receive");
                     ordered_defs.push_back(
                         {send_struct_name,
                             SyntheticMethodInfo{FLD(interface_entity) & current_entity,
@@ -2292,8 +2292,8 @@ namespace json_schema
 
             infos.push_back(
                 InterfaceMethodSchemaInfo{FLD(method_name) method_name,
-                    FLD(send_definition_name) interface_definition_name + "_" + method_name + "_send",
-                    FLD(receive_definition_name) interface_definition_name + "_" + method_name + "_receive",
+                    FLD(send_definition_name) concat_strings(interface_definition_name, "_", method_name, "_send"),
+                    FLD(receive_definition_name) concat_strings(interface_definition_name, "_", method_name, "_receive"),
                     FLD(local_send_definition_name) method_name + "_send",
                     FLD(local_receive_definition_name) method_name + "_receive"});
         }

@@ -8,8 +8,13 @@
 // #include <format>
 // #define fmt std
 // #else
+#include <algorithm>
+#include <cassert>
 #include <fmt/format.h>
 #include <fmt/ostream.h>
+#include <iterator>
+#include <ostream>
+#include <string>
 // #endif
 #undef INTERFACE
 
@@ -39,8 +44,8 @@ public:
         typename S,
         typename... Args>
     void operator()(
-        S&& format_str,
-        Args&&... args)
+        const S& format_str,
+        const Args&... args)
     {
         int tmp = 0;
         std::for_each(
@@ -71,8 +76,8 @@ public:
         typename S,
         typename... Args>
     void raw(
-        S&& format_str,
-        Args&&... args)
+        const S& format_str,
+        const Args&... args)
     {
         std::string buffer;
         fmt::vformat_to(std::back_inserter(buffer), format_str, fmt::make_format_args(args...));

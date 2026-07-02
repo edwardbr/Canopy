@@ -1082,10 +1082,10 @@ namespace rust_protobuf_generator
                 const auto response_generics = generic_declaration_for_params(interface_generics, false, true);
                 const auto codec_generics = generic_declaration_for_params(interface_generics, true, true);
                 const auto codec_where = generic_where_clause_for_params(interface_generics, true, true);
-                const auto interface_module_path = "crate::" + root_module_name
-                                                   + "::" + qualified_generated_interface_path(iface)
-                                                   + "::interface_binding::" + module_name;
-                const auto interface_trait_path = "crate::" + root_module_name + "::" + qualified_public_type_path(iface);
+                const auto interface_module_path = concat_strings(
+                    "crate::", root_module_name, "::", qualified_generated_interface_path(iface), "::interface_binding::", module_name);
+                const auto interface_trait_path
+                    = concat_strings("crate::", root_module_name, "::", qualified_public_type_path(iface));
                 const auto proto_request_type = protobuf_message_rust_type(root_module_name, request_message);
                 const auto proto_response_type = protobuf_message_rust_type(root_module_name, response_message);
                 const bool supports_dispatch_codegen
@@ -1504,11 +1504,22 @@ namespace rust_protobuf_generator
                                 output("\t\t\tlet {}_proxy: std::sync::Arc<dyn {}> = {}_proxy;", field_name, trait_path, field_name);
                                 output(
                                     "\t\t\t{}",
-                                    is_optimistic
-                                        ? "canopy_rpc::Optimistic::from_remote(" + field_name + "_proxy, " + field_name
-                                              + "_remote_object.clone(), " + field_name + "_object_proxy)"
-                                        : "canopy_rpc::Shared::from_remote(" + field_name + "_proxy, " + field_name
-                                              + "_remote_object.clone(), " + field_name + "_object_proxy)");
+                                    is_optimistic ? concat_strings(
+                                                        "canopy_rpc::Optimistic::from_remote(",
+                                                        field_name,
+                                                        "_proxy, ",
+                                                        field_name,
+                                                        "_remote_object.clone(), ",
+                                                        field_name,
+                                                        "_object_proxy)")
+                                                  : concat_strings(
+                                                        "canopy_rpc::Shared::from_remote(",
+                                                        field_name,
+                                                        "_proxy, ",
+                                                        field_name,
+                                                        "_remote_object.clone(), ",
+                                                        field_name,
+                                                        "_object_proxy)"));
                                 output("\t\t}};");
                             }
                         }
@@ -1657,7 +1668,7 @@ namespace rust_protobuf_generator
 
                 if (elem->get_entity_type() == entity_type::NAMESPACE)
                 {
-                    auto& ns = static_cast<const class_entity&>(*elem);
+                    auto& ns = dynamic_cast<const class_entity&>(*elem);
                     output("pub mod {}", sanitize_identifier(ns.get_name()));
                     output("{{");
                     write_namespace(output, lib, ns, root_module_name);
@@ -1677,7 +1688,7 @@ namespace rust_protobuf_generator
                         continue;
                     if (elem->get_entity_type() != entity_type::INTERFACE)
                         continue;
-                    write_interface(output, lib, static_cast<const class_entity&>(*elem), root_module_name);
+                    write_interface(output, lib, dynamic_cast<const class_entity&>(*elem), root_module_name);
                 }
             }
         }

@@ -45,12 +45,14 @@ typedef struct sha3_context_
                              * words (e.g. 16 for Keccak 512) */
 } sha3_context;
 
+// NOLINTNEXTLINE(cppcoreguidelines-use-enum-class): C-compatible public SHA3 API.
 enum SHA3_FLAGS
 {
     SHA3_FLAGS_NONE = 0,
     SHA3_FLAGS_KECCAK = 1
 };
 
+// NOLINTNEXTLINE(cppcoreguidelines-use-enum-class): C-compatible public SHA3 API.
 enum SHA3_RETURN
 {
     SHA3_RETURN_OK = 0,

@@ -27,6 +27,7 @@ extern "C"
 
 namespace yas_generator
 {
+    // NOLINTNEXTLINE(cppcoreguidelines-use-enum-class): Renderer options are passed through the base_renderer int API.
     enum print_type
     {
         PROXY_PARAM_IN,
@@ -1093,14 +1094,14 @@ namespace yas_generator
                     proxy("namespace {}", elem->get_name());
                 }
                 proxy("{{");
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_namespace(
                     from_host, ent, prefix + elem->get_name() + "::", proxy, yas_options, catch_stub_exceptions, rethrow_exceptions);
                 proxy("}}");
             }
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_interface(from_host, ent, proxy, yas_options);
             }
         }

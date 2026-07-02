@@ -324,7 +324,7 @@ namespace proto_generator
 
             for (auto& ns_entity : entity.get_elements(entity_type::NAMESPACE))
             {
-                if (ns_entity && search_for_enum(static_cast<const class_entity&>(*ns_entity)))
+                if (ns_entity && search_for_enum(dynamic_cast<const class_entity&>(*ns_entity)))
                     return true;
             }
 
@@ -425,7 +425,7 @@ namespace proto_generator
         if (type == "unsigned __int128" || type == "__int128" || type == "uint128_t" || type == "int128_t")
             return "uint128";
 
-        const auto scalar_type = cpp_scalar_to_proto_type(type);
+        auto scalar_type = cpp_scalar_to_proto_type(type);
         if (!scalar_type.empty())
             return scalar_type;
 

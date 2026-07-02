@@ -5,12 +5,37 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string>
+#include <string_view>
 #include <list>
 
 #include "cpp_parser.h"
 #include "coreclasses.h"
 #include "writer.h"
+
+[[nodiscard]] inline std::string_view string_piece(const std::string& value) noexcept
+{
+    return value;
+}
+
+[[nodiscard]] inline std::string_view string_piece(std::string_view value) noexcept
+{
+    return value;
+}
+
+[[nodiscard]] inline std::string_view string_piece(const char* value) noexcept
+{
+    return value == nullptr ? std::string_view{} : std::string_view{value};
+}
+
+template<typename... Parts> [[nodiscard]] std::string concat_strings(const Parts&... parts)
+{
+    std::string result;
+    result.reserve((string_piece(parts).size() + ... + size_t{0}));
+    (result.append(string_piece(parts)), ...);
+    return result;
+}
 
 bool is_in_param(const attributes& attribs);
 bool is_out_param(const attributes& attribs);

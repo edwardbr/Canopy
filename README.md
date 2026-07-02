@@ -299,7 +299,7 @@ transports.
 - **Node.js**: 18+ (for llhttp code generation)
 - **OpenSSL**: Development headers, OpenSSL 1.1.1+ (`libssl-dev` on Linux, OpenSSL SDK on Windows)
 - **nasm**: 2.14+ (only for the websocket video demo; libvpx's x86 assembly. Fedora: `sudo dnf install nasm`)
-- **clang-tidy** (optional): LLVM 16+ for static analysis; LLVM 21+ recommended for full check coverage including `modernize-use-designated-initializers`
+- **clang-tidy** (optional): for static analysis presets
 
 ### Build
 
@@ -330,7 +330,7 @@ cmake --build build_debug
 cmake --preset Debug_Coroutine_Coverage
 cmake --build build_debug_coroutine
 
-# Static analysis with clang-tidy (requires LLVM 16+)
+# Static analysis with clang-tidy
 cmake --preset Debug_Coroutine_Tidy
 cmake --build build_debug_coroutine_tidy
 
@@ -512,7 +512,7 @@ Implementation note:
 - **Embedded**: Any platform with C++17 support
 
 ### Compilers
-- **Clang**: 10.0+ (LLVM 21 recommended for full clang-tidy support)
+- **Clang**: 10.0+
 - **GCC**: 9.4+
 - **MSVC**: Visual Studio 2019+
 
@@ -573,7 +573,7 @@ sudo dnf install gcc gcc-c++ clang clang-tools-extra openssl-devel wget make per
 pip install --user cmakelang
 ```
 
-`clang-tools-extra` includes `clang-tidy` and `clang-format`. The Fedora 43 repos ship LLVM 21, which supports all checks used in this project including `modernize-use-designated-initializers`.
+`clang-tools-extra` includes `clang-tidy` and `clang-format`. See [Clang-Tidy Coding Guidelines](documents/clang-tidy-coding-guidelines.md) for project cleanup policy and generated-code handling.
 
 Install CMake 4.x or later (the version in the Fedora repos may be too old):
 

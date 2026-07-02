@@ -85,6 +85,7 @@ namespace synchronous_generator
         return type + modifiers;
     }
 
+    // NOLINTNEXTLINE(cppcoreguidelines-use-enum-class): Renderer options are passed through the base_renderer int API.
     enum print_type
     {
         PROXY_PREPARE_IN,
@@ -742,7 +743,7 @@ namespace synchronous_generator
         if (!field || field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
             return false;
 
-        auto* function_variable = static_cast<const function_entity*>(field.get());
+        auto* function_variable = dynamic_cast<const function_entity*>(field.get());
         return !function_variable->is_static();
     }
 
@@ -763,7 +764,7 @@ namespace synchronous_generator
                 continue;
 
             has_fields = true;
-            auto* function_variable = static_cast<const function_entity*>(field.get());
+            auto* function_variable = dynamic_cast<const function_entity*>(field.get());
             if (is_serialized_pointer_field(*function_variable))
             {
                 header(
@@ -796,7 +797,7 @@ namespace synchronous_generator
                 continue;
 
             has_fields = true;
-            auto* function_variable = static_cast<const function_entity*>(field.get());
+            auto* function_variable = dynamic_cast<const function_entity*>(field.get());
             if (is_serialized_pointer_field(*function_variable))
             {
                 header("std::uint64_t __canonical_{}_address = 0;", field->get_name());
@@ -2345,7 +2346,7 @@ namespace synchronous_generator
                 std::string scoped_namespace;
                 interface_declaration_generator::build_scoped_name(&m_ob, scoped_namespace);
                 if (!scoped_namespace.empty() && scoped_namespace.rfind("::", 0) != 0)
-                    scoped_namespace = "::" + scoped_namespace;
+                    scoped_namespace.insert(0, "::");
 
                 proxy.print_tabs();
                 proxy.raw("CORO_TASK({}) {}(", render_cpp_type(m_ob, function->get_return_type()), function->get_name());
@@ -2558,7 +2559,7 @@ namespace synchronous_generator
     {
         if (!ent.is_in_import())
         {
-            auto& enum_entity = static_cast<const class_entity&>(ent);
+            auto& enum_entity = dynamic_cast<const class_entity&>(ent);
             if (enum_entity.get_base_classes().empty())
                 header("enum class {}", enum_entity.get_name());
             else
@@ -2591,7 +2592,7 @@ namespace synchronous_generator
         if (ent.is_in_import())
             return;
 
-        auto& error_entity = static_cast<const class_entity&>(ent);
+        auto& error_entity = dynamic_cast<const class_entity&>(ent);
         header("class {}", error_entity.get_name());
         header("{{");
         header("public:");
@@ -2688,7 +2689,7 @@ namespace synchronous_generator
     {
         if (!ent.is_in_import())
         {
-            auto& cls = static_cast<const class_entity&>(ent);
+            auto& cls = dynamic_cast<const class_entity&>(ent);
             header("using {} = {};", cls.get_name(), cls.get_alias_name());
         }
     }
@@ -2857,7 +2858,7 @@ namespace synchronous_generator
         {
             if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
             {
-                auto* function_variable = static_cast<const function_entity*>(field.get());
+                auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                 header.print_tabs();
                 render_function(header, m_ob, *function_variable);
                 if (function_variable->get_array_string().size())
@@ -2865,6 +2866,10 @@ namespace synchronous_generator
                 if (!function_variable->get_default_value().empty())
                 {
                     header.raw(" = {};\n", function_variable->get_default_value());
+                }
+                else if (!function_variable->is_static() && !is_reference(function_variable->get_return_type()))
+                {
+                    header.raw(" = {{}};\n");
                 }
                 else
                 {
@@ -2924,7 +2929,7 @@ namespace synchronous_generator
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
                     {
-                        auto* function_variable = static_cast<const function_entity*>(field.get());
+                        auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                         if (function_variable->is_static())
                         {
                             continue;
@@ -2948,7 +2953,7 @@ namespace synchronous_generator
                     if (field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
                         continue;
 
-                    auto* function_variable = static_cast<const function_entity*>(field.get());
+                    auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                     if (function_variable->is_static() || !is_serialized_pointer_field(*function_variable))
                         continue;
 
@@ -2966,7 +2971,7 @@ namespace synchronous_generator
 
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
                     {
-                        auto* function_variable = static_cast<const function_entity*>(field.get());
+                        auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                         if (function_variable->is_static())
                             continue;
                         if (is_serialized_pointer_field(*function_variable))
@@ -3005,7 +3010,7 @@ namespace synchronous_generator
                     if (field->get_entity_type() != entity_type::FUNCTION_VARIABLE)
                         continue;
 
-                    auto* function_variable = static_cast<const function_entity*>(field.get());
+                    auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                     if (function_variable->is_static() || !is_serialized_pointer_field(*function_variable))
                         continue;
 
@@ -3098,7 +3103,7 @@ namespace synchronous_generator
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
                     {
-                        auto* function_variable = static_cast<const function_entity*>(field.get());
+                        auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                         if (function_variable->is_static())
                         {
                             continue;
@@ -3123,7 +3128,7 @@ namespace synchronous_generator
                 {
                     if (field->get_entity_type() == entity_type::FUNCTION_VARIABLE)
                     {
-                        auto* function_variable = static_cast<const function_entity*>(field.get());
+                        auto* function_variable = dynamic_cast<const function_entity*>(field.get());
                         if (function_variable->is_static())
                         {
                             continue;
@@ -3344,7 +3349,7 @@ namespace synchronous_generator
                 header("{{");
                 proxy("{{");
                 stub("{{");
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_namespace(
                     from_host,
                     ent,
@@ -3365,13 +3370,13 @@ namespace synchronous_generator
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_struct(ent, header, yas_options, enable_protobuf, enable_nanopb, enable_canonical_crypto);
             }
 
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 interface_declaration_generator::write_interface(ent, header, enable_rest_client);
                 write_interface(
                     from_host,
@@ -3443,7 +3448,7 @@ namespace synchronous_generator
             }
             else if (cls->get_entity_type() == entity_type::STRUCT)
             {
-                auto& ent = static_cast<const class_entity&>(*cls);
+                auto& ent = dynamic_cast<const class_entity&>(*cls);
                 write_struct_id(ent, header);
                 write_variant_alternative_tag_specialization(ent, header);
             }

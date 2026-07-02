@@ -30,6 +30,7 @@ namespace interface_declaration_generator
         {FLD(macro) "RPC_V3", FLD(symbol) "rpc::VERSION_3", FLD(value) 3},
         {FLD(macro) "RPC_V2", FLD(symbol) "rpc::VERSION_2", FLD(value) 2},
     }};
+    // NOLINTNEXTLINE(cppcoreguidelines-use-enum-class): Renderer options are passed through the base_renderer int API.
     enum print_type
     {
         PROXY_PARAM_IN,
@@ -380,7 +381,7 @@ namespace interface_declaration_generator
     {
         if (constexpression.is_in_import())
             return;
-        auto& function = static_cast<const function_entity&>(constexpression);
+        auto& function = dynamic_cast<const function_entity&>(constexpression);
         header.print_tabs();
         header.raw("static constexpr {} {}", function.get_return_type(), function.get_name());
         if (!function.get_default_value().empty())

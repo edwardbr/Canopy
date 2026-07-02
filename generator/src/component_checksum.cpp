@@ -95,17 +95,17 @@ namespace component_checksum
                 continue;
             else if (elem->get_entity_type() == entity_type::NAMESPACE)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_namespace(ent, output_path);
             }
             else if (elem->get_entity_type() == entity_type::STRUCT)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_struct(ent, output_path);
             }
             else if (elem->get_entity_type() == entity_type::INTERFACE)
             {
-                auto& ent = static_cast<const class_entity&>(*elem);
+                auto& ent = dynamic_cast<const class_entity&>(*elem);
                 write_interface(ent, output_path);
             }
         }

@@ -177,6 +177,19 @@ void validate_idl_type_policy_type(
     }
 }
 
+std::string make_scoped_location(
+    const std::string& scope,
+    const std::string& name)
+{
+    if (scope.empty() || name.empty())
+        return name;
+
+    std::string result = scope;
+    result += "::";
+    result += name;
+    return result;
+}
+
 void validate_idl_type_policy_entity(
     const class_entity& object,
     const std::string& scope,
@@ -189,7 +202,7 @@ void validate_idl_type_policy_entity(
             continue;
 
         const auto name = element->get_name();
-        const auto location = scope.empty() || name.empty() ? name : scope + "::" + name;
+        const auto location = make_scoped_location(scope, name);
 
         if (const auto class_element = std::dynamic_pointer_cast<class_entity>(element))
         {
@@ -252,7 +265,7 @@ void validate_duplicate_idl_symbols_entity(
             continue;
 
         const auto name = class_element->get_name();
-        const auto location = scope.empty() || name.empty() ? name : scope + "::" + name;
+        const auto location = make_scoped_location(scope, name);
         const auto entity_type = class_element->get_entity_type();
 
         if (is_concrete_idl_symbol(entity_type) && !location.empty())
@@ -265,7 +278,13 @@ void validate_duplicate_idl_symbols_entity(
             }
             else if (existing->second != source || source == "<current idl>")
             {
-                errors.push_back("duplicate IDL symbol '" + location + "' from " + existing->second + " and " + source);
+                std::string message = "duplicate IDL symbol '";
+                message += location;
+                message += "' from ";
+                message += existing->second;
+                message += " and ";
+                message += source;
+                errors.push_back(std::move(message));
             }
         }
 
@@ -456,6 +475,7 @@ int main(
         }
 
         std::vector<std::filesystem::path> parsed_paths;
+        parsed_paths.reserve(include_paths.size());
         for (auto& path : include_paths)
         {
             parsed_paths.emplace_back(std::filesystem::canonical(path, ec).make_preferred());

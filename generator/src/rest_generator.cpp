@@ -1688,12 +1688,12 @@ namespace rest_generator
                     const auto is_inline = elem->has_value("inline");
                     output("{}namespace {}", is_inline ? "inline " : "", elem->get_name());
                     output("{{");
-                    write_namespace(static_cast<const class_entity&>(*elem), output, metadata);
+                    write_namespace(dynamic_cast<const class_entity&>(*elem), output, metadata);
                     output("}}");
                 }
                 else if (elem->get_entity_type() == entity_type::INTERFACE)
                 {
-                    const auto& interface_entity = static_cast<const class_entity&>(*elem);
+                    const auto& interface_entity = dynamic_cast<const class_entity&>(*elem);
                     const auto found = metadata.find(qualified_name(interface_entity));
                     if (found != metadata.end())
                         write_rest_interface(output, interface_entity, found->second);

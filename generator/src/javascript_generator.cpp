@@ -339,12 +339,12 @@ namespace javascript_generator
 
                 if (elem->get_entity_type() == entity_type::NAMESPACE)
                 {
-                    auto& sub_ns = static_cast<const class_entity&>(*elem);
+                    auto& sub_ns = dynamic_cast<const class_entity&>(*elem);
                     write_namespace_interfaces(out, lib, sub_ns, proxy_names, stub_names);
                 }
                 else if (elem->get_entity_type() == entity_type::INTERFACE)
                 {
-                    auto& iface_entity = static_cast<const class_entity&>(*elem);
+                    auto& iface_entity = dynamic_cast<const class_entity&>(*elem);
                     const std::string iface = iface_entity.get_name();
 
                     // Interface ID constant (V3 fingerprint, matching C++ get_id(rpc::VERSION_3))

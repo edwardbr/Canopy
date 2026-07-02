@@ -540,7 +540,7 @@ namespace json_schema
                     std::string ns_name = ns_element->get_name();
                     if (!ns_name.empty() && ns_name != "__global__")
                     {
-                        std::string namespaced_type = ns_name + "::" + clean_type_name;
+                        std::string namespaced_type = generator::concat_strings(ns_name, "::", clean_type_name);
                         if (root.find_class(namespaced_type, struct_def))
                         {
                             found = true;
@@ -575,7 +575,7 @@ namespace json_schema
                         std::string ns_name = ns_element->get_name();
                         if (!ns_name.empty() && ns_name != "__global__")
                         {
-                            std::string namespaced_template = ns_name + "::" + template_name;
+                            std::string namespaced_template = generator::concat_strings(ns_name, "::", template_name);
                             if (root.find_class(namespaced_template, struct_def))
                             {
                                 found = true;
@@ -1263,7 +1263,7 @@ namespace json_schema
                     std::string ns_name = ns_element->get_name();
                     if (!ns_name.empty() && ns_name != "__global__")
                     {
-                        std::string namespaced_type = ns_name + "::" + idl_type_name_cleaned;
+                        std::string namespaced_type = generator::concat_strings(ns_name, "::", idl_type_name_cleaned);
                         if (root.find_class(namespaced_type, struct_def))
                         {
                             found = true;

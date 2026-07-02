@@ -360,6 +360,8 @@ namespace rpc::io_uring
                 // Exhaustion is ordinary backpressure, not a failed waiter.
                 // Keep scanning so a one-buffer operation behind a two-buffer
                 // receive can free progress instead of being head-of-line blocked.
+                // This is a progress policy rather than strict FIFO fairness:
+                // sustained one-buffer work can delay an older two-buffer waiter.
                 ++current;
                 continue;
             }

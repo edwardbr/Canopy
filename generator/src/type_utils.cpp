@@ -118,11 +118,11 @@ namespace generator
         {
             if (type.back() == '&')
             {
-                modifiers = "&" + modifiers;
+                modifiers.insert(0, 1, '&');
             }
             else if (type.back() == '*')
             {
-                modifiers = "*" + modifiers;
+                modifiers.insert(0, 1, '*');
             }
             type.pop_back();
         }
