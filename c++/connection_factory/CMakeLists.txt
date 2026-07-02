@@ -25,7 +25,7 @@ target_include_directories(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CANOPY_INCLUDES})
 target_compile_definitions(connection_factory PRIVATE ${CANOPY_DEFINES})
 target_compile_definitions(connection_factory PRIVATE CANOPY_SCHEMA_ID_BASE="${CANOPY_SCHEMA_ID_BASE}")
-target_compile_options(connection_factory PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(connection_factory PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(connection_factory PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   connection_factory
@@ -41,7 +41,7 @@ add_executable(config_schema_compose tools/config_schema_compose.cpp)
 target_include_directories(config_schema_compose PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src ${CANOPY_INCLUDES})
 target_compile_definitions(config_schema_compose PRIVATE ${CANOPY_DEFINES})
 target_compile_definitions(config_schema_compose PRIVATE CANOPY_SCHEMA_ID_BASE="${CANOPY_SCHEMA_ID_BASE}")
-target_compile_options(config_schema_compose PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(config_schema_compose PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(config_schema_compose PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_libraries(config_schema_compose PRIVATE connection_factory json ${CANOPY_LIBRARIES} rpc_log)
 set_property(TARGET config_schema_compose PROPERTY COMPILE_PDB_NAME config_schema_compose)

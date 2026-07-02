@@ -4,10 +4,30 @@
  */
 #pragma once
 
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wdouble-promotion"
+#  pragma clang diagnostic ignored "-Wgcc-compat"
+#  pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+#  pragma clang diagnostic ignored "-Wnested-anon-types"
+#  pragma clang diagnostic ignored "-Wnullability-extension"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#endif
+
+#include <google/protobuf/stubs/common.h>
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#endif
+
 #include <cstring>
-#include <vector>
-#include <string>
 #include <cstdint>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 // Forward declarations for protobuf types
 namespace google

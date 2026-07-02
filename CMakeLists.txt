@@ -43,6 +43,8 @@ if(NOT DEPENDENCIES_LOADED)
   add_subdirectory(submodules)
 endif()
 
+canopy_enable_clang_tidy_for_project_targets()
+
 include(CanopyGenerate)
 
 add_subdirectory(generator)

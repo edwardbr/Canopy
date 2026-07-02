@@ -79,8 +79,7 @@ target_link_libraries(
 
 target_compile_options(
   canopy_probe_c_abi_dll
-  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
+  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
 
 target_link_options(canopy_probe_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

@@ -45,7 +45,7 @@ target_link_libraries(
          fmt::fmt-header-only
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(serialisation_benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(serialisation_benchmark PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(serialisation_benchmark PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET serialisation_benchmark PROPERTY COMPILE_PDB_NAME serialisation_benchmark)
 

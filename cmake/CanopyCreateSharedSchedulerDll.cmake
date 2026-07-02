@@ -41,16 +41,10 @@ function(CanopyCreateSharedSchedulerDll target_name)
   target_compile_options(
     ${target_name}
     PRIVATE ${CANOPY_COMPILE_OPTIONS}
-            ${CANOPY_WARN_OK}
-            $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
-            $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>
-            $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
+            ${CANOPY_WARN_PEDANTIC}
+            ${CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS})
 
   target_link_options(${target_name} PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
   set_property(TARGET ${target_name} PROPERTY COMPILE_PDB_NAME ${target_name})
-
-  if(CANOPY_ENABLE_CLANG_TIDY)
-    set_target_properties(${target_name} PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
-  endif()
 endfunction()

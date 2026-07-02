@@ -29,6 +29,6 @@ target_link_libraries(
           ${CANOPY_LIBRARIES}
           rpc_log)
 
-target_compile_options(canopy_ipc_spsc_sidecar_process PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(canopy_ipc_spsc_sidecar_process PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(canopy_ipc_spsc_sidecar_process PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET canopy_ipc_spsc_sidecar_process PROPERTY COMPILE_PDB_NAME canopy_ipc_spsc_sidecar_process)

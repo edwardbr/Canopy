@@ -19,7 +19,7 @@ if(UNIX AND NOT APPLE)
   target_link_libraries(transport_c_abi PRIVATE dl)
 endif()
 
-target_compile_options(transport_c_abi PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(transport_c_abi PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(transport_c_abi PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 set_property(TARGET transport_c_abi PROPERTY COMPILE_PDB_NAME transport_c_abi)
@@ -42,8 +42,7 @@ target_link_libraries(transport_c_abi_dll PRIVATE yas_common rpc_types_idl rpc::
 
 target_compile_options(
   transport_c_abi_dll
-  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK} $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>)
+  PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC} ${CANOPY_SHARED_LIBRARY_HIDDEN_VISIBILITY_OPTIONS})
 
 target_link_options(transport_c_abi_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 

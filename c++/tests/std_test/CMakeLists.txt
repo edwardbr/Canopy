@@ -76,15 +76,12 @@ foreach(test_name ${BUILDABLE_TESTS})
       endif()
 
       # Force include compatibility headers for Microsoft-specific functions
-      if(NOT MSVC)
-        target_compile_options(${test_name} PRIVATE "-include${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
-        target_compile_options(${test_name} PRIVATE -Wno-unqualified-std-cast-call)
+      if(CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION)
+        target_compile_options(${test_name} PRIVATE
+                               "${CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION}${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
       endif()
-
-      # Link atomic library for Clang 18 compatibility
-      if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "19")
-        target_link_libraries(${test_name} PRIVATE atomic)
-      endif()
+      target_compile_options(${test_name} PRIVATE ${CANOPY_STL_TEST_COMPAT_COMPILE_OPTIONS})
+      target_link_libraries(${test_name} PRIVATE ${CANOPY_STL_TEST_EXTRA_LIBRARIES})
 
       target_link_libraries(${test_name} PRIVATE GTest::gtest_main)
       target_compile_features(${test_name} PRIVATE cxx_std_17)
@@ -116,14 +113,13 @@ if(EXISTS "${tombstones_dir}")
     target_compile_definitions(
       GH_005315_destructor_tombstones PRIVATE _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS TEST_STL_COMPLIANCE
                                               _MSVC_STL_DESTRUCTOR_TOMBSTONES=1)
-    if(NOT MSVC)
+    if(CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION)
       target_compile_options(
-        GH_005315_destructor_tombstones PRIVATE "-include${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp"
-                                                -Wno-unqualified-std-cast-call)
+        GH_005315_destructor_tombstones
+        PRIVATE "${CANOPY_STL_TEST_COMPAT_FORCE_INCLUDE_OPTION}${CMAKE_CURRENT_SOURCE_DIR}/include/msvc_compat.hpp")
     endif()
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "19")
-      target_link_libraries(GH_005315_destructor_tombstones PRIVATE atomic)
-    endif()
+    target_compile_options(GH_005315_destructor_tombstones PRIVATE ${CANOPY_STL_TEST_COMPAT_COMPILE_OPTIONS})
+    target_link_libraries(GH_005315_destructor_tombstones PRIVATE ${CANOPY_STL_TEST_EXTRA_LIBRARIES})
     target_compile_features(GH_005315_destructor_tombstones PRIVATE cxx_std_17)
     set_target_properties(GH_005315_destructor_tombstones PROPERTIES CXX_STANDARD 17)
     add_test(NAME GH_005315_destructor_tombstones COMMAND GH_005315_destructor_tombstones)

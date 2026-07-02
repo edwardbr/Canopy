@@ -12,7 +12,7 @@
 #ifdef CANOPY_BUILD_COROUTINE
 
 #  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
-#    include <google/protobuf/stubs/common.h>
+#    include <rpc/serialization/protobuf/protobuf.h>
 #  endif
 
 #  include <transports/unshared_scheduler_dll/dll_transport.h>

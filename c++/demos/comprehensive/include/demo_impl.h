@@ -326,6 +326,7 @@ namespace comprehensive
                         const std::shared_ptr<rpc::child_service>& child_service_ptr)
                         -> CORO_TASK(rpc::service_connect_result<i_demo_service>)
                     {
+                        (void)parent;
                         CO_RETURN rpc::service_connect_result<i_demo_service>{rpc::error::OK(),
                             rpc::shared_ptr<i_demo_service>(
                                 new demo_service_impl(child_service_ptr->get_name(), child_service_ptr))};

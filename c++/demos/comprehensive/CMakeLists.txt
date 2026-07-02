@@ -40,7 +40,7 @@ target_link_libraries(
          rpc
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(local_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(local_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(local_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET local_transport_demo PROPERTY COMPILE_PDB_NAME local_transport_demo)
 
@@ -71,7 +71,7 @@ if(CANOPY_BUILD_COROUTINE)
              network_config
              ${CANOPY_LIBRARIES}
              rpc_log)
-    target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+    target_compile_options(tcp_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
     target_link_options(tcp_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
     set_property(TARGET tcp_transport_demo PROPERTY COMPILE_PDB_NAME tcp_transport_demo)
   else()
@@ -101,7 +101,7 @@ if(CANOPY_BUILD_COROUTINE)
            rpc
            ${CANOPY_LIBRARIES}
            rpc_log)
-  target_compile_options(spsc_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(spsc_transport_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
   target_link_options(spsc_transport_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET spsc_transport_demo PROPERTY COMPILE_PDB_NAME spsc_transport_demo)
 endif()
@@ -123,7 +123,7 @@ target_link_libraries(
          transport_local
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(serialisation_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(serialisation_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(serialisation_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET serialisation_demo PROPERTY COMPILE_PDB_NAME serialisation_demo)
 
@@ -144,7 +144,7 @@ target_link_libraries(
          transport_local
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(shared_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(shared_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(shared_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 add_executable(optimistic_ptr_demo src/pointers/optimistic_ptr_demo.cpp)
@@ -163,7 +163,7 @@ target_link_libraries(
          transport_local
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(optimistic_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(optimistic_ptr_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(optimistic_ptr_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET optimistic_ptr_demo PROPERTY COMPILE_PDB_NAME optimistic_ptr_demo)
 

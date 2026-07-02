@@ -29,10 +29,12 @@ namespace rpc
         {
             namespace
             {
+#ifdef CANOPY_BUILD_COROUTINE
                 static constexpr uint32_t open_flag_read_only = 0;
                 static constexpr uint32_t open_flag_write_only = 1;
                 static constexpr uint32_t open_flag_create = 0100;
                 static constexpr uint32_t open_flag_truncate = 01000;
+#endif
                 static constexpr uint32_t open_mode_user_read_write = 0600;
                 static constexpr size_t default_transfer_size = 64U * 1024U;
             }

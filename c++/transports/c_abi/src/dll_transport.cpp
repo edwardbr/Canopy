@@ -10,7 +10,7 @@
 #  include <cstring>
 
 #  ifdef CANOPY_BUILD_PROTOCOL_BUFFERS
-#    include <google/protobuf/stubs/common.h>
+#    include <rpc/serialization/protobuf/protobuf.h>
 #  endif
 
 namespace rpc::c_abi

@@ -32,7 +32,7 @@ target_include_directories(
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(network_config PRIVATE ${CANOPY_DEFINES})
-target_compile_options(network_config PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(network_config PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(network_config PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 # args is an INTERFACE (header-only) target from submodules/args rpc transitively provides rpc_types_idl (for

@@ -46,6 +46,8 @@ namespace comprehensive
             std::atomic<bool>& is_loaded,
             rpc::event& client_finished)
         {
+            (void)zone_2;
+
             rpc::shared_ptr<calc::i_calculator> remote_calculator;
             auto on_shutdown_event = std::make_shared<rpc::event>();
             int error = rpc::error::OK();
@@ -126,6 +128,9 @@ namespace comprehensive
             rpc::event& server_ready,
             const rpc::event& client_finished)
         {
+            (void)zone_1;
+            (void)is_loaded;
+
             auto on_shutdown_event = std::make_shared<rpc::event>();
             auto service_2 = rpc::root_service::create("process_2", zone_2, scheduler);
             service_2->set_shutdown_event(on_shutdown_event);

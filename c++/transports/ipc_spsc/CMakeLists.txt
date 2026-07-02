@@ -45,7 +45,7 @@ target_link_libraries(
          rpc::rpc
          ${CANOPY_LIBRARIES})
 
-target_compile_options(transport_ipc_spsc_impl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(transport_ipc_spsc_impl PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(transport_ipc_spsc_impl PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET transport_ipc_spsc_impl PROPERTY COMPILE_PDB_NAME transport_ipc_spsc_impl)
 
@@ -69,7 +69,7 @@ target_link_libraries(
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_libraries(transport_ipc_spsc_dll_host PUBLIC dl)
 endif()
-target_compile_options(transport_ipc_spsc_dll_host PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(transport_ipc_spsc_dll_host PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(transport_ipc_spsc_dll_host PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET transport_ipc_spsc_dll_host PROPERTY COMPILE_PDB_NAME transport_ipc_spsc_dll_host)
 
@@ -90,7 +90,7 @@ target_link_libraries(
          spsc_queue
          rpc::rpc
          ${CANOPY_LIBRARIES})
-target_compile_options(transport_ipc_spsc_dll_runtime PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(transport_ipc_spsc_dll_runtime PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(transport_ipc_spsc_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET transport_ipc_spsc_dll_runtime PROPERTY COMPILE_PDB_NAME transport_ipc_spsc_dll_runtime)
 

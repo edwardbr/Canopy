@@ -13,7 +13,7 @@ target_include_directories(
   PRIVATE ${CANOPY_INCLUDES})
 
 target_compile_definitions(canopy_dns_resolver PRIVATE ${CANOPY_DEFINES})
-target_compile_options(canopy_dns_resolver PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(canopy_dns_resolver PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(canopy_dns_resolver PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   canopy_dns_resolver

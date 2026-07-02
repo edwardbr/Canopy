@@ -21,7 +21,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
   PRIVATE ${CANOPY_INCLUDES})
 target_compile_definitions(streaming_spsc_buffered_stream PRIVATE ${CANOPY_DEFINES})
-target_compile_options(streaming_spsc_buffered_stream PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(streaming_spsc_buffered_stream PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(streaming_spsc_buffered_stream PRIVATE ${CANOPY_LINK_OPTIONS})
 target_link_libraries(
   streaming_spsc_buffered_stream

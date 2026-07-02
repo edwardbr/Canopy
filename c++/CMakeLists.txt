@@ -5,7 +5,8 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-add_subdirectory(submodules)
+canopy_add_subdirectory_without_clang_tidy(submodules)
+
 add_subdirectory(telemetry)
 add_subdirectory(rpc)
 add_subdirectory(security/attestation)

@@ -9,7 +9,7 @@ add_library(canopy_http_utils STATIC src/http.cpp)
 target_include_directories(canopy_http_utils PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
                                                     "$<INSTALL_INTERFACE:include>")
 target_compile_definitions(canopy_http_utils PRIVATE ${CANOPY_DEFINES})
-target_compile_options(canopy_http_utils PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(canopy_http_utils PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(canopy_http_utils PRIVATE ${CANOPY_LINK_OPTIONS})
 
 set_property(TARGET canopy_http_utils PROPERTY COMPILE_PDB_NAME canopy_http_utils)
@@ -27,7 +27,7 @@ if(CANOPY_BUILD_ENCLAVE)
     PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>"
     PRIVATE ${CANOPY_ENCLAVE_LIBCXX_INCLUDES})
   target_compile_definitions(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_DEFINES})
-  target_compile_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_OK_ENCLAVE})
+  target_compile_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC_ENCLAVE})
   target_link_options(canopy_http_utils_enclave PRIVATE ${CANOPY_ENCLAVE_LINK_OPTIONS})
 
   set_property(TARGET canopy_http_utils_enclave PROPERTY COMPILE_PDB_NAME canopy_http_utils_enclave)

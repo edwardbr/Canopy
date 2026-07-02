@@ -346,6 +346,9 @@ namespace streaming::layer_factory
         const rpc::stream_layers::stream_layer_settings& layer,
         layer_direction direction) -> stream_layer_result
     {
+#ifndef CANOPY_STREAMING_LAYER_FACTORY_HAS_WEBSOCKET
+        (void)direction;
+#endif
         if (!stream || layer.type.empty())
             return {rpc::error::INVALID_DATA(), {}};
 

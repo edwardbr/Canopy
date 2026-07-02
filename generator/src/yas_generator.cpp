@@ -895,6 +895,10 @@ namespace yas_generator
                 stub("if(__rpc_enc == rpc::encoding::yas_json)");
                 stub("  __buffer = {{'{{','}}'}};");
             }
+            else
+            {
+                stub("(void)__buffer;");
+            }
         }
         stub("return rpc::error::OK();");
         stub("}}");

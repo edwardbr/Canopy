@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(rpc_log STATIC src/rpc_log.cpp)
 
 target_compile_definitions(rpc_log PRIVATE ${CANOPY_DEFINES})
-target_compile_options(rpc_log PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(rpc_log PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(rpc_log PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 target_link_options(rpc_log INTERFACE "LINKER:--undefined=rpc_log")
 

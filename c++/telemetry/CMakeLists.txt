@@ -26,7 +26,7 @@ if(${CANOPY_USE_TELEMETRY})
 
   target_include_directories(rpc_telemetry PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
   target_compile_options(rpc_telemetry PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC}
-                                               $<$<CXX_COMPILER_ID:GNU>:-Wno-dangling-reference>)
+                                               ${CANOPY_CXX_DANGLING_REFERENCE_SUPPRESSION})
   target_link_options(rpc_telemetry PRIVATE ${CANOPY_LINK_OPTIONS})
   target_compile_definitions(rpc_telemetry PRIVATE ${CANOPY_DEFINES})
   target_link_libraries(

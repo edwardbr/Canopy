@@ -128,9 +128,15 @@ namespace
                 FLD(pool) coro::thread_pool::options{
                     FLD(thread_count) std::thread::hardware_concurrency(),
                     FLD(on_thread_start_functor) [](size_t i)
-                    { RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i); },
+                    {
+                        (void)i;
+                        RPC_DEBUG("io_scheduler::thread_pool worker {} starting", i);
+                    },
                     FLD(on_thread_stop_functor) [](size_t i)
-                    { RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i); },
+                    {
+                        (void)i;
+                        RPC_DEBUG("io_scheduler::thread_pool worker {} stopping", i);
+                    },
                 },
                 FLD(execution_strategy) coro::scheduler::execution_strategy_t::process_tasks_on_thread_pool,
             }));

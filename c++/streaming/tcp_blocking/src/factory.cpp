@@ -113,6 +113,7 @@ namespace rpc::tcp_blocking
         }
         CO_RETURN rpc::stream_transport::stream_result{rpc::error::TRANSPORT_ERROR(), {}};
 #else
+        (void)service;
         const auto timeout = std::chrono::milliseconds(endpoint.connect_timeout);
         const auto resolved = canopy::dns_resolver::resolve_host_blocking(
             endpoint.host, endpoint.port, canopy::dns_resolver::make_stream_resolve_options(endpoint.ipv6, timeout));

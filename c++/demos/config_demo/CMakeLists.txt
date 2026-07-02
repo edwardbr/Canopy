@@ -46,7 +46,7 @@ target_link_libraries(
          ${CANOPY_LIBRARIES}
          rpc_log)
 
-target_compile_options(config_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(config_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(config_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET config_demo PROPERTY COMPILE_PDB_NAME config_demo)
 

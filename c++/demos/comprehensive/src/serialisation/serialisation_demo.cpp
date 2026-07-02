@@ -82,6 +82,9 @@ namespace comprehensive
         bool run_serialisation_demo()
 #endif
         {
+#ifdef CANOPY_BUILD_COROUTINE
+            (void)scheduler;
+#endif
             print_separator("SERIALIZATION DEMO");
 
             // Create data processor for testing

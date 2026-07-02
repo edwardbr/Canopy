@@ -58,7 +58,7 @@ if(CANOPY_BUILD_COROUTINE AND TARGET streaming_tcp_coroutine)
            ${CANOPY_LIBRARIES}
            rpc_log)
 
-  target_compile_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+  target_compile_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
   target_link_options(tcp_spsc_tls_demo PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
   set_property(TARGET tcp_spsc_tls_demo PROPERTY COMPILE_PDB_NAME tcp_spsc_tls_demo)
 

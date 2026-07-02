@@ -14,6 +14,22 @@ cmake_minimum_required(VERSION 3.24)
 
 message("DEPENDENCIES_LOADED ${DEPENDENCIES_LOADED}")
 
+function(canopy_enable_clang_tidy_for_project_targets)
+  if(CANOPY_ENABLE_CLANG_TIDY)
+    if(NOT CLANG_TIDY_COMMAND)
+      message(FATAL_ERROR "CANOPY_ENABLE_CLANG_TIDY is ON but CLANG_TIDY_COMMAND is not configured")
+    endif()
+    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(canopy_add_subdirectory_without_clang_tidy source_dir)
+  set(_canopy_saved_cxx_clang_tidy "${CMAKE_CXX_CLANG_TIDY}")
+  set(CMAKE_CXX_CLANG_TIDY)
+  add_subdirectory("${source_dir}" ${ARGN})
+  set(CMAKE_CXX_CLANG_TIDY "${_canopy_saved_cxx_clang_tidy}")
+endfunction()
+
 if(NOT DEPENDENCIES_LOADED)
   message("Configuring Canopy dependencies")
 

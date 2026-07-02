@@ -1072,7 +1072,7 @@ namespace rpc::telemetry
     {
         auto level = static_cast<level_enum>(event.level);
         const auto& message = event.message;
-        const char* level_str;
+        const char* level_str = "UNKNOWN";
         switch (level)
         {
         case debug:

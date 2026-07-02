@@ -141,7 +141,6 @@ namespace websocket_demo
                 return;
 
             const int fw = static_cast<int>(img->d_w);
-            const int fh = static_cast<int>(img->d_h);
             int nat_w = 0;
             int nat_h = 0;
             genie_sprite_native_size(nat_w, nat_h);

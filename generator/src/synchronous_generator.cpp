@@ -2494,7 +2494,6 @@ namespace synchronous_generator
         stub("{{");
         stub("CO_RETURN rpc::send_result{{rpc::error::OBJECT_NOT_FOUND(), {{}}, {{}}}};");
         stub("}}");
-        stub("rpc::send_result __rpc_result;");
 
         bool has_methods = false;
         for (auto& function : m_ob.get_functions())
@@ -2506,6 +2505,7 @@ namespace synchronous_generator
 
         if (has_methods)
         {
+            stub("rpc::send_result __rpc_result;");
             stub("switch(params.method_id.get_val())");
             stub("{{");
 
@@ -2533,6 +2533,10 @@ namespace synchronous_generator
             stub("RPC_ERROR(\"Invalid method ID - unknown method in stub\");");
             stub("CO_RETURN rpc::send_result{{rpc::error::INVALID_METHOD_ID(), {{}}, {{}}}};");
             stub("}};");
+        }
+        else
+        {
+            stub("(void)params;");
         }
         proxy("}};");
         proxy("");

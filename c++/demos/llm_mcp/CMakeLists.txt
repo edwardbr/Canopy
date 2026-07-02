@@ -18,7 +18,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
   PRIVATE ${CANOPY_INCLUDES})
 target_link_libraries(llm_mcp_logic PUBLIC llm_mcp_idl rpc ${CANOPY_LIBRARIES} rpc_log)
-target_compile_options(llm_mcp_logic PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(llm_mcp_logic PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(llm_mcp_logic PRIVATE ${CANOPY_LINK_OPTIONS})
 set_property(TARGET llm_mcp_logic PROPERTY COMPILE_PDB_NAME llm_mcp_logic)
 
@@ -45,7 +45,7 @@ target_link_libraries(
          rpc
          ${CANOPY_LIBRARIES}
          rpc_log)
-target_compile_options(llm_mcp_harness PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(llm_mcp_harness PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(llm_mcp_harness PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 set_property(TARGET llm_mcp_harness PROPERTY COMPILE_PDB_NAME llm_mcp_harness)
 

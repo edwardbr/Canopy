@@ -43,7 +43,7 @@ if(UNIX AND NOT APPLE)
   target_link_libraries(transport_unshared_scheduler_dll PRIVATE dl)
 endif()
 
-target_compile_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_OK})
+target_compile_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_COMPILE_OPTIONS} ${CANOPY_WARN_PEDANTIC})
 target_link_options(transport_unshared_scheduler_dll PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
 set_property(TARGET transport_unshared_scheduler_dll PROPERTY COMPILE_PDB_NAME transport_unshared_scheduler_dll)
@@ -73,10 +73,8 @@ target_link_libraries(
 target_compile_options(
   transport_unshared_scheduler_dll_runtime
   PRIVATE ${CANOPY_COMPILE_OPTIONS}
-          ${CANOPY_WARN_OK}
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility=hidden>
-          $<$<CXX_COMPILER_ID:GNU,Clang>:-fvisibility-inlines-hidden>
-          $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>)
+          ${CANOPY_WARN_PEDANTIC}
+          ${CANOPY_SHARED_LIBRARY_NO_GNU_UNIQUE_OPTIONS})
 
 target_link_options(transport_unshared_scheduler_dll_runtime PRIVATE ${CANOPY_LINK_EXE_OPTIONS})
 
